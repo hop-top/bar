@@ -1,8 +1,11 @@
 //! Placeholder trait, shared context and the name registry.
 
 pub mod account;
+pub mod cost;
 pub mod ctx;
+pub mod dirs;
 pub mod gh;
+pub mod misc;
 pub mod model;
 pub mod repo;
 pub mod sessions;
@@ -54,6 +57,18 @@ pub fn lookup(name: &str) -> Option<&'static dyn Placeholder> {
         "usage" => &usage::Usage,
         "sessions" => &sessions::Sessions,
         "spend" => &spend::Spend,
+        "cost" => &cost::Cost,
+        "burn" => &cost::Burn,
+        "duration" => &cost::Duration,
+        "lines" => &cost::Lines,
+        "version" => &misc::Version,
+        "style" => &misc::Style,
+        "vim" => &misc::Vim,
+        "agent" => &misc::Agent,
+        "thinking" => &misc::Thinking,
+        "fast" => &misc::Fast,
+        "cwd" => &dirs::Cwd,
+        "root" => &dirs::Root,
         "prs" => &gh::Prs,
         "issues" => &gh::Issues,
         _ => return None,
