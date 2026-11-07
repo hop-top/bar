@@ -60,8 +60,6 @@ fn render_exits_zero_on_garbage_stdin() {
             .unwrap()
             .envs(iso)
             .current_dir(cwd)
-            .env("HOME", &root)
-            .env("XDG_CONFIG_HOME", root.join("xdg"))
             .arg("render")
             .write_stdin(input)
             .assert()

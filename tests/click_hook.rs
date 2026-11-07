@@ -137,7 +137,7 @@ fn hook_cli_reads_stdin_and_exits_ok() {
 #[test]
 fn click_run_cli_refuses_through_fakes() {
     let t = Tmp::new();
-    let (mut env, cwd) = common::isolation(t.path());
+    let (env, cwd) = common::isolation(t.path());
     let bin = t.path().join("fake-bin");
     let calls = t.path().join("calls.log");
     for name in ["osascript", "tmux", "ps"] {
@@ -152,8 +152,6 @@ fn click_run_cli_refuses_through_fakes() {
         .unwrap();
         std::fs::set_permissions(&p, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
     }
-    env.push(("CLAUDE_CONFIG_DIR", t.path().join("claude").into()));
-    env.push(("HOME", t.path().into()));
     let url = format!("bar://cmd/clear?tty=ttys004&sid={SID}");
     Command::cargo_bin("bar")
         .unwrap()

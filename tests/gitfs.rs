@@ -192,8 +192,6 @@ fn hop_layout_hub_name_unchanged() {
         .unwrap()
         .envs(iso)
         .arg("render")
-        .env("HOME", &home)
-        .env("XDG_CONFIG_HOME", home.join("xdg"))
         .env("COLUMNS", "200")
         .current_dir(cwd)
         .write_stdin(format!(
@@ -262,8 +260,6 @@ fn render_spawns_no_git_on_plain_repo() {
         .unwrap()
         .envs(iso)
         .arg("render")
-        .env("HOME", &home)
-        .env("XDG_CONFIG_HOME", home.join("xdg"))
         .env("COLUMNS", "200")
         .current_dir(cwd)
         .write_stdin(format!(

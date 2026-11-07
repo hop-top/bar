@@ -19,8 +19,6 @@ fn isolated_render() -> (Command, std::path::PathBuf) {
     c.arg("render")
         .envs(iso)
         .current_dir(cwd)
-        .env("HOME", &home)
-        .env("XDG_CONFIG_HOME", home.join("xdg"))
         .env("COLUMNS", "200");
     (c, home)
 }

@@ -1,5 +1,6 @@
 //! Hermetic environment for tests that run the `bar` binary: state in a
-//! temp dir, a fake `gh` that fails without network, a non-git cwd.
+//! temp dir, a fake `gh` that fails without network, a non-git cwd; every
+//! config, cache and credential location points into `root`.
 #![allow(dead_code)]
 
 use std::ffi::OsString;
@@ -30,10 +31,18 @@ pub fn isolation(root: &Path) -> (Vec<(&'static str, OsString)>, PathBuf) {
     let mut path = bin.into_os_string();
     path.push(":");
     path.push(std::env::var_os("PATH").unwrap_or_default());
+    // `Command::envs` cannot unset, so the API key is emptied.
     let env = vec![
         ("PATH", path),
         ("BAR_STATE_DIR", root.join("state").into()),
         ("XDG_STATE_HOME", root.join("xdg-state").into()),
+        ("HOME", root.into()),
+        ("XDG_CONFIG_HOME", root.join("xdg").into()),
+        ("XDG_CACHE_HOME", root.join("xdg-cache").into()),
+        ("CLAUDE_CONFIG_DIR", root.join("claude").into()),
+        ("ANTHROPIC_API_KEY", OsString::new()),
+        ("GIT_CONFIG_GLOBAL", "/dev/null".into()),
+        ("GIT_CONFIG_NOSYSTEM", "1".into()),
     ];
     (env, cwd)
 }
