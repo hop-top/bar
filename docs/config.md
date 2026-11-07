@@ -10,6 +10,18 @@
 - Toggle state: `pct-5h` / `pct-7d` files (mode 0600) in the state directory (the kit state dir for `bar`; `BAR_STATE_DIR` overrides it, meant for tests). While a file exists, `bar` and `pct` swap. `bar toggle <5h|7d>` flips it.
 - Link `bar://toggle/<key>` is emitted only when the handler app is installed (marker `click-installed` in the state directory) and `click` is not `none`.
 
+## tokens, cache, cachettl
+
+`#{tokens[show=in|out|total]}`, `#{cache[show=read|write|hit]}`, `#{cachettl[ttl=300]}`
+
+Read from the `transcript_path` in the session JSON (assistant messages' `usage`). Nothing renders without a readable transcript.
+
+- `tokens`: in is `input_tokens` plus `cache_creation_input_tokens`; out is `output_tokens`. `cache`: read is `cache_read_input_tokens`, write is `cache_creation_input_tokens`, hit is read over read plus input plus write. Numbers are compact: `999`, `12.3k`, `80k`, `1.2M`, `2.5B`.
+- A message written as several lines (one per content block) counts once, by `message.id`.
+- `cachettl`: `ttl` minus the time since the last assistant message (the transcript mtime when there is none), as `4m12s`; `cold` in muted text once it is over. Green above 60 s left, then the warn colour.
+- Totals are incremental. A state file per transcript (mode 0600, `transcript/` in the state directory) keeps the byte offset and running totals; a render reads only the bytes appended since. A smaller file, a different inode, or a changed mtime at the same size rescans from the start.
+- A render reads at most 1 MiB. On a bigger backlog it shows the totals so far and a background `bar refresh` finishes the scan, so the numbers catch up within a few renders. Lines over 512 KiB and lines that are not valid JSON are skipped.
+
 ## Click handler (macOS)
 
 `bar click install` builds `~/Applications/bar-click.app` (`BAR_APP_DIR` overrides the directory) from an AppleScript `on open location` handler, sets `LSUIElement` and the `bar` URL scheme with `plutil`, signs it ad hoc, registers it with `lsregister`, then writes the marker. Elsewhere it prints a message and exits 0. `--dry-run` prints the script and commands and changes nothing.
@@ -81,6 +93,9 @@ Quote values with spaces. `#` starts a comment.
 | | `glyphs` | `blocks` | `blocks`, `shades`, `dots`, `squares`, `bars`, `braille`, `eighths` |
 | | `width` | `5` | Bar cells, clamped to 1..40 |
 | | `click` | `toggle` | `none` turns the toggle link off; the link appears only once the handler is installed (`bar click install`) |
+| `tokens` | `show` | both | `in`, `out`, `total`; default `12.3k↑ 4.1k↓` |
+| `cache` | `show` | `read` and `write` | `read`, `write`, `hit`; default `r 1.2M w 80k`, `hit` is `hit 93%` |
+| `cachettl` | `ttl` | `300` | Seconds the prompt cache lives; `3600` for the 1 h cache |
 | `agents` | `names` | off | `1` appends the running subagents' types |
 | | `max` | none | Truncate the names with `…` |
 | `sessions`, `spend` | none | | No options |

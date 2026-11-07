@@ -53,7 +53,7 @@ fn none_set_output_unchanged() {
 fn builtin_table_covers_core_placeholders() {
     let names = [
         "model", "effort", "ctx", "repo", "branch", "prs", "issues", "usage", "account",
-        "sessions", "spend",
+        "sessions", "spend", "tokens", "cache", "cachettl",
     ];
     let o = Options::default();
     for set in [Icons::Nerdfont, Icons::Emoji] {

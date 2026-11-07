@@ -21,6 +21,7 @@ pub struct Session {
     pub model_id: String,
     pub effort: String,
     pub session_id: String,
+    pub transcript_path: String,
     pub context_used: Option<f64>,
     pub five_hour: Option<Window>,
     pub seven_day: Option<Window>,
@@ -97,6 +98,7 @@ pub fn parse(input: &str) -> Session {
         model_id: str_at(&v, &["model", "id"]).unwrap_or_default(),
         effort: str_at(&v, &["effort", "level"]).unwrap_or_default(),
         session_id: str_at(&v, &["session_id"]).unwrap_or_default(),
+        transcript_path: str_at(&v, &["transcript_path"]).unwrap_or_default(),
         context_used: v
             .get("context_window")
             .and_then(|c| c.get("used_percentage"))
