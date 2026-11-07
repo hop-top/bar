@@ -73,43 +73,27 @@ impl Job {
                     .collect::<Result<_, _>>()?,
             }),
             Some("git-status") => Ok(Job::GitStatus {
-                dir: v["dir"]
-                    .as_str()
-                    .filter(|d| Path::new(d).is_absolute())
-                    .ok_or("git-status job without absolute dir")?
-                    .into(),
+                dir: abs_path(v, "dir")?,
             }),
             Some("plugin-info") => Ok(Job::PluginInfo {
-                path: plugin_path(v)?,
+                path: abs_path(v, "path")?,
             }),
             Some("plugin-render") => Ok(Job::PluginRender {
-                path: plugin_path(v)?,
+                path: abs_path(v, "path")?,
                 input: v["input"]
                     .as_str()
                     .ok_or("plugin job without input")?
                     .into(),
             }),
             Some("transcript") => Ok(Job::Transcript {
-                path: plugin_path(v)?,
-                state: v["state"]
-                    .as_str()
-                    .filter(|p| Path::new(p).is_absolute())
-                    .ok_or("transcript job without absolute state dir")?
-                    .into(),
+                path: abs_path(v, "path")?,
+                state: abs_path(v, "state")?,
             }),
-            Some("spendhist") => {
-                let abs = |k: &str| {
-                    v[k].as_str()
-                        .filter(|p| Path::new(p).is_absolute())
-                        .map(String::from)
-                        .ok_or(format!("spendhist job without absolute {k}"))
-                };
-                Ok(Job::SpendHist {
-                    dir: abs("dir")?,
-                    state: abs("state")?,
-                    utc: v["utc"].as_bool().unwrap_or(false),
-                })
-            }
+            Some("spendhist") => Ok(Job::SpendHist {
+                dir: abs_path(v, "dir")?,
+                state: abs_path(v, "state")?,
+                utc: v["utc"].as_bool().unwrap_or(false),
+            }),
             other => Err(format!("unknown job kind {other:?}")),
         }
     }
@@ -169,10 +153,14 @@ impl Job {
 }
 
 /// Plugins run by absolute path only, never looked up on PATH.
-fn plugin_path(v: &Value) -> Result<String, String> {
-    v["path"]
+/// Field `key` of job `v`, required to be an absolute path.
+fn abs_path(v: &Value, key: &str) -> Result<String, String> {
+    v[key]
         .as_str()
         .filter(|p| Path::new(p).is_absolute())
         .map(String::from)
-        .ok_or_else(|| "plugin job without absolute path".to_string())
+        .ok_or_else(|| {
+            let kind = v["kind"].as_str().unwrap_or("job");
+            format!("{kind} job without absolute {key}")
+        })
 }

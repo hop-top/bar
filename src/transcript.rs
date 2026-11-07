@@ -34,6 +34,8 @@ pub struct Stats {
     pub last_ts: Option<i64>,
     /// Transcript mtime, unix seconds.
     pub mtime: i64,
+    /// The read stopped before the end, so `last_ts` may be stale.
+    pub partial: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -81,6 +83,7 @@ impl State {
                 output: n("out"),
                 last_ts: v["last_ts"].as_i64(),
                 mtime: 0,
+                partial: false,
             },
             last_id: v["last_id"]
                 .as_str()
@@ -223,6 +226,7 @@ pub fn update(
     }
     let mut stats = st.stats;
     stats.mtime = meta.mtime();
+    stats.partial = !complete;
     Some(Progress { stats, complete })
 }
 

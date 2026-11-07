@@ -208,7 +208,7 @@ fn parse_flags_truncated_input() {
 }
 
 #[test]
-fn failing_git_status_backs_off_at_least_a_minute() {
+fn failing_jobs_back_off_at_least_a_minute() {
     use hop_bar::cache::Cache;
     use std::time::SystemTime;
     let root = tmp();
@@ -226,13 +226,17 @@ fn failing_git_status_backs_off_at_least_a_minute() {
         cmd: "true".into(),
         timeout: 1,
     };
-    for (key, job, spawns) in [("g", git_job, false), ("c", cmd_job, true)] {
+    // every job kind: a 10 s ttl still waits out the 60 s floor
+    for (key, job) in [("g", git_job), ("c", cmd_job)] {
         cache.store(key, "old").unwrap();
         ago(&cache.path_for(key), 100);
         std::fs::write(cache.fail_path(key), "").unwrap();
         ago(&cache.fail_path(key), 30);
         assert_eq!(cache.read_or_refresh(key, 10, &job).as_deref(), Some("old"));
-        assert_eq!(cache.lock_path(key).exists(), spawns, "{key}");
+        assert!(!cache.lock_path(key).exists(), "{key}");
+        ago(&cache.fail_path(key), 61);
+        cache.read_or_refresh(key, 10, &job);
+        assert!(cache.lock_path(key).exists(), "{key}");
     }
     let _ = std::fs::remove_dir_all(&root);
 }

@@ -390,7 +390,8 @@ fn failing_job_backs_off() {
 }
 
 #[test]
-fn backoff_window_shrinks_to_ttl() {
+fn backoff_floor_holds_for_short_ttl() {
+    // a 5 s ttl (a plugin's floor) must not retry a failing job every 5 s
     let t = Tmp::new();
     let c = t.cache();
     let job = counting(&t, "runs", "exit 1");
@@ -399,7 +400,35 @@ fn backoff_window_shrinks_to_ttl() {
         && lock_gone(&c, "k")));
     age(&c.fail_path("k"), 6);
     c.read_or_refresh("k", 5, &job);
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(t.lines("runs"), 1, "retried inside the 60 s floor");
+    age(&c.fail_path("k"), hop_bar::cache::FAIL_BACKOFF + 1);
+    c.read_or_refresh("k", 5, &job);
     assert!(wait_until(Duration::from_secs(5), || t.lines("runs") == 2));
+}
+
+#[test]
+fn backoff_floor_holds_for_plugin_jobs() {
+    let t = Tmp::new();
+    let c = t.cache();
+    let job = Job::PluginRender {
+        path: "/nonexistent/bar-x".into(),
+        input: "{}".into(),
+    };
+    let fail = c.fail_path("p");
+    std::fs::create_dir_all(fail.parent().unwrap()).unwrap();
+    std::fs::write(&fail, "").unwrap();
+    age(&fail, 6);
+    c.read_or_refresh("p", 5, &job);
+    let rerun = || {
+        std::fs::metadata(&fail)
+            .and_then(|m| m.modified())
+            .is_ok_and(|m| m.elapsed().unwrap_or_default() < Duration::from_secs(3))
+    };
+    assert!(
+        !wait_until(Duration::from_secs(1), rerun),
+        "retried inside the floor"
+    );
 }
 
 #[test]

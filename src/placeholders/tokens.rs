@@ -105,7 +105,13 @@ pub fn cachettl(ctx: &Ctx, opts: &Options, s: &Stats) -> Option<String> {
         .and_then(|t| t.trim().parse::<i64>().ok())
         .filter(|&t| t > 0)
         .unwrap_or(DEFAULT_TTL);
-    let last = s.last_ts.or_else(|| (s.mtime > 0).then_some(s.mtime))?;
+    let mtime = (s.mtime > 0).then_some(s.mtime);
+    // an unfinished scan has only seen older messages; the file's mtime
+    // is the better guess for the latest request
+    let last = match (s.last_ts, mtime) {
+        (Some(t), Some(m)) if s.partial => t.max(m),
+        (t, m) => t.or(m)?,
+    };
     // a clock behind the transcript counts as just written
     let elapsed = ctx.now.saturating_sub(last).max(0);
     let left = ttl.saturating_sub(elapsed);
@@ -130,5 +136,6 @@ pub fn sample_stats(now: i64) -> Stats {
         output: 4_100,
         last_ts: Some(now - 48),
         mtime: now,
+        partial: false,
     }
 }

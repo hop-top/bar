@@ -18,7 +18,7 @@ Anything slow is cache-backed: `git status` (`dirty`, `ahead`; key `gitst:<repo 
 
 - State dir: `BAR_STATE_DIR`, else kit `raw_state_dir("bar")`. Files mode 0600.
 - Refresh job carries kinds and options only; secrets stay in the keychain, read by plugins.
-- Failed refresh backs off 60 s (or the ttl if shorter; the `git status` job always 60 s). Locks expire after 30 s. Stored values cap at 64 KiB.
+- A failed refresh backs off 60 s, whatever the ttl. Locks expire after 30 s. Stored values cap at 64 KiB.
 
 ## Transcript totals
 
