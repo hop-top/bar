@@ -1,0 +1,37 @@
+#!/bin/sh
+# bar-ci: state of the latest workflow run on the current branch. Option
+# name=1 appends the workflow name. Empty text (hidden) without gh, outside a
+# repo, on a detached HEAD or with no runs; a failed gh call emits nothing, so
+# the cached value stays. Needs sh, jq, git and gh.
+if [ "$1" = "--ext-info" ]; then
+  printf '%s\n' '{"name":"ci","version":"0.1.0","description":"Latest CI run of the current branch","capabilities":["discover","placeholder"],"options":{"name":{"type":"bool"}},"ttl":"60s"}'
+  exit 0
+fi
+
+command -v jq >/dev/null 2>&1 || exit 1
+hidden() { printf '%s\n' '{"text":""}'; exit 0; }
+
+input=$(cat)
+cwd=$(printf '%s' "$input" | jq -r '.session.cwd // empty' 2>/dev/null)
+name=$(printf '%s' "$input" | jq -r '.options.name // false' 2>/dev/null) || exit 1
+case $cwd in /*) [ -d "$cwd" ] || hidden ;; *) hidden ;; esac
+command -v gh >/dev/null 2>&1 && command -v git >/dev/null 2>&1 || hidden
+
+branch=$(git -C "$cwd" rev-parse --abbrev-ref HEAD 2>/dev/null) || hidden
+case $branch in ''|HEAD|-*) hidden ;; esac
+
+cd -- "$cwd" || hidden
+# No per-call timeout: the host kills the whole process group after 3 s.
+runs=$(gh run list --branch "$branch" --limit 1 --json status,conclusion,url,workflowName 2>/dev/null) || exit 1
+
+printf '%s' "$runs" | jq -ce --arg name "$name" '
+  def clean: gsub("[\u0001-\u001f\u007f-\u009f]"; "");
+  (first(.[]?) // null) as $r
+  | if $r == null then {text: ""} else
+      (if $r.status != "completed" then {t: "…", s: 50}
+       elif ($r.conclusion | IN("success", "neutral", "skipped")) then {t: "✓", s: 100}
+       else {t: "✗", s: 0} end) as $v
+      | (($r.workflowName // "") | tostring | clean) as $w
+      | {text: ($v.t + (if $name == "true" and $w != "" then " " + $w else "" end)), score: $v.s}
+        + (if (($r.url // "") | test("^https?://[^ \u0001-\u001f\u007f]+$")) then {link: $r.url} else {} end)
+    end' 2>/dev/null || exit 1

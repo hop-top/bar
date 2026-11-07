@@ -1,0 +1,30 @@
+#!/bin/sh
+# bar-mem: used memory percentage. macOS: memory_pressure, else vm_stat;
+# Linux: /proc/meminfo (BAR_MEMINFO overrides the path, for tests). Score is
+# the free share. Any failure emits nothing. Needs sh, awk.
+if [ "$1" = "--ext-info" ]; then
+  printf '%s\n' '{"name":"mem","version":"0.1.0","description":"Used memory percentage","capabilities":["discover","placeholder"],"ttl":"30s"}'
+  exit 0
+fi
+
+used=
+case $(uname -s 2>/dev/null) in
+  Darwin)
+    used=$(memory_pressure 2>/dev/null | awk '/free percentage/ { gsub(/[^0-9]/, "", $NF); if ($NF != "") print 100 - $NF; exit }')
+    if [ -z "$used" ]; then
+      used=$(vm_stat 2>/dev/null | awk '
+        /^Pages (free|active|inactive|speculative|wired down|occupied by compressor):/ {
+          v = $NF; gsub(/[^0-9]/, "", v); t += v
+          if ($0 ~ /active|wired|compressor/ && $0 !~ /inactive/) u += v
+        }
+        END { if (t > 0) print int(u * 100 / t + 0.5) }')
+    fi ;;
+  Linux)
+    used=$(awk '
+      /^MemTotal:/ { t = $2 } /^MemAvailable:/ { a = $2; h = 1 }
+      END { if (t > 0 && h) print int((t - a) * 100 / t + 0.5) }' "${BAR_MEMINFO:-/proc/meminfo}" 2>/dev/null) ;;
+esac
+
+case $used in ''|*[!0-9]*) exit 1 ;; esac
+[ "$used" -le 100 ] || used=100
+printf '{"text":"mem %s%%","score":%s}\n' "$used" "$((100 - used))"
