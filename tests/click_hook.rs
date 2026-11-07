@@ -40,7 +40,6 @@ fn hook_sets_and_clears_waiting_marker() {
     run_hook(s, &ev("PermissionRequest", ""));
     assert!(is_waiting(s, SID));
     let marker = s.join("sessions").join(SID);
-    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         assert_eq!(

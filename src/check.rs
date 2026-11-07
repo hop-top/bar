@@ -113,6 +113,13 @@ fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
         | "vim" | "agent" | "thinking" | "fast" => &[],
         "cost" => &[("fmt", OneOf(&["usd"]))],
         "cwd" | "root" => &[("base", OneOf(&["0", "1"]))],
+        "spendhist" => &[
+            ("period", OneOf(&["today", "month", "both"])),
+            ("tz", OneOf(&["local", "utc"])),
+        ],
+        "tokens" => &[("show", OneOf(&["in", "out", "total", "both"]))],
+        "cache" => &[("show", OneOf(&["read", "write", "hit", "both"]))],
+        "cachettl" => &[("ttl", Int)],
         "agents" => &[("names", Any), ("max", Int)],
         "model" | "effort" | "ctx" => &[("click", Any)],
         "repo" | "branch" => &[("max", Int), ("link", Any)],
@@ -370,6 +377,16 @@ pub fn check_text(text: &str, path: Option<PathBuf>, dirs: &[PathBuf]) -> Report
         match t.first().map(String::as_str) {
             Some("set") if t.len() == 3 && matches!(t[1].as_str(), "left" | "center" | "right") => {
                 c.layout(&t[2], i + 1);
+            }
+            Some("set") if t.len() == 3 && t[1] == "claude-dir" => {
+                if !t[2].starts_with('/') && !t[2].starts_with("~/") {
+                    c.add(
+                        Level::Warning,
+                        i + 1,
+                        "claude-dir must be an absolute path (or start with ~/); it is ignored"
+                            .into(),
+                    );
+                }
             }
             Some("default") if t.len() >= 2 => {
                 if let Ok(o) = parse_options(&t[2..]) {

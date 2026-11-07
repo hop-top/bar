@@ -2,6 +2,7 @@
 
 use crate::options::Options;
 use crate::palette;
+use crate::prices::Price;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -100,6 +101,11 @@ pub struct Config {
     pub accounts: Vec<AccountRule>,
     pub rules: Vec<Rule>,
     pub plugins: BTreeMap<String, Options>,
+    /// Claude Code's data dir (`set claude-dir`); `None` follows the
+    /// environment.
+    pub claude_dir: Option<String>,
+    /// `set price` overrides, in file order.
+    pub prices: Vec<Price>,
 }
 
 impl Default for Config {
@@ -129,6 +135,8 @@ impl Default for Config {
             accounts: Vec::new(),
             rules: Vec::new(),
             plugins: BTreeMap::new(),
+            claude_dir: None,
+            prices: Vec::new(),
         }
     }
 }
@@ -293,6 +301,7 @@ fn apply_set(c: &mut Config, key: &str, val: &str) -> Result<(), String> {
                 _ => return Err(format!("invalid icon-width `{val}` (1|2)")),
             }
         }
+        "claude-dir" => c.claude_dir = Some(val.into()),
         "color.good" => c.colors.good = code(val)?,
         "color.warn" => c.colors.warn = code(val)?,
         "color.bad" => c.colors.bad = code(val)?,
@@ -327,6 +336,17 @@ fn apply_set(c: &mut Config, key: &str, val: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn apply_price(c: &mut Config, a: &[String]) -> Result<(), String> {
+    const USAGE: &str = "usage: set price <model-prefix> <in> <out> <cache_write> <cache_read>";
+    let [prefix, i, o, w, r] = a else {
+        return Err(USAGE.into());
+    };
+    let p = Price::parse(prefix, i, o, w, r)
+        .ok_or("price rates are dollars per million tokens, non-negative numbers")?;
+    c.prices.push(p);
+    Ok(())
+}
+
 fn apply_line(c: &mut Config, t: &[String]) -> Result<(), String> {
     let need = |n: usize, usage: &str| {
         if t.len() < n {
@@ -338,6 +358,9 @@ fn apply_line(c: &mut Config, t: &[String]) -> Result<(), String> {
     match t[0].as_str() {
         "set" => {
             need(3, "set <key> <value>")?;
+            if t[1] == "price" {
+                return apply_price(c, &t[2..]);
+            }
             if t.len() > 3 {
                 return Err("set takes one value; quote it".into());
             }

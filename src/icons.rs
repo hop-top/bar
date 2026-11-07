@@ -83,6 +83,10 @@ pub fn builtin(set: Icons, name: &str, opts: &Options) -> Option<&'static str> {
         "account" => ("\u{f007}", "👤"),           // nf-fa-user
         "sessions" => ("\u{f120}", "💬"),          // nf-fa-terminal
         "spend" => ("\u{f155}", "💰"),             // nf-fa-dollar
+        "spendhist" => ("\u{f0d6}", "💵"),         // nf-fa-money
+        "tokens" => ("\u{f0ec}", "🔢"),            // nf-fa-exchange
+        "cache" => ("\u{f1c0}", "💾"),             // nf-fa-database
+        "cachettl" => ("\u{f253}", "🕐"),          // nf-fa-hourglass_end
         _ => return None,
     };
     match set {

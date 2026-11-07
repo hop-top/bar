@@ -11,3 +11,9 @@ Vetting record for third-party crates added to `hop-bar`.
 - `rsx analyze`: PASS, score 4.0/10, policy balanced (activity and release-cadence scores low; the crate is small and stable).
 - Advisories: OSV query for crates.io `unicode-width` 0.2.2 returns none.
 - Shared with `hop-top-kit` through `comfy-table`; the pin resolves to one copy.
+
+## libc =0.2.191
+
+- Use: `localtime_r` and `tm` for local-date buckets in spend history, instead of a hand-written `struct tm`.
+- Source: `rust-lang/libc`; already in `Cargo.lock` at 0.2.191 through `hop-top-kit`'s dependencies, so the pin resolves to the existing copy and adds nothing new to the build.
+- License: MIT OR Apache-2.0.

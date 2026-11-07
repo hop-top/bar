@@ -267,9 +267,39 @@ fn preview_final_shows_bad_on_unused() {
 }
 
 #[test]
+fn check_validates_transcript_placeholder_options() {
+    let fx = Fx::new();
+    fx.conf("set left \"#{tokens[show=total]} #{cache[show=hit]} #{cachettl[ttl=3600]}\"\n");
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_eq!(code, 0, "{stdout}");
+    fx.conf("set left \"#{tokens[show=most]} #{cachettl[ttl=long]}\"\n");
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_eq!(code, 2, "{stdout}");
+    assert!(stdout.contains("invalid value `most`"), "{stdout}");
+    assert!(stdout.contains("invalid value `long`"), "{stdout}");
+}
+
+#[test]
+fn preview_shows_sample_transcript_stats() {
+    let fx = Fx::new();
+    fx.conf("set left \"#{tokens} #{cache} #{cachettl}\"\n");
+    let mut c = fx.bar(&["preview"]);
+    c.env("COLUMNS", "200");
+    let (code, stdout) = out(&mut c);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("12.3k"), "{stdout}");
+    assert!(stdout.contains("1.2M"), "{stdout}");
+    assert!(stdout.contains("4m12s"), "{stdout}");
+}
+
+#[test]
 fn check_flags_bad_usage_style_values() {
     let fx = Fx::new();
     fx.conf("set left \"#{usage[show=bar,pct,glyphs=dots,count=used,alt=pct,time]}\"\n");
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_eq!(code, 0, "{stdout}");
+
+    fx.conf("set left \"#{usage[show=eta,proj,time,alt=proj,eta,bar]}\"\n");
     let (code, stdout) = out(&mut fx.bar(&["check"]));
     assert_eq!(code, 0, "{stdout}");
 

@@ -1,3 +1,6 @@
+#[cfg(not(unix))]
+compile_error!("bar supports Unix only (macOS, Linux); Windows is not supported");
+
 pub mod cache;
 pub mod check;
 pub mod click;
@@ -7,7 +10,9 @@ pub mod expr;
 pub mod format;
 pub mod gitfs;
 pub mod icons;
+pub mod job;
 pub mod layout;
+pub mod linescan;
 pub mod options;
 pub mod pace;
 pub mod palette;
@@ -15,7 +20,11 @@ pub mod placeholders;
 pub mod plugin;
 pub mod presets;
 pub mod preview;
+pub mod prices;
 pub mod render;
 pub mod session;
 pub mod skin;
+pub mod spendhist;
 pub mod style;
+pub mod transcript;
+pub mod tz;

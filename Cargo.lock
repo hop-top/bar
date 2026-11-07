@@ -201,6 +201,7 @@ dependencies = [
  "assert_cmd",
  "clap",
  "hop-top-kit",
+ "libc",
  "predicates",
  "serde_json",
  "unicode-width",

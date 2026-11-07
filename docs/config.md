@@ -4,11 +4,36 @@
 
 `#{usage[type=5h|7d|h|d, show=time,bar, alt=time,pct, count=left|used, glyphs=blocks, width=5, click=toggle|none]}`
 
-- `show` lists the components in order from `time`, `bar`, `pct` (`show=bar,pct`, `show=pct,time`); default `time,bar`. `view` stays as an alias: `bar` is `time,bar`, `pct` is `time,pct`, `time` is `time`; `show` wins when both are set. `count=used` makes the percentage and the bar fill show used instead of remaining; the colour still follows the pace score of what remains. `glyphs`: `blocks` (█░), `shades` (▓░), `dots` (●○), `squares` (■□), `bars` (▰▱), `braille` (⣿⣀), `eighths` (█ with a ▏▎▍▌▋▊▉ last cell); an unknown name draws `blocks` and `bar check` flags it.
-- `bar toggle` (a click on the bar or percentage) flips between `show` and `alt`; `alt` defaults to `show` with `bar` and `pct` swapped. Time stays outside the link. Expired or missing windows render nothing.
+- `show` lists the components in order from `time`, `bar`, `pct`, `eta`, `proj` (`show=bar,pct`, `show=pct,time`); default `time,bar`. `eta` is the projected time until the budget runs out at the average burn so far (`→1h20m` in the bad colour when the projection is over 100%, a muted `→ok` when the budget lasts the window); `proj` is the projected used percent at reset (`p140%`, capped at 999): the bad colour above 100%, otherwise the bar's ramp (thresholds only, no time floors) on the projected remaining, never red. Both ignore `count`. Both hide while nothing is used or under 2% of the window has elapsed. `view` stays as an alias: `bar` is `time,bar`, `pct` is `time,pct`, `time` is `time`; `show` wins when both are set. `count=used` makes the percentage and the bar fill show used instead of remaining; the colour still follows the pace score of what remains. `glyphs`: `blocks` (█░), `shades` (▓░), `dots` (●○), `squares` (■□), `bars` (▰▱), `braille` (⣿⣀), `eighths` (█ with a ▏▎▍▌▋▊▉ last cell); an unknown name draws `blocks` and `bar check` flags it.
+- `bar toggle` (a click on the bar or percentage) flips between `show` and `alt`; `alt` defaults to `show` with `bar` and `pct` swapped. Time, `eta` and `proj` stay outside the link. Expired or missing windows render nothing.
 - The bar is one colour: every filled cell takes the colour of the exact value, the same as `pct`; empty cells are muted. The colour follows the pace score of `rule usage[type=5h]` / `rule usage[type=7d]`; without a rule the built-ins apply (`early warn=20% bad=5%`, final `1h` / `1d` with `bad=30%`).
 - Toggle state: `pct-5h` / `pct-7d` files (mode 0600) in the state directory (the kit state dir for `bar`; `BAR_STATE_DIR` overrides it, meant for tests). While a file exists, `bar` and `pct` swap. `bar toggle <5h|7d>` flips it.
 - Link `bar://toggle/<key>` is emitted only when the handler app is installed (marker `click-installed` in the state directory) and `click` is not `none`.
+
+## tokens, cache, cachettl
+
+`#{tokens[show=in|out|total]}`, `#{cache[show=read|write|hit]}`, `#{cachettl[ttl=300]}`
+
+Read from the `transcript_path` in the session JSON (assistant messages' `usage`). Nothing renders without a readable transcript.
+
+- `tokens`: in is `input_tokens` plus `cache_creation_input_tokens`; out is `output_tokens`. `cache`: read is `cache_read_input_tokens`, write is `cache_creation_input_tokens`, hit is read over read plus input plus write. Numbers are compact: `999`, `12.3k`, `80k`, `1.2M`, `2.5B`.
+- A message written as several lines (one per content block) counts once, by `message.id`.
+- `cachettl`: `ttl` minus the time since the last assistant message (the transcript mtime when there is none), as `4m12s`; `cold` in muted text once it is over. Green above 60 s left, then the warn colour.
+- Totals are incremental. A state file per transcript (mode 0600, `transcript/` in the state directory) keeps the byte offset and running totals; a render reads only the bytes appended since. A smaller file, a different inode, or a changed mtime at the same size rescans from the start.
+- A render reads at most 1 MiB. On a bigger backlog it shows the totals so far and a background `bar refresh` finishes the scan, so the numbers catch up within a few renders. Lines over 512 KiB and lines that are not valid JSON are skipped.
+
+## spendhist
+
+`#{spendhist[period=today|month|both,tz=local|utc]}`
+
+Estimated spend for today and the calendar month: `today $3.12 · mon $84.10` (the labels muted), or one bare `$3.12` for `period=today` / `period=month`. This is API-equivalent cost computed from token counts at list prices. It is not subscription billing and will not match an invoice.
+
+- Source: every `<claude dir>/projects/*/*.jsonl`. The dir is `set claude-dir <path>`, else `CLAUDE_CONFIG_DIR`, else `~/.claude`. The path must be absolute (`~/` is expanded); a relative `claude-dir` or `CLAUDE_CONFIG_DIR` is ignored and the placeholder renders empty. `bar check` warns about a relative `claude-dir`. Assistant lines' `message.usage`, `message.model` and `timestamp` count once per `message.id` plus `requestId`, with timestamps after now counted as now, across all files (a resumed session repeats earlier messages).
+- Days are local dates; `tz=utc` buckets by UTC date. Default `local`.
+- A background job does the scanning, at most once per 60 s (a failed run waits 60 s). A render only reads the finished summary, so it renders empty until the first run completes. The first run reads the newest transcripts first and stops at the refresh time limit; later runs continue, so a large history catches up over a few minutes.
+- State: `spendhist/<hash>.json` in the state directory (mode 0600, written atomically): per-transcript byte offsets, tokens per day and model for the last 62 days, and the hashes of counted messages. If the file would pass 16 MiB the marks of the least recently modified transcripts and then the oldest hashes are dropped; totals are kept, but a transcript whose mark was dropped is read again.
+- Cost per message: input, output, cache write and cache read tokens times the model's rates. Cache writes use the 5-minute rate for all cache-creation tokens. A model without a price counts as tokens but adds no dollars, and the amount gets a trailing `~`.
+- Prices: built in for the Opus, Sonnet, Haiku, Fable and Mythos families, matched by exact id as below. Source: the Anthropic pricing page (platform.claude.com/docs/en/about-claude/pricing), read 2026-11-07; A model id matches an entry when it equals it or adds `-YYYYMMDD`; an unlisted version (say a newer minor release) has no price and shows `~` until you add a `set price`. Haiku 5.5 requests whose prompt (input plus cache tokens) passes 100,000 tokens are priced at five times the rates, as the page lists; a `set price` rule covers both tiers. Override or add with `set price <model-prefix> <in> <out> <cache_write> <cache_read>`, dollars per million tokens, for example `set price claude-opus-4-5 5 25 6.25 0.5`. An override beats the built-in table whatever its length; among overrides the longest prefix wins, a later line breaking ties.
 
 ## Click handler (macOS)
 
@@ -37,7 +62,7 @@ No file: built-in layout. A file with an error makes `bar render` print `bar: co
 
 | Directive | Form |
 |-----------|------|
-| `set` | `set <key> <value>`; keys `left center right separator gap wrap refresh icons icon-width skin skin-glyphs palette color.good color.warn color.bad ramp` |
+| `set` | `set <key> <value>`; keys `left center right separator gap wrap refresh icons icon-width skin skin-glyphs palette claude-dir color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
 | `default` | `default <placeholder> key=value ...` |
 | `account` | `account "<glob>" <label> <color>` |
 | `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%` |
@@ -78,14 +103,19 @@ Quote values with spaces. `#` starts a comment.
 | | `max` | none | Truncate to this many characters with `…` |
 | `usage` | `type` | `5h` | `5h`, `7d`; `h`, `d` shorthand |
 | | `view` | `bar` | `bar`, `pct`, `time`; alias of `show` |
-| | `show` | `time,bar` | list of `time`, `bar`, `pct` |
-| | `alt` | `show`, bar and pct swapped | list of `time`, `bar`, `pct` |
+| | `show` | `time,bar` | list of `time`, `bar`, `pct`, `eta`, `proj` |
+| | `alt` | `show`, bar and pct swapped | list of `time`, `bar`, `pct`, `eta`, `proj` |
 | | `count` | `left` | `left`, `used` |
 | | `glyphs` | `blocks` | `blocks`, `shades`, `dots`, `squares`, `bars`, `braille`, `eighths` |
 | | `width` | `5` | Bar cells, clamped to 1..40 |
 | | `click` | `toggle` | `none` turns the toggle link off; the link appears only once the handler is installed (`bar click install`) |
+| `tokens` | `show` | both | `in`, `out`, `total`; default `12.3k↑ 4.1k↓` |
+| `cache` | `show` | `read` and `write` | `read`, `write`, `hit`; default `r 1.2M w 80k`, `hit` is `hit 93%` |
+| `cachettl` | `ttl` | `300` | Seconds the prompt cache lives; `3600` for the 1 h cache |
 | `agents` | `names` | off | `1` appends the running subagents' types |
 | | `max` | none | Truncate the names with `…` |
+| `spendhist` | `period` | `both` | `today`, `month`; see [spendhist](#spendhist) |
+| | `tz` | `local` | `utc` buckets days by UTC date |
 | `sessions`, `spend` | none | | No options |
 | every placeholder, plugins included | `icon` | set default | A glyph (at most 2 cells), or `none` to hide it. See [Icons](#icons) |
 | | `bg` | palette | Segment background, `0`-`255`, under a `powerline` or `capsule` skin. See [Skins](#skins) |
@@ -120,6 +150,7 @@ Quote values with spaces. `#` starts a comment.
 | `account` | `nf-fa-user` U+F007 | 👤 |
 | `sessions` | `nf-fa-terminal` U+F120 | 💬 |
 | `spend` | `nf-fa-dollar` U+F155 | 💰 |
+| `spendhist` | `nf-fa-money` U+F0D6 | 💵 |
 
 Plugins: see [plugins](plugins.md).
 

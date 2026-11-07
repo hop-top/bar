@@ -12,6 +12,8 @@ pub mod model;
 pub mod repo;
 pub mod sessions;
 pub mod spend;
+pub mod spendhist;
+pub mod tokens;
 pub mod usage;
 
 use crate::cache::Cache;
@@ -60,6 +62,10 @@ pub fn lookup(name: &str) -> Option<&'static dyn Placeholder> {
         "usage" => &usage::Usage,
         "sessions" => &sessions::Sessions,
         "spend" => &spend::Spend,
+        "spendhist" => &spendhist::SpendHist,
+        "tokens" => &tokens::Tokens,
+        "cache" => &tokens::CacheStats,
+        "cachettl" => &tokens::CacheTtl,
         "cost" => &cost::Cost,
         "burn" => &cost::Burn,
         "duration" => &cost::Duration,

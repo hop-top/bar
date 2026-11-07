@@ -2,7 +2,7 @@ use super::{Ctx, Placeholder};
 use crate::click;
 use crate::conf::Rule;
 use crate::options::Options;
-use crate::pace::{builtin_rule, score};
+use crate::pace::{builtin_rule, forecast, score};
 use crate::session::Window;
 use crate::style::{dim, fg, link, ramp};
 use glyphs::{parse_list, swapped, view_alias, Part};
@@ -92,12 +92,35 @@ pub fn render_with(ctx: &Ctx, opts: &Options, state: &Path) -> Option<String> {
             body
         }
     };
+    let bad = ctx.config.colors.bad;
+    let cast = forecast(win.used_percentage, secs, period);
     let parts: Vec<String> = show
         .iter()
-        .map(|p| match p {
-            Part::Time => time.clone(),
-            Part::Pct => wrap(fg(color, &format!("{value}%"))),
-            Part::Bar => wrap(bar(opts, value, color)),
+        .filter_map(|p| {
+            Some(match p {
+                Part::Time => time.clone(),
+                Part::Pct => wrap(fg(color, &format!("{value}%"))),
+                Part::Bar => wrap(bar(opts, value, color)),
+                Part::Eta => {
+                    let f = cast?;
+                    if f.proj > 100 {
+                        fg(bad, &format!("→{}", time_left(f.eta_secs)))
+                    } else {
+                        dim("→ok")
+                    }
+                }
+                Part::Proj => {
+                    let f = cast?;
+                    let c = if f.proj > 100 {
+                        bad
+                    } else {
+                        // 1 keeps ramp red for projections over budget only
+                        let sc = score(100 - f.proj, None, period, &rule).max(1);
+                        ramp(sc, &ctx.config.ramp)
+                    };
+                    fg(c, &format!("p{}%", f.proj))
+                }
+            })
         })
         .collect();
     Some(parts.join(" "))
