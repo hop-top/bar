@@ -7,7 +7,7 @@ use render_fx::*;
 use hop_bar::cache::{Cache, Job, Request};
 use hop_bar::placeholders::tmux::cache_key;
 use hop_bar::transcript;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 fn sid_stdin(sid: &str) -> String {
     format!("{{\"session_id\":\"{sid}\"}}")
@@ -102,6 +102,18 @@ fn compactions_counts_boundaries_only() {
         .stdin(&tstdin(&t))
         .go();
     assert_eq!(o.plain.trim(), "compact 2");
+}
+
+#[test]
+fn compactions_skip_sidechain_boundaries() {
+    let t = Tmp::new();
+    let side = boundary().replace("{\"type\"", "{\"isSidechain\":true,\"type\"");
+    t.write("t.jsonl", &(boundary().to_string() + &side));
+    let o = run(&t)
+        .conf("set left \"#{compactions}\"")
+        .stdin(&tstdin(&t))
+        .go();
+    assert_eq!(o.plain.trim(), "compact 1");
 }
 
 #[test]
@@ -223,20 +235,28 @@ fn with_tmux(t: &Tmp) -> Run<'_> {
         .env("TMUX_PANE", "%5")
 }
 
-fn wait_for(t: &Tmp, want: &str) {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        let o = with_tmux(t).go();
-        if o.plain.trim() == want {
-            return;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "never showed {want}: {:?}",
-            o.plain
-        );
-        std::thread::sleep(Duration::from_millis(100));
-    }
+/// Runs the background job to completion, as `bar refresh` would.
+fn refresh_now(t: &Tmp) {
+    let (iso, cwd) = common::isolation(t.path());
+    let req = Request {
+        key: cache_key(TMUX, "%5"),
+        job: Job::Tmux { pane: "%5".into() },
+        lock: String::new(),
+    };
+    let path = format!(
+        "{}:{}",
+        t.path().join("tmux-bin").display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    assert_cmd::Command::cargo_bin("bar")
+        .unwrap()
+        .envs(iso)
+        .env("PATH", path)
+        .env("TMUX", TMUX)
+        .current_dir(cwd)
+        .args(["refresh", &req.to_json()])
+        .assert()
+        .success();
 }
 
 #[test]
@@ -244,7 +264,8 @@ fn tmux_cold_renders_empty_then_fills_from_background_job() {
     let t = Tmp::new();
     let log = fake_tmux(&t, "work:3", 0);
     assert_eq!(with_tmux(&t).go().plain.trim(), "");
-    wait_for(&t, "work:3");
+    refresh_now(&t);
+    assert_eq!(with_tmux(&t).go().plain.trim(), "work:3");
     let argv = std::fs::read_to_string(log).unwrap();
     assert!(
         argv.lines().all(|l| l == "display-message -p #S:#I -t %5"),

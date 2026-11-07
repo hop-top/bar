@@ -156,7 +156,11 @@ fn apply(st: &mut State, line: &[u8]) {
     let Ok(v) = serde_json::from_slice::<Value>(line) else {
         return;
     };
-    if boundary && v["type"] == "system" && v["subtype"] == "compact_boundary" {
+    if boundary
+        && v["type"] == "system"
+        && v["subtype"] == "compact_boundary"
+        && v["isSidechain"] != true
+    {
         st.stats.compactions = st.stats.compactions.saturating_add(1);
     }
     if skill {
