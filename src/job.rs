@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 
 use crate::cache::{run_child, run_command, COMMAND_TIMEOUT};
 use crate::plugin;
+use crate::tz::Tz;
 
 /// Work a refresh performs. Serialised into the refresh process's
 /// arguments, so it carries only kinds and options, never secrets.
@@ -27,6 +28,13 @@ pub enum Job {
     /// Finish scanning a transcript for token totals; progress is kept in
     /// the transcript state file.
     Transcript { path: String, state: String },
+    /// Scan all transcripts under `dir` for daily spend totals; `utc`
+    /// buckets by UTC date, else local.
+    SpendHist {
+        dir: String,
+        state: String,
+        utc: bool,
+    },
 }
 
 impl Job {
@@ -43,6 +51,9 @@ impl Job {
             }
             Job::Transcript { path, state } => {
                 json!({"kind": "transcript", "path": path, "state": state})
+            }
+            Job::SpendHist { dir, state, utc } => {
+                json!({"kind": "spendhist", "dir": dir, "state": state, "utc": utc})
             }
         }
     }
@@ -86,6 +97,19 @@ impl Job {
                     .ok_or("transcript job without absolute state dir")?
                     .into(),
             }),
+            Some("spendhist") => {
+                let abs = |k: &str| {
+                    v[k].as_str()
+                        .filter(|p| Path::new(p).is_absolute())
+                        .map(String::from)
+                        .ok_or(format!("spendhist job without absolute {k}"))
+                };
+                Ok(Job::SpendHist {
+                    dir: abs("dir")?,
+                    state: abs("state")?,
+                    utc: v["utc"].as_bool().unwrap_or(false),
+                })
+            }
             other => Err(format!("unknown job kind {other:?}")),
         }
     }
@@ -128,6 +152,18 @@ impl Job {
                 Some(Instant::now() + limit),
             )
             .map(|_| "ok".to_string()),
+            Job::SpendHist { dir, state, utc } => {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| d.as_secs() as i64);
+                crate::spendhist::update(
+                    Path::new(state),
+                    Path::new(dir),
+                    if *utc { Tz::Utc } else { Tz::Local },
+                    now,
+                    Some(Instant::now() + limit),
+                )
+            }
         }
     }
 }

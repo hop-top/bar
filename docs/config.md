@@ -22,6 +22,19 @@ Read from the `transcript_path` in the session JSON (assistant messages' `usage`
 - Totals are incremental. A state file per transcript (mode 0600, `transcript/` in the state directory) keeps the byte offset and running totals; a render reads only the bytes appended since. A smaller file, a different inode, or a changed mtime at the same size rescans from the start.
 - A render reads at most 1 MiB. On a bigger backlog it shows the totals so far and a background `bar refresh` finishes the scan, so the numbers catch up within a few renders. Lines over 512 KiB and lines that are not valid JSON are skipped.
 
+## spendhist
+
+`#{spendhist[period=today|month|both,tz=local|utc]}`
+
+Estimated spend for today and the calendar month: `today $3.12 · mon $84.10` (the labels muted), or one bare `$3.12` for `period=today` / `period=month`. This is API-equivalent cost computed from token counts at list prices. It is not subscription billing and will not match an invoice.
+
+- Source: every `<claude dir>/projects/*/*.jsonl`. The dir is `set claude-dir <path>`, else `CLAUDE_CONFIG_DIR`, else `~/.claude`. Assistant lines' `message.usage`, `message.model` and `timestamp` count once per `message.id` plus `requestId`, across all files (a resumed session repeats earlier messages).
+- Days are local dates; `tz=utc` buckets by UTC date. Default `local`.
+- A background job does the scanning, at most once per 60 s (a failed run waits 60 s). A render only reads the finished summary, so it renders empty until the first run completes. The first run reads the newest transcripts first and stops at the refresh time limit; later runs continue, so a large history catches up over a few minutes.
+- State: `spendhist/<hash>.json` in the state directory (mode 0600, written atomically): per-transcript byte offsets, tokens per day and model for the last 62 days, and the hashes of counted messages. If the file would pass 16 MiB the oldest hashes are dropped first; totals are kept.
+- Cost per message: input, output, cache write and cache read tokens times the model's rates. Cache writes use the 5-minute rate for all cache-creation tokens. A model without a price counts as tokens but adds no dollars, and the amount gets a trailing `~`.
+- Prices: built in for the Opus, Sonnet, Haiku, Fable and Mythos families, matched by model-id prefix, longest first. Source: the Anthropic pricing page (platform.claude.com/docs/en/about-claude/pricing), read 2026-11-07; Haiku 5.5 uses the tier for prompts up to 100,000 tokens. Override or add with `set price <model-prefix> <in> <out> <cache_write> <cache_read>`, dollars per million tokens, for example `set price claude-opus-4-5 5 25 6.25 0.5`. An override beats the built-in table whatever its length; among overrides the longest prefix wins, a later line breaking ties.
+
 ## Click handler (macOS)
 
 `bar click install` builds `~/Applications/bar-click.app` (`BAR_APP_DIR` overrides the directory) from an AppleScript `on open location` handler, sets `LSUIElement` and the `bar` URL scheme with `plutil`, signs it ad hoc, registers it with `lsregister`, then writes the marker. Elsewhere it prints a message and exits 0. `--dry-run` prints the script and commands and changes nothing.
@@ -49,7 +62,7 @@ No file: built-in layout. A file with an error makes `bar render` print `bar: co
 
 | Directive | Form |
 |-----------|------|
-| `set` | `set <key> <value>`; keys `left center right separator gap wrap refresh icons icon-width color.good color.warn color.bad ramp` |
+| `set` | `set <key> <value>`; keys `left center right separator gap wrap refresh icons icon-width claude-dir color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
 | `default` | `default <placeholder> key=value ...` |
 | `account` | `account "<glob>" <label> <color>` |
 | `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%` |
@@ -98,6 +111,8 @@ Quote values with spaces. `#` starts a comment.
 | `cachettl` | `ttl` | `300` | Seconds the prompt cache lives; `3600` for the 1 h cache |
 | `agents` | `names` | off | `1` appends the running subagents' types |
 | | `max` | none | Truncate the names with `…` |
+| `spendhist` | `period` | `both` | `today`, `month`; see [spendhist](#spendhist) |
+| | `tz` | `local` | `utc` buckets days by UTC date |
 | `sessions`, `spend` | none | | No options |
 | every placeholder, plugins included | `icon` | set default | A glyph (at most 2 cells), or `none` to hide it. See [Icons](#icons) |
 | `cost` | `fmt` | `usd` | Session cost, `$1.23`; `<$0.01` under a cent. Hidden when absent |
@@ -131,6 +146,7 @@ Quote values with spaces. `#` starts a comment.
 | `account` | `nf-fa-user` U+F007 | 👤 |
 | `sessions` | `nf-fa-terminal` U+F120 | 💬 |
 | `spend` | `nf-fa-dollar` U+F155 | 💰 |
+| `spendhist` | `nf-fa-money` U+F0D6 | 💵 |
 
 Plugins: see [plugins](plugins.md).
 

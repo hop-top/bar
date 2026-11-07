@@ -112,6 +112,10 @@ fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
         | "vim" | "agent" | "thinking" | "fast" => &[],
         "cost" => &[("fmt", OneOf(&["usd"]))],
         "cwd" | "root" => &[("base", OneOf(&["0", "1"]))],
+        "spendhist" => &[
+            ("period", OneOf(&["today", "month", "both"])),
+            ("tz", OneOf(&["local", "utc"])),
+        ],
         "tokens" => &[("show", OneOf(&["in", "out", "total", "both"]))],
         "cache" => &[("show", OneOf(&["read", "write", "hit", "both"]))],
         "cachettl" => &[("ttl", Int)],

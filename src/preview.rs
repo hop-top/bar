@@ -3,7 +3,7 @@
 
 use crate::conf::{Config, LoadResult};
 use crate::options::Options;
-use crate::placeholders::{lookup, tokens, usage, Ctx};
+use crate::placeholders::{lookup, spendhist, tokens, usage, Ctx};
 use crate::render::{builtin_config, render_sample};
 use crate::session::{Session, Window};
 use crate::style::{bold, dim, fg};
@@ -96,6 +96,10 @@ fn sample(name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Option<String> 
         }
         "agents" => Some(format!("{} 2", dim("agents"))),
         "usage" => usage::render_with(ctx, opts, Path::new("/nonexistent/bar-preview")),
+        "spendhist" => {
+            let period = opts.get("period").unwrap_or("both");
+            Some(spendhist::fmt(period, 3.12, false, 84.10, false))
+        }
         "tokens" => tokens::tokens(ctx, opts, &tokens::sample_stats(ctx.now)),
         "cache" => tokens::cache(ctx, opts, &tokens::sample_stats(ctx.now)),
         "cachettl" => tokens::cachettl(ctx, opts, &tokens::sample_stats(ctx.now)),

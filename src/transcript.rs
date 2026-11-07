@@ -5,7 +5,7 @@
 //! bytes; the rest of a big file is left to a background `bar refresh`.
 
 use std::fs;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::Read;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
 use std::path::Path;
 use std::time::Instant;
@@ -13,12 +13,10 @@ use std::time::Instant;
 use serde_json::{json, Value};
 
 use crate::cache::{hash_hex, Cache, Job};
+use crate::linescan::{has_usage_key, Mark};
 
 /// Most bytes one render reads.
 pub const INLINE_CAP: u64 = 1024 * 1024;
-/// Longer lines are skipped unparsed.
-pub const MAX_LINE: usize = 512 * 1024;
-const CHUNK: usize = 256 * 1024;
 /// Seconds a finished background scan counts as fresh.
 const SCAN_TTL: u64 = 2;
 /// Larger state files are ignored (and rebuilt).
@@ -47,23 +45,17 @@ pub struct Progress {
 
 #[derive(Debug, Clone, Default)]
 struct State {
-    ino: u64,
-    size: u64,
-    mtime_ns: i64,
-    /// Start of the first unconsumed line.
-    offset: u64,
-    /// Inside an over-long line: drop bytes up to the next newline.
-    skip: bool,
+    mark: Mark,
     stats: Stats,
     last_id: String,
 }
 
 impl State {
     fn to_json(&self) -> String {
-        let s = &self.stats;
+        let (s, m) = (&self.stats, &self.mark);
         json!({
-            "v": 1, "ino": self.ino, "size": self.size, "mtime_ns": self.mtime_ns,
-            "offset": self.offset, "skip": self.skip, "in": s.input,
+            "v": 1, "ino": m.ino, "size": m.size, "mtime_ns": m.mtime_ns,
+            "offset": m.offset, "skip": m.skip, "in": s.input,
             "cc": s.cache_creation, "cr": s.cache_read, "out": s.output,
             "last_ts": s.last_ts, "last_id": self.last_id,
         })
@@ -75,11 +67,13 @@ impl State {
         (v["v"] == 1).then_some(())?;
         let n = |k: &str| v[k].as_u64().unwrap_or(0);
         Some(State {
-            ino: n("ino"),
-            size: n("size"),
-            mtime_ns: v["mtime_ns"].as_i64().unwrap_or(0),
-            offset: n("offset"),
-            skip: v["skip"].as_bool().unwrap_or(false),
+            mark: Mark {
+                ino: n("ino"),
+                size: n("size"),
+                mtime_ns: v["mtime_ns"].as_i64().unwrap_or(0),
+                offset: n("offset"),
+                skip: v["skip"].as_bool().unwrap_or(false),
+            },
             stats: Stats {
                 input: n("in"),
                 cache_creation: n("cc"),
@@ -121,19 +115,6 @@ pub fn parse_ts(s: &str) -> Option<i64> {
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     let days = era * 146_097 + doe - 719_468;
     Some(days * 86_400 + h * 3600 + mi * 60 + sec)
-}
-
-/// A `"usage"` key: the quoted word followed by optional spaces and a
-/// colon. Inside a string the quotes are escaped, so it cannot match there.
-fn has_usage_key(line: &[u8]) -> bool {
-    const MARK: &[u8] = b"\"usage\"";
-    line.windows(MARK.len()).enumerate().any(|(i, w)| {
-        w == MARK
-            && line[i + MARK.len()..]
-                .iter()
-                .find(|b| !b.is_ascii_whitespace())
-                == Some(&b':')
-    })
 }
 
 /// Folds one transcript line into the totals; anything unexpected is
@@ -178,63 +159,6 @@ fn apply(st: &mut State, line: &[u8]) {
     s.output = s.output.saturating_add(n("output_tokens"));
 }
 
-/// Consumes up to `cap` bytes from `st.offset`. True when it reached the
-/// end of the file.
-fn scan(
-    file: &mut fs::File,
-    st: &mut State,
-    size: u64,
-    cap: u64,
-    deadline: Option<Instant>,
-) -> bool {
-    if file.seek(SeekFrom::Start(st.offset)).is_err() {
-        return true;
-    }
-    let mut pos = st.offset;
-    let mut used = 0u64;
-    let mut line: Vec<u8> = Vec::new();
-    let mut skipping = st.skip;
-    let mut buf = vec![0u8; CHUNK];
-    let eof = loop {
-        if pos >= size {
-            break true;
-        }
-        if used >= cap || deadline.is_some_and(|d| Instant::now() >= d) {
-            break false;
-        }
-        let want = (CHUNK as u64).min(cap - used).min(size - pos) as usize;
-        let n = match file.read(&mut buf[..want]) {
-            Ok(0) | Err(_) => break true,
-            Ok(n) => n,
-        };
-        used += n as u64;
-        for seg in buf[..n].split_inclusive(|b| *b == b'\n') {
-            pos += seg.len() as u64;
-            if !skipping {
-                if line.len() + seg.len() > MAX_LINE {
-                    skipping = true;
-                    line.clear();
-                } else {
-                    line.extend_from_slice(seg);
-                }
-            }
-            if seg.last() == Some(&b'\n') {
-                if !skipping {
-                    apply(st, &line);
-                }
-                line.clear();
-                skipping = false;
-                st.offset = pos;
-            }
-        }
-    };
-    st.skip = skipping;
-    if skipping {
-        st.offset = pos;
-    }
-    eof
-}
-
 fn state_file(state_dir: &Path, path: &Path) -> std::path::PathBuf {
     let key = hash_hex(&path.to_string_lossy());
     state_dir.join("transcript").join(format!("{key}.json"))
@@ -276,34 +200,24 @@ pub fn update(
 ) -> Option<Progress> {
     let meta = fs::metadata(path).ok().filter(fs::Metadata::is_file)?;
     let size = meta.len();
-    let mtime_ns = meta
-        .mtime()
-        .saturating_mul(1_000_000_000)
-        .saturating_add(meta.mtime_nsec());
     let sfile = state_file(state_dir, path);
     let mut st = read_state(&sfile).unwrap_or_default();
-    let replaced = st.ino != meta.ino()
-        || size < st.size
-        || mtime_ns < st.mtime_ns
-        || (size == st.size && mtime_ns != st.mtime_ns);
-    let mut dirty = replaced;
-    if replaced {
+    let mut dirty = st.mark.replaced_by(&meta);
+    if dirty {
         st = State {
-            ino: meta.ino(),
+            mark: Mark::fresh(&meta),
             ..State::default()
         };
     }
     let mut complete = true;
-    if st.offset < size || st.skip {
+    if st.mark.pending(size) {
         let mut f = fs::File::open(path).ok()?;
-        complete = scan(&mut f, &mut st, size, cap, deadline);
+        let mut mark = st.mark;
+        complete = mark.scan(&mut f, size, cap, deadline, |l| apply(&mut st, l));
+        st.mark = mark;
         dirty = true;
     }
-    if st.size != size || st.mtime_ns != mtime_ns {
-        st.size = size;
-        st.mtime_ns = mtime_ns;
-        dirty = true;
-    }
+    dirty |= st.mark.stamp(&meta);
     if dirty {
         save(state_dir, &sfile, &st);
     }

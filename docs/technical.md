@@ -8,7 +8,7 @@
 2. Per group (`left`, `center`, `right`): `format::parse` into tokens, split into segments at the separator, render each placeholder, drop empty segments.
 3. `layout::compose` fits the groups to `COLUMNS` minus margin 4 (one line, else two).
 
-Module map: `conf` (parser, search path), `format` (placeholder syntax), `render` (wiring), `placeholders/` (core placeholders), `plugin/` (`bar-<name>` host), `cache` (background refresh), `transcript` (incremental token totals), `expr` (label logic to GitHub queries), `pace` (score), `style` (SGR, OSC 8, width), `click` (toggle state, URL handler install), `check`, `preview`.
+Module map: `conf` (parser, search path), `format` (placeholder syntax), `render` (wiring), `placeholders/` (core placeholders), `plugin/` (`bar-<name>` host), `cache` (background refresh), `transcript` (incremental token totals), `linescan` (shared incremental line reader), `spendhist` (daily spend totals), `prices`, `tz`, `expr` (label logic to GitHub queries), `pace` (score), `style` (SGR, OSC 8, width), `click` (toggle state, URL handler install), `check`, `preview`.
 
 ## Cache
 
@@ -32,6 +32,12 @@ Measured on macOS 15, release build, 20 MB synthetic transcript (a third of the 
 | warm state, nothing appended | 2.4 ms |
 | three lines appended | 5.3 ms |
 | same layout, no transcript | 2.7 ms |
+
+## Spend history
+
+`src/spendhist.rs` backs `#{spendhist}`. `bar refresh` runs `Job::SpendHist` (cache key `spendhist:<claude dir>:<tz>`, ttl 60 s, failure backoff 60 s): it lists `projects/*/*.jsonl` newest first (skipping files untouched for over 63 days), scans each from its stored `Mark`, and folds assistant `usage` into `{local date: {model: [in, out, cache write, cache read]}}`. A message is counted once: a 48-bit hash of `message.id` plus `requestId` is kept per day in the state file and checked across all files. The result is one state file per claude dir and zone under `<state>/spendhist/` (0600, atomic rename; per-file marks, 62 days of totals, dedupe hashes; the hashes are trimmed oldest-first past 16 MiB). The job returns only the last 35 days, which is what the cache stores and a render reads; dollars are computed at render from the tokens, so a `set price` change applies at once. A render never opens a transcript.
+
+The offset, inode, size and mtime logic (`linescan::Mark`) is shared with `transcript`. Local dates use `localtime_r` through a small FFI declaration in `src/tz.rs`, memoised per half hour; there is no date-time dependency.
 
 ## Check and preview
 
