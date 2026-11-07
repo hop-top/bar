@@ -107,7 +107,7 @@ fn proj_hidden_like_eta() {
 #[test]
 fn proj_colour_follows_projected_remaining() {
     let over = go(60.0, 3 * H, "proj");
-    assert!(over.contains("38;5;196m"), "{over:?}");
+    assert!(over.contains("38;5;203m"), "{over:?}");
     let under = go(10.0, 3 * H, "proj");
     assert!(under.contains("38;5;46m"), "{under:?}");
 }
@@ -130,4 +130,107 @@ fn alt_accepts_forecast_items() {
     let out = strip_codes(&run(60.0, 3 * H, &o, &dir));
     let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(out, "→1h20m p150%");
+}
+
+#[test]
+fn eta_and_proj_agree_at_the_boundary() {
+    // 2h of 5h elapsed: used 39/40/41 -> p98/p100/p103 (rounded 97.5, 100, 102.5)
+    for (used, red) in [(39.0, false), (40.0, false), (41.0, true)] {
+        let eta = go(used, 3 * H, "eta");
+        let proj = go(used, 3 * H, "proj");
+        assert_eq!(eta.contains("38;5;203m"), red, "eta {used}: {eta:?}");
+        assert_eq!(proj.contains("38;5;203m"), red, "proj {used}: {proj:?}");
+        if !red {
+            assert_eq!(strip_codes(&eta), "→ok");
+            assert!(
+                !proj.contains("38;5;196m") && !proj.contains("38;5;250m"),
+                "{proj:?}"
+            );
+        }
+    }
+    assert_eq!(plain(39.0, 3 * H, "proj"), "p98%");
+    assert_eq!(plain(40.0, 3 * H, "proj"), "p100%");
+    assert_eq!(plain(41.0, 3 * H, "proj"), "p103%");
+}
+
+#[test]
+fn rounding_up_to_100_is_not_red() {
+    // used 40.1 -> projected 100.25 rounds to p100%: no red eta
+    let eta = go(40.1, 3 * H, "eta");
+    assert_eq!(strip_codes(&eta), "→ok");
+    assert!(!go(40.1, 3 * H, "proj").contains("38;5;203m"));
+}
+
+#[test]
+fn custom_bad_colour_applies_to_eta_and_proj() {
+    let s = Session {
+        five_hour: Some(Window {
+            used_percentage: 60.0,
+            resets_at: NOW + 3 * H,
+        }),
+        ..Session::default()
+    };
+    let mut cfg = Config::default();
+    cfg.colors.bad = 160;
+    let runner = ColdRunner;
+    let ctx = Ctx {
+        session: &s,
+        config: &cfg,
+        now: NOW,
+        runner: &runner,
+        cache: None,
+        columns: None,
+        plugin_dirs: &[],
+    };
+    let mut opts = Options::default();
+    opts.set("show", "eta,proj");
+    let out = render_with(&ctx, &opts, Path::new("/nonexistent-bar-state")).unwrap();
+    assert_eq!(out.matches("38;5;160m").count(), 2, "{out:?}");
+}
+
+#[test]
+fn seven_day_window() {
+    let s = Session {
+        seven_day: Some(Window {
+            used_percentage: 60.0,
+            resets_at: NOW + 4 * 86400,
+        }),
+        ..Session::default()
+    };
+    let cfg = Config::default();
+    let runner = ColdRunner;
+    let ctx = Ctx {
+        session: &s,
+        config: &cfg,
+        now: NOW,
+        runner: &runner,
+        cache: None,
+        columns: None,
+        plugin_dirs: &[],
+    };
+    let mut opts = Options::default();
+    opts.set("type", "7d");
+    opts.set("show", "eta,proj");
+    // 3d of 7d elapsed: 60% -> p140%, 40% left lasts 2d
+    let out = render_with(&ctx, &opts, Path::new("/nonexistent-bar-state")).unwrap();
+    assert_eq!(strip_codes(&out), "→2d p140%");
+}
+
+#[test]
+fn only_bar_and_pct_are_linked() {
+    let dir = std::env::temp_dir().join(format!("bar-uf-link-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("click-installed"), "").unwrap();
+    let o = [("show", "time,eta,bar,proj,pct")];
+    let raw = run(60.0, 3 * H, &o, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let open = "\x1b]8;;bar://toggle/5h\x1b\\";
+    assert_eq!(raw.matches(open).count(), 2, "{raw:?}");
+    for part in ["→1h20m", "p150%"] {
+        let at = raw.find(part).unwrap();
+        let before = &raw[..at];
+        let opens = before.matches(open).count();
+        let closes = before.matches("\x1b]8;;\x1b\\").count();
+        assert_eq!(opens, closes, "{part} inside a link: {raw:?}");
+    }
 }
