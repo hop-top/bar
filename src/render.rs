@@ -4,7 +4,8 @@ use crate::cache::Cache;
 use crate::conf::{Config, LoadResult};
 use crate::expand::{CommandRunner, Expander};
 use crate::format::{parse, segments, Token};
-use crate::layout::compose;
+use crate::icons;
+use crate::layout::compose_with;
 use crate::options::Options;
 use crate::placeholders::{lookup, Ctx};
 use crate::plugin;
@@ -44,10 +45,21 @@ fn render_placeholder(
     ex: &Expander,
     sample: Option<Sample>,
 ) -> String {
-    if let Some(sample) = sample {
-        return sample(name, &expanded(name, inline, ctx, ex), ctx).unwrap_or_default();
-    }
+    let (pick, opts) = icons::split(&expanded(name, inline, ctx, ex));
     let core = lookup(name);
+    let with_icon = |value: String| {
+        if value.is_empty() {
+            return value;
+        }
+        let default = core.and_then(|_| icons::builtin(ctx.config.icons, name, &opts));
+        match icons::resolve(ctx.config, &pick, default) {
+            Some(glyph) => icons::attach(name, &glyph, value),
+            None => value,
+        }
+    };
+    if let Some(sample) = sample {
+        return with_icon(sample(name, &opts, ctx).unwrap_or_default());
+    }
     let found = match core {
         Some(_) => None,
         None => match plugin::find(ctx.plugin_dirs, name) {
@@ -55,10 +67,9 @@ fn render_placeholder(
             None => return String::new(),
         },
     };
-    let opts = expanded(name, inline, ctx, ex);
     match (core, found) {
-        (Some(p), _) => p.render(ctx, &opts),
-        (None, Some(f)) => plugin::render_found(ctx, &f, &opts),
+        (Some(p), _) => p.render(ctx, &opts).map(with_icon),
+        (None, Some(f)) => plugin::render_found_with(ctx, &f, &opts, &pick),
         (None, None) => None,
     }
     .unwrap_or_default()
@@ -199,12 +210,13 @@ fn render_impl(
         columns,
         plugin_dirs,
     };
-    compose(
+    compose_with(
         &render_group(&config.left, &ctx, &ex, sample),
         &render_group(&config.center, &ctx, &ex, sample),
         &render_group(&config.right, &ctx, &ex, sample),
         columns,
         config.gap,
+        config.icon_width,
     )
 }
 

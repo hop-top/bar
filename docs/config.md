@@ -36,7 +36,7 @@ No file: built-in layout. A file with an error makes `bar render` print `bar: co
 
 | Directive | Form |
 |-----------|------|
-| `set` | `set <key> <value>`; keys `left center right separator gap wrap refresh color.good color.warn color.bad ramp` |
+| `set` | `set <key> <value>`; keys `left center right separator gap wrap refresh icons icon-width color.good color.warn color.bad ramp` |
 | `default` | `default <placeholder> key=value ...` |
 | `account` | `account "<glob>" <label> <color>` |
 | `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%` |
@@ -47,6 +47,9 @@ Quote values with spaces. `#` starts a comment.
 - `separator`: changes only where segments split (the text a layout is cut at). Output between segments stays ` │ `. Default `│`.
 - `wrap`: `auto`, `on` or `off`; reserved, only `auto` behaviour exists.
 - `refresh`: default ttl floor for plugins, default `5s`. `gh` lists use 120 s and `%cmd%` values 1 h, whatever this says.
+
+- `icons`: `none` (default, output unchanged), `nerdfont` or `emoji`. See [Icons](#icons).
+- `icon-width`: `1` (default) or `2`; cells a Nerd Font glyph (private-use codepoint) takes in your font. Layout uses it to pad; emoji widths come from Unicode.
 
 ## Placeholders
 
@@ -70,7 +73,29 @@ Quote values with spaces. `#` starts a comment.
 | | `width` | `5` | Bar cells, clamped to 1..40 |
 | | `click` | `toggle` | `none` turns the toggle link off; the link appears only once the handler is installed (`bar click install`) |
 | `sessions`, `spend` | none | | No options |
+| every placeholder, plugins included | `icon` | set default | A glyph (at most 2 cells), or `none` to hide it. See [Icons](#icons) |
 | `model`, `effort`, `ctx` | `click` | on | `none` turns the command link off; the link appears only once the handler is installed (`bar click install`) |
+
+## Icons
+
+`set icons nerdfont|emoji` adds an icon to each core segment; `none` (default) leaves output as is. An icon is drawn muted, followed by one space, outside any link. When a segment has a text label (`ctx`), the icon replaces it; otherwise it prefixes the value. `icon=<glyph>` on any placeholder beats the set, `icon=none` hides it; both work with `icons none`. Glyphs are sanitised; `bar check` rejects an icon wider than 2 cells (counted with `icon-width`).
+
+| Placeholder | nerdfont | emoji |
+|---|---|---|
+| `model` | `nf-fa-microchip` U+F2DB | 🤖 |
+| `effort` | `nf-fa-bolt` U+F0E7 | ⚡ |
+| `ctx` | `nf-fa-tachometer` U+F0E4 | 🧠 |
+| `repo` | `nf-oct-repo` U+F401 | 📁 |
+| `branch` | `nf-oct-git_branch` U+F418 | 🌿 |
+| `prs` | `nf-oct-git_pull_request` U+F407 | 🔀 |
+| `issues` | `nf-oct-issue_opened` U+F41B | 🐛 |
+| `usage` 5h | `nf-fa-clock_o` U+F017 | ⏳ |
+| `usage` 7d | `nf-fa-calendar` U+F073 | 📅 |
+| `account` | `nf-fa-user` U+F007 | 👤 |
+| `sessions` | `nf-fa-terminal` U+F120 | 💬 |
+| `spend` | `nf-fa-dollar` U+F155 | 💰 |
+
+Plugins: see [plugins](plugins.md).
 
 ## Values
 

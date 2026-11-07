@@ -3,6 +3,7 @@
 use crate::conf::{parse, parse_options, tokenize};
 use crate::expr;
 use crate::format::{self, Token};
+use crate::icons;
 use crate::options::Options;
 use crate::placeholders::gh::{self, Kind};
 use crate::plugin;
@@ -144,6 +145,7 @@ fn is_executable(p: &Path) -> bool {
 
 struct Checker<'a> {
     dirs: &'a [PathBuf],
+    icon_width: usize,
     defaults: BTreeMap<String, Options>,
     gh_missing: bool,
     gh_warned: Cell<bool>,
@@ -199,6 +201,10 @@ impl Checker<'_> {
     ) -> bool {
         let mut bad = false;
         for (k, v) in opts.iter() {
+            if k == "icon" {
+                bad |= self.icon(v, line);
+                continue;
+            }
             match spec.iter().find(|(n, _)| n == k) {
                 None => {
                     bad = true;
@@ -210,6 +216,19 @@ impl Checker<'_> {
                 }
                 _ => {}
             }
+        }
+        bad
+    }
+
+    /// Reports a bad `icon` value; true when there was one.
+    fn icon(&mut self, v: &str, line: usize) -> bool {
+        let bad = !v.contains('%') && !icons::valid(v, self.icon_width);
+        if bad {
+            let msg = format!(
+                "invalid icon `{v}` (`none` or at most {} cells)",
+                icons::MAX_CELLS
+            );
+            self.error(line, msg);
         }
         bad
     }
@@ -274,7 +293,11 @@ impl Checker<'_> {
         }
         let mut concrete = Options::default();
         for (k, v) in opts.iter().filter(|(_, v)| !v.contains('%')) {
-            concrete.set(k, v);
+            if k == "icon" {
+                self.icon(v, line);
+            } else {
+                concrete.set(k, v);
+            }
         }
         if let Err(e) = plugin::validate(&info.options, &concrete) {
             self.error(line, format!("{e} for `{name}`"));
@@ -287,6 +310,7 @@ pub fn check_text(text: &str, path: Option<PathBuf>, dirs: &[PathBuf]) -> Report
     let parsed = parse(text);
     let mut c = Checker {
         dirs,
+        icon_width: parsed.as_ref().map_or(1, |cfg| cfg.icon_width),
         defaults: parsed
             .as_ref()
             .map(|cfg| cfg.defaults.clone())
@@ -326,6 +350,7 @@ pub fn check_builtin(dirs: &[PathBuf]) -> Report {
     let cfg = builtin_config();
     let mut c = Checker {
         dirs,
+        icon_width: 1,
         defaults: BTreeMap::new(),
         gh_missing: !dirs.iter().any(|d| is_executable(&d.join("gh"))),
         gh_warned: Cell::new(false),
