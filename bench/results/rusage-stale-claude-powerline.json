@@ -1,0 +1,119 @@
+{
+ "command": [
+  "/usr/sbin/claude-powerline"
+ ],
+ "runs": 5,
+ "prepare": "sleep 11",
+ "summary": {
+  "wall_ms": {
+   "mean": 76.50766135193408,
+   "median": 84.84251797199249,
+   "min": 49.46501995436847,
+   "max": 94.08092289231718
+  },
+  "cpu_ms": {
+   "mean": 85.02459999999999,
+   "median": 95.49199999999999,
+   "min": 56.26099999999999,
+   "max": 101.299
+  },
+  "user_ms": {
+   "mean": 60.849000000000004,
+   "median": 62.47,
+   "min": 42.007,
+   "max": 74.57799999999999
+  },
+  "sys_ms": {
+   "mean": 24.175599999999996,
+   "median": 25.703999999999997,
+   "min": 14.254,
+   "max": 38.82899999999999
+  },
+  "maxrss_kb": {
+   "mean": 103696.0,
+   "median": 104640,
+   "min": 99164,
+   "max": 105820
+  },
+  "bg_procs": {
+   "mean": 0.0,
+   "median": 0,
+   "min": 0,
+   "max": 0
+  },
+  "bg_cpu_ms": {
+   "mean": 0.0,
+   "median": 0.0,
+   "min": 0.0,
+   "max": 0.0
+  },
+  "bg_maxrss_kb": {
+   "mean": 0.0,
+   "median": 0,
+   "min": 0,
+   "max": 0
+  }
+ },
+ "per_run": [
+  {
+   "wall_ms": 84.84251797199249,
+   "cpu_ms": 95.49199999999999,
+   "user_ms": 68.258,
+   "sys_ms": 27.233999999999998,
+   "maxrss_kb": 104056,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 84.85476789064705
+  },
+  {
+   "wall_ms": 91.03980101644993,
+   "cpu_ms": 100.28199999999998,
+   "user_ms": 74.57799999999999,
+   "sys_ms": 25.703999999999997,
+   "maxrss_kb": 104800,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 91.05746797285974
+  },
+  {
+   "wall_ms": 94.08092289231718,
+   "cpu_ms": 101.299,
+   "user_ms": 62.47,
+   "sys_ms": 38.82899999999999,
+   "maxrss_kb": 105820,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 94.0974650438875
+  },
+  {
+   "wall_ms": 63.11004492454231,
+   "cpu_ms": 71.78899999999999,
+   "user_ms": 56.931999999999995,
+   "sys_ms": 14.857,
+   "maxrss_kb": 104640,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 63.124628039076924
+  },
+  {
+   "wall_ms": 49.46501995436847,
+   "cpu_ms": 56.26099999999999,
+   "user_ms": 42.007,
+   "sys_ms": 14.254,
+   "maxrss_kb": 99164,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 49.479478038847446
+  }
+ ]
+}
