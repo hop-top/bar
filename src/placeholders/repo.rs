@@ -51,7 +51,7 @@ pub fn remote_url(cwd: &Path) -> Option<String> {
         }
         (before.rsplit_once('@').map_or(before, |(_, h)| h), path)
     };
-    (!host.is_empty() && !path.is_empty() && !host.contains('/'))
+    (!host.is_empty() && !path.is_empty() && !host.contains('/') && !path.contains('@'))
         .then(|| format!("https://{host}/{path}"))
 }
 

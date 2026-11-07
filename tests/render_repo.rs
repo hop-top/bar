@@ -26,6 +26,12 @@ fn remote_url_forms() {
         git(&d, &["config", "remote.origin.url", raw]);
         assert_eq!(remote_url(&d).as_deref(), Some(want), "{raw}");
     }
+    // an unencoded `/` inside userinfo cuts the authority short: the rest is
+    // path, and a path holding `@` is no URL worth linking
+    for raw in ["https://a/b@host.io/o/r.git", "git@host.io:o/@x/r.git"] {
+        git(&d, &["config", "remote.origin.url", raw]);
+        assert_eq!(remote_url(&d), None, "{raw}");
+    }
     git(&d, &["remote", "remove", "origin"]);
     assert_eq!(remote_url(&d), None);
 }

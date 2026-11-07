@@ -91,7 +91,7 @@ Option values expand before use.
 | `label=!a` | `-label:a` |
 | `label=a&b\|c` | one query per `\|` branch |
 
-Only `label` folds an OR into `label:a,b`; `author` and `assignee` run one query per OR branch. Results of all queries are merged and deduplicated by number, newest first, then cut to `limit`. At most 8 queries run per placeholder; `bar check` warns when more are written.
+Values holding spaces, commas or colons are quoted in the query (`area:core` becomes `label:"area:core"`). Only `label` folds an OR into `label:a,b`; `author` and `assignee` run one query per OR branch. Results of all queries are merged and deduplicated by number, newest first, then cut to `limit`. At most 8 queries run per placeholder; `bar check` warns when more are written.
 
 ## bar check
 

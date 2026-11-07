@@ -253,7 +253,7 @@ fn dnf(n: &Node) -> Vec<Vec<Term>> {
 }
 
 fn value(v: &str) -> String {
-    if v.contains(|c: char| c.is_whitespace() || c == ',') {
+    if v.contains(|c: char| c.is_whitespace() || c == ',' || c == ':') {
         format!("\"{v}\"")
     } else {
         v.to_string()

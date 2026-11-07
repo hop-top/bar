@@ -193,3 +193,10 @@ fn whitespace_only_quoted_errors() {
     assert!(parse(r#"" ""#).is_err());
     assert!(parse(r#"a&"  ""#).is_err());
 }
+
+#[test]
+fn colon_values_are_quoted() {
+    assert_eq!(label("area:core"), [r#"label:"area:core""#]);
+    assert_eq!(label("area:core|b"), [r#"label:"area:core",b"#]);
+    assert_eq!(label("!area:core"), [r#"-label:"area:core""#]);
+}
