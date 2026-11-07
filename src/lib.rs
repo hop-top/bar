@@ -2,6 +2,7 @@ pub mod cache;
 pub mod click;
 pub mod conf;
 pub mod expand;
+pub mod expr;
 pub mod format;
 pub mod layout;
 pub mod options;
