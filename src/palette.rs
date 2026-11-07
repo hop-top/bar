@@ -83,7 +83,7 @@ pub const PALETTES: [Palette; 7] = [
         bgs: &[236, 238, 240, 242],
         ansi: false,
     },
-    // bright black (8) is the muted text colour, so it is no background
+    // black and blue only: ok/warn/bad text stays readable on both
     Palette {
         name: "terminal",
         muted: 8,
@@ -91,7 +91,7 @@ pub const PALETTES: [Palette; 7] = [
         warn: 3,
         bad: 1,
         ramp: ramp(1, 3, 2),
-        bgs: &[0, 4, 5, 6],
+        bgs: &[0, 4],
         ansi: true,
     },
 ];

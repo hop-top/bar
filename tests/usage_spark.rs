@@ -6,7 +6,7 @@ use hop_bar::placeholders::usage::render_with;
 use hop_bar::placeholders::Ctx;
 use hop_bar::render::ColdRunner;
 use hop_bar::session::{Session, Window};
-use hop_bar::style::{dim, fg, ramp, strip_codes};
+use hop_bar::style::{dim, fg, fg_code, ramp, strip_codes};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -148,15 +148,21 @@ fn spark_solid_uses_the_current_colour() {
 }
 
 #[test]
-fn spark_gradient_colours_each_cell_by_its_own_value() {
+fn spark_gradient_colours_each_cell_by_its_own_value_without_time_input() {
     let t = Tmp::new();
     seed(t.path(), &[90.0, 50.0, 10.0]);
     let out = go(10.0, &[("show", "spark"), ("color", "gradient")], t.path());
+    let pure = |left: i64| {
+        ramp(
+            score(left, None, P5, &builtin_rule("5h")),
+            &Config::default().ramp,
+        )
+    };
     let want = format!(
         "{}{}{}",
-        fg(col(10, SECS), "▇"),
-        fg(col(50, SECS), "▅"),
-        fg(col(90, SECS), "▂")
+        fg(pure(10), "▇"),
+        fg(pure(50), "▅"),
+        fg(pure(90), "▂")
     );
     assert_eq!(out, want);
 }
@@ -205,12 +211,20 @@ fn gauge_is_one_cell_in_the_value_colour() {
 
 // --- gradient bar ---
 
-/// Filled cells coloured by position; equal neighbours share one SGR run.
-fn expected_bar(filled: usize, w: usize, used: bool, secs: i64) -> String {
+/// Filled cells ramp from the bad end to the current score; equal
+/// neighbours share one SGR run.
+fn expected_bar(filled: usize, w: usize, used: bool, left: i64, secs: i64) -> String {
     let codes: Vec<u8> = (0..filled)
         .map(|i| {
-            let pos = (i * 100 / w) as i64;
-            col(if used { 100 - pos } else { pos }, secs)
+            let reach = |v: i64| v * (i as i64 + 1) / filled as i64;
+            col(
+                if used {
+                    100 - reach(100 - left)
+                } else {
+                    reach(left)
+                },
+                secs,
+            )
         })
         .collect();
     let mut s = String::new();
@@ -241,7 +255,7 @@ fn solid_is_default_and_unchanged() {
 fn gradient_bar_colours_cells_along_the_ramp() {
     let t = Tmp::new();
     let out = go(13.0, &[("show", "bar"), ("color", "gradient")], t.path());
-    assert_eq!(out, expected_bar(4, 5, false, SECS));
+    assert_eq!(out, expected_bar(4, 5, false, 87, SECS));
     assert_eq!(strip_codes(&out), "████░");
 }
 
@@ -253,28 +267,26 @@ fn gradient_bar_respects_count_used() {
         &[("show", "bar"), ("color", "gradient"), ("count", "used")],
         t.path(),
     );
-    assert_eq!(out, expected_bar(3, 5, true, SECS));
+    assert_eq!(out, expected_bar(3, 5, true, 40, SECS));
 }
 
 #[test]
 fn gradient_final_stretch_inverts() {
     let t = Tmp::new();
     let secs = 20 * 60;
-    let out = go_at(
-        10.0,
-        secs,
-        &[("show", "bar"), ("color", "gradient"), ("width", "10")],
-        t.path(),
-    );
-    assert_eq!(out, expected_bar(9, 10, false, secs));
-    // first cell (nothing left) is green in the final stretch, last is not
-    let early = go(
-        10.0,
-        &[("show", "bar"), ("color", "gradient"), ("width", "10")],
-        t.path(),
-    );
-    assert_ne!(out, early);
-    assert!(out.starts_with(&fg(46, "█")));
+    let o = [("show", "bar"), ("color", "gradient"), ("width", "10")];
+    let out = go_at(80.0, secs, &o, t.path());
+    assert_eq!(out, expected_bar(2, 10, false, 20, secs));
+    // score falls as the cell reaches more remaining, so the tip is the worse colour
+    let (first, tip) = (col(10, secs), col(20, secs));
+    assert_ne!(first, tip);
+    assert!(out.starts_with(&fg_code(first)), "{out:?}");
+    assert!(out.contains(&fg_code(tip)), "{out:?}");
+    // the tip is the solid colour
+    let solid = go_at(80.0, secs, &[("show", "bar"), ("width", "10")], t.path());
+    assert!(solid.starts_with(&fg_code(tip)), "{solid:?}");
+    // early in the window the same bar ramps differently
+    assert_ne!(out, go(80.0, &o, t.path()));
 }
 
 #[test]

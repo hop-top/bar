@@ -105,22 +105,28 @@ pub fn render_with(ctx: &Ctx, opts: &Options, state: &Path) -> Option<String> {
             Some(match p {
                 Part::Time => time.clone(),
                 Part::Pct => wrap(fg(color, &format!("{value}%"))),
-                Part::Bar => wrap(bar(opts, value, &|i, w| {
-                    if !gradient || w < 2 {
+                Part::Bar => wrap(bar(opts, value, &|i, n| {
+                    if !gradient {
                         return color;
                     }
-                    let pos = (i * 100 / w) as i64;
-                    let left = if used_count { 100 - pos } else { pos };
-                    ramp(score(left, Some(secs), period, &rule), &ctx.config.ramp)
+                    // bad end up to the current score; the tip is the solid colour
+                    let reach = |v: i64| v * (i as i64 + 1) / n as i64;
+                    let at = if used_count {
+                        100 - reach(100 - left)
+                    } else {
+                        reach(left)
+                    };
+                    ramp(score(at, Some(secs), period, &rule), &ctx.config.ramp)
                 })),
                 Part::Spark => {
                     if series.len() < 2 {
                         return None;
                     }
-                    let n = spark_width(opts);
+                    let n = width_opt(opts) as usize;
                     let tail = &series[series.len().saturating_sub(n)..];
+                    // pure value ramp: no time-left or final-stretch input
                     spark(tail, gradient, color, |left| {
-                        ramp(score(left, Some(secs), period, &rule), &ctx.config.ramp)
+                        ramp(score(left, None, period, &rule), &ctx.config.ramp)
                     })
                 }
                 Part::Gauge => wrap(fg(color, &level(value as f64).to_string())),
@@ -149,10 +155,6 @@ pub fn render_with(ctx: &Ctx, opts: &Options, state: &Path) -> Option<String> {
     Some(parts.join(" "))
 }
 
-fn spark_width(opts: &Options) -> usize {
-    width_opt(opts) as usize
-}
-
 fn width_opt(opts: &Options) -> i64 {
     opts.get("width")
         .and_then(|w| w.parse::<i64>().ok())
@@ -171,10 +173,12 @@ fn spark(used: &[f64], gradient: bool, color: u8, by_left: impl Fn(i64) -> u8) -
         .collect()
 }
 
-/// Bar cells; `color(i, width)` is the colour of filled cell `i`.
+/// Bar cells; `color(i, n)` is the colour of drawn cell `i` of `n`.
 fn bar(opts: &Options, value: i64, color: &dyn Fn(usize, usize) -> u8) -> String {
-    let width = width_opt(opts);
-    glyphs::bar(opts.get("glyphs").unwrap_or("blocks"), width, value, &|i| {
-        color(i, width as usize)
-    })
+    glyphs::bar(
+        opts.get("glyphs").unwrap_or("blocks"),
+        width_opt(opts),
+        value,
+        color,
+    )
 }

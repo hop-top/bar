@@ -76,9 +76,9 @@ fn cells(name: &str) -> (&'static str, &'static str) {
 
 const PARTIAL: [&str; 8] = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"];
 
-/// `value` percent of `width` cells; empty cells muted. `color` gives the
-/// colour of filled cell `i`.
-pub fn bar(glyphs: &str, width: i64, value: i64, color: &dyn Fn(usize) -> u8) -> String {
+/// `value` percent of `width` cells; empty cells muted. `color(i, n)` gives
+/// the colour of drawn cell `i` of `n`.
+pub fn bar(glyphs: &str, width: i64, value: i64, color: &dyn Fn(usize, usize) -> u8) -> String {
     let width = width as usize;
     let (full, empty) = cells(glyphs);
     let (filled, part) = if glyphs == "eighths" {
@@ -93,7 +93,7 @@ pub fn bar(glyphs: &str, width: i64, value: i64, color: &dyn Fn(usize) -> u8) ->
     let mut run = String::new();
     let mut run_color = None;
     for i in 0..used {
-        let c = color(i);
+        let c = color(i, used);
         if run_color.is_some_and(|r| r != c) {
             out.push_str(&fg(run_color.unwrap_or(c), &run));
             run.clear();
