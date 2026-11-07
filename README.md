@@ -8,7 +8,7 @@ Rendering never waits on the network (slow data comes from a background cache) a
 Opus 4.7[high] │ ctx 38% │ bar:main │ #131 #129 #128 │ !57 !42              4h40m █████ │ 6d ████░              work
 ```
 
-Output of `bar preview`, colour stripped. In a terminal the usage bars are one colour, red to green by pace, and repo, branch, PRs and issues are links. With budget left over in the final stretch (`--state final`) the bars turn red: red means budget left unused.
+Output of `bar preview`, colour stripped. In a terminal the usage bars are one colour, red to green by pace, and repo, branch, PRs and issues are links. In a window's final stretch (the last hour of the 5-hour window, the last day of the weekly one; `--state final`) the scale flips: red then means budget that will go unused.
 
 ```text
 Opus 4.7[high] │ ctx 38% │ bar:main │ #131 #129 #128 │ !57 !42             25m ███░░ │ 20h0m ████░              work
@@ -23,7 +23,7 @@ What it does not do: no TUI editor, no themes, no Windows (it uses Unix APIs).
 ## Status
 
 - Actively maintained. Bug reports and questions: open an issue.
-- Pre-1.0: version 0.0.0, config syntax may change.
+- Pre-1.0: version 0.0.0, no tagged release yet; config syntax may change. Changes land as Conventional Commits, so `git log` is the changelog until the first release.
 - Built and tested on macOS. Linux untested. Clickable commands need macOS and tmux.
 - Not on crates.io (`publish = false`); install from a clone.
 
