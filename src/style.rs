@@ -42,6 +42,11 @@ pub fn sanitize(text: &str) -> String {
 
 /// Cells the text occupies once SGR and OSC 8 sequences are removed.
 pub fn visible_width(text: &str) -> usize {
+    strip_codes(text).width()
+}
+
+/// The text with CSI (SGR) and OSC sequences removed.
+pub fn strip_codes(text: &str) -> String {
     let mut plain = String::with_capacity(text.len());
     let mut it = text.chars().peekable();
     while let Some(c) = it.next() {
@@ -69,5 +74,5 @@ pub fn visible_width(text: &str) -> usize {
             _ => {}
         }
     }
-    plain.width()
+    plain
 }

@@ -26,6 +26,7 @@ pub fn hook_command(bar: &Path) -> String {
 }
 
 pub struct SettingsPlan {
+    /// The file written: `settings.json`, or its target when it is a symlink.
     pub path: PathBuf,
     /// The file existed (so it gets a backup).
     pub existed: bool,
@@ -63,6 +64,7 @@ fn has_command(entries: &[Value], command: &str) -> bool {
 /// event lacking one. Anything not shaped as Claude Code expects is an
 /// error, so a file we do not understand is never rewritten.
 pub fn plan_settings(path: &Path, bar: &Path) -> Result<SettingsPlan, String> {
+    let path = &write_target(path)?;
     let shown = path.display();
     let (existed, mut root) = match std::fs::read_to_string(path) {
         Ok(s) => (
@@ -102,17 +104,32 @@ pub fn plan_settings(path: &Path, bar: &Path) -> Result<SettingsPlan, String> {
     })
 }
 
+/// A symlinked `settings.json` is written through to its target, never
+/// replaced; a link whose target is missing is refused.
+fn write_target(path: &Path) -> Result<PathBuf, String> {
+    match std::fs::symlink_metadata(path) {
+        Ok(m) if m.file_type().is_symlink() => std::fs::canonicalize(path)
+            .map_err(|e| format!("{}: symlink target unusable: {e}", path.display())),
+        _ => Ok(path.to_path_buf()),
+    }
+}
+
 /// Writes the plan; returns the backup path when an existing file changed.
 pub(crate) fn apply_settings(plan: &SettingsPlan) -> std::io::Result<Option<PathBuf>> {
     if plan.added.is_empty() {
         return Ok(None);
     }
     let backup = if plan.existed {
-        let secs = std::time::SystemTime::now()
+        let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_secs());
+            .unwrap_or_default();
         let name = plan.path.file_name().unwrap_or_default().to_string_lossy();
-        let b = plan.path.with_file_name(format!("{name}.bak-{secs}"));
+        let b = plan.path.with_file_name(format!(
+            "{name}.bak-{}-{:09}-{}",
+            now.as_secs(),
+            now.subsec_nanos(),
+            std::process::id()
+        ));
         std::fs::copy(&plan.path, &b)?;
         Some(b)
     } else {

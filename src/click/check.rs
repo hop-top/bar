@@ -103,8 +103,9 @@ fn capture(env: &dyn Env, pane: &str) -> Option<String> {
 }
 
 /// The session's own pane, else the pane whose status line carries its id:
-/// a background session is shown through another client.
-fn find_pane(env: &dyn Env, sid: &str, tty: &str) -> Option<Pane> {
+/// a background session is shown through another client. `true` when found
+/// by id, so the id is checked again on every pass.
+fn find_pane(env: &dyn Env, sid: &str, tty: &str) -> Option<(Pane, bool)> {
     let list = env.tmux(&["list-panes", "-a", "-F", "#{pane_tty} #{pane_id}"])?;
     let panes: Vec<(&str, &str)> = list
         .lines()
@@ -113,39 +114,93 @@ fn find_pane(env: &dyn Env, sid: &str, tty: &str) -> Option<Pane> {
         .collect();
     let dev = format!("/dev/{tty}");
     if let Some((_, id)) = panes.iter().find(|(t, _)| *t == dev) {
-        return Some(Pane(id.to_string()));
+        return Some((Pane(id.to_string()), false));
     }
     panes
         .iter()
         .find(|(_, id)| capture(env, id).is_some_and(|s| shows_sid(&s, sid)))
-        .map(|(_, id)| Pane(id.to_string()))
+        .map(|(_, id)| (Pane(id.to_string()), true))
 }
 
-/// Empty box: the last prompt marker line holds nothing, or only dim
-/// placeholder text. Drafts and menu selections render in normal text.
-pub fn box_is_empty(screen: &str) -> bool {
-    let Some(line) = screen.lines().rfind(|l| l.contains('❯')) else {
-        return false;
-    };
-    let (_, mut rest) = line.split_once('❯').unwrap_or_default();
-    loop {
-        let t = rest.trim_start_matches(|c: char| c.is_whitespace() || c == '\u{a0}');
-        match t
-            .strip_prefix("\x1b[0m")
-            .or_else(|| t.strip_prefix("\x1b[m"))
-        {
-            Some(r) => rest = r,
-            None => {
-                rest = t;
-                break;
+/// SGR parameters that take arguments: `38;5;n`, `38;2;r;g;b` (and 48, 58).
+fn skip_color_args(params: &[&str], i: usize) -> usize {
+    match params.get(i + 1) {
+        Some(&"5") => i + 2,
+        Some(&"2") => i + 4,
+        _ => i,
+    }
+}
+
+/// Visible text is allowed only inside dim spans (`allow_dim`), else
+/// nothing but whitespace and SGR codes. Any other escape refuses.
+fn no_text_outside_dim(s: &str, allow_dim: bool) -> bool {
+    let mut dim = false;
+    let mut it = s.chars();
+    while let Some(c) = it.next() {
+        if c != '\x1b' {
+            if !(c.is_whitespace() || c == '\u{a0}' || (dim && allow_dim)) {
+                return false;
+            }
+            continue;
+        }
+        if it.next() != Some('[') {
+            return false;
+        }
+        let mut raw = String::new();
+        loop {
+            match it.next() {
+                Some('m') => break,
+                Some(p) if p.is_ascii_digit() || p == ';' => raw.push(p),
+                _ => return false,
             }
         }
+        let params: Vec<&str> = raw.split(';').collect();
+        let mut i = 0;
+        while i < params.len() {
+            match params[i] {
+                "" | "0" | "22" => dim = false,
+                "2" => dim = true,
+                "38" | "48" | "58" => i = skip_color_args(&params, i),
+                _ => {}
+            }
+            i += 1;
+        }
     }
-    let rest = rest.trim_end();
-    rest.is_empty() || rest.starts_with("\x1b[2m")
+    true
 }
 
-fn idle_and_empty(env: &dyn Env, sid: &str, pane: &Pane) -> Result<(), Refusal> {
+/// The input box border: a line of `─` once SGR codes are removed.
+fn is_border(line: &str) -> bool {
+    let plain = crate::style::strip_codes(line);
+    let t = plain.trim();
+    !t.is_empty() && t.chars().all(|c| c == '─')
+}
+
+/// Empty box: on the last prompt marker line nothing follows the marker but
+/// dim placeholder text, and every line below it up to the box border is
+/// blank (a draft can start with an empty line). Drafts and menu selections
+/// render in normal text. No border below refuses.
+pub fn box_is_empty(screen: &str) -> bool {
+    let lines: Vec<&str> = screen.lines().collect();
+    let Some(i) = lines.iter().rposition(|l| l.contains('❯')) else {
+        return false;
+    };
+    let (_, rest) = lines[i].split_once('❯').unwrap_or_default();
+    if !no_text_outside_dim(rest, true) {
+        return false;
+    }
+    for l in &lines[i + 1..] {
+        if is_border(l) {
+            return true;
+        }
+        if !no_text_outside_dim(l, false) {
+            return false;
+        }
+    }
+    false
+}
+
+fn idle_and_empty(env: &dyn Env, sid: &str, pane: &Pane, by_sid: bool) -> Result<(), Refusal> {
     let (_, status) = session(env, sid).ok_or(Refusal::Missing)?;
     if status != "idle" {
         return Err(Refusal::Busy);
@@ -153,9 +208,14 @@ fn idle_and_empty(env: &dyn Env, sid: &str, pane: &Pane) -> Result<(), Refusal> 
     if is_waiting(&env.state_dir(), sid) {
         return Err(Refusal::Waiting);
     }
-    match capture(env, &pane.0) {
-        Some(s) if box_is_empty(&s) => Ok(()),
-        _ => Err(Refusal::NotEmpty),
+    let screen = capture(env, &pane.0).ok_or(Refusal::NotEmpty)?;
+    if by_sid && !shows_sid(&screen, sid) {
+        return Err(Refusal::NoPane);
+    }
+    if box_is_empty(&screen) {
+        Ok(())
+    } else {
+        Err(Refusal::NotEmpty)
     }
 }
 
@@ -169,10 +229,10 @@ pub fn check(env: &dyn Env, sid: &str, tty: &str) -> Result<Pane, Refusal> {
     if env.tty_of(pid).as_deref() != Some(tty) {
         return Err(Refusal::OtherTty);
     }
-    let pane = find_pane(env, sid, tty).ok_or(Refusal::NoPane)?;
-    idle_and_empty(env, sid, &pane)?;
+    let (pane, by_sid) = find_pane(env, sid, tty).ok_or(Refusal::NoPane)?;
+    idle_and_empty(env, sid, &pane, by_sid)?;
     env.sleep(Duration::from_secs(1));
-    idle_and_empty(env, sid, &pane)?;
+    idle_and_empty(env, sid, &pane, by_sid)?;
     Ok(pane)
 }
 

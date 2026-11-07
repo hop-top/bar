@@ -2,7 +2,7 @@
 //! waiting-state hook in Claude Code's `settings.json`.
 
 use super::settings::{apply_settings, plan_settings};
-use super::{claude_dir, state_dir, write_private, MARKER};
+use super::{claude_dir, state_dir, write_private, MARKER, MARKER_CMD};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -143,10 +143,17 @@ pub fn run_install(
     for c in &plan.commands {
         run(c).map_err(|e| format!("{}: {e}", c[0]))?;
     }
-    if let Some(backup) = apply_settings(&settings).map_err(io)? {
+    // Re-read right before writing: settings.json may have changed meanwhile.
+    let fresh = plan_settings(&cfg.settings, &cfg.bar)?;
+    if fresh.describe() != settings.describe() {
+        for l in fresh.describe() {
+            writeln!(out, "{l}").map_err(io)?;
+        }
+    }
+    if let Some(backup) = apply_settings(&fresh).map_err(io)? {
         writeln!(out, "backup {}", backup.display()).map_err(io)?;
     }
-    write_private(&cfg.state_dir.join(MARKER), "").map_err(io)?;
+    write_private(&cfg.state_dir.join(MARKER), MARKER_CMD).map_err(io)?;
     writeln!(out, "installed {}", cfg.app.display()).map_err(io)
 }
 

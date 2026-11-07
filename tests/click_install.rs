@@ -97,7 +97,7 @@ fn install_runs_commands_via_runner_and_writes_marker() {
     let script = std::fs::read_to_string(c.state_dir.join("click-handler.applescript")).unwrap();
     assert!(script.contains("on open location"));
     let marker = c.state_dir.join("click-installed");
-    assert!(marker.exists());
+    assert_eq!(std::fs::read_to_string(&marker).unwrap(), "cmd");
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -326,4 +326,80 @@ fn install_dry_run_lists_settings_change_without_writing() {
     assert!(out.contains("add PermissionRequest hook"));
     assert_eq!(std::fs::read_to_string(&c.settings).unwrap(), ORIGINAL);
     assert!(backups(c.settings.parent().unwrap()).is_empty());
+}
+
+#[test]
+fn install_replans_settings_after_concurrent_edit() {
+    let t = Tmp::new();
+    let c = cfg(&t);
+    std::fs::create_dir_all(c.settings.parent().unwrap()).unwrap();
+    std::fs::write(&c.settings, ORIGINAL).unwrap();
+    let path = c.settings.clone();
+    let mut out = Vec::new();
+    let mut edited = false;
+    run_install(
+        &c,
+        true,
+        false,
+        &mut |_| {
+            if !edited {
+                // Another writer changes settings.json while the app builds.
+                let edit = ORIGINAL.replace("\"opus\"", "\"sonnet\"");
+                std::fs::write(&path, edit).unwrap();
+                edited = true;
+            }
+            Ok(())
+        },
+        &mut out,
+    )
+    .unwrap();
+    let v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&c.settings).unwrap()).unwrap();
+    assert_eq!(v["model"], "sonnet", "concurrent edit kept");
+    assert!(v["hooks"]["PermissionRequest"].is_array());
+    let b = backups(c.settings.parent().unwrap());
+    assert!(std::fs::read_to_string(&b[0]).unwrap().contains("sonnet"));
+}
+
+#[test]
+fn install_backups_are_unique() {
+    let t = Tmp::new();
+    let c = cfg(&t);
+    std::fs::create_dir_all(c.settings.parent().unwrap()).unwrap();
+    for _ in 0..3 {
+        std::fs::write(&c.settings, ORIGINAL).unwrap();
+        install(&c, false).0.unwrap();
+    }
+    assert_eq!(backups(c.settings.parent().unwrap()).len(), 3);
+}
+
+#[cfg(unix)]
+#[test]
+fn install_writes_through_settings_symlink() {
+    let t = Tmp::new();
+    let c = cfg(&t);
+    let real = t.path().join("dotfiles/settings.json");
+    std::fs::create_dir_all(real.parent().unwrap()).unwrap();
+    std::fs::create_dir_all(c.settings.parent().unwrap()).unwrap();
+    std::fs::write(&real, ORIGINAL).unwrap();
+    std::os::unix::fs::symlink(&real, &c.settings).unwrap();
+    install(&c, false).0.unwrap();
+    let meta = std::fs::symlink_metadata(&c.settings).unwrap();
+    assert!(meta.file_type().is_symlink(), "link kept");
+    let v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&real).unwrap()).unwrap();
+    assert!(v["hooks"]["PermissionRequest"].is_array(), "target written");
+
+    // A dangling link is refused, not replaced.
+    let t2 = Tmp::new();
+    let c2 = cfg(&t2);
+    std::fs::create_dir_all(c2.settings.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink(t2.path().join("nowhere.json"), &c2.settings).unwrap();
+    let (r, _, ran) = install(&c2, false);
+    assert!(r.unwrap_err().contains("symlink"));
+    assert_eq!(ran, 0);
+    assert!(std::fs::symlink_metadata(&c2.settings)
+        .unwrap()
+        .file_type()
+        .is_symlink());
 }

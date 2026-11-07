@@ -2,7 +2,7 @@
 //! parsing. Any page or app can open a `bar://` URL, so the allowlist here
 //! and the checks in `check` are the security boundary.
 
-use super::{handler_installed, Refusal};
+use super::{cmd_handler_installed, Refusal};
 use crate::options::Options;
 use std::path::Path;
 use std::sync::OnceLock;
@@ -77,7 +77,7 @@ pub fn with_cmd_link(
     state: &Path,
     term: impl FnOnce() -> Term,
 ) -> String {
-    if opts.get("click") == Some("none") || !handler_installed(state) {
+    if opts.get("click") == Some("none") || !cmd_handler_installed(state) {
         return body;
     }
     match link(cmd, sid, &term()) {

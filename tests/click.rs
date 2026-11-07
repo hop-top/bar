@@ -132,7 +132,7 @@ fn render_three(state: &Path, o: &Options, term: &Term) -> Vec<String> {
 
 fn installed() -> Tmp {
     let t = Tmp::new();
-    std::fs::write(t.path().join("click-installed"), "").unwrap();
+    std::fs::write(t.path().join("click-installed"), "cmd").unwrap();
     t
 }
 
@@ -180,6 +180,20 @@ fn handler_missing_emits_no_link() {
     for out in render_three(t.path(), &Options::default(), &mac()) {
         assert!(!out.contains("\x1b]8;;"), "{out:?}");
     }
+}
+
+#[test]
+fn toggle_only_marker_emits_no_command_link() {
+    // A marker from a toggle-only install: usage toggles yes, commands no.
+    let t = Tmp::new();
+    std::fs::write(t.path().join("click-installed"), "").unwrap();
+    for out in render_three(t.path(), &Options::default(), &mac()) {
+        assert!(!out.contains("\x1b]8;;"), "{out:?}");
+    }
+    assert!(hop_bar::click::handler_installed(t.path()));
+    assert!(!hop_bar::click::cmd_handler_installed(t.path()));
+    std::fs::write(t.path().join("click-installed"), "cmd").unwrap();
+    assert!(hop_bar::click::cmd_handler_installed(t.path()));
 }
 
 #[test]
@@ -384,6 +398,17 @@ fn background_session_found_by_sid() {
 }
 
 #[test]
+fn sid_fallback_pane_rechecked_on_second_pass() {
+    let f = Fake::new();
+    *f.panes.borrow_mut() = vec![("/dev/ttys002".into(), "%3".into())];
+    f.screen("%3", &fixture("empty"));
+    // The displayed client switches to another session during the wait.
+    let other = fixture("empty").replace(SID, "0000aaaa-0b4d-4e6f-8a7b-1c2d3e4f5a6b");
+    *f.on_sleep.borrow_mut() = Some(Box::new(move |f: &Fake| f.screen("%3", &other)));
+    refused(&f, &url("model"), Refusal::NoPane);
+}
+
+#[test]
 fn checks_twice_second_check_can_refuse() {
     let f = Fake::new();
     *f.on_sleep.borrow_mut() = Some(Box::new(|f: &Fake| f.set_status("busy")));
@@ -468,5 +493,25 @@ fn box_fixtures_per_version() {
     assert!(seen >= 4);
     assert!(!box_is_empty(""), "no prompt marker refuses");
     assert!(!box_is_empty("❯\u{a0}\x1b[0mdraft"));
-    assert!(box_is_empty("❯\u{a0}\x1b[0m\x1b[2mTry \"x\"\x1b[22m"));
+    assert!(box_is_empty("❯\u{a0}\x1b[0m\x1b[2mTry \"x\"\x1b[22m\n─"));
+    assert!(!box_is_empty("❯\u{a0}\n"), "no border below refuses");
+}
+
+#[test]
+fn multiline_draft_with_blank_first_line_refused() {
+    assert!(!box_is_empty(&fixture("draft-multiline")));
+    let f = Fake::new();
+    f.screen("%1", &fixture("draft-multiline"));
+    refused(&f, &url("model"), Refusal::NotEmpty);
+}
+
+#[test]
+fn dim_then_typed_text_refused() {
+    assert!(!box_is_empty("─\n❯ \x1b[2mTry\x1b[22m typed\n─"));
+    assert!(!box_is_empty("─\n❯ \x1b[2mTry\x1b[0mtyped\n─"));
+    assert!(!box_is_empty(&fixture("draft-after-dim")));
+    assert!(box_is_empty("─\n❯ \x1b[2mTry \"x\"\x1b[22m \x1b[0m\n─"));
+    let f = Fake::new();
+    f.screen("%1", &fixture("draft-after-dim"));
+    refused(&f, &url("model"), Refusal::NotEmpty);
 }

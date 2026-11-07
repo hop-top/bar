@@ -20,6 +20,8 @@ use std::path::{Path, PathBuf};
 
 const KEYS: [&str; 2] = ["5h", "7d"];
 pub(crate) const MARKER: &str = "click-installed";
+/// Marker contents written by an install whose handler routes commands.
+pub(crate) const MARKER_CMD: &str = "cmd";
 
 /// `BAR_STATE_DIR` overrides the kit's state dir (tests, relocation).
 pub fn state_dir() -> PathBuf {
@@ -44,6 +46,12 @@ pub fn is_toggled(dir: &Path, key: &str) -> bool {
 /// The install step writes this; links need a handler to open them.
 pub fn handler_installed(dir: &Path) -> bool {
     dir.join(MARKER).exists()
+}
+
+/// The handler also routes `bar://cmd/` (the marker says `cmd`); a marker
+/// from a toggle-only install keeps command links off.
+pub fn cmd_handler_installed(dir: &Path) -> bool {
+    std::fs::read_to_string(dir.join(MARKER)).is_ok_and(|s| s.trim() == MARKER_CMD)
 }
 
 pub(crate) fn write_private(path: &Path, body: &str) -> std::io::Result<()> {

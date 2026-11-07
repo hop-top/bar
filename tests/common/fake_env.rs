@@ -12,6 +12,8 @@ use std::time::Duration;
 pub const SID: &str = "3f2a9c1e-0b4d-4e6f-8a7b-1c2d3e4f5a6b";
 pub const TTY: &str = "ttys004";
 pub const VERSION: &str = "2.1.319";
+/// Hand-made pane captures; real ones go in per-version dirs.
+pub const FIXTURES: &str = "synthetic";
 const PID: u32 = 4242;
 
 static N: AtomicUsize = AtomicUsize::new(0);
@@ -23,7 +25,7 @@ pub fn url(cmd: &str) -> String {
 pub fn fixture(name: &str) -> String {
     let p = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/sessions")
-        .join(VERSION)
+        .join(FIXTURES)
         .join(format!("{name}.ansi"));
     std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))
 }
