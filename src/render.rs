@@ -250,6 +250,7 @@ fn render_impl(
         plugin_dirs,
     };
     let _muted = style::use_muted(config.muted);
+    let _ansi = style::use_ansi(palette::by_name(config.palette).is_some_and(|p| p.ansi));
     let groups = [&config.left, &config.center, &config.right]
         .map(|src| render_group(src, &ctx, &ex, sample));
     match Paint::of(config.skin) {

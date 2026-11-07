@@ -6,7 +6,7 @@ use crate::options::Options;
 use crate::placeholders::{dirs, lookup, spendhist, tokens, usage, Ctx};
 use crate::render::{builtin_config, render_sample};
 use crate::session::{Session, SpendLimit, Window};
-use crate::style::{bold, dim, fg};
+use crate::style::{accent, bold, dim, fg};
 use std::path::Path;
 
 pub const STATES: [&str; 3] = ["early", "burning", "final"];
@@ -84,7 +84,7 @@ fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Op
         (!v.is_empty()).then(|| v.join(" "))
     };
     match name {
-        "repo" => Some(bold(&fg(75, "bar"))),
+        "repo" => Some(bold(&fg(accent(), "bar"))),
         "branch" => Some(dim("main")),
         // a clean tree in the last stretch
         "dirty" if state == "final" => None,
@@ -106,7 +106,7 @@ fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Op
                 .config
                 .accounts
                 .first()
-                .map_or(("work", 75), |a| (a.label.as_str(), a.color));
+                .map_or(("work", accent()), |a| (a.label.as_str(), a.color));
             Some(bold(&fg(color, label)))
         }
         "agents" if label => Some(format!("{} 2", dim("agents"))),

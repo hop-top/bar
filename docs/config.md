@@ -2,11 +2,13 @@
 
 ## usage
 
-`#{usage[type=5h|7d|h|d, show=time,bar, alt=time,pct, count=left|used, glyphs=blocks, width=5, click=toggle|none]}`
+`#{usage[type=5h|7d|h|d, show=time,bar, alt=time,pct, count=left|used, glyphs=blocks, color=solid|gradient, width=5, click=toggle|none]}`
 
-- `show` lists the components in order from `time`, `bar`, `pct`, `eta`, `proj` (`show=bar,pct`, `show=pct,time`); default `time,bar`. `eta` is the projected time until the budget runs out at the average burn so far (`→1h20m` in the bad colour when the projection is over 100%, a muted `→ok` when the budget lasts the window); `proj` is the projected used percent at reset (`p140%`, capped at 999): the bad colour above 100%, otherwise the bar's ramp (thresholds only, no time floors) on the projected remaining, never red. Both ignore `count`. Both hide while nothing is used or under 2% of the window has elapsed. `view` stays as an alias: `bar` is `time,bar`, `pct` is `time,pct`, `time` is `time`; `show` wins when both are set. `count=used` makes the percentage and the bar fill show used instead of remaining; the colour still follows the pace score of what remains. `glyphs`: `blocks` (█░), `shades` (▓░), `dots` (●○), `squares` (■□), `bars` (▰▱), `braille` (⣿⣀), `eighths` (█ with a ▏▎▍▌▋▊▉ last cell); an unknown name draws `blocks` and `bar check` flags it.
+- `show` lists the components in order from `time`, `bar`, `pct`, `eta`, `proj`, `spark`, `gauge` (`show=bar,pct`, `show=pct,time`); default `time,bar`. `eta` is the projected time until the budget runs out at the average burn so far (`→1h20m` in the bad colour when the projection is over 100%, a muted `→ok` when the budget lasts the window); `proj` is the projected used percent at reset (`p140%`, capped at 999): the bad colour above 100%, otherwise the bar's ramp (thresholds only, no time floors) on the projected remaining, never red. Both ignore `count`. Both hide while nothing is used or under 2% of the window has elapsed. `view` stays as an alias: `bar` is `time,bar`, `pct` is `time,pct`, `time` is `time`; `show` wins when both are set. `count=used` makes the percentage and the bar fill show used instead of remaining; the colour still follows the pace score of what remains. `glyphs`: `blocks` (█░), `shades` (▓░), `dots` (●○), `squares` (■□), `bars` (▰▱), `braille` (⣿⣀), `eighths` (█ with a ▏▎▍▌▋▊▉ last cell); an unknown name draws `blocks` and `bar check` flags it.
+- `spark` draws the used percent of the last `width` samples as `▁▂▃▄▅▆▇█` (default 5 cells), one cell per sample, oldest first; `gauge` is one such cell for the current value (per `count`). Both are single-cell glyphs, so widths are unchanged. `spark` hides until two samples exist. `color=gradient` colours each spark cell by its own value; otherwise the spark takes the bar's colour.
+- Sample history: when `spark` is in `show` or `alt`, a render appends `(unix time, used%)` to `hist-5h` / `hist-7d` (mode 0600, written atomically) in the state directory, but only once the step has passed since the last sample: 10 minutes for `5h`, 6 hours for `7d`. At most 64 samples are kept, oldest dropped. A new `resets_at` (the window reset) or a clock that went backwards starts a new series. The step is fixed; `bar preview` writes nothing, so it shows no spark.
 - `bar toggle` (a click on the bar or percentage) flips between `show` and `alt`; `alt` defaults to `show` with `bar` and `pct` swapped. Time, `eta` and `proj` stay outside the link. Expired or missing windows render nothing.
-- The bar is one colour: every filled cell takes the colour of the exact value, the same as `pct`; empty cells are muted. The colour follows the pace score of `rule usage[type=5h]` / `rule usage[type=7d]`; without a rule the built-ins apply (`early warn=20% bad=5%`, final `1h` / `1d` with `bad=30%`).
+- The bar is one colour by default (`color=solid`): every filled cell takes the colour of the exact value, the same as `pct`; empty cells are muted. `color=gradient` colours each filled cell `i` of `w` by the pace score at `i/w` of the bar (the bar's left end scores as 0% left, `count=used` mirrors it), so the ramp runs along the bar and, in the final stretch, runs the other way. A one-cell bar stays solid. The colour follows the pace score of `rule usage[type=5h]` / `rule usage[type=7d]`; without a rule the built-ins apply (`early warn=20% bad=5%`, final `1h` / `1d` with `bad=30%`).
 - Toggle state: `pct-5h` / `pct-7d` files (mode 0600) in the state directory (the kit state dir for `bar`; `BAR_STATE_DIR` overrides it, meant for tests). While a file exists, `bar` and `pct` swap. `bar toggle <5h|7d>` flips it.
 - Link `bar://toggle/<key>` is emitted only when the handler app is installed (marker `click-installed` in the state directory) and `click` is not `none`.
 
@@ -78,7 +80,7 @@ Quote values with spaces. `#` starts a comment.
 - `icon-width`: `1` (default) or `2`; cells a Nerd Font glyph (private-use codepoint) takes in your font. Layout uses it to pad; emoji widths come from Unicode.
 - `skin`: `plain` (default), `powerline` or `capsule`. See [Skins](#skins).
 - `skin-glyphs`: `nerd` (default) or `ascii`.
-- `palette`: `default`, `nord`, `gruvbox`, `dracula`, `solarized` or `mono`. See [Palettes](#palettes).
+- `palette`: `default`, `nord`, `gruvbox`, `dracula`, `solarized`, `mono` or `terminal`. See [Palettes](#palettes).
 
 ## Placeholders
 
@@ -200,8 +202,11 @@ Colours inside a segment (usage ramp, `ctx` colour, state colours) still apply o
 | `dracula` | 146 | 84 | 228 | 203 | 236 61 238 97 239 |
 | `solarized` | 245 | 106 | 136 | 160 | 23 235 24 30 66 |
 | `mono` | 245 | 252 | 248 | 255 | 236 238 240 242 |
+| `terminal` | 8 | 2 | 3 | 1 | 0 4 5 6 |
 
-`default` keeps today's colours, ramp included (`196 … 46`). The other palettes use a three-step ramp from their own colours: bad for scores up to 20, warn up to 60, good above (the ramp is indexed by `(score + 9) / 10`). An explicit `set color.good|warn|bad` or `set ramp` beats the palette wherever it appears in the file. Values are 256-colour codes; no gradients.
+`default` keeps today's colours, ramp included (`196 … 46`). The other palettes use a three-step ramp from their own colours: bad for scores up to 20, warn up to 60, good above (the ramp is indexed by `(score + 9) / 10`). An explicit `set color.good|warn|bad` or `set ramp` beats the palette wherever it appears in the file. Values are 256-colour codes.
+
+`terminal` draws the codes 0-15 as ANSI 16-colour SGR instead of `38;5;n`, so the terminal's own theme picks the colours: foreground `30`-`37` / `90`-`97`, skin backgrounds `40`-`47` / `100`-`107`. Muted is bright black (`90`), good green (`32`), warn yellow (`33`), bad red (`31`), repo names cyan (`36`); the skin backgrounds are black, blue, magenta and cyan. Its ramp has three steps (bad, warn, good). Colours you set to 0-15 yourself (`color.*`, `ramp`, `bg=`, account colours) are drawn the same way under this palette; codes from 16 up keep the 256-colour form.
 
 ## Presets
 

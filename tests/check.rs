@@ -303,7 +303,19 @@ fn check_flags_bad_usage_style_values() {
     let (code, stdout) = out(&mut fx.bar(&["check"]));
     assert_eq!(code, 0, "{stdout}");
 
-    for bad in ["show=bar,zzz", "alt=time,zzz", "glyphs=zzz", "count=zzz"] {
+    fx.conf(
+        "set left \"#{usage[show=spark,gauge,time,alt=gauge,spark,color=gradient,width=8]}\"\n",
+    );
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_eq!(code, 0, "{stdout}");
+
+    for bad in [
+        "show=bar,zzz",
+        "alt=time,zzz",
+        "glyphs=zzz",
+        "count=zzz",
+        "color=zzz",
+    ] {
         fx.conf(&format!("set left \"#{{usage[{bad}]}}\"\n"));
         let (code, stdout) = out(&mut fx.bar(&["check"]));
         assert_eq!(code, 2, "{bad}: {stdout}");

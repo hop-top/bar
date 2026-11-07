@@ -3,7 +3,7 @@
 use crate::style::{dim, fg};
 
 /// Components `show` and `alt` accept.
-pub const SHOW_ITEMS: [&str; 5] = ["time", "bar", "pct", "eta", "proj"];
+pub const SHOW_ITEMS: [&str; 7] = ["time", "bar", "pct", "eta", "proj", "spark", "gauge"];
 
 /// Names `glyphs` accepts; the first is the default.
 pub const GLYPH_SETS: [&str; 7] = [
@@ -17,6 +17,8 @@ pub enum Part {
     Pct,
     Eta,
     Proj,
+    Spark,
+    Gauge,
 }
 
 /// Known items in order, repeats dropped; unknown ones are skipped.
@@ -29,6 +31,8 @@ pub fn parse_list(raw: &str) -> Vec<Part> {
             "pct" => Part::Pct,
             "eta" => Part::Eta,
             "proj" => Part::Proj,
+            "spark" => Part::Spark,
+            "gauge" => Part::Gauge,
             _ => continue,
         };
         if !out.contains(&part) {
@@ -72,8 +76,9 @@ fn cells(name: &str) -> (&'static str, &'static str) {
 
 const PARTIAL: [&str; 8] = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"];
 
-/// `value` percent of `width` cells in one colour; empty cells muted.
-pub fn bar(glyphs: &str, width: i64, value: i64, color: u8) -> String {
+/// `value` percent of `width` cells; empty cells muted. `color` gives the
+/// colour of filled cell `i`.
+pub fn bar(glyphs: &str, width: i64, value: i64, color: &dyn Fn(usize) -> u8) -> String {
     let width = width as usize;
     let (full, empty) = cells(glyphs);
     let (filled, part) = if glyphs == "eighths" {
@@ -84,12 +89,35 @@ pub fn bar(glyphs: &str, width: i64, value: i64, color: u8) -> String {
     };
     let used = filled + usize::from(!part.is_empty());
     let mut out = String::new();
-    if used > 0 {
-        let lit = format!("{}{part}", full.repeat(filled));
-        out.push_str(&fg(color, &lit));
+    // neighbours of one colour share a single SGR run
+    let mut run = String::new();
+    let mut run_color = None;
+    for i in 0..used {
+        let c = color(i);
+        if run_color.is_some_and(|r| r != c) {
+            out.push_str(&fg(run_color.unwrap_or(c), &run));
+            run.clear();
+        }
+        run_color = Some(c);
+        run.push_str(if i < filled { full } else { part });
+    }
+    if let Some(c) = run_color {
+        out.push_str(&fg(c, &run));
     }
     if width > used {
         out.push_str(&dim(&empty.repeat(width - used)));
     }
     out
+}
+
+const LEVELS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+
+/// One of `▁..█` for a percent, clamped to 0..=100.
+pub fn level(pct: f64) -> char {
+    let p = if pct.is_finite() {
+        pct.clamp(0.0, 100.0)
+    } else {
+        0.0
+    };
+    LEVELS[(p * 7.0 / 100.0).round() as usize]
 }
