@@ -15,7 +15,7 @@ use std::time::{Duration, Instant, SystemTime};
 use serde_json::{json, Value};
 
 use crate::expand::CommandRunner;
-use crate::plugin;
+pub use crate::job::Job;
 
 /// `%command%` results stay fresh for an hour.
 pub const COMMAND_TTL: u64 = 3600;
@@ -29,113 +29,6 @@ pub const MAX_VALUE: usize = 64 * 1024;
 /// A lock older than this belongs to a crashed refresh.
 const LOCK_EXPIRY: Duration = Duration::from_secs(30);
 const DEFAULT_REFRESH_TIMEOUT: Duration = Duration::from_secs(20);
-
-/// Work a refresh performs. Serialised into the refresh process's
-/// arguments, so it carries only kinds and options, never secrets.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Job {
-    /// `sh -c cmd`; stdout on success. `timeout` in seconds.
-    Command { cmd: String, timeout: u64 },
-    /// `gh <args>` run directly, no shell; stdout on success.
-    Gh { args: Vec<String> },
-    /// `<path> --ext-info`, no shell; stdout when it parses as plugin info.
-    PluginInfo { path: String },
-    /// `<path>` with `input` on stdin, no shell; stdout when it parses as
-    /// plugin output.
-    PluginRender { path: String, input: String },
-    /// Finish scanning a transcript for token totals; progress is kept in
-    /// the transcript state file.
-    Transcript { path: String },
-}
-
-impl Job {
-    fn to_value(&self) -> Value {
-        match self {
-            Job::Command { cmd, timeout } => {
-                json!({"kind": "command", "cmd": cmd, "timeout": timeout})
-            }
-            Job::Gh { args } => json!({"kind": "gh", "args": args}),
-            Job::PluginInfo { path } => json!({"kind": "plugin-info", "path": path}),
-            Job::PluginRender { path, input } => {
-                json!({"kind": "plugin-render", "path": path, "input": input})
-            }
-            Job::Transcript { path } => json!({"kind": "transcript", "path": path}),
-        }
-    }
-
-    fn from_value(v: &Value) -> Result<Job, String> {
-        match v["kind"].as_str() {
-            Some("command") => Ok(Job::Command {
-                cmd: v["cmd"].as_str().ok_or("command job without cmd")?.into(),
-                timeout: v["timeout"].as_u64().unwrap_or(COMMAND_TIMEOUT),
-            }),
-            Some("gh") => Ok(Job::Gh {
-                args: v["args"]
-                    .as_array()
-                    .ok_or("gh job without args")?
-                    .iter()
-                    .map(|a| a.as_str().map(String::from).ok_or("gh arg not a string"))
-                    .collect::<Result<_, _>>()?,
-            }),
-            Some("plugin-info") => Ok(Job::PluginInfo {
-                path: plugin_path(v)?,
-            }),
-            Some("plugin-render") => Ok(Job::PluginRender {
-                path: plugin_path(v)?,
-                input: v["input"]
-                    .as_str()
-                    .ok_or("plugin job without input")?
-                    .into(),
-            }),
-            Some("transcript") => Ok(Job::Transcript {
-                path: plugin_path(v)?,
-            }),
-            other => Err(format!("unknown job kind {other:?}")),
-        }
-    }
-
-    /// `None` on failure or timeout; `limit` caps the job's own timeout.
-    pub fn execute(&self, limit: Duration) -> Option<String> {
-        match self {
-            Job::Command { cmd, timeout } => {
-                run_command(cmd, limit.min(Duration::from_secs(*timeout)))
-            }
-            Job::Gh { args } => {
-                let mut c = Command::new("gh");
-                c.args(args);
-                run_child(c, None, limit)
-            }
-            Job::PluginInfo { path } => {
-                let mut c = Command::new(path);
-                c.arg("--ext-info");
-                run_child(c, None, limit.min(plugin::INFO_TIMEOUT))
-                    .filter(|o| plugin::parse_info(o).is_some())
-            }
-            Job::PluginRender { path, input } => run_child(
-                Command::new(path),
-                Some(input.clone().into_bytes()),
-                limit.min(plugin::RENDER_TIMEOUT),
-            )
-            .filter(|o| plugin::parse_output(o).is_some()),
-            Job::Transcript { path } => crate::transcript::update(
-                &crate::click::state_dir(),
-                Path::new(path),
-                u64::MAX,
-                Some(Instant::now() + limit),
-            )
-            .map(|_| "ok".to_string()),
-        }
-    }
-}
-
-/// Plugins run by absolute path only, never looked up on PATH.
-fn plugin_path(v: &Value) -> Result<String, String> {
-    v["path"]
-        .as_str()
-        .filter(|p| Path::new(p).is_absolute())
-        .map(String::from)
-        .ok_or_else(|| "plugin job without absolute path".to_string())
-}
 
 /// What `bar refresh` receives: where to store, what to run, and the
 /// token in the lock it owns.
@@ -400,7 +293,7 @@ fn kill_group(pid: u32) {
 }
 
 /// `sh -c cmd` stdout when it exits 0 within `limit`.
-fn run_command(cmd: &str, limit: Duration) -> Option<String> {
+pub(crate) fn run_command(cmd: &str, limit: Duration) -> Option<String> {
     let mut c = Command::new("sh");
     c.args(["-c", cmd]);
     run_child(c, None, limit)
@@ -408,7 +301,11 @@ fn run_command(cmd: &str, limit: Duration) -> Option<String> {
 
 /// Stdout of `cmd` when it exits 0 within `limit`; killed with its group
 /// otherwise. `input`, if any, is written to its stdin, else stdin is closed.
-fn run_child(mut cmd: Command, input: Option<Vec<u8>>, limit: Duration) -> Option<String> {
+pub(crate) fn run_child(
+    mut cmd: Command,
+    input: Option<Vec<u8>>,
+    limit: Duration,
+) -> Option<String> {
     let deadline = Instant::now() + limit;
     let mut child = cmd
         .stdin(if input.is_some() {

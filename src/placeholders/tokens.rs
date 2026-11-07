@@ -45,7 +45,7 @@ pub fn compact(n: u64) -> String {
     if n < 1000 {
         return n.to_string();
     }
-    let tenths = |div: u64| (n * 10 + div / 2) / div;
+    let tenths = |div: u64| ((u128::from(n) * 10 + u128::from(div) / 2) / u128::from(div)) as u64;
     let (t, unit) = if tenths(1_000) < 10_000 {
         (tenths(1_000), 'k')
     } else if tenths(1_000_000) < 10_000 {

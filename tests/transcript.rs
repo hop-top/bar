@@ -408,3 +408,87 @@ fn load_without_cache_dir_use_defers_big_file_in_background() {
     assert!(transcript::load(&cache, "/nonexistent/x.jsonl").is_none());
     let _ = Path::new("");
 }
+
+#[test]
+fn huge_values_do_not_overflow() {
+    assert_eq!(compact(u64::MAX), "18446744073.7B");
+    let t = Tmp::new();
+    let big = u64::MAX;
+    t.append(&format!(
+        "{{\"message\":{{\"id\":\"a\",\"usage\":{{\"input_tokens\":{big},\"output_tokens\":{big},\"cache_read_input_tokens\":{big}}}}}}}\n"
+    ));
+    t.append(&format!(
+        "{{\"message\":{{\"id\":\"b\",\"usage\":{{\"input_tokens\":{big},\"cache_creation_input_tokens\":{big}}}}}}}\n"
+    ));
+    let (s, _) = upd(&t, 1 << 22);
+    assert_eq!(s.input, u64::MAX);
+    assert!(!compact(s.input.saturating_add(s.cache_creation)).is_empty());
+}
+
+#[test]
+fn far_future_mtime_does_not_overflow() {
+    let t = Tmp::new();
+    t.append(&line("a", 1, 0, 0, 1, T0));
+    let ok = std::process::Command::new("touch")
+        .args(["-t", "999912312359"])
+        .arg(t.file())
+        .status()
+        .unwrap()
+        .success();
+    assert!(ok);
+    assert_eq!(upd(&t, 1 << 22).0.input, 1);
+}
+
+#[test]
+fn oversized_state_file_is_ignored_and_long_id_not_deduped() {
+    let t = Tmp::new();
+    t.append(&line("a", 1, 0, 0, 1, T0));
+    upd(&t, 1 << 22);
+    let f = std::fs::read_dir(t.state().join("transcript"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    std::fs::write(&f, " ".repeat(200_000)).unwrap();
+    assert_eq!(upd(&t, 1 << 22).0.input, 1, "rebuilt from the file");
+    let long = "i".repeat(1000);
+    let t2 = Tmp::new();
+    t2.append(&line(&long, 2, 0, 0, 1, T0));
+    t2.append(&line(&long, 2, 0, 0, 1, T0));
+    assert_eq!(upd(&t2, 1 << 22).0.input, 4);
+    let st = std::fs::read_dir(t2.state().join("transcript"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    assert!(std::fs::metadata(st).unwrap().len() < 1000);
+}
+
+#[test]
+fn spaced_json_is_read() {
+    let t = Tmp::new();
+    t.append(
+        "{ \"message\" : { \"id\" : \"a\", \"usage\" : { \"input_tokens\" : 8, \"output_tokens\" : 2 } } }\n",
+    );
+    t.append("{\"text\":\"a \\\"usage\\\": {\"}\n");
+    let (s, _) = upd(&t, 1 << 22);
+    assert_eq!((s.input, s.output), (8, 2));
+}
+
+#[test]
+fn job_carries_state_dir() {
+    use hop_bar::cache::{Job, Request};
+    let r = Request {
+        key: "k".into(),
+        job: Job::Transcript {
+            path: "/a/t.jsonl".into(),
+            state: "/s".into(),
+        },
+        lock: String::new(),
+    };
+    assert_eq!(Request::from_json(&r.to_json()).unwrap(), r);
+    let bad = r.to_json().replace("\"/s\"", "\"rel\"");
+    assert!(Request::from_json(&bad).is_err());
+}

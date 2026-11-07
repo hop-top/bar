@@ -15,12 +15,16 @@ use serde_json::{json, Value};
 use crate::cache::{hash_hex, Cache, Job};
 
 /// Most bytes one render reads.
-pub const INLINE_CAP: u64 = 4 * 1024 * 1024;
+pub const INLINE_CAP: u64 = 1024 * 1024;
 /// Longer lines are skipped unparsed.
-pub const MAX_LINE: usize = 1024 * 1024;
+pub const MAX_LINE: usize = 512 * 1024;
 const CHUNK: usize = 256 * 1024;
 /// Seconds a finished background scan counts as fresh.
 const SCAN_TTL: u64 = 2;
+/// Larger state files are ignored (and rebuilt).
+const MAX_STATE: u64 = 64 * 1024;
+/// Message ids longer than this are not used for dedupe.
+const MAX_ID: usize = 256;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Stats {
@@ -84,7 +88,11 @@ impl State {
                 last_ts: v["last_ts"].as_i64(),
                 mtime: 0,
             },
-            last_id: v["last_id"].as_str().unwrap_or_default().into(),
+            last_id: v["last_id"]
+                .as_str()
+                .filter(|i| i.len() <= MAX_ID)
+                .unwrap_or_default()
+                .into(),
         })
     }
 }
@@ -115,11 +123,23 @@ pub fn parse_ts(s: &str) -> Option<i64> {
     Some(days * 86_400 + h * 3600 + mi * 60 + sec)
 }
 
+/// A `"usage"` key: the quoted word followed by optional spaces and a
+/// colon. Inside a string the quotes are escaped, so it cannot match there.
+fn has_usage_key(line: &[u8]) -> bool {
+    const MARK: &[u8] = b"\"usage\"";
+    line.windows(MARK.len()).enumerate().any(|(i, w)| {
+        w == MARK
+            && line[i + MARK.len()..]
+                .iter()
+                .find(|b| !b.is_ascii_whitespace())
+                == Some(&b':')
+    })
+}
+
 /// Folds one transcript line into the totals; anything unexpected is
 /// skipped.
 fn apply(st: &mut State, line: &[u8]) {
-    const MARK: &[u8] = b"\"usage\":";
-    if !line.windows(MARK.len()).any(|w| w == MARK) {
+    if !has_usage_key(line) {
         return;
     }
     let Ok(v) = serde_json::from_slice::<Value>(line) else {
@@ -140,7 +160,9 @@ fn apply(st: &mut State, line: &[u8]) {
     }
     // a message is written once per content block, usage repeated
     let id = v["message"]["id"].as_str().unwrap_or_default();
-    if !id.is_empty() {
+    if id.is_empty() || id.len() > MAX_ID {
+        st.last_id.clear();
+    } else {
         if id == st.last_id {
             return;
         }
@@ -218,6 +240,17 @@ fn state_file(state_dir: &Path, path: &Path) -> std::path::PathBuf {
     state_dir.join("transcript").join(format!("{key}.json"))
 }
 
+fn read_state(file: &Path) -> Option<State> {
+    let mut buf = String::new();
+    fs::File::open(file)
+        .ok()?
+        .take(MAX_STATE + 1)
+        .read_to_string(&mut buf)
+        .ok()?;
+    (buf.len() as u64 <= MAX_STATE).then_some(())?;
+    State::from_json(&buf)
+}
+
 fn save(state_dir: &Path, file: &Path, st: &State) {
     let dir = state_dir.join("transcript");
     let ok = fs::DirBuilder::new()
@@ -243,12 +276,12 @@ pub fn update(
 ) -> Option<Progress> {
     let meta = fs::metadata(path).ok().filter(fs::Metadata::is_file)?;
     let size = meta.len();
-    let mtime_ns = meta.mtime() * 1_000_000_000 + meta.mtime_nsec();
+    let mtime_ns = meta
+        .mtime()
+        .saturating_mul(1_000_000_000)
+        .saturating_add(meta.mtime_nsec());
     let sfile = state_file(state_dir, path);
-    let mut st = fs::read_to_string(&sfile)
-        .ok()
-        .and_then(|s| State::from_json(&s))
-        .unwrap_or_default();
+    let mut st = read_state(&sfile).unwrap_or_default();
     let replaced = st.ino != meta.ino()
         || size < st.size
         || mtime_ns < st.mtime_ns
@@ -279,16 +312,40 @@ pub fn update(
     Some(Progress { stats, complete })
 }
 
-/// Totals for a render: reads up to `INLINE_CAP` new bytes; when the
-/// file has more, asks the cache to finish it in the background and
+thread_local! {
+    static MEMO: std::cell::RefCell<std::collections::HashMap<String, Option<Stats>>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// How many times `load` did real work (not served from the per-process
+/// memo); a test hook.
+pub static LOADS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Totals for a render, computed once per process per transcript so every
+/// placeholder shares one read. Reads up to `INLINE_CAP` new bytes; when
+/// the file has more, asks the cache to finish it in the background and
 /// returns what is known so far.
 pub fn load(cache: &Cache, path: &str) -> Option<Stats> {
     if path.is_empty() {
         return None;
     }
+    let key = format!("{}\0{path}", cache.state_dir().display());
+    if let Some(hit) = MEMO.with(|m| m.borrow().get(&key).cloned()) {
+        return hit;
+    }
+    LOADS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let out = load_uncached(cache, path);
+    MEMO.with(|m| m.borrow_mut().insert(key, out.clone()));
+    out
+}
+
+fn load_uncached(cache: &Cache, path: &str) -> Option<Stats> {
     let p = update(cache.state_dir(), Path::new(path), INLINE_CAP, None)?;
     if !p.complete {
-        let job = Job::Transcript { path: path.into() };
+        let job = Job::Transcript {
+            path: path.into(),
+            state: cache.state_dir().to_string_lossy().into_owned(),
+        };
         cache.read_or_refresh(&format!("transcript:{path}"), SCAN_TTL, &job);
     }
     Some(p.stats)

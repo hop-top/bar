@@ -20,15 +20,15 @@ Anything slow is cache-backed: `gh` lists, `%command%` values, plugin `--ext-inf
 
 ## Transcript totals
 
-`src/transcript.rs` folds `message.usage` from each transcript line into running totals. Per transcript it keeps `<state>/transcript/<hash>.json` (0600, atomic rename): inode, size, mtime, committed byte offset, totals, last message id, last assistant timestamp. Only complete lines (newline-terminated) advance the offset, so a half-written last line is read again once finished. A line is parsed only when it contains `"usage":`; lines over 1 MiB are dropped without parsing, and a line cut by the read cap is marked `skip` so it is not re-read forever.
+`src/transcript.rs` folds `message.usage` from each transcript line into running totals. Per transcript it keeps `<state>/transcript/<hash>.json` (0600, atomic rename): inode, size, mtime, committed byte offset, totals, last message id, last assistant timestamp. Only complete lines (newline-terminated) advance the offset, so a half-written last line is read again once finished. A line is parsed only when it contains `"usage":`; lines over 512 KiB are dropped without parsing, and a line cut by the read cap is marked `skip` so it is not re-read forever.
 
-A render reads at most 4 MiB. Beyond that `transcript::load` asks the cache for a `Job::Transcript`, which runs `bar refresh` over the rest with no byte cap (time-limited like any refresh) and saves progress after each run. The render never waits for it.
+A render reads at most 1 MiB, once per process for all three placeholders. Beyond that `transcript::load` asks the cache for a `Job::Transcript`, which runs `bar refresh` over the rest with no byte cap (time-limited like any refresh) and saves progress after each run. The render never waits for it.
 
 Measured on macOS 15, release build, 20 MB synthetic transcript (a third of the lines are user messages), CPU time of the child over 20 runs:
 
 | Run | CPU median |
 |-----|-----------|
-| first render, cold state (reads 4 MiB, spawns the scan) | 25 ms |
+| first render, cold state (reads 1 MiB, spawns the scan) | 25 ms |
 | warm state, nothing appended | 2.4 ms |
 | three lines appended | 5.3 ms |
 | same layout, no transcript | 2.7 ms |

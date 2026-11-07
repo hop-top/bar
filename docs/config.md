@@ -19,7 +19,7 @@ Read from the `transcript_path` in the session JSON (assistant messages' `usage`
 - A message written as several lines (one per content block) counts once, by `message.id`.
 - `cachettl`: `ttl` minus the time since the last assistant message (the transcript mtime when there is none), as `4m12s`; `cold` in muted text once it is over. Green above 60 s left, then the warn colour.
 - Totals are incremental. A state file per transcript (mode 0600, `transcript/` in the state directory) keeps the byte offset and running totals; a render reads only the bytes appended since. A smaller file, a different inode, or a changed mtime at the same size rescans from the start.
-- A render reads at most 4 MiB. On a bigger backlog it shows the totals so far and a background `bar refresh` finishes the scan, so the numbers catch up within a few renders. Lines over 1 MiB and lines that are not valid JSON are skipped.
+- A render reads at most 1 MiB. On a bigger backlog it shows the totals so far and a background `bar refresh` finishes the scan, so the numbers catch up within a few renders. Lines over 512 KiB and lines that are not valid JSON are skipped.
 
 ## Click handler (macOS)
 
