@@ -4,7 +4,7 @@
 //! result.
 
 use std::fs;
-use std::io::{ErrorKind, Read};
+use std::io::{ErrorKind, Read, Write};
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -20,6 +20,11 @@ use crate::expand::CommandRunner;
 pub const COMMAND_TTL: u64 = 3600;
 /// Per-command limit for `%command%`, in seconds.
 pub const COMMAND_TIMEOUT: u64 = 3;
+/// After a failed refresh, wait this long (or `ttl`, if shorter) before
+/// trying again, in seconds.
+pub const FAIL_BACKOFF: u64 = 60;
+/// Stored values are cut to this many bytes.
+pub const MAX_VALUE: usize = 64 * 1024;
 /// A lock older than this belongs to a crashed refresh.
 const LOCK_EXPIRY: Duration = Duration::from_secs(30);
 const DEFAULT_REFRESH_TIMEOUT: Duration = Duration::from_secs(20);
@@ -61,16 +66,18 @@ impl Job {
     }
 }
 
-/// What `bar refresh` receives: where to store, and what to run.
+/// What `bar refresh` receives: where to store, what to run, and the
+/// token in the lock it owns.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Request {
     pub key: String,
     pub job: Job,
+    pub lock: String,
 }
 
 impl Request {
     pub fn to_json(&self) -> String {
-        json!({"key": self.key, "job": self.job.to_value()}).to_string()
+        json!({"key": self.key, "job": self.job.to_value(), "lock": self.lock}).to_string()
     }
 
     pub fn from_json(s: &str) -> Result<Request, String> {
@@ -78,14 +85,57 @@ impl Request {
         Ok(Request {
             key: v["key"].as_str().ok_or("request without key")?.into(),
             job: Job::from_value(&v["job"])?,
+            lock: v["lock"].as_str().unwrap_or_default().into(),
         })
     }
 }
 
-/// Whole-refresh limit from `BAR_REFRESH_TIMEOUT` (seconds).
+/// Whole-refresh limit from `BAR_REFRESH_TIMEOUT` (seconds), kept below
+/// the lock expiry so a live refresh never looks crashed.
 pub fn refresh_timeout(env: Option<&str>) -> Duration {
-    env.and_then(|v| v.trim().parse().ok())
+    env.and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|&n| n > 0)
         .map_or(DEFAULT_REFRESH_TIMEOUT, Duration::from_secs)
+        .clamp(Duration::from_secs(1), LOCK_EXPIRY - Duration::from_secs(1))
+}
+
+/// Cuts to `MAX_VALUE` bytes on a char boundary.
+fn cap(mut s: String) -> String {
+    if s.len() > MAX_VALUE {
+        let mut end = MAX_VALUE;
+        while !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        s.truncate(end);
+    }
+    s
+}
+
+fn read_capped(path: &Path) -> Option<String> {
+    let mut buf = Vec::new();
+    fs::File::open(path)
+        .ok()?
+        .take(MAX_VALUE as u64)
+        .read_to_end(&mut buf)
+        .ok()?;
+    Some(cap(String::from_utf8_lossy(&buf).into_owned()))
+}
+
+/// Unique per process and call: lock tokens and temp file names.
+fn nonce() -> String {
+    static SEQ: AtomicUsize = AtomicUsize::new(0);
+    let nanos = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_or(0, |d| d.subsec_nanos());
+    format!(
+        "{}.{}.{nanos}",
+        std::process::id(),
+        SEQ.fetch_add(1, Ordering::Relaxed)
+    )
+}
+
+fn modified_age(path: &Path) -> Option<Duration> {
+    fs::metadata(path).and_then(|m| m.modified()).ok().map(age)
 }
 
 /// FNV-1a, 128-bit: keys become fixed hex filenames.
@@ -124,6 +174,10 @@ impl Cache {
         self.dir.join(hash_hex(key))
     }
 
+    pub fn fail_path(&self, key: &str) -> PathBuf {
+        self.dir.join(format!("{}.fail", hash_hex(key)))
+    }
+
     pub fn lock_path(&self, key: &str) -> PathBuf {
         self.dir.join(format!("{}.lock", hash_hex(key)))
     }
@@ -138,67 +192,95 @@ impl Cache {
 
     /// Atomic: a private temp file in the cache dir, renamed into place.
     pub fn store(&self, key: &str, value: &str) -> std::io::Result<()> {
-        static SEQ: AtomicUsize = AtomicUsize::new(0);
+        self.write_atomic(&self.path_for(key), value)
+    }
+
+    fn write_atomic(&self, dest: &Path, body: &str) -> std::io::Result<()> {
         self.ensure_dir()?;
-        let dest = self.path_for(key);
-        let tmp = self.dir.join(format!(
-            ".{}.{}.{}.tmp",
-            hash_hex(key),
-            std::process::id(),
-            SEQ.fetch_add(1, Ordering::Relaxed)
-        ));
-        let r = crate::click::write_private(&tmp, value).and_then(|()| fs::rename(&tmp, &dest));
+        let name = dest.file_name().unwrap_or_default().to_string_lossy();
+        let tmp = self.dir.join(format!(".{name}.{}.tmp", nonce()));
+        let r = crate::click::write_private(&tmp, body).and_then(|()| fs::rename(&tmp, dest));
         if r.is_err() {
             let _ = fs::remove_file(&tmp);
         }
         r
     }
 
+    /// A refresh failed less than the backoff window ago.
+    fn backing_off(&self, key: &str, ttl: u64) -> bool {
+        let window = Duration::from_secs(FAIL_BACKOFF.min(ttl));
+        modified_age(&self.fail_path(key)).is_some_and(|a| a < window)
+    }
+
     /// The stored value, possibly stale; spawns a refresh when it is older
     /// than `ttl` seconds or missing. Never waits on the job.
     pub fn read_or_refresh(&self, key: &str, ttl: u64, job: &Job) -> Option<String> {
         let path = self.path_for(key);
-        let value = fs::read_to_string(&path).ok();
-        let fresh = value.is_some()
-            && fs::metadata(&path)
-                .and_then(|m| m.modified())
-                .is_ok_and(|t| age(t) < Duration::from_secs(ttl));
-        if !fresh && self.try_lock(key) {
+        let value = read_capped(&path);
+        let fresh =
+            value.is_some() && modified_age(&path).is_some_and(|a| a < Duration::from_secs(ttl));
+        if fresh || self.backing_off(key, ttl) {
+            return value;
+        }
+        if let Some(token) = self.try_lock(key) {
             let req = Request {
                 key: key.to_string(),
                 job: job.clone(),
+                lock: token,
             };
             if self.spawn(&req).is_err() {
-                let _ = fs::remove_file(self.lock_path(key));
+                self.release(&req);
             }
         }
         value
     }
 
-    /// `true` for the one caller that created the lock.
-    fn try_lock(&self, key: &str) -> bool {
-        if self.ensure_dir().is_err() {
-            return false;
-        }
+    /// The owner token for the one caller that created the lock.
+    fn try_lock(&self, key: &str) -> Option<String> {
+        self.ensure_dir().ok()?;
         let lock = self.lock_path(key);
         for _ in 0..2 {
             let mut o = fs::OpenOptions::new();
             o.write(true).create_new(true);
             std::os::unix::fs::OpenOptionsExt::mode(&mut o, 0o600);
             match o.open(&lock) {
-                Ok(_) => return true,
-                Err(e) if e.kind() == ErrorKind::AlreadyExists => {
-                    let stale = fs::metadata(&lock)
-                        .and_then(|m| m.modified())
-                        .is_ok_and(|t| age(t) > LOCK_EXPIRY);
-                    if !stale || fs::remove_file(&lock).is_err() {
-                        return false;
-                    }
+                Ok(mut f) => {
+                    let token = nonce();
+                    return f.write_all(token.as_bytes()).ok().map(|()| token);
                 }
-                Err(_) => return false,
+                Err(e) if e.kind() == ErrorKind::AlreadyExists => {
+                    if !modified_age(&lock).is_some_and(|a| a > LOCK_EXPIRY) {
+                        return None;
+                    }
+                    self.take_over(&lock)?;
+                }
+                Err(_) => return None,
             }
         }
-        false
+        None
+    }
+
+    /// Moves an expired lock aside. Only one reader's rename succeeds; if
+    /// the lock it moved was replaced by a live one in the meantime, it is
+    /// put back (link fails rather than clobber a newer lock).
+    fn take_over(&self, lock: &Path) -> Option<()> {
+        let name = lock.file_name()?.to_string_lossy();
+        let aside = self.dir.join(format!(".{name}.{}.stale", nonce()));
+        fs::rename(lock, &aside).ok()?;
+        let expired = modified_age(&aside).is_some_and(|a| a > LOCK_EXPIRY);
+        if !expired {
+            let _ = fs::hard_link(&aside, lock);
+        }
+        let _ = fs::remove_file(&aside);
+        expired.then_some(())
+    }
+
+    /// Removes the lock only while it still holds this request's token.
+    fn release(&self, req: &Request) {
+        let lock = self.lock_path(&req.key);
+        if fs::read_to_string(&lock).is_ok_and(|t| t == req.lock) {
+            let _ = fs::remove_file(&lock);
+        }
     }
 
     /// Detached: own process group, no stdio, not waited on.
@@ -216,12 +298,20 @@ impl Cache {
     }
 
     /// Body of `bar refresh`: run, store on success, release the lock.
-    /// A failed job keeps the last value.
+    /// A failed job keeps the last value and starts the backoff window.
     pub fn refresh(&self, req: &Request, limit: Duration) {
-        if let Some(v) = req.job.execute(limit) {
-            let _ = self.store(&req.key, &v);
+        let fail = self.fail_path(&req.key);
+        match req.job.execute(limit) {
+            Some(v) => {
+                if self.store(&req.key, &v).is_ok() {
+                    let _ = fs::remove_file(&fail);
+                }
+            }
+            None => {
+                let _ = self.write_atomic(&fail, "");
+            }
         }
-        let _ = fs::remove_file(self.lock_path(&req.key));
+        self.release(req);
     }
 }
 
@@ -255,7 +345,9 @@ fn run_command(cmd: &str, limit: Duration) -> Option<String> {
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let mut buf = Vec::new();
-        let _ = stdout.read_to_end(&mut buf);
+        let _ = (&mut stdout).take(MAX_VALUE as u64).read_to_end(&mut buf);
+        // keep draining so a chatty command does not block on a full pipe
+        let _ = std::io::copy(&mut stdout, &mut std::io::sink());
         let _ = tx.send(buf);
     });
     let status = loop {
@@ -279,7 +371,7 @@ fn run_command(cmd: &str, limit: Duration) -> Option<String> {
     if !status.is_some_and(|s| s.success()) {
         return None;
     }
-    out.map(|b| String::from_utf8_lossy(&b).into_owned())
+    out.map(|b| cap(String::from_utf8_lossy(&b).into_owned()))
 }
 
 /// The real `CommandRunner`: `%command%` via the cache, key

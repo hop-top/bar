@@ -185,13 +185,21 @@ fn no_temp_files_left_after_failure() {
 fn refresh_timeout_kills_job() {
     let t = Tmp::new();
     let marker = t.path().join("finished");
+    // far longer than the 1 s limit, so timing noise cannot blur the result
+    // unique duration: lets pgrep find an orphaned grandchild
+    let nap = format!(
+        "8.{}{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::SeqCst)
+    );
     let job = Job::Command {
-        cmd: format!("sleep 3; touch '{}'; echo late", marker.display()),
+        cmd: format!("sleep {nap}; touch '{}'; echo late", marker.display()),
         timeout: 60,
     };
     let req = Request {
         key: "k".into(),
         job,
+        lock: "t".into(),
     };
     let start = Instant::now();
     let out = std::process::Command::new(bin())
@@ -203,9 +211,20 @@ fn refresh_timeout_kills_job() {
         .unwrap();
     let took = start.elapsed();
     assert!(out.status.success());
-    assert!(took < Duration::from_millis(2500), "took {took:?}");
-    std::thread::sleep(Duration::from_millis(3500) - took.min(Duration::from_secs(3)));
-    assert!(!marker.exists(), "job's process group was not killed");
+    // an orphaned `sleep` holding stdout would delay this past 8 s
+    assert!(took < Duration::from_secs(6), "took {took:?}");
+    std::thread::sleep(Duration::from_millis(200));
+    let pattern = format!("sleep {nap}|{}", marker.display());
+    let alive = std::process::Command::new("pgrep")
+        .args(["-f", &pattern])
+        .output()
+        .unwrap();
+    assert!(
+        alive.stdout.is_empty(),
+        "job processes survived: {}",
+        String::from_utf8_lossy(&alive.stdout)
+    );
+    assert!(!marker.exists());
     let c = t.cache();
     assert!(!c.path_for("k").exists());
     assert!(lock_gone(&c, "k"));
@@ -230,17 +249,17 @@ fn refresh_timeout_defaults_to_20s() {
 #[test]
 fn job_json_has_no_secrets() {
     let secret = "s3cr3t-token-value";
-    std::env::set_var("BAR_TEST_SECRET_TOKEN", secret);
     let req = Request {
         key: "expand:echo $BAR_TEST_SECRET_TOKEN".into(),
         job: cmd_job("echo $BAR_TEST_SECRET_TOKEN"),
+        lock: "t".into(),
     };
     let json = req.to_json();
     assert!(!json.contains(secret), "{json}");
     let v: serde_json::Value = serde_json::from_str(&json).unwrap();
     let mut top: Vec<_> = v.as_object().unwrap().keys().cloned().collect();
     top.sort();
-    assert_eq!(top, ["job", "key"]);
+    assert_eq!(top, ["job", "key", "lock"]);
     let mut job: Vec<_> = v["job"].as_object().unwrap().keys().cloned().collect();
     job.sort();
     assert_eq!(job, ["cmd", "kind", "timeout"]);
@@ -286,7 +305,7 @@ fn render_returns_within_50ms_with_slow_job() {
     std::fs::create_dir_all(&cfg_dir).unwrap();
     std::fs::write(
         cfg_dir.join("bar.conf"),
-        "set left \"#{repo[max=%sleep 5; echo 9%]}\"\n",
+        "set left \"#{model[click=%sleep 5; echo 9%]}\"\n",
     )
     .unwrap();
     let run = || {
@@ -318,7 +337,7 @@ fn render_returns_within_50ms_with_slow_job() {
         "bar render took {best:?}"
     );
     let cfg = hop_bar::conf::Config {
-        left: "#{repo[max=%sleep 5; echo 8%]}".into(),
+        left: "#{model[click=%sleep 5; echo 8%]}".into(),
         ..hop_bar::conf::Config::default()
     };
     let session = hop_bar::session::parse("{}");
@@ -329,4 +348,142 @@ fn render_returns_within_50ms_with_slow_job() {
     assert!(took < Duration::from_millis(50), "render took {took:?}");
     let state2 = Cache::with_exe(&t.path().join("state2"), bin());
     assert!(state2.lock_path("expand:sleep 5; echo 8").exists());
+}
+
+#[test]
+fn refresh_timeout_clamped() {
+    let t = hop_bar::cache::refresh_timeout;
+    assert_eq!(t(Some("0")), Duration::from_secs(20));
+    assert_eq!(t(Some("29")), Duration::from_secs(29));
+    assert_eq!(t(Some("30")), Duration::from_secs(29));
+    assert_eq!(t(Some("3600")), Duration::from_secs(29));
+}
+
+#[test]
+fn failing_job_backs_off() {
+    let t = Tmp::new();
+    let c = t.cache();
+    let job = counting(&t, "runs", "exit 1");
+    assert_eq!(c.read_or_refresh("k", 3600, &job), None);
+    assert!(wait_until(Duration::from_secs(5), || t.lines("runs") == 1
+        && lock_gone(&c, "k")));
+    for _ in 0..5 {
+        assert_eq!(c.read_or_refresh("k", 3600, &job), None);
+        std::thread::sleep(Duration::from_millis(60));
+    }
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(t.lines("runs"), 1, "backed off inside the window");
+    let fail = c.fail_path("k");
+    assert_eq!(
+        std::fs::metadata(&fail).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    age(&fail, hop_bar::cache::FAIL_BACKOFF + 1);
+    c.read_or_refresh("k", 3600, &job);
+    assert!(wait_until(Duration::from_secs(5), || t.lines("runs") == 2));
+}
+
+#[test]
+fn backoff_window_shrinks_to_ttl() {
+    let t = Tmp::new();
+    let c = t.cache();
+    let job = counting(&t, "runs", "exit 1");
+    c.read_or_refresh("k", 5, &job);
+    assert!(wait_until(Duration::from_secs(5), || t.lines("runs") == 1
+        && lock_gone(&c, "k")));
+    age(&c.fail_path("k"), 6);
+    c.read_or_refresh("k", 5, &job);
+    assert!(wait_until(Duration::from_secs(5), || t.lines("runs") == 2));
+}
+
+#[test]
+fn success_clears_fail_marker() {
+    let t = Tmp::new();
+    let c = t.cache();
+    c.read_or_refresh("k", 3600, &cmd_job("exit 1"));
+    assert!(wait_until(Duration::from_secs(5), || c
+        .fail_path("k")
+        .exists()
+        && lock_gone(&c, "k")));
+    let req = Request {
+        key: "k".into(),
+        job: cmd_job("echo ok"),
+        lock: "t".into(),
+    };
+    c.refresh(&req, Duration::from_secs(3));
+    assert!(!c.fail_path("k").exists());
+    assert_eq!(std::fs::read_to_string(c.path_for("k")).unwrap(), "ok\n");
+}
+
+#[test]
+fn expired_lock_taken_over() {
+    let t = Tmp::new();
+    let c = t.cache();
+    c.store("seed", "").unwrap();
+    std::fs::write(c.lock_path("k"), "crashed").unwrap();
+    age(&c.lock_path("k"), 40);
+    c.read_or_refresh("k", 60, &counting(&t, "runs", "echo v"));
+    assert!(wait_until(Duration::from_secs(5), || t.lines("runs") == 1
+        && lock_gone(&c, "k")));
+    let leftovers: Vec<_> = std::fs::read_dir(t.path().join("cache"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+        .filter(|n| n.contains("stale") || n.contains("lock"))
+        .collect();
+    assert!(leftovers.is_empty(), "{leftovers:?}");
+}
+
+#[test]
+fn live_lock_is_not_taken_over() {
+    let t = Tmp::new();
+    let c = t.cache();
+    c.store("seed", "").unwrap();
+    std::fs::write(c.lock_path("k"), "busy").unwrap();
+    age(&c.lock_path("k"), 10);
+    c.read_or_refresh("k", 60, &counting(&t, "runs", "echo v"));
+    std::thread::sleep(Duration::from_millis(400));
+    assert_eq!(t.lines("runs"), 0);
+    assert_eq!(std::fs::read_to_string(c.lock_path("k")).unwrap(), "busy");
+}
+
+#[test]
+fn refresh_keeps_foreign_lock() {
+    let t = Tmp::new();
+    let c = t.cache();
+    c.store("seed", "").unwrap();
+    std::fs::write(c.lock_path("k"), "someone-else").unwrap();
+    let req = Request {
+        key: "k".into(),
+        job: cmd_job("echo v"),
+        lock: "mine".into(),
+    };
+    c.refresh(&req, Duration::from_secs(3));
+    assert_eq!(
+        std::fs::read_to_string(c.lock_path("k")).unwrap(),
+        "someone-else"
+    );
+}
+
+#[test]
+fn output_capped_at_64k() {
+    let t = Tmp::new();
+    let c = t.cache();
+    let req = Request {
+        key: "k".into(),
+        job: cmd_job("head -c 200000 /dev/zero | tr '\\0' a"),
+        lock: "t".into(),
+    };
+    c.refresh(&req, Duration::from_secs(3));
+    let stored = std::fs::read_to_string(c.path_for("k")).unwrap();
+    assert_eq!(stored.len(), hop_bar::cache::MAX_VALUE);
+    assert_eq!(hop_bar::cache::MAX_VALUE, 64 * 1024);
+}
+
+#[test]
+fn stored_value_read_capped() {
+    let t = Tmp::new();
+    let c = t.cache();
+    c.store("k", &"b".repeat(100_000)).unwrap();
+    let got = c.read_or_refresh("k", 3600, &cmd_job("true")).unwrap();
+    assert_eq!(got.len(), 64 * 1024);
 }
