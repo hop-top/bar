@@ -98,7 +98,7 @@ Save as `bar-hello`, `chmod +x`, put it on `PATH`, then `set left "#{hello[who=b
 
 ## Reference plugins
 
-Two POSIX shell scripts ship in `plugins/`. They need `sh`, `jq` and the tool they wrap; put them on `PATH` (copy or symlink) to enable `#{tlc}` and `#{claude-credits}`. Colour comes from core: `bar-tlc` emits `score`, `bar-claude-credits` emits `metric`. The only `style` either sets is `bad` on the credits `?`.
+Five POSIX shell scripts ship in `plugins/`. They need `sh`, `jq` and the tool they wrap; put them on `PATH` (copy or symlink) to enable `#{tlc}`, `#{claude-credits}`, `#{ci}`, `#{mem}` and `#{health}`. Colour comes from core: `bar-tlc` emits `score`, `bar-claude-credits` emits `metric`. The only `style` either sets is `bad` on the credits `?`.
 
 ### `bar-tlc`
 
