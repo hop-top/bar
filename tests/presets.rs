@@ -143,3 +143,52 @@ fn check_validates_bg_option() {
     let out = String::from_utf8(o.get_output().stdout.clone()).unwrap();
     assert!(out.contains("invalid bg `300`"), "{out}");
 }
+
+#[test]
+fn init_refuses_without_absolute_home() {
+    for home in [None, Some("relative/home")] {
+        let t = Tmp::new();
+        let mut c = bar(&t, &["init"]);
+        c.env_remove("XDG_CONFIG_HOME");
+        match home {
+            Some(h) => c.env("HOME", h),
+            None => c.env_remove("HOME"),
+        };
+        let o = c.assert().code(2);
+        let err = String::from_utf8(o.get_output().stderr.clone()).unwrap();
+        assert!(err.contains("HOME"), "{home:?}: {err}");
+        let cwd = t.path().join("neutral-cwd");
+        assert!(!cwd.join(".config").exists() && !cwd.join("relative").exists());
+    }
+}
+
+#[test]
+fn init_ignores_relative_xdg_config_home() {
+    let t = Tmp::new();
+    bar(&t, &["init"])
+        .env("XDG_CONFIG_HOME", "relative")
+        .assert()
+        .success();
+    assert!(t.path().join(".config/bar/bar.conf").is_file());
+    assert!(!t.path().join("neutral-cwd/relative").exists());
+    // no temp file left beside it
+    let names: Vec<_> = std::fs::read_dir(t.path().join(".config/bar"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert_eq!(names, ["bar.conf"]);
+}
+
+#[test]
+fn init_does_not_follow_a_racing_file() {
+    // the final name appearing between check and link is never clobbered
+    let t = Tmp::new();
+    let dir = t.path().join("xdg/bar");
+    std::fs::create_dir_all(&dir).unwrap();
+    let r = hop_bar::presets::write_new(&dir.join("bar.conf"), "a");
+    assert!(r.is_ok());
+    let r = hop_bar::presets::write_new(&dir.join("bar.conf"), "b");
+    assert!(r.unwrap_err().contains("exists"));
+    assert_eq!(std::fs::read_to_string(dir.join("bar.conf")).unwrap(), "a");
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+}

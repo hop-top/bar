@@ -1,6 +1,6 @@
 use hop_bar::conf::{parse, Config, LoadResult, Skin, SkinGlyphs};
 use hop_bar::palette;
-use hop_bar::skin::{paint, Seg, Side};
+use hop_bar::skin::{paint, Paint, Seg, Side};
 use hop_bar::style::{strip_codes, visible_width_with};
 
 /// Layout the plain goldens in `tests/fixtures/skins` were captured with,
@@ -138,7 +138,7 @@ fn powerline_left_and_center_transitions() {
     let segs = [seg("a", 1), seg("b", 2)];
     let want = "\x1b[48;5;1m a \x1b[38;5;1m\x1b[48;5;2m\u{e0b0}\x1b[39m b \x1b[49m\x1b[38;5;2m\u{e0b0}\x1b[39m";
     for side in [Side::Left, Side::Center] {
-        let g = paint(Skin::Powerline, SkinGlyphs::Nerd, &segs, side);
+        let g = paint(Paint::Powerline, SkinGlyphs::Nerd, &segs, side);
         assert_eq!(g.text, want);
         assert_eq!(g.width, 8);
     }
@@ -147,7 +147,7 @@ fn powerline_left_and_center_transitions() {
 #[test]
 fn powerline_right_transitions() {
     let segs = [seg("a", 1), seg("b", 2)];
-    let g = paint(Skin::Powerline, SkinGlyphs::Nerd, &segs, Side::Right);
+    let g = paint(Paint::Powerline, SkinGlyphs::Nerd, &segs, Side::Right);
     let want = "\x1b[38;5;1m\u{e0b2}\x1b[39m\x1b[48;5;1m a \x1b[38;5;2m\u{e0b2}\x1b[39m\x1b[48;5;2m b \x1b[49m";
     assert_eq!(g.text, want);
     assert_eq!(g.width, 8);
@@ -160,7 +160,7 @@ fn capsule_wraps_each_segment() {
         format!("\x1b[38;5;{bg}m{l}\x1b[48;5;{bg}m\x1b[39m{t}\x1b[49m\x1b[38;5;{bg}m{r}\x1b[39m")
     };
     for side in [Side::Left, Side::Center, Side::Right] {
-        let g = paint(Skin::Capsule, SkinGlyphs::Nerd, &segs, side);
+        let g = paint(Paint::Capsule, SkinGlyphs::Nerd, &segs, side);
         let want = format!(
             "{} {}",
             cap(1, "a", '\u{e0b6}', '\u{e0b4}'),
@@ -169,15 +169,15 @@ fn capsule_wraps_each_segment() {
         assert_eq!(g.text, want);
         assert_eq!(g.width, 7);
     }
-    let g = paint(Skin::Capsule, SkinGlyphs::Ascii, &segs[..1], Side::Left);
+    let g = paint(Paint::Capsule, SkinGlyphs::Ascii, &segs[..1], Side::Left);
     assert_eq!(g.text, cap(1, "a", '(', ')'));
 }
 
 #[test]
 fn ascii_powerline_glyphs() {
     let segs = [seg("a", 1), seg("b", 2)];
-    let l = paint(Skin::Powerline, SkinGlyphs::Ascii, &segs, Side::Left);
-    let r = paint(Skin::Powerline, SkinGlyphs::Ascii, &segs, Side::Right);
+    let l = paint(Paint::Powerline, SkinGlyphs::Ascii, &segs, Side::Left);
+    let r = paint(Paint::Powerline, SkinGlyphs::Ascii, &segs, Side::Right);
     assert_eq!(strip_codes(&l.text), " a > b >");
     assert_eq!(strip_codes(&r.text), "< a < b ");
     assert!(!l.text.chars().chain(r.text.chars()).any(|c| c > '\u{e000}'));
@@ -186,7 +186,7 @@ fn ascii_powerline_glyphs() {
 
 #[test]
 fn empty_group_paints_nothing() {
-    for skin in [Skin::Powerline, Skin::Capsule] {
+    for skin in [Paint::Powerline, Paint::Capsule] {
         for side in [Side::Left, Side::Center, Side::Right] {
             let g = paint(skin, SkinGlyphs::Nerd, &[], side);
             assert_eq!((g.text.as_str(), g.width), ("", 0));
@@ -202,7 +202,7 @@ fn no_bg_bleed_inside_segment() {
         width: 7,
         bg: 5,
     };
-    for skin in [Skin::Powerline, Skin::Capsule] {
+    for skin in [Paint::Powerline, Paint::Capsule] {
         let g = paint(skin, SkinGlyphs::Nerd, std::slice::from_ref(&s), Side::Left);
         assert!(
             g.text.contains("\x1b[0m\x1b[48;5;5mx"),
@@ -289,4 +289,51 @@ fn skinned_width_fits_columns() {
             assert!(cells(l, 2) <= 116, "{skin}: {mid:?}");
         }
     }
+}
+
+#[test]
+fn compound_resets_restore_bg() {
+    let s = Seg {
+        text: "\x1b[0;1mx\x1b[22;49my\x1b[1;38;5;2mz\x1b[;1mw".into(),
+        width: 4,
+        bg: 5,
+    };
+    let g = paint(
+        Paint::Powerline,
+        SkinGlyphs::Nerd,
+        std::slice::from_ref(&s),
+        Side::Left,
+    );
+    assert!(g.text.contains("\x1b[0;1m\x1b[48;5;5mx"), "{:?}", g.text);
+    assert!(g.text.contains("\x1b[22;49m\x1b[48;5;5my"), "{:?}", g.text);
+    assert!(g.text.contains("\x1b[1;38;5;2mz"), "{:?}", g.text);
+    assert!(!g.text.contains("\x1b[1;38;5;2m\x1b[48"), "{:?}", g.text);
+    assert!(g.text.contains("\x1b[;1m\x1b[48;5;5mw"), "{:?}", g.text);
+}
+
+#[test]
+fn same_bg_neighbours_get_thin_separator() {
+    let segs = [seg("a", 7), seg("b", 7), seg("c", 8)];
+    let muted = hop_bar::style::MUTED;
+    let l = paint(Paint::Powerline, SkinGlyphs::Nerd, &segs, Side::Left);
+    let thin = format!("\x1b[38;5;{muted}m\u{e0b1}\x1b[39m");
+    assert!(
+        l.text.starts_with(&format!("\x1b[48;5;7m a {thin} b ")),
+        "{:?}",
+        l.text
+    );
+    assert!(
+        l.text.contains("\x1b[38;5;7m\x1b[48;5;8m\u{e0b0}"),
+        "{:?}",
+        l.text
+    );
+    assert_eq!(l.width, 12);
+    let r = paint(Paint::Powerline, SkinGlyphs::Nerd, &segs, Side::Right);
+    let thin_r = format!("\x1b[38;5;{muted}m\u{e0b3}\x1b[39m");
+    assert!(r.text.contains(&format!(" a {thin_r} b ")), "{:?}", r.text);
+    assert_eq!(r.width, 12);
+    let a = paint(Paint::Powerline, SkinGlyphs::Ascii, &segs, Side::Left);
+    assert_eq!(strip_codes(&a.text), " a | b > c >");
+    let ar = paint(Paint::Powerline, SkinGlyphs::Ascii, &segs, Side::Right);
+    assert_eq!(strip_codes(&ar.text), "< a | b < c ");
 }

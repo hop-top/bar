@@ -20,7 +20,8 @@ pub fn get(name: &str) -> Option<&'static str> {
 }
 
 /// Writes preset `name` to the first config search path; refuses when any
-/// search path already holds a config. Returns the written path.
+/// search path already holds a config, or when the path would be relative
+/// (`HOME` unset or relative). Returns the written path.
 pub fn init(
     name: &str,
     env: &dyn Fn(&str) -> Option<String>,
@@ -28,20 +29,45 @@ pub fn init(
     kit_dir: &Path,
 ) -> Result<PathBuf, String> {
     let body = get(name).ok_or_else(|| format!("unknown preset `{name}`"))?;
+    let path = crate::conf::search_paths(env, home, kit_dir).remove(0);
+    if !path.is_absolute() {
+        return Err("HOME is unset or relative; set it or XDG_CONFIG_HOME".into());
+    }
     if let Some(p) = crate::conf::find_path(env, home, kit_dir) {
         return Err(format!("{} exists; not overwritten", p.display()));
     }
-    let path = crate::conf::search_paths(env, home, kit_dir).remove(0);
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     }
-    // create_new: a file appearing since the check is not overwritten either
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&path)
-        .map_err(|e| format!("{}: {e}", path.display()))?;
-    f.write_all(body.as_bytes())
-        .map_err(|e| format!("{}: {e}", path.display()))?;
+    write_new(&path, body)?;
     Ok(path)
+}
+
+/// Writes `body` to `path` all at once and never over an existing file:
+/// a temp file in the same directory, hard-linked to `path` (which fails
+/// when `path` exists), then removed.
+pub fn write_new(path: &Path, body: &str) -> Result<(), String> {
+    let shown = |e: std::io::Error| format!("{}: {e}", path.display());
+    let dir = path.parent().unwrap_or(Path::new("."));
+    let tmp = dir.join(format!(
+        ".{}.tmp-{}",
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("bar.conf"),
+        std::process::id()
+    ));
+    let written = (|| {
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)?;
+        f.write_all(body.as_bytes())?;
+        f.sync_all()?;
+        std::fs::hard_link(&tmp, path)
+    })();
+    let _ = std::fs::remove_file(&tmp);
+    written.map_err(|e| match e.kind() {
+        std::io::ErrorKind::AlreadyExists => format!("{} exists; not overwritten", path.display()),
+        _ => shown(e),
+    })
 }

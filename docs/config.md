@@ -27,7 +27,7 @@ CI covers the generated script, plist edits, command list and platform guard wit
 
 Search order, first existing wins:
 
-1. `$XDG_CONFIG_HOME/bar/bar.conf`
+1. `$XDG_CONFIG_HOME/bar/bar.conf` (ignored when relative)
 2. `~/.config/bar/bar.conf`
 3. kit config dir for `bar` (macOS: `~/Library/Application Support/bar/bar.conf`)
 
@@ -128,12 +128,12 @@ Plugins: see [plugins](plugins.md).
 `set skin plain|powerline|capsule` picks how segments are drawn.
 
 - `plain` (default): segments joined by a muted ` │ `; output is unchanged from earlier versions.
-- `powerline`: each segment sits on a background colour with one space of padding each side. Left and centre groups are joined by U+E0B0, the right group by U+E0B2; each arrow takes the background it leaves as its colour and the one it enters as its background, so the shapes flow out of the left and centre groups and into the right one from the edge.
+- `powerline`: each segment sits on a background colour with one space of padding each side. Left and centre groups are joined by U+E0B0, the right group by U+E0B2; each arrow takes the background it leaves as its colour and the one it enters as its background, so the shapes flow out of the left and centre groups and into the right one from the edge. Neighbours that share a background are split by a thin muted U+E0B1 (left, centre) or U+E0B3 (right) instead.
 - `capsule`: each segment is wrapped in U+E0B6 … U+E0B4 on its background, one space between capsules.
 
-Powerline and capsule glyphs need a Nerd Font or a Powerline-patched font. `set skin-glyphs ascii` draws `>` / `<` (powerline) and `(` / `)` (capsule) instead, for any font.
+Powerline and capsule glyphs need a Nerd Font or a Powerline-patched font. `set skin-glyphs ascii` draws `>` / `<` (powerline; `|` between same-background neighbours) and `(` / `)` (capsule) instead, for any font.
 
-Backgrounds come from the palette's list, in order across the whole line (left, centre, right) and cycled. `bg=<0-255>` on a placeholder sets its segment's background; in a segment holding several placeholders the first `bg` wins. `plain` ignores `bg`. `bg` is reserved on every placeholder, plugins included; plugins never see it. `bar check` rejects a value outside 0-255.
+Backgrounds come from the palette's list, in order across the whole line (left, centre, right) and cycled. `bg=<0-255>` on a placeholder sets its segment's background; in a segment holding several placeholders the first `bg` wins. `plain` ignores `bg`. `bg` is reserved on every placeholder, plugins included; plugins never see it, and `bar check` warns when a plugin declares it. `bar check` rejects a value outside 0-255.
 
 Colours inside a segment (usage ramp, `ctx` colour, state colours) still apply on top of the background. A reset inside a segment value restores the segment background; the background ends (`49`) only where the segment ends. Every skin glyph counts as one cell, whatever `icon-width` says, and layout counts the padding and glyphs when it fits groups to `COLUMNS`. When left and right do not fit beside each other they are joined by one space.
 
@@ -150,14 +150,14 @@ Colours inside a segment (usage ramp, `ctx` colour, state colours) still apply o
 | `solarized` | 245 | 106 | 136 | 160 | 23 235 24 30 66 |
 | `mono` | 245 | 252 | 248 | 255 | 236 238 240 242 |
 
-`default` keeps today's colours, ramp included (`196 … 46`). The other palettes use a three-step ramp from their own colours: bad for scores up to 30, warn up to 70, good above. An explicit `set color.good|warn|bad` or `set ramp` beats the palette wherever it appears in the file. Values are 256-colour codes; no gradients.
+`default` keeps today's colours, ramp included (`196 … 46`). The other palettes use a three-step ramp from their own colours: bad for scores up to 20, warn up to 60, good above (the ramp is indexed by `(score + 9) / 10`). An explicit `set color.good|warn|bad` or `set ramp` beats the palette wherever it appears in the file. Values are 256-colour codes; no gradients.
 
 ## Presets
 
 Five example configs ship in the binary and in [`presets/`](../presets): `minimal`, `full`, `powerline`, `capsule`, `compact`.
 
 - `bar preview --preset <name>` renders one with sample data, ignoring your config.
-- `bar init [--preset <name>]` writes one (default `full`) to the first search path: `$XDG_CONFIG_HOME/bar/bar.conf`, else `~/.config/bar/bar.conf`. It refuses when any search path already holds a config, prints the path it found and exits 2. There is no `--force`; remove or move the file yourself.
+- `bar init [--preset <name>]` writes one (default `full`) to the first search path: `$XDG_CONFIG_HOME/bar/bar.conf`, else `~/.config/bar/bar.conf`. It refuses when any search path already holds a config, prints the path it found and exits 2. It also refuses when that path would be relative (`HOME` unset or relative); a relative `XDG_CONFIG_HOME` is ignored, as the XDG spec says, here and in the search order. The file is written to a temp file beside it and linked into place, so it is never partial and never replaces a file that appeared meanwhile. There is no `--force`; remove or move the file yourself.
 
 ## Values
 

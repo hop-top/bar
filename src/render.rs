@@ -1,7 +1,7 @@
 //! Wires config, placeholders and layout into the status line text.
 
 use crate::cache::Cache;
-use crate::conf::{Config, LoadResult, Skin};
+use crate::conf::{Config, LoadResult};
 use crate::expand::{CommandRunner, Expander};
 use crate::format::{parse, segments, Token};
 use crate::icons;
@@ -11,7 +11,7 @@ use crate::palette;
 use crate::placeholders::{lookup, Ctx};
 use crate::plugin;
 use crate::session::Session;
-use crate::skin::{self, Seg, Side};
+use crate::skin::{self, Paint, Seg, Side};
 use crate::style::{self, dim, visible_width_with};
 use std::path::PathBuf;
 
@@ -233,25 +233,32 @@ fn render_impl(
     let _muted = style::use_muted(config.muted);
     let groups = [&config.left, &config.center, &config.right]
         .map(|src| render_group(src, &ctx, &ex, sample));
-    if config.skin == Skin::Plain {
-        let [l, c, r] = groups.map(|g| g.into_iter().map(|s| s.text).collect::<Vec<_>>());
-        return compose_with(&l, &c, &r, columns, config.gap, config.icon_width);
+    match Paint::of(config.skin) {
+        Some(paint) => paint_line(config, paint, groups, columns),
+        None => {
+            let [l, c, r] = groups.map(|g| g.into_iter().map(|s| s.text).collect::<Vec<_>>());
+            compose_with(&l, &c, &r, columns, config.gap, config.icon_width)
+        }
     }
-    paint_line(config, groups, columns)
 }
 
 /// Skinned line: backgrounds cycle through the palette across all groups,
 /// left to right; a segment's `bg` option takes its place.
-fn paint_line(config: &Config, groups: [Vec<Rendered>; 3], columns: Option<usize>) -> String {
+fn paint_line(
+    config: &Config,
+    paint: Paint,
+    groups: [Vec<Rendered>; 3],
+    columns: Option<usize>,
+) -> String {
+    let bgs = if config.bgs.is_empty() {
+        palette::default().bgs
+    } else {
+        config.bgs
+    };
     let mut n = 0;
     let [l, c, r] = groups.map(|g| {
         g.into_iter()
             .map(|s| {
-                let bgs = if config.bgs.is_empty() {
-                    palette::default().bgs
-                } else {
-                    config.bgs
-                };
                 let bg = s.bg.unwrap_or(bgs[n % bgs.len()]);
                 n += 1;
                 Seg {
@@ -262,7 +269,7 @@ fn paint_line(config: &Config, groups: [Vec<Rendered>; 3], columns: Option<usize
             })
             .collect::<Vec<_>>()
     });
-    let p = |segs: &[Seg], side| skin::paint(config.skin, config.skin_glyphs, segs, side);
+    let p = |segs: &[Seg], side| skin::paint(paint, config.skin_glyphs, segs, side);
     compose_groups(
         &p(&l, Side::Left),
         &p(&c, Side::Center),

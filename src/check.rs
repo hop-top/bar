@@ -321,9 +321,14 @@ impl Checker<'_> {
             );
             return;
         }
-        if info.declares_icon_option {
-            let msg = format!("plugin `{name}` declares the reserved option `icon`; ignored");
-            self.add(Level::Warning, line, msg);
+        for (declared, opt) in [
+            (info.declares_icon_option, "icon"),
+            (info.declares_bg_option, "bg"),
+        ] {
+            if declared {
+                let msg = format!("plugin `{name}` declares the reserved option `{opt}`; ignored");
+                self.add(Level::Warning, line, msg);
+            }
         }
         let mut concrete = Options::default();
         for (k, v) in opts.iter().filter(|(_, v)| !v.contains('%')) {

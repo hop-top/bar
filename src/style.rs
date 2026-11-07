@@ -32,8 +32,13 @@ pub fn use_muted(code: u8) -> MutedGuard {
     MutedGuard(MUTED_NOW.with(|m| m.replace(code)))
 }
 
+/// The muted colour in effect on this thread.
+pub fn muted() -> u8 {
+    MUTED_NOW.with(std::cell::Cell::get)
+}
+
 pub fn dim(text: &str) -> String {
-    fg(MUTED_NOW.with(std::cell::Cell::get), text)
+    fg(muted(), text)
 }
 
 pub fn bg_code(code: u8) -> String {
