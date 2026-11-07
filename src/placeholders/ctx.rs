@@ -11,7 +11,7 @@ impl Placeholder for CtxUsed {
         if !used.is_finite() {
             return None;
         }
-        let pct = used.round() as i64;
+        let pct = used.clamp(0.0, 100.0).round() as i64;
         let score = (100 - pct * 100 / 91).clamp(0, 100) as i32;
         let color = ramp(score, &ctx.config.ramp);
         Some(format!("{} {}", dim("ctx"), fg(color, &format!("{pct}%"))))

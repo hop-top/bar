@@ -231,6 +231,7 @@ fn remote_url_forms() {
         ),
         ("https://github.com/o/r/", "https://github.com/o/r"),
         ("https://github.com/o/r.git", "https://github.com/o/r"),
+        ("https://u:p@ss@host.io/o/r.git", "https://host.io/o/r"),
     ];
     for (raw, want) in cases {
         git(&d, &["config", "remote.origin.url", raw]);
@@ -435,4 +436,50 @@ fn missing_config_uses_builtin_default() {
     assert!(o.plain.contains("proj:main"));
     assert!(o.plain.trim_end().ends_with("me@example.org"));
     assert_eq!(o.plain.trim().lines().count(), 1);
+}
+
+#[test]
+fn ctx_huge_or_negative_used_never_panics() {
+    let t = Tmp::new();
+    for (used, color, shown) in [
+        ("1e300", 196, "ctx"),
+        ("-50", 46, "ctx"),
+        ("-1e300", 46, "ctx"),
+    ] {
+        let o = run(&t)
+            .conf("set left \"#{ctx}\"")
+            .stdin(&format!(
+                r#"{{"context_window":{{"used_percentage":{used}}}}}"#
+            ))
+            .go();
+        assert!(o.plain.contains(shown), "{used}: {:?}", o.plain);
+        assert!(
+            o.raw.contains(&format!("\x1b[38;5;{color}m")),
+            "{used}: {:?}",
+            o.raw
+        );
+    }
+}
+
+#[test]
+fn closed_stdout_exits_zero() {
+    use std::io::Write;
+    use std::process::Stdio;
+    let t = Tmp::new();
+    let h = t.path();
+    let mut child = Std::new(assert_cmd::cargo::cargo_bin("bar"))
+        .arg("render")
+        .env("HOME", h)
+        .env("XDG_CONFIG_HOME", h.join("xdg"))
+        .env("COLUMNS", "200")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    // read end gone before bar writes: the write hits a broken pipe
+    drop(child.stdout.take());
+    let mut stdin = child.stdin.take().unwrap();
+    let _ = stdin.write_all(br#"{"model":{"display_name":"Opus"}}"#);
+    drop(stdin);
+    assert_eq!(child.wait().unwrap().code(), Some(0));
 }

@@ -34,14 +34,14 @@ pub fn remote_url(cwd: &Path) -> Option<String> {
             return None;
         }
         let (auth, path) = rest.split_once('/')?;
-        let auth = auth.split_once('@').map_or(auth, |(_, h)| h);
+        let auth = auth.rsplit_once('@').map_or(auth, |(_, h)| h);
         (auth.split(':').next()?, path)
     } else {
         let (before, path) = u.split_once(':')?;
         if before.contains('/') {
             return None;
         }
-        (before.split_once('@').map_or(before, |(_, h)| h), path)
+        (before.rsplit_once('@').map_or(before, |(_, h)| h), path)
     };
     (!host.is_empty() && !path.is_empty() && !host.contains('/'))
         .then(|| format!("https://{host}/{path}"))

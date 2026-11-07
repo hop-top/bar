@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use clap::{Command, CommandFactory, Parser, Subcommand};
 use hop_bar::{conf, session};
 use hop_top_kit::output::{register_output_flags, RegisterOutputFlagsOptions};
@@ -38,6 +40,9 @@ fn render() {
         .and_then(|c| c.trim().parse().ok());
     let out = hop_bar::render::run(&s, conf::load(), columns);
     if !out.is_empty() {
-        println!("{out}");
+        // a closed pipe must not panic; render always exits 0
+        let mut so = std::io::stdout().lock();
+        let _ = writeln!(so, "{out}");
+        let _ = so.flush();
     }
 }
