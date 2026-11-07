@@ -111,8 +111,8 @@ Quote values with spaces. `#` starts a comment.
 | | `click` | `toggle` | `none` turns the toggle link off; the link appears only once the handler is installed (`bar click install`) |
 | `tokens` | `show` | both | `in`, `out`, `total`; default `12.3k↑ 4.1k↓` |
 | `cache` | `show` | `read` and `write` | `read`, `write`, `hit`; default `r 1.2M w 80k`, `hit` is `hit 93%` |
-| `cachettl` | `ttl` | `300` | Seconds the prompt cache lives; `3600` for the 1 h cache |
-| `agents` | `names` | off | `1` appends the running subagents' types |
+| `cachettl` | `ttl` | `300` | Seconds the prompt cache lives (minimum 1); `3600` for the 1 h cache |
+| `agents` | `names` | `0` | `1` appends the running subagents' types |
 | | `max` | none | Truncate the names with `…` |
 | `spendhist` | `period` | `both` | `today`, `month`; see [spendhist](#spendhist) |
 | | `tz` | `local` | `utc` buckets days by UTC date |

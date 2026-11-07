@@ -98,6 +98,8 @@ fn level_name(l: Level) -> &'static str {
 enum Val {
     Any,
     Int,
+    /// Integer of at least 1.
+    Pos,
     OneOf(&'static [&'static str]),
     /// Comma list whose items all come from the set.
     List(&'static [&'static str]),
@@ -119,8 +121,8 @@ fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
         ],
         "tokens" => &[("show", OneOf(&["in", "out", "total", "both"]))],
         "cache" => &[("show", OneOf(&["read", "write", "hit", "both"]))],
-        "cachettl" => &[("ttl", Int)],
-        "agents" => &[("names", Any), ("max", Int)],
+        "cachettl" => &[("ttl", Pos)],
+        "agents" => &[("names", OneOf(&["0", "1"])), ("max", Int)],
         "model" | "effort" | "ctx" => &[("click", Any)],
         "repo" | "branch" => &[("max", Int), ("link", Any)],
         "usage" => &[
@@ -133,8 +135,8 @@ fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
             ("width", Int),
             ("click", OneOf(&["toggle", "none"])),
         ],
-        "dirty" => &[("show", List(gitst::SHOW)), ("ttl", Int)],
-        "ahead" => &[("ttl", Int)],
+        "dirty" => &[("show", List(gitst::SHOW)), ("ttl", Pos)],
+        "ahead" => &[("ttl", Pos)],
         "worktree" => &[],
         "prs" => &[
             ("limit", Int),
@@ -158,6 +160,7 @@ fn val_ok(v: Val, raw: &str) -> bool {
     match v {
         Val::Any => true,
         Val::Int => raw.trim().parse::<usize>().is_ok(),
+        Val::Pos => raw.trim().parse::<usize>().is_ok_and(|n| n >= 1),
         Val::OneOf(set) => set.contains(&raw),
         Val::List(set) => raw.split(',').all(|i| set.contains(&i.trim())),
     }

@@ -45,10 +45,6 @@ fn entries(claude: &Path) -> Vec<Entry> {
         .collect()
 }
 
-extern "C" {
-    fn kill(pid: i32, sig: i32) -> i32;
-}
-
 /// `kill(pid, 0)`: no signal sent, no process spawned. Permission denied
 /// still means the process exists.
 fn alive(pid: u64) -> bool {
@@ -58,8 +54,11 @@ fn alive(pid: u64) -> bool {
     if pid <= 0 {
         return false;
     }
-    // SAFETY: signal 0 only probes for existence; `kill` is in the libc std links.
-    unsafe { kill(pid, 0) == 0 || std::io::Error::last_os_error().raw_os_error() == Some(1) }
+    // SAFETY: signal 0 only probes for existence.
+    unsafe {
+        libc::kill(pid, 0) == 0
+            || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+    }
 }
 
 pub fn render_with(ctx: &Ctx, _opts: &Options, state: &Path, claude: &Path) -> Option<String> {

@@ -372,3 +372,24 @@ fn check_warns_when_plugin_declares_bg_option() {
     assert!(i.declares_bg_option && !i.declares_icon_option);
     assert!(!i.options.contains_key("bg") && i.options.contains_key("k"));
 }
+
+#[test]
+fn check_rejects_zero_ttl_and_bad_agents_names() {
+    let fx = Fx::new();
+    fx.conf(
+        "set left \"#{cachettl[ttl=1]} #{dirty[ttl=1]} #{agents[names=0]} #{agents[names=1]}\"\n",
+    );
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_eq!(code, 0, "{stdout}");
+    for bad in [
+        "cachettl[ttl=0]",
+        "dirty[ttl=0]",
+        "ahead[ttl=0]",
+        "agents[names=yes]",
+    ] {
+        fx.conf(&format!("set left \"#{{{bad}}}\"\n"));
+        let (code, stdout) = out(&mut fx.bar(&["check"]));
+        assert_eq!(code, 2, "{bad}: {stdout}");
+        assert!(stdout.contains("invalid value"), "{bad}: {stdout}");
+    }
+}
