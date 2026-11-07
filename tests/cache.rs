@@ -204,9 +204,13 @@ fn refresh_timeout_kills_job() {
         lock: "t".into(),
     };
     let start = Instant::now();
+    let (iso, cwd) = common::isolation(t.path());
     let out = std::process::Command::new(bin())
         .arg("refresh")
         .arg(req.to_json())
+        .envs(iso)
+        .current_dir(cwd)
+        .env("HOME", t.path())
         .env("BAR_STATE_DIR", t.path())
         .env("BAR_REFRESH_TIMEOUT", "1")
         .output()

@@ -511,4 +511,16 @@ fn default_layout_in_github_repo_stays_in_temp_state() {
     }
     assert!(t.path().join("state/cache").is_dir());
     assert!(!t.path().join("xdg-state").exists());
+    for stray in [
+        "Library/Application Support/bar",
+        ".local/state/bar",
+        ".cache/bar",
+    ] {
+        assert!(!t.path().join(stray).exists(), "{stray}");
+    }
+    let (iso, _) = common::isolation(t.path());
+    let path = iso.iter().find(|(k, _)| *k == "PATH").unwrap().1.clone();
+    let first = std::env::split_paths(&path).next().unwrap();
+    assert_eq!(first, t.path().join("fake-bin"));
+    assert!(first.join("gh").is_file());
 }

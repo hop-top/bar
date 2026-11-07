@@ -26,10 +26,6 @@ pub fn isolation(root: &Path) -> (Vec<(&'static str, OsString)>, PathBuf) {
         ),
     )
     .unwrap();
-    std::os::unix::fs::PermissionsExt::set_mode(
-        &mut std::fs::metadata(&gh).unwrap().permissions(),
-        0o755,
-    );
     std::fs::set_permissions(&gh, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
     let mut path = bin.into_os_string();
     path.push(":");
