@@ -43,17 +43,18 @@ Wall time is not reported: it depends on machine load.
 
 ## Platforms
 
-Unix only: the crate fails to compile off `cfg(unix)`. macOS and Linux build and pass `make check`. The one FFI site is `kill(pid, 0)` in `src/placeholders/sessions.rs` (POSIX; `pid_t` is `i32` on both). Clickable commands (`src/click/`, the `bar://` app bundle, `osascript`) are macOS-only: on other systems `bar click install` writes nothing, prints that it needs macOS and exits 2. Plugin tests and the reference plugins need `jq`.
+Unix only: the crate fails to compile off `cfg(unix)`. macOS and Linux build and pass `make check`. The one FFI site is `kill(pid, 0)` in `src/placeholders/sessions.rs` (POSIX; `pid_t` is `i32` on both). Clickable commands (`src/click/`, the `bar://` app bundle, `osascript`) are macOS-only: on other systems `bar click install` writes nothing, prints that it needs macOS (and points at `--hooks-only`) and exits 2. `bar click install --hooks-only` registers only the Claude Code hooks and works on Linux. Plugin tests and the reference plugins need `jq`.
 
 Linux check, from a clean copy so the host `target/` stays untouched:
 
 ```sh
-docker run --rm -v "$PWD":/src -v /tmp/bar-target:/tgt -e CARGO_TARGET_DIR=/tgt -w /src rust:1-bookworm \
-  sh -c 'rustup component add clippy rustfmt && apt-get update && apt-get install -y make git jq && make check'
+mkdir /tmp/lr-src /tmp/lr-target
+rsync -a --exclude target --exclude .git ./ /tmp/lr-src/
+docker run --rm -v /tmp/lr-src:/src -v /tmp/lr-target:/tgt -e CARGO_TARGET_DIR=/tgt -w /src rust:1-bookworm sh -c 'rustup component add clippy rustfmt >/dev/null 2>&1; apt-get update >/dev/null 2>&1; apt-get install -y make git jq >/dev/null 2>&1; make check; echo EXIT=$?'
 ```
 
 ## Releasing
 
-Pushing a `v*` tag runs `.github/workflows/release-rs-caller.yml`. Its `binaries` job builds `--release --locked` natively for `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin` and `aarch64-apple-darwin`, and uploads `bar-<version>-<target>.tar.gz` (containing `bar`) plus a `.sha256` file to the GitHub release for the tag, creating it if missing. The crate is not published to crates.io (`publish = false`); the workflow has no publish job.
+Pushing a `v*` tag runs `.github/workflows/release-rs-caller.yml`. Its `create-release` job checks that the tag version equals the `Cargo.toml` version and creates the release once (`--prerelease` when the tag contains `-`). The `binaries` jobs then build `--release --locked` natively for `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin` and `aarch64-apple-darwin`, and uploads `bar-<version>-<target>.tar.gz` (containing `bar`) plus a `.sha256` file to that release. Linux binaries are built on `ubuntu-22.04` (glibc 2.35) and need glibc 2.35 or newer; the aarch64 Linux job needs a repo or plan with `ubuntu-22.04-arm` runners available. The crate is not published to crates.io (`publish = false`); the workflow has no publish job.
 
 Homebrew: `packaging/homebrew/bar.rb` is a template. After the release, set `version` (no leading `v`) and replace each `SHA256_<TARGET>` with the hex digest from the matching `.sha256` file, then copy the file into a tap's `Formula/`. No tap exists yet. The release assets must be publicly downloadable for the formula to work.

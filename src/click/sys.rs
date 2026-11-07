@@ -104,7 +104,6 @@ impl Env for System {
         let _ = std::fs::create_dir_all(&self.state);
         let mut o = std::fs::OpenOptions::new();
         o.create(true).append(true);
-        #[cfg(unix)]
         std::os::unix::fs::OpenOptionsExt::mode(&mut o, 0o600);
         if let Ok(mut f) = o.open(self.state.join("click.log")) {
             let _ = writeln!(f, "{line}");

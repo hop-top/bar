@@ -43,7 +43,6 @@ fn toggle_flips_state_file() {
     assert_eq!(toggle(t.path(), "5h"), Ok(true));
     let f = t.path().join("pct-5h");
     assert!(f.exists());
-    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         assert_eq!(f.metadata().unwrap().permissions().mode() & 0o777, 0o600);

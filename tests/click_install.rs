@@ -148,8 +148,8 @@ fn non_macos_is_unsupported_and_does_nothing() {
     let c = cfg(&t);
     let mut out = Vec::new();
     let e = run_install(&c, false, false, &mut |_| panic!("ran"), &mut out).unwrap_err();
-    assert_eq!(e, hop_bar::click::UNSUPPORTED);
-    assert!(e.contains("macOS"));
+    assert_eq!(e, hop_bar::click::InstallError::Unsupported);
+    assert!(e.to_string().contains("--hooks-only"));
     assert!(out.is_empty());
     assert!(!c.state_dir.exists());
 }
@@ -169,7 +169,10 @@ fn install_cli_unsupported_exits_2() {
         .unwrap();
     assert_eq!(o.status.code(), Some(2));
     let err = String::from_utf8_lossy(&o.stderr);
-    assert!(err.contains("macOS"), "{err}");
+    assert!(
+        err.contains("macOS") && err.contains("--hooks-only"),
+        "{err}"
+    );
     assert!(!t.path().join("bst").exists());
 }
 
@@ -242,7 +245,11 @@ fn install(c: &InstallCfg, dry: bool) -> (Result<(), String>, String, usize) {
         },
         &mut out,
     );
-    (r, String::from_utf8(out).unwrap(), ran)
+    (
+        r.map_err(|e| e.to_string()),
+        String::from_utf8(out).unwrap(),
+        ran,
+    )
 }
 
 #[test]
@@ -407,7 +414,6 @@ fn install_backups_are_unique() {
     assert_eq!(backups(c.settings.parent().unwrap()).len(), 3);
 }
 
-#[cfg(unix)]
 #[test]
 fn install_writes_through_settings_symlink() {
     let t = Tmp::new();

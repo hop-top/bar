@@ -24,7 +24,7 @@ What it does not do: no TUI editor, no themes, no Windows (it uses Unix APIs).
 
 - Actively maintained. Bug reports and questions: open an issue.
 - Pre-1.0: version 0.0.0, no tagged release yet; config syntax may change. Changes land as Conventional Commits, so `git log` is the changelog until the first release.
-- Built and tested on macOS. On Linux (Debian bookworm, x86_64 container) it builds and the test suite passes; not run on a Linux desktop, on aarch64 or with a real Claude Code. Clickable commands need macOS and tmux: `bar click install` exits 2 elsewhere. Windows is not supported.
+- Built and tested on macOS. On Linux (Debian bookworm, x86_64 container) it builds and the test suite passes; not run on a Linux desktop, on aarch64 or with a real Claude Code. Clickable commands need macOS and tmux: `bar click install` exits 2 elsewhere, while `bar click install --hooks-only` works on Linux. Windows is not supported.
 - Not on crates.io (`publish = false`); install from a clone.
 
 ## Install
@@ -44,7 +44,7 @@ cargo install --path . --locked
 
 Cargo puts the binary at `~/.cargo/bin/bar` (`$CARGO_HOME/bin` if set). Check with `bar --version`.
 
-Binaries: once released. The release workflow attaches `bar-<version>-<target>.tar.gz` for x86_64 and aarch64, Linux (glibc) and macOS, to the GitHub release; no release exists yet. A Homebrew formula template is in [packaging/homebrew](packaging/homebrew/bar.rb); there is no tap yet, and the formula only works if the release assets are publicly downloadable.
+Binaries: once released. The release workflow attaches `bar-<version>-<target>.tar.gz` for x86_64 and aarch64, Linux (glibc 2.35 or newer) and macOS, to the GitHub release; no release exists yet. A Homebrew formula template is in [packaging/homebrew](packaging/homebrew/bar.rb); there is no tap yet, and the formula only works if the release assets are publicly downloadable.
 
 ## Use
 

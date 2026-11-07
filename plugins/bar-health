@@ -36,9 +36,9 @@ if [ "$rc" -eq 0 ]; then
   case $code in [123][0-9][0-9]) up=1 ;; esac
 fi
 
-jq -cn --arg label "$label" --arg url "$url" --argjson up "$up" '
+jq -cn --arg lbl "$label" --arg url "$url" --argjson up "$up" '
   def clean: gsub("\u001b\\][^\u0007\u001b]*(\u0007|\u001b\\\\)?"; "") | gsub("\u001b\\[[0-9;:?<=>]*[ -/]*[@-~]"; "") | gsub("[\u0001-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]"; "");
   {text: (if $up == 1 then "✓" else "✗" end),
    style: (if $up == 1 then "good" else "bad" end),
    link: $url}
-  + ($label | clean) as $l | (if $l != "" then {label: $l} else {} end)' 2>/dev/null || exit 1
+  + ($lbl | clean) as $l | (if $l != "" then {label: $l} else {} end)' 2>/dev/null || exit 1
