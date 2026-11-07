@@ -73,7 +73,7 @@ bar preview   # layout with sample data; --state early|burning|final
 
 ### Skins and presets
 
-`set skin powerline` or `set skin capsule` puts each segment on a background colour; `set palette nord|gruvbox|dracula|solarized|mono` swaps the colours. Both glyph sets need a Nerd Font; `set skin-glyphs ascii` works with any font. Five presets ship in the binary:
+`set skin powerline` or `set skin capsule` puts each segment on a background colour; `set palette nord|gruvbox|dracula|solarized|mono` swaps the colours. Both glyph sets need a Nerd Font; `set skin-glyphs ascii` works with any font. Six presets ship in the binary, `two-line` among them; `set left@2` and friends add lines (up to 4) and `set wrap on` flows a too-long line onto more rows ([Lines and wrapping](docs/config.md#lines-and-wrapping)):
 
 ```sh
 bar preview --preset powerline   # try one with sample data

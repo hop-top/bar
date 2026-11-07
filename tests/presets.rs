@@ -22,7 +22,14 @@ fn bar(t: &Tmp, args: &[&str]) -> Command {
 fn preset_names() {
     assert_eq!(
         presets::NAMES,
-        ["minimal", "full", "powerline", "capsule", "compact"]
+        [
+            "minimal",
+            "full",
+            "powerline",
+            "capsule",
+            "compact",
+            "two-line"
+        ]
     );
     for n in presets::NAMES {
         let on_disk =

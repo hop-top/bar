@@ -7,7 +7,7 @@ const SPEC: &str = include_str!("fixtures/spec.conf");
 fn parses_spec_sample() {
     let c = conf::parse(SPEC).unwrap();
     assert_eq!(c.gap, 3);
-    assert_eq!(c.wrap, Wrap::Auto);
+    assert_eq!(c.wrap, Wrap::Off);
     assert_eq!(c.refresh, 5);
     assert!(c.left.starts_with("#{model}#{effort} │ #{ctx}"));
     assert_eq!(c.right, "#{account}");

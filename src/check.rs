@@ -1,6 +1,6 @@
 //! `bar check`: lints the config file without rendering anything.
 
-use crate::conf::{parse, parse_options, tokenize};
+use crate::conf::{layout_key, parse, parse_options, tokenize};
 use crate::expr;
 use crate::format::{self, Token};
 use crate::icons;
@@ -378,7 +378,8 @@ pub fn check_text(text: &str, path: Option<PathBuf>, dirs: &[PathBuf]) -> Report
     for (i, raw) in text.lines().enumerate() {
         let Ok(t) = tokenize(raw) else { continue };
         match t.first().map(String::as_str) {
-            Some("set") if t.len() == 3 && matches!(t[1].as_str(), "left" | "center" | "right") => {
+            // a bad line number is already a parse error
+            Some("set") if t.len() == 3 && matches!(layout_key(&t[1]), Some(Ok(_))) => {
                 c.layout(&t[2], i + 1);
             }
             Some("set") if t.len() == 3 && t[1] == "claude-dir" => {

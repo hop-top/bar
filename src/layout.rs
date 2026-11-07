@@ -1,6 +1,8 @@
-//! Places the left, centre and right groups on one or two lines.
+//! Places the left, centre and right groups on one or two lines, or flows
+//! segments onto rows when wrapping.
 
 use crate::style::{dim, visible_width_with};
+use std::ops::Range;
 
 const MARGIN: i64 = 4;
 
@@ -115,4 +117,55 @@ pub fn compose_groups(
     } else {
         format!("{first}\n{c}")
     }
+}
+
+/// Whether `compose_groups` puts the groups on one row no wider than the
+/// usable width. Without `columns` nothing is measured, so it is true.
+pub fn fits_one_row(
+    left: &Group,
+    center: &Group,
+    right: &Group,
+    columns: Option<usize>,
+    gap: usize,
+    joiner_width: usize,
+) -> bool {
+    let Some(cols) = columns else {
+        return true;
+    };
+    let width = cols as i64 - MARGIN;
+    let (lw, cw, rw) = (left.width as i64, center.width as i64, right.width as i64);
+    if !center.text.is_empty() {
+        return width - lw - cw - rw >= 2 * gap as i64;
+    }
+    if left.text.is_empty() || right.text.is_empty() {
+        return lw.max(rw) <= width;
+    }
+    width - lw - rw >= gap as i64 || lw + joiner_width as i64 + rw <= width
+}
+
+/// Splits `n` segments, in order, into rows whose `measure` stays within
+/// the usable width of `columns`; a segment too wide for any row gets its
+/// own. At most `max_rows` rows: the last takes whatever is left.
+pub fn flow(
+    n: usize,
+    columns: usize,
+    max_rows: usize,
+    measure: impl Fn(Range<usize>) -> usize,
+) -> Vec<Range<usize>> {
+    let width = (columns as i64 - MARGIN).max(0) as usize;
+    let mut rows = Vec::new();
+    let mut start = 0;
+    while start < n && rows.len() < max_rows {
+        if rows.len() + 1 == max_rows {
+            rows.push(start..n);
+            break;
+        }
+        let mut end = start + 1;
+        while end < n && measure(start..end + 1) <= width {
+            end += 1;
+        }
+        rows.push(start..end);
+        start = end;
+    }
+    rows
 }

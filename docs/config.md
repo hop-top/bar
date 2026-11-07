@@ -62,7 +62,7 @@ No file: built-in layout. A file with an error makes `bar render` print `bar: co
 
 | Directive | Form |
 |-----------|------|
-| `set` | `set <key> <value>`; keys `left center right separator gap wrap refresh icons icon-width skin skin-glyphs palette claude-dir color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
+| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-4) `separator gap wrap refresh icons icon-width skin skin-glyphs palette claude-dir color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
 | `default` | `default <placeholder> key=value ...` |
 | `account` | `account "<glob>" <label> <color>` |
 | `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%` |
@@ -71,7 +71,7 @@ No file: built-in layout. A file with an error makes `bar render` print `bar: co
 Quote values with spaces. `#` starts a comment.
 
 - `separator`: changes only where segments split (the text a layout is cut at). Output between segments stays ` │ `. Default `│`.
-- `wrap`: `auto`, `on` or `off`; reserved, only `auto` behaviour exists.
+- `wrap`: `off` (default) or `on`; see [Lines and wrapping](#lines-and-wrapping). `auto` is read as `off`.
 - `refresh`: default ttl floor for plugins, default `5s`. `gh` lists use 120 s and `%cmd%` values 1 h, whatever this says.
 
 - `icons`: `none` (default, output unchanged), `nerdfont` or `emoji`. See [Icons](#icons).
@@ -79,6 +79,16 @@ Quote values with spaces. `#` starts a comment.
 - `skin`: `plain` (default), `powerline` or `capsule`. See [Skins](#skins).
 - `skin-glyphs`: `nerd` (default) or `ascii`.
 - `palette`: `default`, `nord`, `gruvbox`, `dracula`, `solarized` or `mono`. See [Palettes](#palettes).
+
+## Lines and wrapping
+
+`left`, `center` and `right` make line 1. `set left@N`, `center@N` and `right@N`, N from 2 to 4, make line N; `left@1` is `left`. A line whose groups all render empty is left out, so a line of git state disappears outside a repository.
+
+Each line is laid out on its own, with the same `COLUMNS`, margin, gap and skin: groups padded apart on one row when they fit; otherwise left and right joined on one row and `center` on the next.
+
+`set wrap on` changes the second case. A line that does not fit on one row has its segments flowed, left group first, then centre, then right, onto rows of `COLUMNS` minus 4 cells, breaking only between segments; a segment wider than a row gets a row to itself. Wrapped rows are left-aligned (centre and right alignment are dropped) and keep the skin: backgrounds keep cycling, and Powerline arrows point right. Without `COLUMNS` nothing is measured, so wrapping never starts.
+
+A render prints at most 4 rows, all lines together. Rows past the fourth are dropped; with `wrap on`, the fourth row takes every remaining segment of its line and runs as long as it needs, as an unwrapped line does today.
 
 ## Placeholders
 
@@ -205,7 +215,7 @@ Colours inside a segment (usage ramp, `ctx` colour, state colours) still apply o
 
 ## Presets
 
-Five example configs ship in the binary and in [`presets/`](../presets): `minimal`, `full`, `powerline`, `capsule`, `compact`.
+Six example configs ship in the binary and in [`presets/`](../presets): `minimal`, `full`, `powerline`, `capsule`, `compact`, `two-line` (git and PRs on line 1, usage and spend on line 2).
 
 - `bar preview --preset <name>` renders one with sample data, ignoring your config.
 - `bar init [--preset <name>]` writes one (default `full`) to the first search path: `$XDG_CONFIG_HOME/bar/bar.conf`, else `~/.config/bar/bar.conf`. It refuses when any search path already holds a config, prints the path it found and exits 2. It also refuses when that path would be relative (`HOME` unset or relative); a relative `XDG_CONFIG_HOME` is ignored, as the XDG spec says, here and in the search order. The file is written to a temp file beside it and linked into place, so it is never partial and never replaces a file that appeared meanwhile. There is no `--force`; remove or move the file yourself.
@@ -237,7 +247,8 @@ Values holding spaces, commas or colons are quoted in the query (`area:core` bec
 `bar check` lints the config without rendering and prints the file it read (or says the built-in layout is in use).
 
 - Parse errors with line numbers. An unreadable file is one error without a line.
-- Layout placeholders (`left`, `center`, `right`) and `default` lines: unknown placeholder, unknown option, bad option value. Plugin placeholders are checked against their `--ext-info` schema.
+- Line numbers in `left@N`, `center@N`, `right@N` (1-4; anything else is an error).
+- Layout placeholders (`left`, `center`, `right`, and their `@N` forms) and `default` lines: unknown placeholder, unknown option, bad option value. Plugin placeholders are checked against their `--ext-info` schema.
 - `prs` / `issues`: invalid `limit`, invalid `author` / `assignee` / `label` expression.
 - Warnings: `gh` not on `PATH` while `prs` or `issues` is used; a `default` line for a plugin that is not on `PATH` (a layout using it is an error); an expression that expands to more than 8 queries (only the first 8 run).
 - Options holding `%command%` or `%$VAR%` are skipped; they resolve at render time.
