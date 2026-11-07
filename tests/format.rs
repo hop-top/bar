@@ -101,10 +101,10 @@ fn unset_env_is_empty() {
 
 #[test]
 fn expands_command() {
-    let r = fake(Some("jadb\n"));
+    let r = fake(Some("octocat\n"));
     let e = Expander::with_env(&r, &no_env);
-    assert_eq!(e.expand("%gh api user -q .login%"), "jadb");
-    assert_eq!(e.expand("x%gh api user -q .login%"), "xjadb");
+    assert_eq!(e.expand("%gh api user -q .login%"), "octocat");
+    assert_eq!(e.expand("x%gh api user -q .login%"), "xoctocat");
     assert_eq!(r.calls.get(), 1);
 }
 

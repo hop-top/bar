@@ -6,18 +6,15 @@ use render_fx::*;
 
 use hop_bar::placeholders::account::glob_match;
 const ACCOUNT_CONF: &str = "set right \"#{account}\"\n\
-account \"*innoprofits*\" innoprofits 141\n\
-account \"*@ideacrafters.com\" ideacrafters 75\n";
+account \"*acme*\" acme 141\n\
+account \"*@widgets.example.org\" widgets 75\n";
 
 #[test]
 fn account_first_match_wins() {
     let t = Tmp::new();
-    t.write(
-        ".claude.json",
-        &account_json("jad+innoprofits@ideacrafters.com"),
-    );
+    t.write(".claude.json", &account_json("jad+acme@example.org"));
     let o = run(&t).conf(ACCOUNT_CONF).go();
-    assert_eq!(o.plain.trim(), "innoprofits");
+    assert_eq!(o.plain.trim(), "acme");
     assert!(o.raw.contains("38;5;141m"), "{:?}", o.raw);
 }
 
@@ -33,13 +30,13 @@ fn unknown_account_shows_email() {
 fn account_reads_claude_config_dir() {
     let t = Tmp::new();
     t.write(".claude.json", &account_json("home@example.org"));
-    t.write("cc/.claude.json", &account_json("cfg@ideacrafters.com"));
+    t.write("cc/.claude.json", &account_json("cfg@widgets.example.org"));
     let cc = t.path().join("cc");
     let o = run(&t)
         .conf(ACCOUNT_CONF)
         .env("CLAUDE_CONFIG_DIR", cc.to_str().unwrap())
         .go();
-    assert_eq!(o.plain.trim(), "ideacrafters");
+    assert_eq!(o.plain.trim(), "widgets");
 }
 
 #[test]

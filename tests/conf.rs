@@ -19,8 +19,8 @@ fn parses_spec_sample() {
         [196, 202, 208, 214, 220, 226, 190, 154, 118, 82, 46]
     );
     let globs: Vec<_> = c.accounts.iter().map(|a| a.glob.as_str()).collect();
-    assert_eq!(globs, ["*innoprofits*", "*@ideacrafters.com", "*@jadb.io"]);
-    assert_eq!(c.accounts[0].label, "innoprofits");
+    assert_eq!(globs, ["*acme*", "*@widgets.example.org", "*@example.net"]);
+    assert_eq!(c.accounts[0].label, "acme");
     assert_eq!(c.accounts[0].color, 141);
     let r = &c.rules[0];
     assert_eq!(r.target, "usage[type=5h]");
