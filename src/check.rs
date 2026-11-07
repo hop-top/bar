@@ -103,7 +103,7 @@ const STATUS_ISSUE: &[&str] = &["open", "closed"];
 fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
     use Val::*;
     Some(match name {
-        "account" => &[],
+        "account" | "sessions" | "spend" => &[],
         "model" | "effort" | "ctx" => &[("click", Any)],
         "repo" | "branch" => &[("max", Int), ("link", Any)],
         "usage" => &[

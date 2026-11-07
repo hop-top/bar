@@ -1,5 +1,5 @@
 //! `bar click hook`: Claude Code hook keeping a per-session waiting marker
-//! (`<state>/sessions/<session id>`) for `bar click run`. Fast and silent;
+//! (`<state>/sessions/<session id>`, content `waiting` or `done`) for `bar click run`. Fast and silent;
 //! never fails the session.
 
 use super::url::valid_sid;
@@ -11,12 +11,19 @@ fn marker(state: &Path, sid: &str) -> Option<PathBuf> {
     valid_sid(sid).then(|| state.join("sessions").join(sid))
 }
 
+/// Marker content: `waiting` or `done`; `None` without a marker.
+pub fn mark(state: &Path, sid: &str) -> Option<String> {
+    let m = std::fs::read_to_string(marker(state, sid)?).ok()?;
+    Some(m.trim().to_owned())
+}
+
 pub fn is_waiting(state: &Path, sid: &str) -> bool {
-    marker(state, sid).is_some_and(|m| m.exists())
+    mark(state, sid).as_deref() == Some("waiting")
 }
 
 enum Action {
     Set,
+    Done,
     Clear,
     Keep,
 }
@@ -37,7 +44,8 @@ fn action(v: &Value) -> Action {
         }
         "UserPromptSubmit" | "SessionEnd" => Action::Clear,
         // A subagent finishing says nothing about a prompt on the main session.
-        "Stop" | "PostToolUse" | "PostToolUseFailure" | "PermissionDenied" if main => Action::Clear,
+        "Stop" if main => Action::Done,
+        "PostToolUse" | "PostToolUseFailure" | "PermissionDenied" if main => Action::Clear,
         _ => Action::Keep,
     }
 }
@@ -54,6 +62,9 @@ pub fn run_hook(state: &Path, input: &str) {
     match action(&v) {
         Action::Set => {
             let _ = write_atomic(&m, "waiting");
+        }
+        Action::Done => {
+            let _ = write_atomic(&m, "done");
         }
         Action::Clear => {
             let _ = std::fs::remove_file(&m);

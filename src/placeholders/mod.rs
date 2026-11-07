@@ -5,6 +5,8 @@ pub mod ctx;
 pub mod gh;
 pub mod model;
 pub mod repo;
+pub mod sessions;
+pub mod spend;
 pub mod usage;
 
 use crate::cache::Cache;
@@ -43,6 +45,8 @@ pub fn lookup(name: &str) -> Option<&'static dyn Placeholder> {
         "effort" => &model::Effort,
         "ctx" => &ctx::CtxUsed,
         "usage" => &usage::Usage,
+        "sessions" => &sessions::Sessions,
+        "spend" => &spend::Spend,
         "prs" => &gh::Prs,
         "issues" => &gh::Issues,
         _ => return None,

@@ -106,7 +106,7 @@ Two POSIX shell scripts ship in `plugins/`. They need `sh`, `jq` and the tool th
 | Option | Default | Meaning |
 |---|---|---|
 | `scope` | `track` | `track`: the track of your latest-updated claimed task, else all tasks. `all`: the whole project. |
-| `status` | none | Passed to `tlc task list --status` to filter the counted set; letters, digits, `_`, `,` and `-` only (not first), anything else omits the segment. |
+| `status` | none | Passed to `tlc task list --status` to filter the counted set; letters, digits, `_`, `,` and `-` only (not first), anything else makes the plugin fail (exit 1, no output): a warm cache keeps the last value, only a cold cache renders empty. |
 
 `#{tlc[scope=all]}` counts the project; `#{tlc[status=DONE]}` counts within the tasks `tlc` lists for that status.
 

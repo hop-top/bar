@@ -9,6 +9,12 @@ pub struct Window {
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
+pub struct SpendLimit {
+    pub period: String,
+    pub resets_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Session {
     pub cwd: String,
     pub model: String,
@@ -18,6 +24,7 @@ pub struct Session {
     pub context_used: Option<f64>,
     pub five_hour: Option<Window>,
     pub seven_day: Option<Window>,
+    pub spend_limit: Option<SpendLimit>,
 }
 
 fn str_at(v: &Value, path: &[&str]) -> Option<String> {
@@ -33,6 +40,14 @@ fn window(v: &Value, key: &str) -> Option<Window> {
     Some(Window {
         used_percentage: w.get("used_percentage")?.as_f64()?,
         resets_at: w.get("resets_at")?.as_i64()?,
+    })
+}
+
+fn spend_limit(v: &Value) -> Option<SpendLimit> {
+    let l = v.get("rate_limits")?.get("spend_limit")?;
+    Some(SpendLimit {
+        period: l.get("period")?.as_str()?.to_owned(),
+        resets_at: l.get("resets_at")?.as_i64()?,
     })
 }
 
@@ -57,5 +72,6 @@ pub fn parse(input: &str) -> Session {
             .and_then(Value::as_f64),
         five_hour: window(&v, "five_hour"),
         seven_day: window(&v, "seven_day"),
+        spend_limit: spend_limit(&v),
     }
 }

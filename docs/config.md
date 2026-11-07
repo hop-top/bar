@@ -68,8 +68,9 @@ Quote values with spaces. `#` starts a comment.
 | `usage` | `type` | `5h` | `5h`, `7d`; `h`, `d` shorthand |
 | | `view` | `bar` | `bar`, `pct`, `time` |
 | | `width` | `5` | Bar cells, clamped to 1..40 |
-| | `click` | `toggle` | `none` turns the toggle link off |
-| `model`, `effort`, `ctx` | `click` | on | `none` turns the command link off |
+| | `click` | `toggle` | `none` turns the toggle link off; the link appears only once the handler is installed (`bar click install`) |
+| `sessions`, `spend` | none | | No options |
+| `model`, `effort`, `ctx` | `click` | on | `none` turns the command link off; the link appears only once the handler is installed (`bar click install`) |
 
 ## Values
 

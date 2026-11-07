@@ -53,6 +53,7 @@ fn session(state: &str, now: i64) -> Session {
         context_used: Some(38.0),
         five_hour: Some(win(p.five)),
         seven_day: Some(win(p.seven)),
+        spend_limit: None,
     }
 }
 

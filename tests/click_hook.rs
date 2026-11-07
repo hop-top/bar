@@ -170,3 +170,24 @@ fn click_run_cli_refuses_through_fakes() {
         "{clog}"
     );
 }
+
+#[test]
+fn hook_marks_done_on_main_stop_and_clears_on_prompt() {
+    use hop_bar::click::hook::mark;
+    let t = Tmp::new();
+    let s = t.path();
+    run_hook(s, &ev("Stop", r#","agent_id":"a1""#));
+    assert_eq!(mark(s, SID), None);
+    run_hook(s, &ev("Stop", ""));
+    assert_eq!(mark(s, SID).as_deref(), Some("done"));
+    assert!(!is_waiting(s, SID));
+    run_hook(s, &ev("PermissionRequest", ""));
+    assert_eq!(mark(s, SID).as_deref(), Some("waiting"));
+    run_hook(s, &ev("Stop", ""));
+    assert_eq!(mark(s, SID).as_deref(), Some("done"));
+    run_hook(s, &ev("UserPromptSubmit", ""));
+    assert_eq!(mark(s, SID), None);
+    run_hook(s, &ev("Stop", ""));
+    run_hook(s, &ev("SessionEnd", ""));
+    assert_eq!(mark(s, SID), None);
+}
