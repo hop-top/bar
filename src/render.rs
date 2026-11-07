@@ -1,5 +1,6 @@
 //! Wires config, placeholders and layout into the status line text.
 
+use crate::cache::Cache;
 use crate::conf::{Config, LoadResult};
 use crate::expand::{CommandRunner, Expander};
 use crate::format::{parse, segments, Token};
@@ -96,6 +97,16 @@ pub fn render(
     columns: Option<usize>,
     runner: &dyn CommandRunner,
 ) -> String {
+    render_with(session, config, columns, runner, None)
+}
+
+pub fn render_with(
+    session: &Session,
+    config: &Config,
+    columns: Option<usize>,
+    runner: &dyn CommandRunner,
+    cache: Option<&Cache>,
+) -> String {
     let ex = Expander::new(runner);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -105,6 +116,7 @@ pub fn render(
         config,
         now,
         runner,
+        cache,
     };
     compose(
         &render_group(&config.left, &ctx, &ex),
@@ -121,10 +133,11 @@ pub fn run(
     load: LoadResult,
     columns: Option<usize>,
     runner: &dyn CommandRunner,
+    cache: Option<&Cache>,
 ) -> String {
     match load {
         LoadResult::Invalid(_) => CONFIG_ERROR.to_string(),
-        LoadResult::Missing => render(session, &builtin_config(), columns, runner),
-        LoadResult::Ok(c) => render(session, &c, columns, runner),
+        LoadResult::Missing => render_with(session, &builtin_config(), columns, runner, cache),
+        LoadResult::Ok(c) => render_with(session, &c, columns, runner, cache),
     }
 }

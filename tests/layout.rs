@@ -161,3 +161,10 @@ fn empty_segments_drop_their_separator() {
     let out = compose(&segs, &[], &[], Some(80), 3);
     assert_eq!(out, format!("a {} b", dim("│")));
 }
+
+#[test]
+fn bidi_overrides_stripped() {
+    let hostile = "a\u{202A}b\u{202E}c\u{2066}d\u{2069}e\u{202D}f";
+    assert_eq!(sanitize(hostile), "abcdef");
+    assert_eq!(sanitize("日本 ok"), "日本 ok");
+}

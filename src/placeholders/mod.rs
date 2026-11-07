@@ -2,10 +2,12 @@
 
 pub mod account;
 pub mod ctx;
+pub mod gh;
 pub mod model;
 pub mod repo;
 pub mod usage;
 
+use crate::cache::Cache;
 use crate::conf::Config;
 use crate::expand::CommandRunner;
 use crate::options::Options;
@@ -17,6 +19,8 @@ pub struct Ctx<'a> {
     /// Unix seconds.
     pub now: i64,
     pub runner: &'a dyn CommandRunner,
+    /// Background-refresh cache for `gh` data; `None` renders it empty.
+    pub cache: Option<&'a Cache>,
 }
 
 pub trait Placeholder {
@@ -34,6 +38,8 @@ pub fn lookup(name: &str) -> Option<&'static dyn Placeholder> {
         "effort" => &model::Effort,
         "ctx" => &ctx::CtxUsed,
         "usage" => &usage::Usage,
+        "prs" => &gh::Prs,
+        "issues" => &gh::Issues,
         _ => return None,
     })
 }

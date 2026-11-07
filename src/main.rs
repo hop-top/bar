@@ -99,8 +99,9 @@ fn render() {
     let columns = std::env::var("COLUMNS")
         .ok()
         .and_then(|c| c.trim().parse().ok());
+    let cache = Cache::new(&click::state_dir());
     let runner = CachedRunner::new(Cache::new(&click::state_dir()));
-    let out = hop_bar::render::run(&s, conf::load(), columns, &runner);
+    let out = hop_bar::render::run(&s, conf::load(), columns, &runner, Some(&cache));
     if !out.is_empty() {
         // a closed pipe must not panic; render always exits 0
         let mut so = std::io::stdout().lock();

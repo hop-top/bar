@@ -35,6 +35,8 @@ const DEFAULT_REFRESH_TIMEOUT: Duration = Duration::from_secs(20);
 pub enum Job {
     /// `sh -c cmd`; stdout on success. `timeout` in seconds.
     Command { cmd: String, timeout: u64 },
+    /// `gh <args>` run directly, no shell; stdout on success.
+    Gh { args: Vec<String> },
 }
 
 impl Job {
@@ -43,6 +45,7 @@ impl Job {
             Job::Command { cmd, timeout } => {
                 json!({"kind": "command", "cmd": cmd, "timeout": timeout})
             }
+            Job::Gh { args } => json!({"kind": "gh", "args": args}),
         }
     }
 
@@ -51,6 +54,14 @@ impl Job {
             Some("command") => Ok(Job::Command {
                 cmd: v["cmd"].as_str().ok_or("command job without cmd")?.into(),
                 timeout: v["timeout"].as_u64().unwrap_or(COMMAND_TIMEOUT),
+            }),
+            Some("gh") => Ok(Job::Gh {
+                args: v["args"]
+                    .as_array()
+                    .ok_or("gh job without args")?
+                    .iter()
+                    .map(|a| a.as_str().map(String::from).ok_or("gh arg not a string"))
+                    .collect::<Result<_, _>>()?,
             }),
             other => Err(format!("unknown job kind {other:?}")),
         }
@@ -61,6 +72,11 @@ impl Job {
         match self {
             Job::Command { cmd, timeout } => {
                 run_command(cmd, limit.min(Duration::from_secs(*timeout)))
+            }
+            Job::Gh { args } => {
+                let mut c = Command::new("gh");
+                c.args(args);
+                run_child(c, limit)
             }
         }
     }
@@ -331,9 +347,16 @@ fn kill_group(pid: u32) {
 
 /// `sh -c cmd` stdout when it exits 0 within `limit`.
 fn run_command(cmd: &str, limit: Duration) -> Option<String> {
+    let mut c = Command::new("sh");
+    c.args(["-c", cmd]);
+    run_child(c, limit)
+}
+
+/// Stdout of `cmd` when it exits 0 within `limit`; killed with its group
+/// otherwise.
+fn run_child(mut cmd: Command, limit: Duration) -> Option<String> {
     let deadline = Instant::now() + limit;
-    let mut child = Command::new("sh")
-        .args(["-c", cmd])
+    let mut child = cmd
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
