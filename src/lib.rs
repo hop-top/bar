@@ -8,6 +8,7 @@ pub mod layout;
 pub mod options;
 pub mod pace;
 pub mod placeholders;
+pub mod plugin;
 pub mod render;
 pub mod session;
 pub mod style;

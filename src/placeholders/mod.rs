@@ -12,6 +12,7 @@ use crate::conf::Config;
 use crate::expand::CommandRunner;
 use crate::options::Options;
 use crate::session::Session;
+use std::path::PathBuf;
 
 pub struct Ctx<'a> {
     pub session: &'a Session,
@@ -21,6 +22,10 @@ pub struct Ctx<'a> {
     pub runner: &'a dyn CommandRunner,
     /// Background-refresh cache for `gh` data; `None` renders it empty.
     pub cache: Option<&'a Cache>,
+    /// `COLUMNS`, handed to plugins.
+    pub columns: Option<usize>,
+    /// Where `bar-<name>` plugins are looked up, in order.
+    pub plugin_dirs: &'a [PathBuf],
 }
 
 pub trait Placeholder {

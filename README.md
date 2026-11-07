@@ -10,3 +10,9 @@ Early scaffold: `bar render` exists but prints nothing yet.
 make build   # cargo build --release
 make check   # fmt-check + clippy + test
 ```
+
+## Docs
+
+- [Configuration notes](docs/config.md)
+- [Plugins](docs/plugins.md)
+- [Dependencies](docs/dependencies.md)

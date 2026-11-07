@@ -139,6 +139,8 @@ impl Fx {
             now: 0,
             runner: &ColdRunner,
             cache: Some(&cache),
+            columns: None,
+            plugin_dirs: &[],
         };
         let p: &dyn Placeholder = match kind {
             Kind::Pr => &Prs,

@@ -15,6 +15,7 @@ use std::time::{Duration, Instant, SystemTime};
 use serde_json::{json, Value};
 
 use crate::expand::CommandRunner;
+use crate::plugin;
 
 /// `%command%` results stay fresh for an hour.
 pub const COMMAND_TTL: u64 = 3600;
@@ -37,6 +38,11 @@ pub enum Job {
     Command { cmd: String, timeout: u64 },
     /// `gh <args>` run directly, no shell; stdout on success.
     Gh { args: Vec<String> },
+    /// `<path> --ext-info`, no shell; stdout when it parses as plugin info.
+    PluginInfo { path: String },
+    /// `<path>` with `input` on stdin, no shell; stdout when it parses as
+    /// plugin output.
+    PluginRender { path: String, input: String },
 }
 
 impl Job {
@@ -46,6 +52,10 @@ impl Job {
                 json!({"kind": "command", "cmd": cmd, "timeout": timeout})
             }
             Job::Gh { args } => json!({"kind": "gh", "args": args}),
+            Job::PluginInfo { path } => json!({"kind": "plugin-info", "path": path}),
+            Job::PluginRender { path, input } => {
+                json!({"kind": "plugin-render", "path": path, "input": input})
+            }
         }
     }
 
@@ -63,6 +73,16 @@ impl Job {
                     .map(|a| a.as_str().map(String::from).ok_or("gh arg not a string"))
                     .collect::<Result<_, _>>()?,
             }),
+            Some("plugin-info") => Ok(Job::PluginInfo {
+                path: plugin_path(v)?,
+            }),
+            Some("plugin-render") => Ok(Job::PluginRender {
+                path: plugin_path(v)?,
+                input: v["input"]
+                    .as_str()
+                    .ok_or("plugin job without input")?
+                    .into(),
+            }),
             other => Err(format!("unknown job kind {other:?}")),
         }
     }
@@ -76,10 +96,31 @@ impl Job {
             Job::Gh { args } => {
                 let mut c = Command::new("gh");
                 c.args(args);
-                run_child(c, limit)
+                run_child(c, None, limit)
             }
+            Job::PluginInfo { path } => {
+                let mut c = Command::new(path);
+                c.arg("--ext-info");
+                run_child(c, None, limit.min(plugin::INFO_TIMEOUT))
+                    .filter(|o| plugin::parse_info(o).is_some())
+            }
+            Job::PluginRender { path, input } => run_child(
+                Command::new(path),
+                Some(input.clone().into_bytes()),
+                limit.min(plugin::RENDER_TIMEOUT),
+            )
+            .filter(|o| plugin::parse_output(o).is_some()),
         }
     }
+}
+
+/// Plugins run by absolute path only, never looked up on PATH.
+fn plugin_path(v: &Value) -> Result<String, String> {
+    v["path"]
+        .as_str()
+        .filter(|p| Path::new(p).is_absolute())
+        .map(String::from)
+        .ok_or_else(|| "plugin job without absolute path".to_string())
 }
 
 /// What `bar refresh` receives: where to store, what to run, and the
@@ -350,21 +391,35 @@ fn kill_group(pid: u32) {
 fn run_command(cmd: &str, limit: Duration) -> Option<String> {
     let mut c = Command::new("sh");
     c.args(["-c", cmd]);
-    run_child(c, limit)
+    run_child(c, None, limit)
 }
 
 /// Stdout of `cmd` when it exits 0 within `limit`; killed with its group
-/// otherwise.
-fn run_child(mut cmd: Command, limit: Duration) -> Option<String> {
+/// otherwise. `input`, if any, is written to its stdin, else stdin is closed.
+pub(crate) fn run_child(
+    mut cmd: Command,
+    input: Option<Vec<u8>>,
+    limit: Duration,
+) -> Option<String> {
     let deadline = Instant::now() + limit;
     let mut child = cmd
-        .stdin(Stdio::null())
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .process_group(0)
         .spawn()
         .ok()?;
     let pid = child.id();
+    if let (Some(bytes), Some(mut stdin)) = (input, child.stdin.take()) {
+        // a plugin that never reads must not block us; EPIPE is ignored
+        std::thread::spawn(move || {
+            let _ = stdin.write_all(&bytes);
+        });
+    }
     let mut stdout = child.stdout.take()?;
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {

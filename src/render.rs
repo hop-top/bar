@@ -7,8 +7,10 @@ use crate::format::{parse, segments, Token};
 use crate::layout::compose;
 use crate::options::Options;
 use crate::placeholders::{lookup, Ctx};
+use crate::plugin;
 use crate::session::Session;
 use crate::style::dim;
+use std::path::PathBuf;
 
 /// Cold cache: every `%command%` expands to nothing.
 pub struct ColdRunner;
@@ -31,9 +33,15 @@ pub fn builtin_config() -> Config {
     }
 }
 
+/// Core names first; anything else is a `bar-<name>` plugin.
 fn render_placeholder(name: &str, inline: &Options, ctx: &Ctx, ex: &Expander) -> String {
-    let Some(p) = lookup(name) else {
-        return String::new();
+    let core = lookup(name);
+    let found = match core {
+        Some(_) => None,
+        None => match plugin::find(ctx.plugin_dirs, name) {
+            Some(f) => Some(f),
+            None => return String::new(),
+        },
     };
     let merged = match ctx.config.defaults.get(name) {
         Some(d) => inline.merged_over(d),
@@ -43,7 +51,12 @@ fn render_placeholder(name: &str, inline: &Options, ctx: &Ctx, ex: &Expander) ->
     for (k, v) in merged.iter() {
         opts.set(k, &ex.expand(v));
     }
-    p.render(ctx, &opts).unwrap_or_default()
+    match (core, found) {
+        (Some(p), _) => p.render(ctx, &opts),
+        (None, Some(f)) => plugin::render_found(ctx, &f, &opts),
+        (None, None) => None,
+    }
+    .unwrap_or_default()
 }
 
 /// Text tokens survive only beside non-empty placeholders, so `repo:` loses
@@ -107,6 +120,19 @@ pub fn render_with(
     runner: &dyn CommandRunner,
     cache: Option<&Cache>,
 ) -> String {
+    let dirs = plugin::path_dirs(std::env::var_os("PATH").as_deref());
+    render_in(session, config, columns, runner, cache, &dirs)
+}
+
+/// As `render_with`, looking plugins up in `plugin_dirs` instead of `PATH`.
+pub fn render_in(
+    session: &Session,
+    config: &Config,
+    columns: Option<usize>,
+    runner: &dyn CommandRunner,
+    cache: Option<&Cache>,
+    plugin_dirs: &[PathBuf],
+) -> String {
     let ex = Expander::new(runner);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -117,6 +143,8 @@ pub fn render_with(
         now,
         runner,
         cache,
+        columns,
+        plugin_dirs,
     };
     compose(
         &render_group(&config.left, &ctx, &ex),

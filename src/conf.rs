@@ -133,7 +133,7 @@ fn tokenize(line: &str) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
-fn duration(s: &str) -> Result<u64, String> {
+pub fn duration(s: &str) -> Result<u64, String> {
     let bad = || format!("invalid duration `{s}`");
     let unit = s.chars().last().ok_or_else(bad)?;
     let mult = match unit {

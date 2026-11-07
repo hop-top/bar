@@ -1,9 +1,12 @@
 use std::io::Write;
 
-use clap::{Command, CommandFactory, Parser, Subcommand};
+use clap::{ArgMatches, Command, CommandFactory, Parser, Subcommand};
 use hop_bar::cache::{refresh_timeout, Cache, CachedRunner, Request};
-use hop_bar::{click, conf, session};
-use hop_top_kit::output::{register_output_flags, RegisterOutputFlagsOptions};
+use hop_bar::{click, conf, plugin, session};
+use hop_top_kit::output::{
+    dispatch, register_output_flags, DispatchOptions, RegisterOutputFlagsOptions,
+};
+use serde_json::{json, Value};
 
 #[derive(Parser)]
 #[command(
@@ -30,11 +33,27 @@ enum SubCmd {
         #[command(subcommand)]
         cmd: ClickCmd,
     },
+    /// Discovered `bar-<name>` plugins.
+    Plugin {
+        #[command(subcommand)]
+        cmd: PluginCmd,
+    },
     /// Run one background cache refresh (spawned by render).
     #[command(hide = true)]
     Refresh {
         /// Refresh request as JSON.
         request: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum PluginCmd {
+    /// List plugins on PATH.
+    List,
+    /// Show one plugin's `--ext-info`.
+    Info {
+        /// Placeholder name (file name without `bar-`).
+        name: String,
     },
 }
 
@@ -80,6 +99,7 @@ fn main() {
                 }
             }
         }
+        Some(("plugin", m)) => plugin_cmd(m),
         Some(("refresh", m)) => {
             let raw = m.get_one::<String>("request").map_or("", String::as_str);
             if let Ok(req) = Request::from_json(raw) {
@@ -88,6 +108,43 @@ fn main() {
             }
         }
         _ => {}
+    }
+}
+
+fn plugin_cmd(m: &ArgMatches) {
+    let dirs = plugin::path_dirs(std::env::var_os("PATH").as_deref());
+    let (leaf, data) = match m.subcommand() {
+        Some(("list", l)) => {
+            let rows = plugin::discover(&dirs)
+                .iter()
+                .map(|f| {
+                    let i = plugin::info(f);
+                    json!({
+                        "name": f.name,
+                        "version": i.version,
+                        "description": i.description,
+                        "path": f.path.display().to_string(),
+                    })
+                })
+                .collect();
+            (l, Value::Array(rows))
+        }
+        Some(("info", i)) => {
+            let name = i.get_one::<String>("name").map_or("", String::as_str);
+            let Some(f) = plugin::find(&dirs, name) else {
+                eprintln!("bar plugin info: no plugin `{name}` on PATH");
+                std::process::exit(1);
+            };
+            let mut v = plugin::info(&f).to_json();
+            v["path"] = json!(f.path.display().to_string());
+            (i, v)
+        }
+        _ => return,
+    };
+    let mut out = std::io::stdout();
+    if let Err(e) = dispatch(leaf, &mut out, &data, DispatchOptions::default()) {
+        eprintln!("bar plugin: {e}");
+        std::process::exit(2);
     }
 }
 

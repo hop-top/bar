@@ -57,3 +57,56 @@ pub fn score(pct_left: i64, secs_left: Option<i64>, period: i64, rule: &Rule) ->
     };
     v as i32
 }
+
+fn cents_i64(c: u64) -> i64 {
+    i64::try_from(c).unwrap_or(i64::MAX)
+}
+
+/// Score for a plugin `metric`: `remaining` and `granted` in cents. Final
+/// stretch: `100 - left * 100 / (bad + 1)` with `left` in cents for a `$`
+/// bad, in percent of the grant for a `%` one, so unspent credit turns red
+/// before it expires. Before that, `score` on the percent left of the grant,
+/// `$` thresholds read as shares of it. No grant scores 100.
+pub fn metric_score(
+    remaining: i64,
+    granted: i64,
+    secs_left: Option<i64>,
+    period: i64,
+    rule: &Rule,
+) -> i32 {
+    let share = |cents: i64| {
+        if granted > 0 {
+            cents.max(0).saturating_mul(100) / granted
+        } else {
+            0
+        }
+    };
+    let pct_left = share(remaining);
+    let last = i64::try_from(rule.final_secs).unwrap_or(i64::MAX);
+    if secs_left.is_some_and(|s| s <= last) {
+        let (left, bad) = match rule.final_bad {
+            Amount::Cents(c) => (remaining.max(0), cents_i64(c)),
+            Amount::Percent(p) => (pct_left, i64::from(p)),
+        };
+        return (100 - left.saturating_mul(100) / bad.saturating_add(1)).clamp(-100, 100) as i32;
+    }
+    if granted <= 0 {
+        return 100;
+    }
+    let as_pct = |a: Amount| match a {
+        Amount::Percent(p) => Amount::Percent(p),
+        Amount::Cents(c) => Amount::Percent(u32::try_from(share(cents_i64(c))).unwrap_or(u32::MAX)),
+    };
+    let early = match rule.early {
+        Early::Thresholds { warn, bad } => Early::Thresholds {
+            warn: as_pct(warn),
+            bad: as_pct(bad),
+        },
+        Early::Pace => Early::Pace,
+    };
+    let rule = Rule {
+        early,
+        ..rule.clone()
+    };
+    score(pct_left, secs_left, period, &rule)
+}
