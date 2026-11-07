@@ -1,6 +1,7 @@
 //! Placeholder trait, shared context and the name registry.
 
 pub mod account;
+pub mod agents;
 pub mod cost;
 pub mod ctx;
 pub mod dirs;
@@ -54,6 +55,7 @@ pub fn lookup(name: &str) -> Option<&'static dyn Placeholder> {
         "branch" => &repo::Branch,
         "model" => &model::Model,
         "effort" => &model::Effort,
+        "agents" => &agents::Agents,
         "ctx" => &ctx::CtxUsed,
         "usage" => &usage::Usage,
         "sessions" => &sessions::Sessions,

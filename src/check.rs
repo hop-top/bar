@@ -112,6 +112,7 @@ fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
         | "vim" | "agent" | "thinking" | "fast" => &[],
         "cost" => &[("fmt", OneOf(&["usd"]))],
         "cwd" | "root" => &[("base", OneOf(&["0", "1"]))],
+        "agents" => &[("names", Any), ("max", Int)],
         "model" | "effort" | "ctx" => &[("click", Any)],
         "repo" | "branch" => &[("max", Int), ("link", Any)],
         "usage" => &[
