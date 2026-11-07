@@ -28,11 +28,11 @@ impl Placeholder for Version {
 
 impl Placeholder for Style {
     fn render(&self, ctx: &Ctx, _: &Options) -> Option<String> {
-        let s = &ctx.session.output_style;
+        let s = sanitize(&ctx.session.output_style);
         if s.eq_ignore_ascii_case("default") {
             return None;
         }
-        text(s)
+        text(&s)
     }
 }
 

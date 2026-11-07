@@ -42,7 +42,8 @@ impl Placeholder for Burn {
 }
 
 fn compact(ms: f64) -> String {
-    let secs = (ms / 1000.0) as u64;
+    // Capped so a corrupt value cannot print absurd hours.
+    let secs = (ms.min(999.0 * 3_600_000.0) / 1000.0) as u64;
     match (secs / 3600, secs / 60 % 60) {
         (0, 0) => format!("{secs}s"),
         (0, m) => format!("{m}m"),

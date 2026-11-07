@@ -1,6 +1,6 @@
 use hop_bar::conf::Config;
 use hop_bar::options::Options;
-use hop_bar::placeholders::dirs::abbrev_home;
+use hop_bar::placeholders::dirs::{abbrev_home, shown};
 use hop_bar::placeholders::{lookup, Ctx};
 use hop_bar::render::ColdRunner;
 use hop_bar::session::{self, Session};
@@ -96,6 +96,7 @@ fn duration_compact() {
     assert_eq!(d("3900000").unwrap(), "1h05m");
     assert_eq!(d("3600000").unwrap(), "1h00m");
     assert_eq!(d("90000000").unwrap(), "25h00m");
+    assert_eq!(d("1e300").unwrap(), "999h00m");
     assert_eq!(d("-5"), None);
     assert_eq!(d("1e999"), None);
     assert_eq!(d("\"x\""), None);
@@ -142,6 +143,8 @@ fn simple_fields_hidden_when_absent_default_or_malformed() {
     }
     let s = p(r#"{"output_style":{"name":"default"}}"#);
     assert_eq!(run("style", &s, ""), None);
+    let s = p(r#"{"output_style":{"name":"default\u001b"}}"#);
+    assert_eq!(run("style", &s, ""), None);
     let s = p(
         r#"{"version":5,"output_style":"x","vim":[],"agent":{"name":null},
             "thinking":{"enabled":false},"fast_mode":"yes"}"#,
@@ -170,24 +173,43 @@ fn home_abbreviation() {
 
 #[test]
 fn cwd_full_and_base() {
-    let home = std::env::var("HOME").unwrap_or_default();
+    let show = |path: &str, o: &str, home: &str| {
+        let mut opts = Options::default();
+        if let Some((k, v)) = o.split_once('=') {
+            opts.set(k, v);
+        }
+        shown(path, &opts, home).map(|t| strip_codes(&t))
+    };
+    assert_eq!(show("/srv/app/api", "", "/h").unwrap(), "/srv/app/api");
+    assert_eq!(show("/srv/app/api", "base=1", "/h").unwrap(), "api");
+    assert_eq!(
+        show("/srv/app/api", "base=0", "/h").unwrap(),
+        "/srv/app/api"
+    );
+    assert_eq!(show("/h/code/x", "", "/h").unwrap(), "~/code/x");
+    assert_eq!(show("/h/code/x", "base=1", "/h").unwrap(), "x");
+    assert_eq!(show("/h", "base=1", "/h").unwrap(), "~");
+    assert_eq!(show("/h/code/x", "", "/").unwrap(), "/h/code/x");
     let s = p(r#"{"workspace":{"current_dir":"/srv/app/api"}}"#);
-    assert_eq!(run("cwd", &s, "").unwrap(), "/srv/app/api");
-    assert_eq!(run("cwd", &s, "base=1").unwrap(), "api");
-    assert_eq!(run("cwd", &s, "base=0").unwrap(), "/srv/app/api");
-    if !home.is_empty() && home != "/" {
-        let s = p(&format!(r#"{{"cwd":"{home}/code/x"}}"#));
-        assert_eq!(run("cwd", &s, "").unwrap(), "~/code/x");
-        let s = p(&format!(r#"{{"cwd":"{home}"}}"#));
-        assert_eq!(run("cwd", &s, "base=1").unwrap(), "~");
-    }
+    assert!(run("cwd", &s, "base=1").unwrap().ends_with("api"));
     assert_eq!(run("cwd", &Session::default(), ""), None);
     assert_eq!(run("cwd", &p(r#"{"cwd":5}"#), ""), None);
 }
 
+struct TempDir(std::path::PathBuf);
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        std::fs::remove_dir_all(&self.0).ok();
+    }
+}
+
 #[test]
 fn root_from_gitfs_and_hidden_outside_repo() {
-    let dir = std::env::temp_dir().join(format!("bar-root-{}", std::process::id()));
+    for k in ["GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR"] {
+        std::env::remove_var(k);
+    }
+    let root = TempDir(std::env::temp_dir().join(format!("bar-root-{}", std::process::id())));
+    let dir = &root.0;
     let sub = dir.join("repo/src/deep");
     std::fs::create_dir_all(&sub).unwrap();
     std::fs::create_dir_all(dir.join("repo/.git")).unwrap();
@@ -204,5 +226,4 @@ fn root_from_gitfs_and_hidden_outside_repo() {
     std::fs::create_dir_all(&out).unwrap();
     let s = p(&format!(r#"{{"cwd":{:?}}}"#, out.to_str().unwrap()));
     assert_eq!(run("root", &s, ""), None);
-    std::fs::remove_dir_all(&dir).ok();
 }

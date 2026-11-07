@@ -27,7 +27,8 @@ fn base_on(opts: &Options) -> bool {
     opts.get("base") == Some("1")
 }
 
-fn shown(path: &str, opts: &Options, home: &str) -> Option<String> {
+/// `path` as `cwd` / `root` show it, given the home directory.
+pub fn shown(path: &str, opts: &Options, home: &str) -> Option<String> {
     let full = abbrev_home(path, home);
     let out = if base_on(opts) {
         match full.as_str() {
