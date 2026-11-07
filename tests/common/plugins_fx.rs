@@ -115,9 +115,13 @@ esac
     }
 
     pub fn tlc(&self, cwd: &Path) -> Output {
+        self.tlc_with(cwd, json!({}))
+    }
+
+    pub fn tlc_with(&self, cwd: &Path, options: Value) -> Output {
         self.run(
             "bar-tlc",
-            &json!({"options":{},"session":{"cwd":cwd},"columns":null,"config":{}}),
+            &json!({"options":options,"session":{"cwd":cwd},"columns":null,"config":{}}),
         )
     }
 
@@ -154,10 +158,13 @@ printf '\n%s' "$code"
     }
 
     pub fn credits_with(&self, org: &str, keychain: &str) -> Output {
+        self.credits_opts(json!({}), json!({"org":org,"keychain":keychain}))
+    }
+
+    pub fn credits_opts(&self, options: Value, config: Value) -> Output {
         self.run(
             "bar-claude-credits",
-            &json!({"options":{},"session":{},"columns":null,
-                    "config":{"org":org,"keychain":keychain}}),
+            &json!({"options":options,"session":{},"columns":null,"config":config}),
         )
     }
 }

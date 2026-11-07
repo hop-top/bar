@@ -1,15 +1,23 @@
 #!/bin/sh
 # bar-tlc: closed/total tasks of the track of the latest-updated claimed task,
-# else of all tasks. Needs sh, jq and tlc. Any failed tlc call emits nothing,
-# so a different kind of count never replaces the cached value.
+# else of all tasks (scope=track, the default); scope=all counts the whole
+# project. Option status filters the counted set. Needs sh, jq and tlc. Any
+# failed tlc call emits nothing, so a different kind of count never replaces
+# the cached value.
 if [ "$1" = "--ext-info" ]; then
-  printf '%s\n' '{"name":"tlc","version":"0.1.0","description":"Closed tasks of the current track","capabilities":["discover","placeholder"],"ttl":"60s"}'
+  printf '%s\n' '{"name":"tlc","version":"0.1.0","description":"Closed tasks of the current track","capabilities":["discover","placeholder"],"options":{"scope":{"type":"enum","enum":["track","all"],"default":"track"},"status":{"type":"string"}},"ttl":"60s"}'
   exit 0
 fi
 
 command -v jq >/dev/null 2>&1 && command -v tlc >/dev/null 2>&1 || exit 1
 
-cwd=$(jq -r '.session.cwd // empty' 2>/dev/null)
+input=$(cat)
+cwd=$(printf '%s' "$input" | jq -r '.session.cwd // empty' 2>/dev/null)
+scope=$(printf '%s' "$input" | jq -r '.options.scope // "track"' 2>/dev/null) || exit 1
+status=$(printf '%s' "$input" | jq -r '.options.status // empty' 2>/dev/null) || exit 1
+scope=${scope:-track}
+case $scope in track|all) ;; *) exit 1 ;; esac
+case $status in -*|*[!A-Za-z0-9_,-]*) exit 1 ;; esac
 case $cwd in /*) [ -d "$cwd" ] || cwd=$PWD ;; *) cwd=$PWD ;; esac
 case $cwd in /*) ;; *) exit 1 ;; esac
 
@@ -25,6 +33,8 @@ cd -- "$root" || exit 1
 # No per-call timeout: the host kills the whole process group after 3 s.
 run() { tlc "$@" 2>/dev/null; }
 
+pick=
+if [ "$scope" = track ]; then
 tracks=$(run track list --status active --format json) || exit 1
 claimed=$(run task list --status IN_PROGRESS --mine --format json) || exit 1
 
@@ -37,11 +47,13 @@ pick=$(jq -rn --argjson tr "${tracks:-[]}" --argjson tk "${claimed:-[]}" '
       | select((.id // "") == $t or (.slug // "") == $t) ]
   | first // empty
   | .id // ""' 2>/dev/null) || exit 1
+fi
 
+# $status is empty (no filter) or a validated word list, never an option.
 if [ -n "$pick" ]; then
-  all=$(run task list --track "$pick" --archived --limit 100000 --format json) || exit 1
+  all=$(run task list --track "$pick" --archived --limit 100000 ${status:+--status "$status"} --format json) || exit 1
 else
-  all=$(run task list --archived --limit 100000 --format json) || exit 1
+  all=$(run task list --archived --limit 100000 ${status:+--status "$status"} --format json) || exit 1
 fi
 
 printf '%s' "$all" | jq -ce '

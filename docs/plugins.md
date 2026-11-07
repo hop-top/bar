@@ -103,6 +103,13 @@ Two POSIX shell scripts ship in `plugins/`. They need `sh`, `jq` and the tool th
 
 `#{tlc}` shows `closed∕total` tasks (`DONE` and `SKIPPED` count as closed) of the track of your latest-updated claimed task, else of all tasks. Needs `tlc`. It runs `tlc` from the nearest ancestor of `session.cwd` holding `.tlc/config.yaml` (a stray empty `.tlc/` is skipped; a relative `cwd` falls back to the working directory) and never creates one. If any `tlc` call fails, or there is no project root, it exits non-zero with no output, so the last good value stays. Emits `score` (closed share, 0..100), so none closed is red and all closed is green.
 
+| Option | Default | Meaning |
+|---|---|---|
+| `scope` | `track` | `track`: the track of your latest-updated claimed task, else all tasks. `all`: the whole project. |
+| `status` | none | Passed to `tlc task list --status` to filter the counted set; letters, digits, `_`, `,` and `-` only (not first), anything else omits the segment. |
+
+`#{tlc[scope=all]}` counts the project; `#{tlc[status=DONE]}` counts within the tasks `tlc` lists for that status.
+
 ```
 set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3,author=@me]} │ #{tlc}"
 ```
@@ -120,6 +127,7 @@ set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3,a
 `bar-claude-credits` uses a browser session cookie and an undocumented Console endpoint (`/api/organizations/<org>/prepaid/credits`). No public API exposes the balance. The cookie can stop working at any time; the segment then shows `?` in the `bad` colour.
 
 - Store the Console `sessionKey` cookie in a keychain entry, then name it and the organisation id in config: `plugin claude-credits org=<org-id> keychain=<entry-name>`.
+- Option `account` (string) names the keychain entry too and wins over `keychain=`: `#{claude-credits[account=<entry-name>]}`, for a second Console account next to the configured one. Same character rules as `keychain=`.
 - The cookie is passed to `curl` on stdin only, never in arguments or environment.
 - Network errors and 5xx exit non-zero without output, keeping the cached value. A missing keychain entry or `org` omits the segment.
 - Emits `metric` (and `style: bad` for the `?`); colour it with a rule such as `rule claude-credits early pace final=3d bad=$50`.

@@ -26,6 +26,15 @@ fn credits_ext_info_declares_placeholder() {
         .contains(&json!("placeholder")));
 }
 
+#[test]
+fn credits_ext_info_declares_account() {
+    let o = Command::new(script("bar-claude-credits"))
+        .arg("--ext-info")
+        .output()
+        .unwrap();
+    assert_eq!(out_json(&o)["options"]["account"], json!({"type":"string"}));
+}
+
 fn iso(ts: i64) -> String {
     let (days, rem) = (ts.div_euclid(DAY), ts.rem_euclid(DAY));
     let z = days + 719_468;
@@ -189,4 +198,32 @@ fn credits_inherited_cookie_var_never_reaches_curl_env() {
     let o = fx.credits();
     assert!(o.status.success());
     assert!(!fx.log("curl.env").contains("inherited-secret-zz"));
+}
+
+#[test]
+fn credits_account_overrides_keychain_label() {
+    let fx = Fx::new();
+    let exp = now() + 14 * DAY + 3600;
+    fx.credits_fakes(&credits_body(exp, exp - 30 * DAY), "200");
+    let cfg = json!({"org":"org-1","keychain":"entry-from-config"});
+    let o = fx.credits_opts(json!({"account":"entry-from-option"}), cfg.clone());
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let sec = fx.log("security.log");
+    assert!(sec.contains("entry-from-option"), "{sec}");
+    assert!(!sec.contains("entry-from-config"), "{sec}");
+    // without the option the config line still works
+    let _ = std::fs::remove_file(fx.root.join("fake-data/security.log"));
+    assert!(fx.credits_opts(json!({}), cfg.clone()).status.success());
+    assert!(fx.log("security.log").contains("entry-from-config"));
+    // option alone is enough
+    let only = json!({"org":"org-1"});
+    assert!(fx
+        .credits_opts(json!({"account":"solo"}), only)
+        .status
+        .success());
+    // a bad label is rejected like a bad config one
+    for bad in ["-x", "a b", "x;y"] {
+        let o = fx.credits_opts(json!({"account":bad}), cfg.clone());
+        assert!(!o.status.success() && o.stdout.is_empty(), "{bad}");
+    }
 }
