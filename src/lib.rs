@@ -1,8 +1,10 @@
+pub mod click;
 pub mod conf;
 pub mod expand;
 pub mod format;
 pub mod layout;
 pub mod options;
+pub mod pace;
 pub mod placeholders;
 pub mod render;
 pub mod session;

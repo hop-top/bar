@@ -4,6 +4,7 @@ pub mod account;
 pub mod ctx;
 pub mod model;
 pub mod repo;
+pub mod usage;
 
 use crate::conf::Config;
 use crate::expand::CommandRunner;
@@ -32,6 +33,7 @@ pub fn lookup(name: &str) -> Option<&'static dyn Placeholder> {
         "model" => &model::Model,
         "effort" => &model::Effort,
         "ctx" => &ctx::CtxUsed,
+        "usage" => &usage::Usage,
         _ => return None,
     })
 }
