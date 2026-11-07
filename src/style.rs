@@ -45,7 +45,22 @@ pub fn sanitize(text: &str) -> String {
 
 /// Cells the text occupies once SGR and OSC 8 sequences are removed.
 pub fn visible_width(text: &str) -> usize {
-    strip_codes(text).width()
+    visible_width_with(text, 1)
+}
+
+fn is_private_use(c: char) -> bool {
+    matches!(c, '\u{E000}'..='\u{F8FF}' | '\u{F0000}'..='\u{FFFFD}')
+}
+
+/// As `visible_width`, counting private-use glyphs (Nerd Font icons) as
+/// `icon_width` cells; fonts draw them one or two cells wide.
+pub fn visible_width_with(text: &str, icon_width: usize) -> usize {
+    let plain = strip_codes(text);
+    plain
+        .split(is_private_use)
+        .map(|run| run.width())
+        .sum::<usize>()
+        + plain.chars().filter(|&c| is_private_use(c)).count() * icon_width
 }
 
 /// The text with CSI (SGR) and OSC sequences removed.

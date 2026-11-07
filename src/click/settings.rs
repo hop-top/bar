@@ -6,7 +6,7 @@ use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
 
 /// Events the hook listens to; it filters the rest itself.
-pub const HOOK_EVENTS: [&str; 10] = [
+pub const HOOK_EVENTS: [&str; 12] = [
     "PermissionRequest",
     "Notification",
     "PreToolUse",
@@ -17,6 +17,8 @@ pub const HOOK_EVENTS: [&str; 10] = [
     "Stop",
     "UserPromptSubmit",
     "SessionEnd",
+    "SubagentStart",
+    "SubagentStop",
 ];
 
 /// Shell command Claude Code runs: `'<bar>' click hook`.

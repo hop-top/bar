@@ -76,6 +76,7 @@ pub struct Run<'a> {
     pub home: &'a Tmp,
     pub conf: Option<&'a str>,
     pub env: Vec<(&'a str, String)>,
+    pub unset: Vec<&'a str>,
     pub stdin: String,
 }
 
@@ -84,6 +85,7 @@ pub fn run(home: &Tmp) -> Run<'_> {
         home,
         conf: None,
         env: vec![],
+        unset: vec![],
         stdin: "{}".into(),
     }
 }
@@ -95,6 +97,10 @@ impl<'a> Run<'a> {
     }
     pub fn env(mut self, k: &'a str, v: &str) -> Self {
         self.env.push((k, v.into()));
+        self
+    }
+    pub fn unset(mut self, k: &'a str) -> Self {
+        self.unset.push(k);
         self
     }
     pub fn stdin(mut self, s: &str) -> Self {
@@ -121,6 +127,9 @@ impl<'a> Run<'a> {
             .current_dir(&cwd);
         for (k, v) in &self.env {
             cmd.env(k, v);
+        }
+        for k in &self.unset {
+            cmd.env_remove(k);
         }
         let o = cmd.write_stdin(self.stdin).assert().success();
         let raw = String::from_utf8(o.get_output().stdout.clone()).unwrap();
