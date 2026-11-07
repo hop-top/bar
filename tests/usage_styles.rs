@@ -235,3 +235,30 @@ fn link_wraps_only_bar_or_pct() {
     let only_time = go(13.0, &[("show", "time")], t.path());
     assert!(!only_time.contains("\x1b]8;"));
 }
+
+#[test]
+fn unknown_only_alt_falls_back_to_swap() {
+    let t = Tmp::new();
+    std::fs::write(t.path().join("pct-5h"), "").unwrap();
+    let out = go(13.0, &[("show", "time,bar"), ("alt", "zzz")], t.path());
+    assert_eq!(strip_codes(&out), "2h13m 87%");
+}
+
+#[test]
+fn bar_toggle_cli_flips_to_alt_and_back() {
+    let t = Tmp::new();
+    let o = [("show", "time,bar"), ("alt", "pct,time")];
+    let flip = || {
+        assert_cmd::Command::cargo_bin("bar")
+            .unwrap()
+            .args(["toggle", "5h"])
+            .env("BAR_STATE_DIR", t.path())
+            .assert()
+            .success();
+    };
+    assert_eq!(strip_codes(&go(13.0, &o, t.path())), "2h13m ████░");
+    flip();
+    assert_eq!(strip_codes(&go(13.0, &o, t.path())), "87% 2h13m");
+    flip();
+    assert_eq!(strip_codes(&go(13.0, &o, t.path())), "2h13m ████░");
+}

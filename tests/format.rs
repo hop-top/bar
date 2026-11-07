@@ -172,3 +172,23 @@ fn bare_part_continues_previous_list_value() {
     assert_eq!(o.get("width"), Some("3"));
     assert_eq!(o.get("pct"), None);
 }
+
+#[test]
+fn bare_flag_after_keyed_option_stays_a_flag() {
+    let t = parse("#{x[limit=3,verbose]}").unwrap();
+    let (_, o) = ph(&t[0]);
+    assert_eq!(o.get("limit"), Some("3"));
+    assert_eq!(o.get("verbose"), Some(""));
+}
+
+#[test]
+fn list_continuation_follows_the_last_key_set() {
+    let t = parse("#{usage[show=bar,a=1,show=pct,time]}").unwrap();
+    let (_, o) = ph(&t[0]);
+    assert_eq!(o.get("show"), Some("pct,time"));
+    assert_eq!(o.get("a"), Some("1"));
+    let t = parse("#{usage[alt=pct,time,show=bar,pct]}").unwrap();
+    let (_, o) = ph(&t[0]);
+    assert_eq!(o.get("alt"), Some("pct,time"));
+    assert_eq!(o.get("show"), Some("bar,pct"));
+}

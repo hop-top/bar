@@ -23,11 +23,6 @@ impl Options {
         self.0.iter()
     }
 
-    /// Most recently inserted pair.
-    pub fn last(&self) -> Option<(&str, &str)> {
-        self.0.last().map(|(k, v)| (k.as_str(), v.as_str()))
-    }
-
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
