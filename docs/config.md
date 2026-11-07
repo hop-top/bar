@@ -129,11 +129,17 @@ Quote values with spaces. `#` starts a comment.
 | `version`, `vim`, `agent` | none | | Claude Code version, vim mode, agent name; hidden when absent |
 | `style` | none | | Output style; hidden when `default` |
 | `thinking`, `fast` | none | | `think` / `fast` while enabled; hidden otherwise |
+| `sid` | `len` | `8` | First `len` chars of the session id; hidden when absent or `len=0` |
+| `compactions` | none | | `compact 2`: context compactions in this session's transcript; hidden at 0 |
+| `skills` | none | | `skills 3`: Skill tool calls on the main conversation in the transcript; hidden at 0 |
+| `tmux` | `max` | | `session:window` of the tmux pane bar runs in; hidden outside tmux |
 | `cwd` | `base` | `0` | Session directory with home as `~`; `1` shows the last component only |
 | `root` | `base` | `0` | Git top-level directory of the session directory, read without running `git`; hidden outside a repository |
 | `model`, `effort`, `ctx` | `click` | on | `none` turns the command link off; the link appears only once the handler is installed (`bar click install`) |
 
 `cost`, `burn`, `duration`, `lines`, `version`, `style`, `vim`, `agent`, `thinking` and `fast` read the statusline JSON fields `cost.total_cost_usd`, `cost.total_duration_ms`, `cost.total_lines_added`, `cost.total_lines_removed`, `version`, `output_style.name`, `vim.mode`, `agent.name`, `thinking.enabled` and `fast_mode`. Missing, mistyped, negative or non-finite values hide the placeholder. `cost` is the session's own cost; `spend` is the account spend-limit window. None of these are in the default layout.
+
+`sid` reads `session_id`; a non-numeric `len` renders as 8 and `bar check` rejects it. `compactions` counts `system` transcript entries with subtype `compact_boundary`; `skills` counts `Skill` tool calls in non-sidechain assistant entries (skills a user starts with a slash command are not counted). Both share the transcript scan of `tokens`, so they are empty without a readable `transcript_path`. `tmux` reads `$TMUX` and `$TMUX_PANE`; a background `tmux display-message` resolves the names (cached 30 s, 60 s backoff after a failure), so the first render in a pane is empty. The statusline JSON carries no voice-mode, sandbox or skill field, so there are no placeholders for them.
 
 ## Icons
 
@@ -173,6 +179,10 @@ Quote values with spaces. `#` starts a comment.
 | `fast` | `nf-fa-rocket` U+F135 | 🚀 |
 | `cwd` | `nf-fa-folder_open` U+F07C | 📂 |
 | `root` | `nf-fa-home` U+F015 | 🏠 |
+| `sid` | `nf-fa-hashtag` U+F292 | 🆔 |
+| `compactions` | `nf-fa-compress` U+F066 | 🧹 |
+| `skills` | `nf-fa-magic` U+F0D0 | ✨ |
+| `tmux` | `nf-fa-columns` U+F0DB | 🪟 |
 
 Plugins: see [plugins](plugins.md).
 
@@ -251,7 +261,7 @@ Exit 0 when there are no errors (warnings allowed), 2 on a config error. `--form
 
 ## bar preview
 
-`bar preview [--state early|burning|final] [--preset <name>]` renders your layout (or a [preset](#presets)) with built-in sample data for every core placeholder: a sample session (model, effort, context, usage windows, spend limit, cost, duration, lines, version, style, vim mode, agent, thinking, fast mode) and stand-ins for the rest (repo, branch, git state, worktree, PRs, issues, account label, subagents, open sessions, spend history, transcript tokens and cache, directories). In the `final` state the sample tree is clean, so `dirty` is empty. It reads no session, account, git repository, `gh` or plugin, and writes no state. Plugin placeholders render empty.
+`bar preview [--state early|burning|final] [--preset <name>]` renders your layout (or a [preset](#presets)) with built-in sample data for every core placeholder: a sample session (model, effort, context, usage windows, spend limit, cost, duration, lines, version, style, vim mode, agent, thinking, fast mode, session id, compaction and skill counts) and stand-ins for the rest (repo, branch, git state, worktree, PRs, issues, account label, subagents, open sessions, spend history, transcript tokens and cache, directories). In the `final` state the sample tree is clean, so `dirty` is empty. It reads no session, account, git repository, `gh` or plugin, and writes no state. Plugin placeholders render empty.
 
 - `early`: plenty of budget; bars green.
 - `burning`: spending fast; bars orange to yellow.

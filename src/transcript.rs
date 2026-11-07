@@ -30,6 +30,10 @@ pub struct Stats {
     pub cache_creation: u64,
     pub cache_read: u64,
     pub output: u64,
+    /// `compact_boundary` system entries.
+    pub compactions: u64,
+    /// `Skill` tool calls on the main conversation.
+    pub skills: u64,
     /// Unix seconds of the last assistant message.
     pub last_ts: Option<i64>,
     /// Transcript mtime, unix seconds.
@@ -56,9 +60,10 @@ impl State {
     fn to_json(&self) -> String {
         let (s, m) = (&self.stats, &self.mark);
         json!({
-            "v": 1, "ino": m.ino, "size": m.size, "mtime_ns": m.mtime_ns,
+            "v": 2, "ino": m.ino, "size": m.size, "mtime_ns": m.mtime_ns,
             "offset": m.offset, "skip": m.skip, "in": s.input,
             "cc": s.cache_creation, "cr": s.cache_read, "out": s.output,
+            "comp": s.compactions, "skl": s.skills,
             "last_ts": s.last_ts, "last_id": self.last_id,
         })
         .to_string()
@@ -66,7 +71,7 @@ impl State {
 
     fn from_json(s: &str) -> Option<State> {
         let v: Value = serde_json::from_str(s).ok()?;
-        (v["v"] == 1).then_some(())?;
+        (v["v"] == 2).then_some(())?;
         let n = |k: &str| v[k].as_u64().unwrap_or(0);
         Some(State {
             mark: Mark {
@@ -81,6 +86,8 @@ impl State {
                 cache_creation: n("cc"),
                 cache_read: n("cr"),
                 output: n("out"),
+                compactions: n("comp"),
+                skills: n("skl"),
                 last_ts: v["last_ts"].as_i64(),
                 mtime: 0,
                 partial: false,
@@ -120,15 +127,48 @@ pub fn parse_ts(s: &str) -> Option<i64> {
     Some(days * 86_400 + h * 3600 + mi * 60 + sec)
 }
 
+/// A `Skill` tool call in a main-conversation assistant entry.
+fn skill_calls(v: &Value) -> u64 {
+    if v["type"] != "assistant" || v["isSidechain"] == true {
+        return 0;
+    }
+    let blocks = v["message"]["content"].as_array();
+    blocks.map_or(0, |b| {
+        b.iter()
+            .filter(|c| c["type"] == "tool_use" && c["name"] == "Skill")
+            .count() as u64
+    })
+}
+
+fn contains(line: &[u8], needle: &[u8]) -> bool {
+    line.windows(needle.len()).any(|w| w == needle)
+}
+
 /// Folds one transcript line into the totals; anything unexpected is
-/// skipped.
+/// skipped. Cheap byte checks keep most lines from being parsed.
 fn apply(st: &mut State, line: &[u8]) {
-    if !has_usage_key(line) {
+    let usage = has_usage_key(line);
+    let boundary = contains(line, b"compact_boundary");
+    let skill = contains(line, b"Skill");
+    if !(usage || boundary || skill) {
         return;
     }
     let Ok(v) = serde_json::from_slice::<Value>(line) else {
         return;
     };
+    if boundary
+        && v["type"] == "system"
+        && v["subtype"] == "compact_boundary"
+        && v["isSidechain"] != true
+    {
+        st.stats.compactions = st.stats.compactions.saturating_add(1);
+    }
+    if skill {
+        st.stats.skills = st.stats.skills.saturating_add(skill_calls(&v));
+    }
+    if !usage {
+        return;
+    }
     let Some(u) = v.get("message").and_then(|m| m.get("usage")) else {
         return;
     };

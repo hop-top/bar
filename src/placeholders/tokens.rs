@@ -134,6 +134,8 @@ pub fn sample_stats(now: i64) -> Stats {
         cache_creation: 2_500,
         cache_read: 1_200_000,
         output: 4_100,
+        compactions: 2,
+        skills: 3,
         last_ts: Some(now - 48),
         mtime: now,
         partial: false,

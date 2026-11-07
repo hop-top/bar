@@ -138,7 +138,9 @@ fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
         ],
         "dirty" => &[("show", List(gitst::SHOW)), ("ttl", Pos)],
         "ahead" => &[("ttl", Pos)],
-        "worktree" => &[],
+        "worktree" | "compactions" | "skills" => &[],
+        "sid" => &[("len", Int)],
+        "tmux" => &[("max", Int)],
         "prs" => &[
             ("limit", Int),
             ("author", Any),

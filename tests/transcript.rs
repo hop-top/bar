@@ -253,6 +253,8 @@ fn stats() -> Stats {
         cache_creation: 2_300,
         cache_read: 1_200_000,
         output: 4_100,
+        compactions: 0,
+        skills: 0,
         last_ts: Some(10_000),
         mtime: 9_000,
         partial: false,
