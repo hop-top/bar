@@ -97,17 +97,21 @@ Save as `bar-hello`, `chmod +x`, put it on `PATH`, then `set left "#{hello[who=b
 
 ## Reference plugins
 
-Two POSIX shell scripts ship in `plugins/`. They need `sh`, `jq` and the tool they wrap; put them on `PATH` (copy or symlink) to enable `#{tlc}` and `#{claude-credits}`. Neither sets `style`: colour comes from core.
+Two POSIX shell scripts ship in `plugins/`. They need `sh`, `jq` and the tool they wrap; put them on `PATH` (copy or symlink) to enable `#{tlc}` and `#{claude-credits}`. Colour comes from core: `bar-tlc` emits `score`, `bar-claude-credits` emits `metric`. The only `style` either sets is `bad` on the credits `?`.
 
 ### `bar-tlc`
 
-`#{tlc}` shows `closed∕total` tasks (`DONE` and `SKIPPED` count as closed) of the track of your latest-updated claimed task, else of all tasks. Needs `tlc`. It runs `tlc` from the nearest ancestor of `session.cwd` holding `.tlc/` and never creates one. If any `tlc` call fails, or there is no `.tlc/`, it exits non-zero with no output, so the last good value stays. Emits `score` (closed share, 0..100), so none closed is red and all closed is green.
+`#{tlc}` shows `closed∕total` tasks (`DONE` and `SKIPPED` count as closed) of the track of your latest-updated claimed task, else of all tasks. Needs `tlc`. It runs `tlc` from the nearest ancestor of `session.cwd` holding `.tlc/config.yaml` (a stray empty `.tlc/` is skipped; a relative `cwd` falls back to the working directory) and never creates one. If any `tlc` call fails, or there is no project root, it exits non-zero with no output, so the last good value stays. Emits `score` (closed share, 0..100), so none closed is red and all closed is green.
 
 ```
 set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3,author=@me]} │ #{tlc}"
 ```
 
-That is the built-in `left` with `#{issues[...]}` replaced by `#{tlc}`.
+That is the built-in `left` with `#{issues[...]}` replaced by `#{tlc}`. To keep issues and add tasks:
+
+```
+set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3,author=@me]} │ #{issues[limit=3,assignee=@me]} │ #{tlc}"
+```
 
 ### `bar-claude-credits`
 
@@ -118,7 +122,7 @@ That is the built-in `left` with `#{issues[...]}` replaced by `#{tlc}`.
 - Store the Console `sessionKey` cookie in a keychain entry, then name it and the organisation id in config: `plugin claude-credits org=<org-id> keychain=<entry-name>`.
 - The cookie is passed to `curl` on stdin only, never in arguments or environment.
 - Network errors and 5xx exit non-zero without output, keeping the cached value. A missing keychain entry or `org` omits the segment.
-- Emits `metric`; colour it with a rule such as `rule claude-credits early pace final=3d bad=$50`.
+- Emits `metric` (and `style: bad` for the `?`); colour it with a rule such as `rule claude-credits early pace final=3d bad=$50`.
 
 ```
 plugin claude-credits org=00000000-0000-0000-0000-000000000000 keychain=claude-console-session-work

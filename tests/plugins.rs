@@ -16,6 +16,13 @@ struct Fx {
     fake: PathBuf,
     env: Vec<(&'static str, std::ffi::OsString)>,
     cwd: PathBuf,
+    extra: Vec<(&'static str, String)>,
+}
+
+impl Drop for Fx {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
 }
 
 fn script(name: &str) -> PathBuf {
@@ -44,6 +51,7 @@ impl Fx {
             fake,
             env,
             cwd,
+            extra: vec![],
         }
     }
 
@@ -65,6 +73,7 @@ impl Fx {
             .envs(self.env.iter().map(|(k, v)| (*k, v.clone())))
             .env("HOME", &self.root)
             .env("FAKE_DIR", &self.fake)
+            .envs(self.extra.iter().map(|(k, v)| (*k, v.as_str())))
             .current_dir(&self.cwd)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -103,6 +112,7 @@ esac
         let proj = self.root.join("proj");
         let deep = proj.join("sub/deep");
         std::fs::create_dir_all(proj.join(".tlc")).unwrap();
+        std::fs::write(proj.join(".tlc/config.yaml"), "").unwrap();
         std::fs::create_dir_all(&deep).unwrap();
         (proj, deep)
     }
@@ -143,10 +153,14 @@ printf '\n%s' "$code"
     }
 
     fn credits(&self) -> Output {
+        self.credits_with("org-1", "claude-console-session-x")
+    }
+
+    fn credits_with(&self, org: &str, keychain: &str) -> Output {
         self.run(
             "bar-claude-credits",
             &json!({"options":{},"session":{},"columns":null,
-                    "config":{"org":"org-1","keychain":"claude-console-session-x"}}),
+                    "config":{"org":org,"keychain":keychain}}),
         )
     }
 }
@@ -277,7 +291,54 @@ fn bar_tlc_no_tlc_dir_omitted() {
     assert!(!bare.join(".tlc").exists());
 }
 
+#[test]
+fn bar_tlc_skips_stray_empty_tlc_dir() {
+    let fx = Fx::new();
+    fx.tlc_fake();
+    let (proj, deep) = fx.project();
+    std::fs::create_dir_all(proj.join("sub/.tlc")).unwrap();
+    fx.put("tasks.json", &tasks(7, 2, 3, 1));
+    let v = out_json(&fx.tlc(&deep));
+    assert_eq!(v["text"], "9\u{2215}13");
+    let root = std::fs::canonicalize(&proj).unwrap();
+    for line in fx.log("tlc.log").lines() {
+        let dir = std::fs::canonicalize(line.split('|').next().unwrap()).unwrap();
+        assert_eq!(dir, root, "{line}");
+    }
+}
+
+#[test]
+fn bar_tlc_relative_or_dash_cwd_terminates() {
+    let fx = Fx::new();
+    fx.tlc_fake();
+    fx.project();
+    fx.put("tasks.json", &tasks(1, 0, 1, 0));
+    for cwd in ["relative/dir", "-x", "."] {
+        let o = fx.run(
+            "bar-tlc",
+            &json!({"options":{},"session":{"cwd":cwd},"columns":null,"config":{}}),
+        );
+        assert!(!o.status.success(), "{cwd}");
+        assert!(o.stdout.is_empty(), "{cwd}");
+    }
+}
+
 // ---- bar-claude-credits ----
+
+#[test]
+fn credits_ext_info_declares_placeholder() {
+    let o = Command::new(script("bar-claude-credits"))
+        .arg("--ext-info")
+        .output()
+        .unwrap();
+    assert!(o.status.success());
+    let v = out_json(&o);
+    assert_eq!(v["name"], "claude-credits");
+    assert!(v["capabilities"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("placeholder")));
+}
 
 fn iso(ts: i64) -> String {
     let (days, rem) = (ts.div_euclid(DAY), ts.rem_euclid(DAY));
@@ -390,4 +451,56 @@ fn cookie_never_in_argv() {
         "cookie must arrive on stdin"
     );
     assert!(!String::from_utf8_lossy(&o.stdout).contains(SENTINEL));
+}
+
+#[test]
+fn credits_403_shows_question_mark() {
+    let fx = Fx::new();
+    fx.credits_fakes("{}", "403");
+    let v = out_json(&fx.credits());
+    assert_eq!(v["text"], "?");
+    assert_eq!(v["style"], "bad");
+}
+
+#[test]
+fn credits_invalid_org_or_keychain_label_omitted() {
+    let fx = Fx::new();
+    fx.credits_fakes("{}", "200");
+    for (org, kc) in [
+        ("../x", "k"),
+        ("a b", "k"),
+        ("", "k"),
+        ("org-1", ""),
+        ("org-1", "a;b"),
+        ("org-1", "-w"),
+    ] {
+        let o = fx.credits_with(org, kc);
+        assert!(!o.status.success(), "{org}/{kc}");
+        assert!(o.stdout.is_empty(), "{org}/{kc}");
+    }
+    assert!(fx.log("security.log").is_empty());
+    assert!(fx.log("curl.log").is_empty());
+}
+
+#[test]
+fn credits_invalid_cookie_charset_omitted() {
+    let fx = Fx::new();
+    fx.credits_fakes("{}", "200");
+    fx.put("cookie", "abc\"; evil=1\n");
+    let o = fx.credits();
+    assert!(!o.status.success());
+    assert!(o.stdout.is_empty());
+    assert!(fx.log("curl.log").is_empty());
+}
+
+#[test]
+fn credits_inherited_cookie_var_never_reaches_curl_env() {
+    let mut fx = Fx::new();
+    let exp = now() + 14 * DAY + 3600;
+    fx.credits_fakes(&credits_body(exp, exp - 30 * DAY), "200");
+    fx.extra.push(("cookie", "inherited-secret-zz".into()));
+    fx.put("cookie", "inherited-secret-zz\n");
+    let o = fx.credits();
+    assert!(o.status.success());
+    assert!(!fx.log("curl.env").contains("inherited-secret-zz"));
 }

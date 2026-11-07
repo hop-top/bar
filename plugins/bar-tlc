@@ -10,22 +10,20 @@ fi
 command -v jq >/dev/null 2>&1 && command -v tlc >/dev/null 2>&1 || exit 1
 
 cwd=$(jq -r '.session.cwd // empty' 2>/dev/null)
-[ -n "$cwd" ] && [ -d "$cwd" ] || cwd=$PWD
+case $cwd in /*) [ -d "$cwd" ] || cwd=$PWD ;; *) cwd=$PWD ;; esac
+case $cwd in /*) ;; *) exit 1 ;; esac
 
-# tlc creates an empty .tlc wherever it runs, so run it at the project root.
+# tlc creates an empty .tlc wherever it runs, so run it at the project root,
+# found by its config file; a stray empty .tlc does not count.
 root=$cwd
-while [ ! -d "$root/.tlc" ]; do
-  [ "$root" != / ] && [ -n "$root" ] || exit 1
-  root=$(dirname "$root")
+while [ ! -f "$root/.tlc/config.yaml" ]; do
+  [ "$root" != / ] || exit 1
+  root=$(dirname -- "$root")
 done
-cd "$root" || exit 1
+cd -- "$root" || exit 1
 
-run() {
-  if command -v timeout >/dev/null 2>&1; then timeout 10 tlc "$@" 2>/dev/null
-  elif command -v gtimeout >/dev/null 2>&1; then gtimeout 10 tlc "$@" 2>/dev/null
-  else tlc "$@" 2>/dev/null
-  fi
-}
+# No per-call timeout: the host kills the whole process group after 3 s.
+run() { tlc "$@" 2>/dev/null; }
 
 tracks=$(run track list --status active --format json) || exit 1
 claimed=$(run task list --status IN_PROGRESS --mine --format json) || exit 1

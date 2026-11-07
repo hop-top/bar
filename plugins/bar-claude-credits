@@ -9,13 +9,15 @@ if [ "$1" = "--ext-info" ]; then
   exit 0
 fi
 
+# An exported variable of this name must not reach curl's environment.
+unset cookie
 for t in jq curl security; do command -v "$t" >/dev/null 2>&1 || exit 1; done
 
 conf=$(jq -r '[.config.org // "", .config.keychain // ""] | join("\u001f")' 2>/dev/null) || exit 1
 org=${conf%%"$(printf '\037')"*}
 entry=${conf#*"$(printf '\037')"}
 case "$org" in ''|*[!A-Za-z0-9-]*) exit 1 ;; esac
-[ -n "$entry" ] || exit 1
+case "$entry" in ''|-*|*[!A-Za-z0-9._-]*) exit 1 ;; esac
 
 cookie=$(security find-generic-password -a "${USER:-$(id -un)}" -s "$entry" -w 2>/dev/null)
 case "$cookie" in ''|*[!A-Za-z0-9._~%+=/-]*) exit 1 ;; esac
