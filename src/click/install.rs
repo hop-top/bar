@@ -109,6 +109,9 @@ pub fn install_plan(cfg: &InstallCfg) -> InstallPlan {
     }
 }
 
+/// Error from `run_install` off macOS; the CLI exits 2 on it.
+pub const UNSUPPORTED: &str = "clickable commands need macOS (not supported on this platform)";
+
 /// `macos` and `dry_run` are parameters so tests cover every path without
 /// touching the machine; `run` executes one external command.
 pub fn run_install(
@@ -120,8 +123,7 @@ pub fn run_install(
 ) -> Result<(), String> {
     let io = |e: std::io::Error| e.to_string();
     if !macos {
-        writeln!(out, "bar click install: macOS only, nothing to do").map_err(io)?;
-        return Ok(());
+        return Err(UNSUPPORTED.to_string());
     }
     let settings = plan_settings(&cfg.settings, &cfg.bar)?;
     let plan = install_plan(cfg);

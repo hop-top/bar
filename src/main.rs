@@ -157,7 +157,11 @@ fn click_cmd(m: &ArgMatches) {
             );
             if let Err(e) = r {
                 eprintln!("bar click install: {e}");
-                std::process::exit(1);
+                std::process::exit(if e == click::UNSUPPORTED {
+                    EXIT_USAGE
+                } else {
+                    1
+                });
             }
         }
         Some(("run", r)) => {

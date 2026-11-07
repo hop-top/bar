@@ -11,6 +11,7 @@ mod url;
 pub use check::{box_is_empty, check, run, Env, Pane, Refusal};
 pub use install::{
     applescript, exec, info_plist_commands, install_plan, run_install, InstallCfg, InstallPlan,
+    UNSUPPORTED,
 };
 pub use settings::{hook_command, plan_settings, SettingsPlan, HOOK_EVENTS};
 pub use url::{link, parse, with_cmd_link, ClickUrl, Term, COMMANDS};

@@ -38,14 +38,8 @@ fn tty_of(pid: u32) -> Option<String> {
 }
 
 /// Controlling terminal of the parent process (Claude Code).
-#[cfg(unix)]
 pub(crate) fn parent_tty() -> Option<String> {
     tty_of(std::os::unix::process::parent_id())
-}
-
-#[cfg(not(unix))]
-pub(crate) fn parent_tty() -> Option<String> {
-    None
 }
 
 pub struct System {
