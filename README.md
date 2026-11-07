@@ -16,9 +16,9 @@ Opus 4.7[high] │ ctx 38% │ bar:main │ #131 #129 #128 │ !57 !42          
 
 ## Why bar
 
-Pick bar to compose the line yourself and extend it: a tmux-style config with options on every placeholder, PR and issue segments driven by `gh` search with label/author logic, and a plugin protocol: any `bar-<name>` executable becomes a placeholder, cached so render never waits. Pick [ccstatusline](https://github.com/sirmalloc/ccstatusline) for the widest widget set and a TUI editor, [claude-powerline](https://github.com/Owloops/claude-powerline) for cost tracking and Powerline themes, [CCometixLine](https://github.com/Haleclipse/CCometixLine) for a themed Rust binary on Windows, Linux and macOS. bar has no TUI or themes yet, and clickable commands need macOS and tmux.
+Pick bar to compose the line yourself and extend it: a tmux-style config with options on every placeholder, PR and issue segments driven by `gh` search with label/author logic, and a plugin protocol: any `bar-<name>` executable becomes a placeholder, cached so render never waits. Pick [ccstatusline](https://github.com/sirmalloc/ccstatusline) for the widest widget set and a TUI editor, [claude-powerline](https://github.com/Owloops/claude-powerline) for cost tracking and Powerline themes, [CCometixLine](https://github.com/Haleclipse/CCometixLine) for a themed Rust binary on Windows, Linux and macOS. bar has no TUI editor, and clickable commands need macOS and tmux.
 
-What it does not do: no TUI editor, no themes, no Windows (it uses Unix APIs).
+What it does not do: no TUI editor, no Windows (it uses Unix APIs).
 
 ## Status
 
@@ -70,6 +70,21 @@ Without a config file the built-in layout above is used. Write `bar.conf` to cha
 bar check     # lint the config; prints the file it read; exit 2 on error
 bar preview   # layout with sample data; --state early|burning|final
 ```
+
+### Skins and presets
+
+`set skin powerline` or `set skin capsule` puts each segment on a background colour; `set palette nord|gruvbox|dracula|solarized|mono` swaps the colours. Both glyph sets need a Nerd Font; `set skin-glyphs ascii` works with any font. Five presets ship in the binary:
+
+```sh
+bar preview --preset powerline   # try one with sample data
+bar init --preset capsule        # write it as your config; never overwrites
+```
+
+```text
+ Opus 4.7[high] > ctx 38% > bar:main >                4h40m █████ > 6d ████░ >               < work
+```
+
+The `powerline` preset without icons and with `set skin-glyphs ascii`, at `COLUMNS=104`, colour stripped. See [Skins](docs/config.md#skins), [Palettes](docs/config.md#palettes) and [Presets](docs/config.md#presets).
 
 Plugins: `bar plugin list` shows the `bar-<name>` executables found on `PATH`; see [docs/plugins.md](docs/plugins.md). Two reference plugins live in `plugins/`.
 

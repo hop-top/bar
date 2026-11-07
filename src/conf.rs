@@ -1,6 +1,7 @@
 //! Config parser: line-oriented, tmux-style directives.
 
 use crate::options::Options;
+use crate::palette;
 use crate::prices::Price;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -23,6 +24,21 @@ pub enum Icons {
     None,
     Nerdfont,
     Emoji,
+}
+
+/// How segments are drawn: joined by ` │ `, or on coloured backgrounds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Skin {
+    Plain,
+    Powerline,
+    Capsule,
+}
+
+/// Separator glyphs of a skin: Nerd Font / Powerline, or plain ASCII.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SkinGlyphs {
+    Nerd,
+    Ascii,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,6 +90,13 @@ pub struct Config {
     pub icon_width: usize,
     pub colors: Colors,
     pub ramp: [u8; 11],
+    /// Muted text colour, from the palette.
+    pub muted: u8,
+    pub skin: Skin,
+    pub skin_glyphs: SkinGlyphs,
+    pub palette: &'static str,
+    /// Segment backgrounds skins cycle through, from the palette.
+    pub bgs: &'static [u8],
     pub defaults: BTreeMap<String, Options>,
     pub accounts: Vec<AccountRule>,
     pub rules: Vec<Rule>,
@@ -103,6 +126,11 @@ impl Default for Config {
                 bad: 203,
             },
             ramp: [196, 202, 208, 214, 220, 226, 190, 154, 118, 82, 46],
+            muted: palette::default().muted,
+            skin: Skin::Plain,
+            skin_glyphs: SkinGlyphs::Nerd,
+            palette: palette::default().name,
+            bgs: palette::default().bgs,
             defaults: BTreeMap::new(),
             accounts: Vec::new(),
             rules: Vec::new(),
@@ -277,6 +305,26 @@ fn apply_set(c: &mut Config, key: &str, val: &str) -> Result<(), String> {
         "color.good" => c.colors.good = code(val)?,
         "color.warn" => c.colors.warn = code(val)?,
         "color.bad" => c.colors.bad = code(val)?,
+        "skin" => {
+            c.skin = match val {
+                "plain" => Skin::Plain,
+                "powerline" => Skin::Powerline,
+                "capsule" => Skin::Capsule,
+                _ => return Err(format!("invalid skin `{val}` (plain|powerline|capsule)")),
+            }
+        }
+        "skin-glyphs" => {
+            c.skin_glyphs = match val {
+                "nerd" => SkinGlyphs::Nerd,
+                "ascii" => SkinGlyphs::Ascii,
+                _ => return Err(format!("invalid skin-glyphs `{val}` (nerd|ascii)")),
+            }
+        }
+        "palette" => {
+            c.palette = palette::by_name(val)
+                .ok_or_else(|| format!("invalid palette `{val}` ({})", palette::NAMES.join("|")))?
+                .name;
+        }
         "ramp" => {
             let codes: Result<Vec<u8>, _> = val.split_whitespace().map(code).collect();
             c.ramp = codes?
@@ -350,16 +398,41 @@ fn apply_line(c: &mut Config, t: &[String]) -> Result<(), String> {
     }
 }
 
+/// Palette values for every colour setting the file did not set itself,
+/// wherever in the file `set palette` appears.
+fn apply_palette(c: &mut Config, explicit: &[String]) {
+    let p = palette::by_name(c.palette).unwrap_or_else(palette::default);
+    let unset = |k: &str| !explicit.iter().any(|e| e == k);
+    c.muted = p.muted;
+    c.bgs = p.bgs;
+    if unset("color.good") {
+        c.colors.good = p.good;
+    }
+    if unset("color.warn") {
+        c.colors.warn = p.warn;
+    }
+    if unset("color.bad") {
+        c.colors.bad = p.bad;
+    }
+    if unset("ramp") {
+        c.ramp = p.ramp;
+    }
+}
+
 pub fn parse(src: &str) -> Result<Config, Vec<ConfError>> {
     let mut c = Config::default();
     let mut errs = Vec::new();
+    let mut explicit = Vec::new();
     for (i, raw) in src.lines().enumerate() {
         let r = tokenize(raw).and_then(|t| {
             if t.is_empty() {
-                Ok(())
-            } else {
-                apply_line(&mut c, &t)
+                return Ok(());
             }
+            apply_line(&mut c, &t)?;
+            if t[0] == "set" {
+                explicit.push(t[1].clone());
+            }
+            Ok(())
         });
         if let Err(message) = r {
             errs.push(ConfError {
@@ -368,6 +441,7 @@ pub fn parse(src: &str) -> Result<Config, Vec<ConfError>> {
             });
         }
     }
+    apply_palette(&mut c, &explicit);
     if errs.is_empty() {
         Ok(c)
     } else {
@@ -382,7 +456,8 @@ pub fn search_paths(
     kit_dir: &Path,
 ) -> Vec<PathBuf> {
     let mut v = Vec::new();
-    if let Some(x) = env("XDG_CONFIG_HOME").filter(|s| !s.is_empty()) {
+    // the XDG spec says relative values are to be ignored
+    if let Some(x) = env("XDG_CONFIG_HOME").filter(|s| Path::new(s).is_absolute()) {
         v.push(PathBuf::from(x).join("bar/bar.conf"));
     }
     v.push(home.join(".config/bar/bar.conf"));

@@ -353,3 +353,22 @@ fn check_warns_when_plugin_declares_icon_option() {
     assert_ne!(code, 2, "{stdout}");
     assert!(stdout.contains("reserved option `icon`"), "{stdout}");
 }
+
+#[test]
+fn check_warns_when_plugin_declares_bg_option() {
+    let fx = Fx::new();
+    fx.exe(
+        "bar-bgp",
+        "#!/bin/sh\necho '{\"name\":\"bgp\",\"version\":\"1\",\"capabilities\":[\"placeholder\"],\"options\":{\"bg\":{\"type\":\"string\"}}}'\n",
+    );
+    fx.conf("set left \"#{bgp[bg=12]}\"\n");
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_ne!(code, 2, "{stdout}");
+    assert!(stdout.contains("reserved option `bg`"), "{stdout}");
+    let i = hop_bar::plugin::parse_info(
+        r#"{"name":"n","version":"1","capabilities":[],"options":{"bg":{"type":"string"},"k":{"type":"int"}}}"#,
+    )
+    .unwrap();
+    assert!(i.declares_bg_option && !i.declares_icon_option);
+    assert!(!i.options.contains_key("bg") && i.options.contains_key("k"));
+}

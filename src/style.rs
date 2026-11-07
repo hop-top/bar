@@ -10,11 +10,39 @@ pub fn bold(text: &str) -> String {
     format!("\x1b[1m{text}\x1b[22m")
 }
 
-/// Muted text colour (256-colour palette); SGR 2 faint renders too dark.
+/// Default muted text colour (256-colour palette); SGR 2 faint renders too
+/// dark. A palette may pick another for the duration of a render.
 pub const MUTED: u8 = 250;
 
+thread_local! {
+    static MUTED_NOW: std::cell::Cell<u8> = const { std::cell::Cell::new(MUTED) };
+}
+
+/// Restores the previous muted colour when dropped.
+pub struct MutedGuard(u8);
+
+impl Drop for MutedGuard {
+    fn drop(&mut self) {
+        MUTED_NOW.with(|m| m.set(self.0));
+    }
+}
+
+/// Uses `code` for `dim` on this thread until the guard drops.
+pub fn use_muted(code: u8) -> MutedGuard {
+    MutedGuard(MUTED_NOW.with(|m| m.replace(code)))
+}
+
+/// The muted colour in effect on this thread.
+pub fn muted() -> u8 {
+    MUTED_NOW.with(std::cell::Cell::get)
+}
+
 pub fn dim(text: &str) -> String {
-    fg(MUTED, text)
+    fg(muted(), text)
+}
+
+pub fn bg_code(code: u8) -> String {
+    format!("\x1b[48;5;{code}m")
 }
 
 /// OSC 8 hyperlink; no SGR underline, the terminal draws it. A URL holding

@@ -4,7 +4,15 @@ use crate::style::{dim, visible_width_with};
 
 const MARGIN: i64 = 4;
 
-fn join(segs: &[String]) -> String {
+/// A group's text and the cells it takes on screen.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Group {
+    pub text: String,
+    pub width: usize,
+}
+
+/// Segments joined with the muted ` │ ` separator, empty ones dropped.
+pub fn join(segs: &[String]) -> String {
     let sep = format!(" {} ", dim("│"));
     segs.iter()
         .filter(|s| !s.is_empty())
@@ -18,17 +26,18 @@ fn spaces(n: i64) -> String {
 }
 
 /// Left and right on the first line: padded apart when `gap` fits, joined
-/// with the separator when not.
-fn edges(left: &str, right: &str, width: i64, gap: i64, iw: usize) -> String {
-    let pad = width - visible_width_with(left, iw) as i64 - visible_width_with(right, iw) as i64;
-    if right.is_empty() {
-        left.to_string()
-    } else if left.is_empty() {
-        format!("{}{right}", spaces(pad))
+/// with `joiner` when not.
+fn edges(left: &Group, right: &Group, width: i64, gap: i64, joiner: &str) -> String {
+    let (l, r) = (&left.text, &right.text);
+    let pad = width - left.width as i64 - right.width as i64;
+    if r.is_empty() {
+        l.to_string()
+    } else if l.is_empty() {
+        format!("{}{r}", spaces(pad))
     } else if pad >= gap {
-        format!("{left}{}{right}", spaces(pad))
+        format!("{l}{}{r}", spaces(pad))
     } else {
-        join(&[left.to_string(), right.to_string()])
+        format!("{l}{joiner}{r}")
     }
 }
 
@@ -51,18 +60,42 @@ pub fn compose_with(
     gap: usize,
     icon_width: usize,
 ) -> String {
-    let (l, c, r) = (join(left), join(center), join(right));
+    let group = |segs: &[String]| {
+        let text = join(segs);
+        Group {
+            width: visible_width_with(&text, icon_width),
+            text,
+        }
+    };
+    let joiner = format!(" {} ", dim("│"));
+    compose_groups(
+        &group(left),
+        &group(center),
+        &group(right),
+        columns,
+        gap,
+        &joiner,
+    )
+}
+
+/// Places pre-joined groups; `joiner` sits between left and right when
+/// they share the first line without room for `gap`.
+pub fn compose_groups(
+    left: &Group,
+    center: &Group,
+    right: &Group,
+    columns: Option<usize>,
+    gap: usize,
+    joiner: &str,
+) -> String {
+    let (l, c, r) = (&left.text, &center.text, &right.text);
     let gap = gap as i64;
     let width = columns.map_or(0, |n| n as i64) - MARGIN;
-    let (lw, cw, rw) = (
-        visible_width_with(&l, icon_width) as i64,
-        visible_width_with(&c, icon_width) as i64,
-        visible_width_with(&r, icon_width) as i64,
-    );
+    let (lw, cw, rw) = (left.width as i64, center.width as i64, right.width as i64);
     let spare = width - lw - cw - rw;
 
     if c.is_empty() {
-        return edges(&l, &r, width, gap, icon_width);
+        return edges(left, right, width, gap, joiner);
     }
     if columns.is_some() && spare >= 2 * gap {
         let mut lgap = (width - cw) / 2 - lw;
@@ -76,9 +109,9 @@ pub fn compose_with(
         }
         return format!("{l}{}{c}{}{r}", spaces(lgap), spaces(rgap));
     }
-    let first = edges(&l, &r, width, gap, icon_width);
+    let first = edges(left, right, width, gap, joiner);
     if first.is_empty() {
-        c
+        c.to_string()
     } else {
         format!("{first}\n{c}")
     }

@@ -30,6 +30,15 @@ enum SubCmd {
         /// Usage pace to show.
         #[arg(long, value_parser = hop_bar::preview::STATES, default_value = "early")]
         state: String,
+        /// Render a built-in preset instead of your config.
+        #[arg(long, value_parser = hop_bar::presets::NAMES)]
+        preset: Option<String>,
+    },
+    /// Write a preset as your config; refuses when a config exists.
+    Init {
+        /// Preset to write.
+        #[arg(long, value_parser = hop_bar::presets::NAMES, default_value = hop_bar::presets::DEFAULT)]
+        preset: String,
     },
     /// Flip a usage view between bar and percentage.
     Toggle {
@@ -93,6 +102,7 @@ fn main() {
         Some(("render", _)) => render(),
         Some(("check", m)) => check(m),
         Some(("preview", m)) => preview(m),
+        Some(("init", m)) => init(m),
         Some(("toggle", m)) => {
             let key = m.get_one::<String>("key").map_or("", String::as_str);
             match click::toggle(&click::state_dir(), key) {
@@ -142,9 +152,39 @@ fn preview(m: &ArgMatches) {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs() as i64);
-    let out = hop_bar::preview::render(state, conf::load(), columns, now);
+    let load = match m.get_one::<String>("preset") {
+        // names come from the value parser, so the preset exists and parses
+        Some(p) => match conf::parse(hop_bar::presets::get(p).unwrap_or_default()) {
+            Ok(c) => conf::LoadResult::Ok(c),
+            Err(e) => conf::LoadResult::Invalid(e),
+        },
+        None => conf::load(),
+    };
+    let out = hop_bar::preview::render(state, load, columns, now);
     let mut so = std::io::stdout().lock();
     let _ = writeln!(so, "{out}");
+}
+
+fn init(m: &ArgMatches) {
+    let name = m
+        .get_one::<String>("preset")
+        .map_or(hop_bar::presets::DEFAULT, String::as_str);
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default();
+    let r = hop_bar::presets::init(
+        name,
+        &|k| std::env::var(k).ok(),
+        &home,
+        &hop_top_kit::xdg::raw_config_dir("bar"),
+    );
+    match r {
+        Ok(p) => println!("wrote {} (preset {name})", p.display()),
+        Err(e) => {
+            eprintln!("bar init: {e}");
+            std::process::exit(EXIT_USAGE);
+        }
+    }
 }
 
 fn click_cmd(m: &ArgMatches) {
