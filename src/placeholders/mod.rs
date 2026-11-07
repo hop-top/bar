@@ -3,6 +3,7 @@
 pub mod account;
 pub mod ctx;
 pub mod gh;
+pub mod gitst;
 pub mod model;
 pub mod repo;
 pub mod sessions;
@@ -49,6 +50,9 @@ pub fn lookup(name: &str) -> Option<&'static dyn Placeholder> {
         "spend" => &spend::Spend,
         "prs" => &gh::Prs,
         "issues" => &gh::Issues,
+        "dirty" => &gitst::Dirty,
+        "ahead" => &gitst::Ahead,
+        "worktree" => &gitst::Worktree,
         _ => return None,
     })
 }

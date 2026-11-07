@@ -5,6 +5,7 @@ use crate::expr;
 use crate::format::{self, Token};
 use crate::options::Options;
 use crate::placeholders::gh::{self, Kind};
+use crate::placeholders::gitst;
 use crate::plugin;
 use crate::render::builtin_config;
 use serde_json::{json, Value};
@@ -95,6 +96,8 @@ enum Val {
     Any,
     Int,
     OneOf(&'static [&'static str]),
+    /// Separated list (`,` `+` or space) of values from the set.
+    List(&'static [&'static str]),
 }
 
 const STATUS_PR: &[&str] = &["open", "closed", "merged"];
@@ -112,6 +115,9 @@ fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
             ("width", Int),
             ("click", OneOf(&["toggle", "none"])),
         ],
+        "dirty" => &[("show", List(gitst::SHOW)), ("ttl", Int)],
+        "ahead" => &[("ttl", Int)],
+        "worktree" => &[],
         "prs" => &[
             ("limit", Int),
             ("author", Any),
@@ -135,6 +141,7 @@ fn val_ok(v: Val, raw: &str) -> bool {
         Val::Any => true,
         Val::Int => raw.trim().parse::<usize>().is_ok(),
         Val::OneOf(set) => set.contains(&raw),
+        Val::List(set) => gitst::parse_show(raw, set).is_some(),
     }
 }
 
