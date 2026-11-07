@@ -1,5 +1,4 @@
-.PHONY: build test lint format check setup \
-       promote promote-alpha promote-beta promote-rc promote-release
+.PHONY: build test lint format check setup
 
 check: lint test
 
@@ -18,9 +17,3 @@ format:
 
 setup:
 	cargo fetch
-
-promote:
-	@scripts/promote-release.sh
-
-promote-alpha promote-beta promote-rc promote-release:
-	@scripts/promote-release.sh $(subst promote-,,$@)

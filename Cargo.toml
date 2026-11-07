@@ -2,6 +2,7 @@
 name = "hop-bar"
 version = "0.0.0"
 edition = "2021"
+publish = false
 license = "Apache-2.0"
 description = "Configurable status line for Claude Code: tmux-style format, placeholders, plugins"
 authors = ["Jad Bitar <jadb@users.noreply.github.com>"]
