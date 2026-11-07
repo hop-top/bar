@@ -113,10 +113,8 @@ fn first_line_pads_left_and_right_when_wrapped() {
     let out = compose(&s(40), &s(40), &s(15), Some(104), 3);
     let l1 = out.split('\n').next().unwrap();
     assert_eq!(visible_width(l1), 100);
-    assert_eq!(
-        l1,
-        format!("{}{}{}", "x".repeat(40), " ".repeat(45), "x".repeat(15))
-    );
+    let want = format!("{}{}{}", "x".repeat(40), " ".repeat(45), "x".repeat(15));
+    assert_eq!(l1, want);
 }
 
 #[test]
@@ -124,15 +122,8 @@ fn first_line_joins_with_separator_when_gap_too_small() {
     // usable 100; left 50 right 49 -> pad 1 < gap
     let out = compose(&s(50), &s(40), &s(49), Some(104), 3);
     let l1 = out.split('\n').next().unwrap();
-    assert_eq!(
-        l1,
-        format!(
-            "{}{}{}",
-            "x".repeat(50),
-            format!(" {} ", dim("│")),
-            "x".repeat(49)
-        )
-    );
+    let sep = format!(" {} ", dim("│"));
+    assert_eq!(l1, format!("{}{sep}{}", "x".repeat(50), "x".repeat(49)));
 }
 
 #[test]
