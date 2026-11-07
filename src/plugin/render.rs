@@ -95,6 +95,7 @@ pub struct Metric {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Output {
     pub text: String,
+    pub label: Option<String>,
     pub style: Option<String>,
     pub link: Option<String>,
     pub metric: Option<Metric>,
@@ -124,6 +125,7 @@ pub fn parse_output(raw: &str) -> Option<Output> {
     let v: Value = serde_json::from_str(raw.trim()).ok()?;
     Some(Output {
         text: v.get("text")?.as_str()?.to_string(),
+        label: v["label"].as_str().map(String::from),
         style: v["style"].as_str().map(String::from),
         link: v["link"].as_str().map(String::from),
         metric: metric(&v["metric"]),
@@ -131,7 +133,7 @@ pub fn parse_output(raw: &str) -> Option<Output> {
     })
 }
 
-/// Sanitised, coloured, linked text; `None` when nothing visible is left.
+/// Sanitised, coloured, linked text, after a dim unlinked `label`; `None` when nothing visible is left.
 /// `style` beats `score`, `score` beats `metric` + `rule <name>`.
 pub fn paint(out: &Output, name: &str, config: &Config, now: i64) -> Option<String> {
     let text = sanitize(&out.text);
@@ -164,9 +166,15 @@ pub fn paint(out: &Output, name: &str, config: &Config, now: i64) -> Option<Stri
     } else {
         text
     };
-    Some(match out.link.as_deref().filter(|l| !l.is_empty()) {
+    let body = match out.link.as_deref().filter(|l| !l.is_empty()) {
         Some(url) => link(url, &body),
         None => body,
+    };
+    let label = out.label.as_deref().map(sanitize).unwrap_or_default();
+    Some(if label.trim().is_empty() {
+        body
+    } else {
+        format!("{} {body}", dim(&label))
     })
 }
 

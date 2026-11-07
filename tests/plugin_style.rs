@@ -205,3 +205,25 @@ fn extreme_metric_times_never_panic() {
         }
     }
 }
+
+#[test]
+fn label_outside_link_and_dim() {
+    let c = Config::default();
+    let out = paint(
+        r#"{"text":"3","label":"@\u001b\u0007","link":"https://x.test/a"}"#,
+        "p",
+        &c,
+    );
+    assert_eq!(
+        out,
+        format!(
+            "{} \x1b]8;;https://x.test/a\x1b\\3\x1b]8;;\x1b\\",
+            hop_bar::style::dim("@")
+        )
+    );
+    assert_eq!(
+        paint(r#"{"text":"3","label":""}"#, "p", &c),
+        paint(r#"{"text":"3"}"#, "p", &c)
+    );
+    assert_eq!(paint(r#"{"text":"","label":"@"}"#, "p", &c), "");
+}

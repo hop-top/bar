@@ -469,3 +469,13 @@ fn send_is_literal_then_enter() {
     assert!(f.notes.borrow().is_empty());
     assert!(f.logs.borrow()[0].contains("sent model to %1"));
 }
+
+#[test]
+fn ctx_label_outside_link() {
+    let t = installed();
+    let out = render_three(t.path(), &Options::default(), &mac()).remove(2);
+    let open = format!("\x1b]8;;{}\x1b\\", url("compact"));
+    let (label, rest) = out.split_once(&open).expect("link present");
+    assert!(label.contains("ctx") && !label.contains("%"), "{out:?}");
+    assert!(!rest.contains("ctx") && rest.contains("38%"), "{out:?}");
+}

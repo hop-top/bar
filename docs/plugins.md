@@ -63,12 +63,13 @@ The result is cached for a day per binary and modification time; renders never r
 Stdout is one JSON object:
 
 ```json
-{ "text": "[x] 7∕13", "style": "good", "link": "https://…", "score": 54,
+{ "label": "[x]", "text": "7∕13", "style": "good", "link": "https://…", "score": 54,
   "metric": { "remaining": 14907, "granted": 20000, "expires_at": 1800000000, "granted_at": 1797400000 } }
 ```
 
 - `text` (required) is stripped of escape and control characters, line and paragraph separators (U+2028, U+2029) and bidi overrides; wide characters (CJK, emoji) count as 2 cells. Nothing visible left omits the segment.
-- `link` becomes an OSC 8 link; a URL with control characters leaves plain text.
+- `label` (optional) is sanitised like `text` and drawn dim, plus a space, before `text`. It takes no colour and sits outside the link. Empty or absent: `text` alone.
+- `link` becomes an OSC 8 link around `text` only, never the `label`; a URL with control characters leaves plain text.
 - Colour, first match wins:
   1. `style`: `good`, `warn`, `bad` (the `color.*` palette) or `dim`. Any other value means no colour, and it still wins over `score` and `metric`.
   2. `score`: clamped to 0..100, then the `ramp`.
