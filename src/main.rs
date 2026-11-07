@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 #[command(
     name = "bar",
     version,
-    about = "Configurable status line for Claude Code: tmux-style format, placeholders, plugins"
+    about = "Fast, configurable and extensible status line for Claude Code"
 )]
 struct Cli {
     #[command(subcommand)]

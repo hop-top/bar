@@ -1,26 +1,48 @@
 # bar
 
-![12fc](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/hop-top/bar/main/.12fcc.json)
+Fast, configurable and extensible status line for [Claude Code](https://code.claude.com/docs/en/statusline). Licence: [Apache-2.0](LICENSE).
 
-Configurable status line for Claude Code: tmux-style format, placeholders, plugins.
-
-```text
-Opus 4.7[high] │ ctx 38% │ bar:main │ #131 #129 #128 │ !57 !42    4h40m █████ │ 6d ████░    work
-```
-
-Output of `bar preview`, colour stripped. In a terminal the usage bars run red to green by
-pace, and repo, branch, PRs and issues are links. With budget left over in the last stretch
-(`--state final`) the bars turn red:
+Rendering never waits on the network (slow data comes from a background cache) and costs 3.2 to 3.7 ms of CPU per render ([measured](docs/technical.md#performance)). The layout is a tmux-style config with options on every placeholder, and any `bar-<name>` executable on `PATH` becomes a placeholder.
 
 ```text
-Opus 4.7[high] │ ctx 38% │ bar:main │ #131 #129 #128 │ !57 !42   25m ███░░ │ 20h0m ████░    work
+Opus 4.7[high] │ ctx 38% │ bar:main │ #131 #129 #128 │ !57 !42              4h40m █████ │ 6d ████░              work
 ```
+
+Output of `bar preview`, colour stripped. In a terminal the usage bars are one colour, red to green by pace, and repo, branch, PRs and issues are links. With budget left over in the final stretch (`--state final`) the bars turn red: red means budget left unused.
+
+```text
+Opus 4.7[high] │ ctx 38% │ bar:main │ #131 #129 #128 │ !57 !42             25m ███░░ │ 20h0m ████░              work
+```
+
+## Why bar
+
+Pick bar to compose the line yourself and extend it: a tmux-style config with options on every placeholder, PR and issue segments driven by `gh` search with label/author logic, and a plugin protocol: any `bar-<name>` executable becomes a placeholder, cached so render never waits. Pick [ccstatusline](https://github.com/sirmalloc/ccstatusline) for the widest widget set and a TUI editor, [claude-powerline](https://github.com/Owloops/claude-powerline) for cost tracking and Powerline themes, [CCometixLine](https://github.com/Haleclipse/CCometixLine) for a themed Rust binary on Windows, Linux and macOS. bar has no TUI or themes yet, and clickable commands need macOS and tmux.
+
+What it does not do: no TUI editor, no themes, no Windows (it uses Unix APIs).
+
+## Status
+
+- Actively maintained. Bug reports and questions: open an issue.
+- Pre-1.0: version 0.0.0, config syntax may change.
+- Built and tested on macOS. Linux untested. Clickable commands need macOS and tmux.
+- Not on crates.io (`publish = false`); install from a clone.
 
 ## Install
 
+Prerequisites:
+
+- Rust toolchain, from [rustup](https://rustup.rs).
+- `git`, to clone.
+- `gh`, optional: needed for the `prs` and `issues` placeholders.
+- `jq`, only for the reference plugins in `plugins/`.
+
 ```sh
-cargo install --path .   # command: bar
+git clone https://github.com/hop-top/bar.git
+cd bar
+cargo install --path . --locked
 ```
+
+Cargo puts the binary at `~/.cargo/bin/bar` (`$CARGO_HOME/bin` if set). Check with `bar --version`.
 
 ## Use
 
@@ -30,13 +52,24 @@ Point Claude Code at it in `settings.json`:
 { "statusLine": { "type": "command", "command": "bar render", "refreshInterval": 5 } }
 ```
 
-Without a config file the built-in layout above is used. Write `bar.conf` to change it
-([docs/config.md](docs/config.md)), then:
+Claude Code may not have `~/.cargo/bin` on its `PATH`. If the line stays empty, use the absolute path or set `PATH` in the command:
+
+```json
+{ "statusLine": { "type": "command", "command": "/Users/you/.cargo/bin/bar render", "refreshInterval": 5 } }
+```
+
+```json
+{ "statusLine": { "type": "command", "command": "env PATH=$HOME/.cargo/bin:$PATH bar render", "refreshInterval": 5 } }
+```
+
+Without a config file the built-in layout above is used. Write `bar.conf` to change it ([docs/config.md](docs/config.md)), then:
 
 ```sh
 bar check     # lint the config; prints the file it read; exit 2 on error
 bar preview   # layout with sample data; --state early|burning|final
 ```
+
+Plugins: `bar plugin list` shows the `bar-<name>` executables found on `PATH`; see [docs/plugins.md](docs/plugins.md). Two reference plugins live in `plugins/`.
 
 ## Docs
 
