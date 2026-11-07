@@ -171,6 +171,98 @@ fn bar_tlc_no_tasks_hides_the_segment() {
     assert_eq!(out_json(&o)["text"], "");
 }
 
+fn tlc_cfg(dir: &std::path::Path) {
+    std::fs::create_dir_all(dir.join(".tlc")).unwrap();
+    std::fs::write(dir.join(".tlc/config.yaml"), "").unwrap();
+}
+
+fn tlc_worktree(wt: &std::path::Path, gitdir: &str) {
+    std::fs::create_dir_all(wt.join("src")).unwrap();
+    std::fs::write(wt.join(".git"), format!("gitdir: {gitdir}\n")).unwrap();
+}
+
+fn tlc_text_at(fx: &Fx, cwd: &std::path::Path) -> serde_json::Value {
+    let o = fx.tlc(cwd);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    out_json(&o)["text"].clone()
+}
+
+#[test]
+fn bar_tlc_bare_repo_hops_worktree_finds_bare_project() {
+    let fx = Fx::new();
+    fx.tlc_fake();
+    fx.put("tasks.json", &tasks(7, 2, 3, 1));
+    let org = fx.root.join("org");
+    tlc_cfg(&org);
+    let bare = org.join("repo");
+    tlc_cfg(&bare);
+    let wt = bare.join("hops/feat/a");
+    tlc_worktree(&wt, &format!("{}/worktrees/a", bare.display()));
+    std::fs::create_dir_all(bare.join("worktrees/a")).unwrap();
+    assert_eq!(tlc_text_at(&fx, &wt.join("src")), "9\u{2215}13");
+    let root = std::fs::canonicalize(&bare).unwrap();
+    for line in fx.log("tlc.log").lines() {
+        let dir = std::fs::canonicalize(line.split('|').next().unwrap()).unwrap();
+        assert_eq!(dir, root, "{line}");
+    }
+}
+
+#[test]
+fn bar_tlc_worktree_outside_bare_dir_finds_bare_project() {
+    let fx = Fx::new();
+    fx.tlc_fake();
+    fx.put("tasks.json", &tasks(7, 2, 3, 1));
+    let bare = fx.root.join("bare");
+    tlc_cfg(&bare);
+    std::fs::create_dir_all(bare.join("worktrees/w")).unwrap();
+    let wt = fx.root.join("elsewhere/w");
+    tlc_worktree(&wt, &format!("{}/worktrees/w", bare.display()));
+    assert_eq!(tlc_text_at(&fx, &wt.join("src")), "9\u{2215}13");
+}
+
+#[test]
+fn bar_tlc_linked_worktree_of_normal_repo_finds_main_project() {
+    let fx = Fx::new();
+    fx.tlc_fake();
+    fx.put("tasks.json", &tasks(7, 2, 3, 1));
+    let main = fx.root.join("main");
+    tlc_cfg(&main);
+    std::fs::create_dir_all(main.join(".git/worktrees/w")).unwrap();
+    let wt = fx.root.join("elsewhere/w");
+    tlc_worktree(&wt, &format!("{}/.git/worktrees/w", main.display()));
+    assert_eq!(tlc_text_at(&fx, &wt.join("src")), "9\u{2215}13");
+}
+
+#[test]
+fn bar_tlc_worktree_commondir_file_is_honoured() {
+    let fx = Fx::new();
+    fx.tlc_fake();
+    fx.put("tasks.json", &tasks(7, 2, 3, 1));
+    let main = fx.root.join("main");
+    tlc_cfg(&main);
+    let gd = main.join(".git/wt-meta/w");
+    std::fs::create_dir_all(&gd).unwrap();
+    std::fs::write(gd.join("commondir"), "../..\n").unwrap();
+    let wt = fx.root.join("elsewhere/w");
+    tlc_worktree(&wt, &gd.display().to_string());
+    assert_eq!(tlc_text_at(&fx, &wt.join("src")), "9\u{2215}13");
+}
+
+#[test]
+fn bar_tlc_worktree_never_climbs_above_repo_root() {
+    let fx = Fx::new();
+    fx.tlc_fake();
+    fx.put("tasks.json", &tasks(7, 2, 3, 1));
+    let org = fx.root.join("org");
+    tlc_cfg(&org);
+    let bare = org.join("repo");
+    std::fs::create_dir_all(bare.join("worktrees/a")).unwrap();
+    let wt = bare.join("hops/feat/a");
+    tlc_worktree(&wt, &format!("{}/worktrees/a", bare.display()));
+    assert_eq!(tlc_text_at(&fx, &wt.join("src")), "");
+    assert_eq!(fx.log("tlc.log"), "");
+}
+
 #[test]
 fn bar_tlc_partial_failure_emits_nothing() {
     let fx = Fx::new();
