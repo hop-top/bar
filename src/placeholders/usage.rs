@@ -2,7 +2,7 @@ use super::{Ctx, Placeholder};
 use crate::click;
 use crate::conf::Rule;
 use crate::options::Options;
-use crate::pace::{builtin_rule, score};
+use crate::pace::{builtin_rule, forecast, score};
 use crate::session::Window;
 use crate::style::{dim, fg, link, ramp};
 use glyphs::{parse_list, swapped, view_alias, Part};
@@ -92,12 +92,23 @@ pub fn render_with(ctx: &Ctx, opts: &Options, state: &Path) -> Option<String> {
             body
         }
     };
+    let cast = forecast(win.used_percentage, secs, period);
     let parts: Vec<String> = show
         .iter()
-        .map(|p| match p {
-            Part::Time => time.clone(),
-            Part::Pct => wrap(fg(color, &format!("{value}%"))),
-            Part::Bar => wrap(bar(opts, value, color)),
+        .filter_map(|p| {
+            Some(match p {
+                Part::Time => time.clone(),
+                Part::Pct => wrap(fg(color, &format!("{value}%"))),
+                Part::Bar => wrap(bar(opts, value, color)),
+                Part::Eta => eta(cast?.eta_secs, secs, ctx.config.colors.bad),
+                Part::Proj => {
+                    let c = ramp(
+                        score(100 - cast?.proj, None, period, &rule),
+                        &ctx.config.ramp,
+                    );
+                    fg(c, &format!("p{}%", cast?.proj))
+                }
+            })
         })
         .collect();
     Some(parts.join(" "))
@@ -111,4 +122,14 @@ fn bar(opts: &Options, value: i64, color: u8) -> String {
         .unwrap_or(5)
         .clamp(1, 40);
     glyphs::bar(opts.get("glyphs").unwrap_or("blocks"), width, value, color)
+}
+
+/// `→1h20m` in the bad colour when the budget runs out before the reset,
+/// else a muted `→ok`.
+fn eta(eta_secs: i64, secs: i64, bad: u8) -> String {
+    if eta_secs < secs {
+        fg(bad, &format!("→{}", time_left(eta_secs)))
+    } else {
+        dim("→ok")
+    }
 }

@@ -62,6 +62,30 @@ pub fn score(pct_left: i64, secs_left: Option<i64>, period: i64, rule: &Rule) ->
     fit(v)
 }
 
+/// Straight-line projection of a window at its average burn so far.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Forecast {
+    /// Seconds until the budget runs out, from now.
+    pub eta_secs: i64,
+    /// Used percent at reset, rounded, 0..=999.
+    pub proj: i64,
+}
+
+/// `None` while nothing is used or under 2% of the window has elapsed: the
+/// rate is too noisy then.
+pub fn forecast(used: f64, secs_left: i64, period: i64) -> Option<Forecast> {
+    let elapsed = period - secs_left;
+    if !used.is_finite() || used <= 0.0 || period <= 0 || elapsed * 50 < period {
+        return None;
+    }
+    let eta = (100.0 - used).max(0.0) * elapsed as f64 / used;
+    let proj = used * period as f64 / elapsed as f64;
+    Some(Forecast {
+        eta_secs: eta.min(i64::MAX as f64) as i64,
+        proj: proj.clamp(0.0, 999.0).round() as i64,
+    })
+}
+
 /// Scores outside -100..=100 carry no extra meaning; keeps the cast exact.
 fn fit(v: i64) -> i32 {
     v.clamp(-100, 100) as i32

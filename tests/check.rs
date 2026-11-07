@@ -273,6 +273,10 @@ fn check_flags_bad_usage_style_values() {
     let (code, stdout) = out(&mut fx.bar(&["check"]));
     assert_eq!(code, 0, "{stdout}");
 
+    fx.conf("set left \"#{usage[show=eta,proj,time,alt=proj,eta,bar]}\"\n");
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_eq!(code, 0, "{stdout}");
+
     for bad in ["show=bar,zzz", "alt=time,zzz", "glyphs=zzz", "count=zzz"] {
         fx.conf(&format!("set left \"#{{usage[{bad}]}}\"\n"));
         let (code, stdout) = out(&mut fx.bar(&["check"]));
