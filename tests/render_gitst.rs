@@ -220,3 +220,31 @@ fn truncated_status_marks_lower_bound() {
     let out = one(&o.plain);
     assert!(out.starts_with("proj ?") && out.ends_with('+'), "{out}");
 }
+
+#[test]
+fn full_preset_clean_tree_keeps_one_space_before_ahead() {
+    let t = Tmp::new();
+    let d = repo(&t, "proj");
+    seed(&t, &d, "# branch.head main\n# branch.ab +3 -0\n");
+    let o = run(&t)
+        .conf(hop_bar::presets::get("full").unwrap())
+        .env("PATH", &only_path(&t))
+        .cwd(&d)
+        .unset("GIT_CONFIG_NOSYSTEM")
+        .go();
+    assert!(o.plain.contains("proj:main ↑3"), "{:?}", o.plain);
+}
+
+#[test]
+fn empty_middle_placeholder_collapses_one_space() {
+    let t = Tmp::new();
+    let d = repo(&t, "proj");
+    seed(&t, &d, "# branch.head main\n# branch.ab +2 -0\n");
+    let o = run(&t)
+        .conf("set left \"#{branch} #{dirty} #{ahead}\"")
+        .env("PATH", &only_path(&t))
+        .cwd(&d)
+        .unset("GIT_CONFIG_NOSYSTEM")
+        .go();
+    assert_eq!(o.plain.trim_end(), "main ↑2");
+}

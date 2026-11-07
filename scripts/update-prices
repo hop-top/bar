@@ -1,0 +1,8 @@
+#!/bin/sh
+# Refresh data/models.json, the models.dev price snapshot built into bar.
+# Fetches https://models.dev/api.json with curl, keeps each priced model's
+# id, input/output/cache rates (USD per million tokens) and context limit,
+# and writes the result sorted, one model per line. Needs network.
+set -eu
+cd "$(dirname "$0")/.."
+exec cargo run --quiet --locked -- prices update --out data/models.json

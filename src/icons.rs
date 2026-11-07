@@ -87,6 +87,23 @@ pub fn builtin(set: Icons, name: &str, opts: &Options) -> Option<&'static str> {
         "tokens" => ("\u{f0ec}", "🔢"),            // nf-fa-exchange
         "cache" => ("\u{f1c0}", "💾"),             // nf-fa-database
         "cachettl" => ("\u{f253}", "🕐"),          // nf-fa-hourglass_end
+        "agents" => ("\u{f0c0}", "👥"),            // nf-fa-users
+        "cost" => ("\u{f09d}", "💳"),              // nf-fa-credit_card
+        "burn" => ("\u{f06d}", "🔥"),              // nf-fa-fire
+        "duration" => ("\u{f1da}", "⌚"),          // nf-fa-history
+        "lines" => ("\u{f121}", "📝"),             // nf-fa-code
+        "version" => ("\u{f02b}", "🔖"),           // nf-fa-tag
+        "style" => ("\u{f1fc}", "🎨"),             // nf-fa-paint_brush
+        "vim" => ("\u{e7c5}", "⌨️"),               // nf-dev-vim
+        "agent" => ("\u{f21b}", "🎭"),             // nf-fa-user_secret
+        "thinking" => ("\u{f0eb}", "💭"),          // nf-fa-lightbulb_o
+        "fast" => ("\u{f135}", "🚀"),              // nf-fa-rocket
+        "cwd" => ("\u{f07c}", "📂"),               // nf-fa-folder_open
+        "sid" => ("\u{f292}", "🆔"),               // nf-fa-hashtag
+        "compactions" => ("\u{f066}", "🧹"),       // nf-fa-compress
+        "skills" => ("\u{f0d0}", "✨"),            // nf-fa-magic
+        "tmux" => ("\u{f0db}", "🪟"),              // nf-fa-columns
+        "root" => ("\u{f015}", "🏠"),              // nf-fa-home
         _ => return None,
     };
     match set {

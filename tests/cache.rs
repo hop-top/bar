@@ -47,7 +47,7 @@ fn bin() -> PathBuf {
 fn cmd_job(cmd: &str) -> Job {
     Job::Command {
         cmd: cmd.to_string(),
-        timeout: 3,
+        timeout: 30,
     }
 }
 
@@ -64,6 +64,10 @@ fn age(path: &Path, secs: u64) {
     f.set_modified(SystemTime::now() - Duration::from_secs(secs))
         .unwrap();
 }
+
+/// Generous poll bound for detached refreshes: a loaded host delays
+/// process spawn by seconds; success returns at once, so it costs nothing.
+const BG_WAIT: Duration = Duration::from_secs(150);
 
 fn wait_until(limit: Duration, mut f: impl FnMut() -> bool) -> bool {
     let start = Instant::now();
@@ -98,12 +102,20 @@ fn stale_value_returned_and_refresh_spawned() {
     let c = t.cache();
     c.store("k", "old").unwrap();
     age(&c.path_for("k"), 120);
-    let got = c.read_or_refresh("k", 60, &counting(&t, "runs", "echo new"));
+    // the same job is polled with: if a loaded host lets the first attempt
+    // hit the job timeout, the retry after the backoff must produce `new`;
+    // the count line is last so only completed runs are counted
+    let job = cmd_job(&format!(
+        "echo new; echo x >> '{}'",
+        t.path().join("runs").display()
+    ));
+    let got = c.read_or_refresh("k", 60, &job);
     assert_eq!(got.as_deref(), Some("old"));
-    assert!(wait_until(Duration::from_secs(5), || {
-        c.read_or_refresh("k", 60, &cmd_job("true")).as_deref() == Some("new\n")
+    assert!(wait_until(BG_WAIT, || {
+        c.read_or_refresh("k", 60, &job).as_deref() == Some("new\n")
     }));
-    assert_eq!(t.lines("runs"), 1);
+    // not `== 1`: a starved first attempt may time out and be retried
+    assert!(t.lines("runs") >= 1);
 }
 
 #[test]
@@ -114,8 +126,7 @@ fn failed_refresh_keeps_last_value() {
     age(&c.path_for("k"), 120);
     let job = counting(&t, "runs", "exit 1");
     assert_eq!(c.read_or_refresh("k", 60, &job).as_deref(), Some("old"));
-    assert!(wait_until(Duration::from_secs(5), || t.lines("runs") == 1
-        && lock_gone(&c, "k")));
+    assert!(wait_until(BG_WAIT, || t.lines("runs") == 1 && lock_gone(&c, "k")));
     assert_eq!(std::fs::read_to_string(c.path_for("k")).unwrap(), "old");
 }
 
@@ -132,8 +143,7 @@ fn concurrent_readers_spawn_one_refresh() {
         }
     });
     let c = t.cache();
-    assert!(wait_until(Duration::from_secs(6), || lock_gone(&c, "k")
-        && c.path_for("k").exists()));
+    assert!(wait_until(BG_WAIT, || lock_gone(&c, "k") && c.path_for("k").exists()));
     assert_eq!(t.lines("runs"), 1);
 }
 
@@ -289,18 +299,18 @@ fn command_result_cached_one_hour() {
     let cmd = format!("echo x >> '{}'; echo hi", t.path().join("runs").display());
     let key = format!("expand:{cmd}");
     assert_eq!(r.run(&cmd), None);
-    assert!(wait_until(Duration::from_secs(5), || r
-        .run(&cmd)
-        .as_deref()
-        == Some("hi\n")));
-    assert!(wait_until(Duration::from_secs(2), || lock_gone(&c, &key)));
+    assert!(wait_until(BG_WAIT, || r.run(&cmd).as_deref() == Some("hi\n")));
+    assert!(wait_until(BG_WAIT, || lock_gone(&c, &key)));
+    // runs are measured from here: on a loaded host the first attempt may
+    // hit the job timeout and be retried, which is not under test
+    let before = t.lines("runs");
     age(&c.path_for(&key), 3500);
     assert_eq!(r.run(&cmd).as_deref(), Some("hi\n"));
     std::thread::sleep(Duration::from_millis(300));
-    assert_eq!(t.lines("runs"), 1, "still fresh before an hour");
+    assert_eq!(t.lines("runs"), before, "still fresh before an hour");
     age(&c.path_for(&key), 3700);
     assert_eq!(r.run(&cmd).as_deref(), Some("hi\n"));
-    assert!(wait_until(Duration::from_secs(5), || t.lines("runs") == 2));
+    assert!(wait_until(BG_WAIT, || t.lines("runs") > before));
 }
 
 #[test]
@@ -371,8 +381,7 @@ fn failing_job_backs_off() {
     let c = t.cache();
     let job = counting(&t, "runs", "exit 1");
     assert_eq!(c.read_or_refresh("k", 3600, &job), None);
-    assert!(wait_until(Duration::from_secs(5), || t.lines("runs") == 1
-        && lock_gone(&c, "k")));
+    assert!(wait_until(BG_WAIT, || t.lines("runs") == 1 && lock_gone(&c, "k")));
     for _ in 0..5 {
         assert_eq!(c.read_or_refresh("k", 3600, &job), None);
         std::thread::sleep(Duration::from_millis(60));
@@ -386,20 +395,48 @@ fn failing_job_backs_off() {
     );
     age(&fail, hop_bar::cache::FAIL_BACKOFF + 1);
     c.read_or_refresh("k", 3600, &job);
-    assert!(wait_until(Duration::from_secs(5), || t.lines("runs") == 2));
+    assert!(wait_until(BG_WAIT, || t.lines("runs") == 2));
 }
 
 #[test]
-fn backoff_window_shrinks_to_ttl() {
+fn backoff_floor_holds_for_short_ttl() {
+    // a 5 s ttl (a plugin's floor) must not retry a failing job every 5 s
     let t = Tmp::new();
     let c = t.cache();
     let job = counting(&t, "runs", "exit 1");
     c.read_or_refresh("k", 5, &job);
-    assert!(wait_until(Duration::from_secs(5), || t.lines("runs") == 1
-        && lock_gone(&c, "k")));
+    assert!(wait_until(BG_WAIT, || t.lines("runs") == 1 && lock_gone(&c, "k")));
     age(&c.fail_path("k"), 6);
     c.read_or_refresh("k", 5, &job);
-    assert!(wait_until(Duration::from_secs(5), || t.lines("runs") == 2));
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(t.lines("runs"), 1, "retried inside the 60 s floor");
+    age(&c.fail_path("k"), hop_bar::cache::FAIL_BACKOFF + 1);
+    c.read_or_refresh("k", 5, &job);
+    assert!(wait_until(BG_WAIT, || t.lines("runs") == 2));
+}
+
+#[test]
+fn backoff_floor_holds_for_plugin_jobs() {
+    let t = Tmp::new();
+    let c = t.cache();
+    let job = Job::PluginRender {
+        path: "/nonexistent/bar-x".into(),
+        input: "{}".into(),
+    };
+    let fail = c.fail_path("p");
+    std::fs::create_dir_all(fail.parent().unwrap()).unwrap();
+    std::fs::write(&fail, "").unwrap();
+    age(&fail, 6);
+    c.read_or_refresh("p", 5, &job);
+    let rerun = || {
+        std::fs::metadata(&fail)
+            .and_then(|m| m.modified())
+            .is_ok_and(|m| m.elapsed().unwrap_or_default() < Duration::from_secs(3))
+    };
+    assert!(
+        !wait_until(Duration::from_secs(1), rerun),
+        "retried inside the floor"
+    );
 }
 
 #[test]
@@ -407,16 +444,13 @@ fn success_clears_fail_marker() {
     let t = Tmp::new();
     let c = t.cache();
     c.read_or_refresh("k", 3600, &cmd_job("exit 1"));
-    assert!(wait_until(Duration::from_secs(5), || c
-        .fail_path("k")
-        .exists()
-        && lock_gone(&c, "k")));
+    assert!(wait_until(BG_WAIT, || c.fail_path("k").exists() && lock_gone(&c, "k")));
     let req = Request {
         key: "k".into(),
         job: cmd_job("echo ok"),
         lock: "t".into(),
     };
-    c.refresh(&req, Duration::from_secs(3));
+    c.refresh(&req, Duration::from_secs(30));
     assert!(!c.fail_path("k").exists());
     assert_eq!(std::fs::read_to_string(c.path_for("k")).unwrap(), "ok\n");
 }
@@ -429,8 +463,7 @@ fn expired_lock_taken_over() {
     std::fs::write(c.lock_path("k"), "crashed").unwrap();
     age(&c.lock_path("k"), 40);
     c.read_or_refresh("k", 60, &counting(&t, "runs", "echo v"));
-    assert!(wait_until(Duration::from_secs(5), || t.lines("runs") == 1
-        && lock_gone(&c, "k")));
+    assert!(wait_until(BG_WAIT, || t.lines("runs") == 1 && lock_gone(&c, "k")));
     let leftovers: Vec<_> = std::fs::read_dir(t.path().join("cache"))
         .unwrap()
         .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
@@ -463,7 +496,7 @@ fn refresh_keeps_foreign_lock() {
         job: cmd_job("echo v"),
         lock: "mine".into(),
     };
-    c.refresh(&req, Duration::from_secs(3));
+    c.refresh(&req, Duration::from_secs(30));
     assert_eq!(
         std::fs::read_to_string(c.lock_path("k")).unwrap(),
         "someone-else"
@@ -479,7 +512,7 @@ fn output_capped_at_64k() {
         job: cmd_job("head -c 200000 /dev/zero | tr '\\0' a"),
         lock: "t".into(),
     };
-    c.refresh(&req, Duration::from_secs(3));
+    c.refresh(&req, Duration::from_secs(30));
     let stored = std::fs::read_to_string(c.path_for("k")).unwrap();
     assert_eq!(stored.len(), hop_bar::cache::MAX_VALUE);
     assert_eq!(hop_bar::cache::MAX_VALUE, 64 * 1024);

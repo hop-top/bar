@@ -4,7 +4,7 @@
 use crate::conf::{Skin, SkinGlyphs};
 use crate::layout::Group;
 use crate::options::Options;
-use crate::style::{bg_code, muted};
+use crate::style::{bg_code, fg, fg_code, muted};
 
 /// A rendered segment with its visible width and background.
 pub struct Seg {
@@ -88,7 +88,7 @@ fn glyphs(set: SkinGlyphs) -> Glyphs {
 }
 
 fn fg_glyph(code: u8, g: char) -> String {
-    format!("\x1b[38;5;{code}m{g}\x1b[39m")
+    fg(code, &g.to_string())
 }
 
 /// Whether an SGR parameter list (the text between `ESC [` and `m`) resets
@@ -164,7 +164,7 @@ pub fn paint(paint: Paint, set: SkinGlyphs, segs: &[Seg], side: Side) -> Group {
                 if i > 0 {
                     text.push(' ');
                 }
-                text.push_str(&format!("\x1b[38;5;{}m{}", s.bg, g.cap_open));
+                text.push_str(&format!("{}{}", fg_code(s.bg), g.cap_open));
                 text.push_str(&bg_code(s.bg));
                 text.push_str("\x1b[39m");
                 text.push_str(&keep_bg(&s.text, s.bg));
@@ -194,7 +194,7 @@ pub fn paint(paint: Paint, set: SkinGlyphs, segs: &[Seg], side: Side) -> Group {
                 } else if same(i) {
                     text.push_str(&thin(g.right_thin));
                 } else {
-                    text.push_str(&format!("\x1b[38;5;{}m", segs[i - 1].bg));
+                    text.push_str(&fg_code(segs[i - 1].bg));
                     text.push_str(&bg_code(s.bg));
                     text.push(g.right_arrow);
                     text.push_str("\x1b[39m");

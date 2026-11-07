@@ -402,3 +402,96 @@ fn many_tracked_files_still_fit_the_cap() {
     let len = fs::metadata(find_state(&fx.state())).unwrap().len();
     assert!(len <= cap as u64, "{len}");
 }
+
+#[test]
+fn model_id_with_the_tier_mark_is_not_long_context() {
+    let fx = Fx::new("hashmark");
+    fx.append(
+        "p1/a.jsonl",
+        &line(
+            "h",
+            "2026-11-07T01:00:00Z",
+            "claude-haiku-5-5#long",
+            90_000,
+            0,
+            0,
+            0,
+        ),
+    );
+    let sp = fx.run(NOW).spend("2026-11-07", &[]);
+    assert!(sp.unknown && sp.usd == 0.0, "{sp:?}");
+}
+
+#[test]
+fn overlong_model_ids_fold_into_other() {
+    let fx = Fx::new("longid");
+    let id = format!("claude-{}", "x".repeat(200));
+    fx.append(
+        "p1/a.jsonl",
+        &line("a", "2026-11-07T01:00:00Z", &id, 5, 0, 0, 0),
+    );
+    let s = fx.run(NOW);
+    let day = &s.days["2026-11-07"];
+    assert_eq!(day.keys().collect::<Vec<_>>(), ["other"]);
+    assert!(s.spend("2026-11-07", &[]).unknown);
+}
+
+#[test]
+fn distinct_models_per_day_are_capped() {
+    let fx = Fx::new("many");
+    let mut body = line("o", "2026-11-07T00:00:00Z", OPUS, 1_000_000, 0, 0, 0);
+    for m in 0..100 {
+        body += &line(
+            &format!("m{m}"),
+            "2026-11-07T01:00:00Z",
+            &format!("m-{m}"),
+            1,
+            0,
+            0,
+            0,
+        );
+    }
+    fx.append("p1/a.jsonl", &body);
+    let s = fx.run(NOW);
+    let day = &s.days["2026-11-07"];
+    assert!(day.len() <= 64, "{}", day.len());
+    assert!(day.contains_key("other") && day.contains_key(OPUS));
+    let sp = s.spend("2026-11-07", &[]);
+    assert!(sp.unknown && (sp.usd - 5.0).abs() < 1e-9, "{sp:?}");
+    // an override cannot price the overflow bucket
+    let over = [
+        Price::parse("m-", "1", "0", "0", "0").unwrap(),
+        Price::parse("other", "1", "0", "0", "0").unwrap(),
+    ];
+    assert!(s.spend("2026-11-07", &over).unknown);
+}
+
+#[test]
+fn worst_case_summary_fits_the_cache_value_cap() {
+    let fx = Fx::new("worst");
+    let mut body = String::new();
+    for d in 0..35 {
+        let ts = format!(
+            "2026-{:02}-{:02}T01:00:00Z",
+            10 + (d + 3) / 31,
+            1 + (d + 3) % 31
+        );
+        for m in 0..70 {
+            let model = format!("m{m:03}-{}", "y".repeat(120));
+            body += &line(
+                &format!("w{d}-{m}"),
+                &ts,
+                &model,
+                u64::MAX / 4,
+                u64::MAX / 4,
+                u64::MAX / 4,
+                u64::MAX / 4,
+            );
+        }
+    }
+    fx.append("p1/a.jsonl", &body);
+    let out = spendhist::update(&fx.state(), &fx.claude(), Tz::Utc, NOW, None).unwrap();
+    assert!(out.len() <= hop_bar::cache::MAX_VALUE, "{}", out.len());
+    let s = Summary::parse(&out).unwrap();
+    assert!(s.spend("2026-11", &[]).unknown);
+}

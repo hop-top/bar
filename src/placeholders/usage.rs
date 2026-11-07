@@ -1,11 +1,12 @@
 use super::{Ctx, Placeholder};
 use crate::click;
 use crate::conf::Rule;
+use crate::history;
 use crate::options::Options;
 use crate::pace::{builtin_rule, forecast, score};
 use crate::session::Window;
 use crate::style::{dim, fg, link, ramp};
-use glyphs::{parse_list, swapped, view_alias, Part};
+use glyphs::{level, parse_list, swapped, view_alias, Part};
 use std::path::Path;
 
 pub mod glyphs;
@@ -72,19 +73,23 @@ pub fn render_with(ctx: &Ctx, opts: &Options, state: &Path) -> Option<String> {
         Some(raw) if !parse_list(raw).is_empty() => parse_list(raw),
         _ => view_alias(opts.get("view").unwrap_or("bar")),
     };
-    if click::is_toggled(state, key) {
-        show = match opts.get("alt").map(parse_list) {
-            Some(alt) if !alt.is_empty() => alt,
-            _ => swapped(&show),
-        };
-    }
-    let value = if opts.get("count") == Some("used") {
-        100 - left
-    } else {
-        left
+    let alt = match opts.get("alt").map(parse_list) {
+        Some(alt) if !alt.is_empty() => alt,
+        _ => swapped(&show),
     };
+    // a view that can be toggled to must keep recording
+    let mut series = Vec::new();
+    if show.iter().chain(&alt).any(|p| *p == Part::Spark) {
+        series = history::sample(state, key, win.resets_at, ctx.now, win.used_percentage);
+    }
+    if click::is_toggled(state, key) {
+        show = alt;
+    }
+    let used_count = opts.get("count") == Some("used");
+    let value = if used_count { 100 - left } else { left };
     let linked =
         opts.get("click").unwrap_or("toggle") == "toggle" && click::handler_installed(state);
+    let gradient = opts.get("color") == Some("gradient");
     let wrap = |body: String| {
         if linked {
             link(&format!("bar://toggle/{key}"), &body)
@@ -100,7 +105,31 @@ pub fn render_with(ctx: &Ctx, opts: &Options, state: &Path) -> Option<String> {
             Some(match p {
                 Part::Time => time.clone(),
                 Part::Pct => wrap(fg(color, &format!("{value}%"))),
-                Part::Bar => wrap(bar(opts, value, color)),
+                Part::Bar => wrap(bar(opts, value, &|i, n| {
+                    if !gradient {
+                        return color;
+                    }
+                    // bad end up to the current score; the tip is the solid colour
+                    let reach = |v: i64| v * (i as i64 + 1) / n as i64;
+                    let at = if used_count {
+                        100 - reach(100 - left)
+                    } else {
+                        reach(left)
+                    };
+                    ramp(score(at, Some(secs), period, &rule), &ctx.config.ramp)
+                })),
+                Part::Spark => {
+                    if series.len() < 2 {
+                        return None;
+                    }
+                    let n = width_opt(opts) as usize;
+                    let tail = &series[series.len().saturating_sub(n)..];
+                    // pure value ramp: no time-left or final-stretch input
+                    spark(tail, gradient, color, |left| {
+                        ramp(score(left, None, period, &rule), &ctx.config.ramp)
+                    })
+                }
+                Part::Gauge => wrap(fg(color, &level(value as f64).to_string())),
                 Part::Eta => {
                     let f = cast?;
                     if f.proj > 100 {
@@ -126,12 +155,30 @@ pub fn render_with(ctx: &Ctx, opts: &Options, state: &Path) -> Option<String> {
     Some(parts.join(" "))
 }
 
-/// One colour for the whole bar: the exact value's, as in the percentage view.
-fn bar(opts: &Options, value: i64, color: u8) -> String {
-    let width = opts
-        .get("width")
+fn width_opt(opts: &Options) -> i64 {
+    opts.get("width")
         .and_then(|w| w.parse::<i64>().ok())
         .unwrap_or(5)
-        .clamp(1, 40);
-    glyphs::bar(opts.get("glyphs").unwrap_or("blocks"), width, value, color)
+        .clamp(1, 40)
+}
+
+/// Used percents as `▁..█`: one colour, or each cell by its own value.
+fn spark(used: &[f64], gradient: bool, color: u8, by_left: impl Fn(i64) -> u8) -> String {
+    if !gradient {
+        let cells: String = used.iter().map(|&u| level(u)).collect();
+        return fg(color, &cells);
+    }
+    used.iter()
+        .map(|&u| fg(by_left(pct_left(u)), &level(u).to_string()))
+        .collect()
+}
+
+/// Bar cells; `color(i, n)` is the colour of drawn cell `i` of `n`.
+fn bar(opts: &Options, value: i64, color: &dyn Fn(usize, usize) -> u8) -> String {
+    glyphs::bar(
+        opts.get("glyphs").unwrap_or("blocks"),
+        width_opt(opts),
+        value,
+        color,
+    )
 }

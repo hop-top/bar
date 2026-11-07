@@ -253,8 +253,11 @@ fn stats() -> Stats {
         cache_creation: 2_300,
         cache_read: 1_200_000,
         output: 4_100,
+        compactions: 0,
+        skills: 0,
         last_ts: Some(10_000),
         mtime: 9_000,
+        partial: false,
     }
 }
 
@@ -393,6 +396,40 @@ fn cachettl_ttl_option_and_mtime_fallback() {
 }
 
 #[test]
+fn cachettl_partial_scan_uses_newer_mtime() {
+    // the first MiB only holds old messages; the file was written since
+    let s = |partial| Stats {
+        last_ts: Some(1_000),
+        mtime: 1_250,
+        partial,
+        ..stats()
+    };
+    let at = |st: Stats| {
+        ctx_run(|c| {
+            let c2 = Ctx {
+                now: 1_300,
+                ..clone_ctx(c)
+            };
+            tokens::cachettl(&c2, &Options::default(), &st)
+        })
+        .map(|s| strip_codes(&s))
+    };
+    assert_eq!(at(s(true)).unwrap(), "4m10s");
+    assert_eq!(at(s(false)).unwrap(), "cold");
+}
+
+#[test]
+fn update_marks_capped_read_partial() {
+    let t = Tmp::new();
+    t.append(&line("a", 1, 0, 0, 1, T0));
+    t.append(&line("b", 1, 0, 0, 1, T0));
+    let (s, complete) = upd(&t, 10);
+    assert!(!complete && s.partial);
+    let (s, complete) = upd(&t, 1 << 20);
+    assert!(complete && !s.partial);
+}
+
+#[test]
 fn cachettl_future_timestamp_clamps_to_full_ttl() {
     assert_eq!(ttl_at(500, Some(1_000), 0, &[]).unwrap(), "5m00s");
 }
@@ -491,4 +528,9 @@ fn job_carries_state_dir() {
     assert_eq!(Request::from_json(&r.to_json()).unwrap(), r);
     let bad = r.to_json().replace("\"/s\"", "\"rel\"");
     assert!(Request::from_json(&bad).is_err());
+    let bad = r.to_json().replace("\"/a/t.jsonl\"", "\"t.jsonl\"");
+    assert_eq!(
+        Request::from_json(&bad).unwrap_err(),
+        "transcript job without absolute path"
+    );
 }

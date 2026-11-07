@@ -224,18 +224,24 @@ fn bar_render_wires_agents_as_core_name() {
     let (env, cwd) = common::isolation(&root);
     let conf = root.join("xdg/bar");
     std::fs::create_dir_all(&conf).unwrap();
-    std::fs::write(conf.join("bar.conf"), "set left \"#{agents}\"\n").unwrap();
-    let out = Command::cargo_bin("bar")
-        .unwrap()
-        .arg("render")
-        .envs(env)
-        .env("COLUMNS", "80")
-        .current_dir(cwd)
-        .write_stdin(format!(r#"{{"session_id":"{SID}"}}"#))
-        .output()
-        .unwrap();
-    assert!(out.status.success());
-    assert!(plain(&String::from_utf8_lossy(&out.stdout)).contains("agents 1"));
+    let go = |c: &str| {
+        std::fs::write(conf.join("bar.conf"), c).unwrap();
+        let out = Command::cargo_bin("bar")
+            .unwrap()
+            .arg("render")
+            .envs(env.clone())
+            .env("COLUMNS", "80")
+            .current_dir(&cwd)
+            .write_stdin(format!(r#"{{"session_id":"{SID}"}}"#))
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        plain(&String::from_utf8_lossy(&out.stdout))
+    };
+    assert!(go("set left \"#{agents}\"\n").contains("agents 1"));
+    // the icon takes the label's place
+    let out = go("set icons emoji\nset left \"#{agents}\"\n");
+    assert_eq!(out.trim(), "👥 1", "{out:?}");
 }
 
 #[test]
@@ -315,4 +321,36 @@ fn start_prunes_expired_and_orphan_tmp_files() {
     assert!(!dir.join("agent-old").exists());
     assert!(!dir.join(".agent-x.1.tmp").exists());
     assert!(dir.join("agent-new").exists());
+}
+
+const BIDI_LS: [char; 2] = ['\u{202E}', '\u{2028}'];
+
+#[test]
+fn hook_write_strips_bidi_and_line_separators() {
+    let t = Tmp::new();
+    let s = t.state();
+    // JSON escapes, decoded by the hook
+    start(&s, "agent-a1", r"evil\u202Egnp.exe\u2028x");
+    let body = std::fs::read_to_string(s.join("agents").join(SID).join("agent-a1")).unwrap();
+    assert!(!body.contains(BIDI_LS), "{body:?}");
+    assert_eq!(body, "evilgnp.exex");
+}
+
+#[test]
+fn names_read_sanitized_and_bounded() {
+    let t = Tmp::new();
+    let s = t.state();
+    let dir = s.join("agents").join(SID);
+    std::fs::create_dir_all(&dir).unwrap();
+    // written by something other than the hook
+    std::fs::write(dir.join("agent-a1"), "a\u{202E}b\u{2028}c").unwrap();
+    for i in 0..40 {
+        std::fs::write(dir.join(format!("agent-big{i}")), "x".repeat(1 << 16)).unwrap();
+    }
+    let mut o = Options::default();
+    o.set("names", "1");
+    let out = go(&s, SID, &o, now()).unwrap();
+    assert!(!out.contains(BIDI_LS), "{out:?}");
+    assert!(plain(&out).contains("abc"), "{out:?}");
+    assert!(out.len() <= 2048, "{}", out.len());
 }

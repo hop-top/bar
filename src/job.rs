@@ -25,6 +25,9 @@ pub enum Job {
     /// `<path>` with `input` on stdin, no shell; stdout when it parses as
     /// plugin output.
     PluginRender { path: String, input: String },
+    /// `tmux display-message -p '#S:#I' -t <pane>`, no shell; `pane` is
+    /// `%` and digits.
+    Tmux { pane: String },
     /// Finish scanning a transcript for token totals; progress is kept in
     /// the transcript state file.
     Transcript { path: String, state: String },
@@ -49,6 +52,7 @@ impl Job {
             Job::PluginRender { path, input } => {
                 json!({"kind": "plugin-render", "path": path, "input": input})
             }
+            Job::Tmux { pane } => json!({"kind": "tmux", "pane": pane}),
             Job::Transcript { path, state } => {
                 json!({"kind": "transcript", "path": path, "state": state})
             }
@@ -73,43 +77,34 @@ impl Job {
                     .collect::<Result<_, _>>()?,
             }),
             Some("git-status") => Ok(Job::GitStatus {
-                dir: v["dir"]
-                    .as_str()
-                    .filter(|d| Path::new(d).is_absolute())
-                    .ok_or("git-status job without absolute dir")?
-                    .into(),
+                dir: abs_path(v, "dir")?,
             }),
             Some("plugin-info") => Ok(Job::PluginInfo {
-                path: plugin_path(v)?,
+                path: abs_path(v, "path")?,
             }),
             Some("plugin-render") => Ok(Job::PluginRender {
-                path: plugin_path(v)?,
+                path: abs_path(v, "path")?,
                 input: v["input"]
                     .as_str()
                     .ok_or("plugin job without input")?
                     .into(),
             }),
-            Some("transcript") => Ok(Job::Transcript {
-                path: plugin_path(v)?,
-                state: v["state"]
+            Some("tmux") => Ok(Job::Tmux {
+                pane: v["pane"]
                     .as_str()
-                    .filter(|p| Path::new(p).is_absolute())
-                    .ok_or("transcript job without absolute state dir")?
+                    .filter(|p| crate::placeholders::tmux::valid_pane(p))
+                    .ok_or("tmux job without a valid pane")?
                     .into(),
             }),
-            Some("spendhist") => {
-                let abs = |k: &str| {
-                    v[k].as_str()
-                        .filter(|p| Path::new(p).is_absolute())
-                        .map(String::from)
-                        .ok_or(format!("spendhist job without absolute {k}"))
-                };
-                Ok(Job::SpendHist {
-                    dir: abs("dir")?,
-                    state: abs("state")?,
-                    utc: v["utc"].as_bool().unwrap_or(false),
-                })
-            }
+            Some("transcript") => Ok(Job::Transcript {
+                path: abs_path(v, "path")?,
+                state: abs_path(v, "state")?,
+            }),
+            Some("spendhist") => Ok(Job::SpendHist {
+                dir: abs_path(v, "dir")?,
+                state: abs_path(v, "state")?,
+                utc: v["utc"].as_bool().unwrap_or(false),
+            }),
             other => Err(format!("unknown job kind {other:?}")),
         }
     }
@@ -145,6 +140,12 @@ impl Job {
                 limit.min(plugin::RENDER_TIMEOUT),
             )
             .filter(|o| plugin::parse_output(o).is_some()),
+            Job::Tmux { pane } => {
+                let mut c = Command::new("tmux");
+                c.args(["display-message", "-p", "#S:#I", "-t", pane]);
+                run_child(c, None, limit.min(Duration::from_secs(2)))
+                    .filter(|o| !o.trim().is_empty())
+            }
             Job::Transcript { path, state } => crate::transcript::update(
                 Path::new(state),
                 Path::new(path),
@@ -169,10 +170,14 @@ impl Job {
 }
 
 /// Plugins run by absolute path only, never looked up on PATH.
-fn plugin_path(v: &Value) -> Result<String, String> {
-    v["path"]
+/// Field `key` of job `v`, required to be an absolute path.
+fn abs_path(v: &Value, key: &str) -> Result<String, String> {
+    v[key]
         .as_str()
         .filter(|p| Path::new(p).is_absolute())
         .map(String::from)
-        .ok_or_else(|| "plugin job without absolute path".to_string())
+        .ok_or_else(|| {
+            let kind = v["kind"].as_str().unwrap_or("job");
+            format!("{kind} job without absolute {key}")
+        })
 }

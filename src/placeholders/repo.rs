@@ -1,7 +1,7 @@
 use super::{link_enabled, truncate, work_dir, Ctx, Placeholder};
 use crate::gitfs::{self, Found};
 use crate::options::Options;
-use crate::style::{bold, dim, fg, link, sanitize};
+use crate::style::{accent, bold, dim, fg, link, sanitize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -128,7 +128,7 @@ impl Placeholder for Repo {
         if name.is_empty() {
             return None;
         }
-        let text = bold(&fg(75, &name));
+        let text = bold(&fg(accent(), &name));
         Some(match url {
             Some(u) if link_enabled(opts) => link(&sanitize(&u), &text),
             _ => text,

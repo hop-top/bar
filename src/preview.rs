@@ -3,10 +3,10 @@
 
 use crate::conf::{Config, LoadResult};
 use crate::options::Options;
-use crate::placeholders::{lookup, spendhist, tokens, usage, Ctx};
+use crate::placeholders::{dirs, lookup, niche, spendhist, tokens, usage, Ctx};
 use crate::render::{builtin_config, render_sample};
-use crate::session::{Session, Window};
-use crate::style::{bold, dim, fg};
+use crate::session::{Session, SpendLimit, Window};
+use crate::style::{accent, bold, dim, fg};
 use std::path::Path;
 
 pub const STATES: [&str; 3] = ["early", "burning", "final"];
@@ -54,7 +54,20 @@ fn session(state: &str, now: i64) -> Session {
         context_used: Some(38.0),
         five_hour: Some(win(p.five)),
         seven_day: Some(win(p.seven)),
-        ..Session::default()
+        spend_limit: Some(SpendLimit {
+            period: "monthly".into(),
+            resets_at: now + 3 * 86_400 + 4 * 3600,
+        }),
+        cost_usd: Some(1.84),
+        duration_ms: Some(27.0 * 60_000.0),
+        lines_added: 120,
+        lines_removed: 14,
+        version: "2.1.0".into(),
+        output_style: "Explanatory".into(),
+        vim_mode: "NORMAL".into(),
+        agent: "reviewer".into(),
+        thinking: true,
+        fast_mode: true,
     }
 }
 
@@ -64,15 +77,17 @@ fn limit(opts: &Options) -> usize {
         .unwrap_or(5)
 }
 
-fn sample(name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Option<String> {
+fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Option<String> {
     let c = &ctx.config.colors;
     let list = |items: Vec<String>| {
         let v: Vec<String> = items.into_iter().take(limit(opts)).collect();
         (!v.is_empty()).then(|| v.join(" "))
     };
     match name {
-        "repo" => Some(bold(&fg(75, "bar"))),
+        "repo" => Some(bold(&fg(accent(), "bar"))),
         "branch" => Some(dim("main")),
+        // a clean tree in the last stretch
+        "dirty" if state == "final" => None,
         "dirty" => Some(format!(
             "{} {} {}",
             fg(c.good, "+2"),
@@ -91,10 +106,11 @@ fn sample(name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Option<String> 
                 .config
                 .accounts
                 .first()
-                .map_or(("work", 75), |a| (a.label.as_str(), a.color));
+                .map_or(("work", accent()), |a| (a.label.as_str(), a.color));
             Some(bold(&fg(color, label)))
         }
-        "agents" => Some(format!("{} 2", dim("agents"))),
+        "agents" if label => Some(format!("{} 2", dim("agents"))),
+        "agents" => Some("2".into()),
         "usage" => usage::render_with(ctx, opts, Path::new("/nonexistent/bar-preview")),
         "spendhist" => {
             let period = opts.get("period").unwrap_or("both");
@@ -103,7 +119,22 @@ fn sample(name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Option<String> 
         "tokens" => tokens::tokens(ctx, opts, &tokens::sample_stats(ctx.now)),
         "cache" => tokens::cache(ctx, opts, &tokens::sample_stats(ctx.now)),
         "cachettl" => tokens::cachettl(ctx, opts, &tokens::sample_stats(ctx.now)),
-        "model" | "effort" | "ctx" => lookup(name)?.render_labeled(ctx, opts, label),
+        "worktree" => Some(dim("bar-feat")),
+        "sid" => Some(dim("a1b2c3d4")),
+        "tmux" => Some(dim("work:1")),
+        "compactions" | "skills" => niche::sample(name, label),
+        "sessions" => Some(format!(
+            "{} {} {}",
+            fg(c.warn, ">1"),
+            bold(&fg(c.bad, "?1")),
+            fg(c.good, "v2")
+        )),
+        "cwd" | "root" => dirs::shown("~/src/bar", opts, ""),
+        // fields of the sample session
+        "model" | "effort" | "ctx" | "spend" | "cost" | "burn" | "duration" | "lines"
+        | "version" | "style" | "vim" | "agent" | "thinking" | "fast" => {
+            lookup(name)?.render_labeled(ctx, opts, label)
+        }
         _ => None,
     }
 }
@@ -119,6 +150,6 @@ pub fn render(state: &str, load: LoadResult, columns: Option<usize>, now: i64) -
         &session(state, now),
         &config,
         Some(columns.unwrap_or(DEFAULT_COLUMNS)),
-        &sample,
+        &|name, opts, ctx, label| sample(state, name, opts, ctx, label),
     )
 }

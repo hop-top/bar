@@ -2,15 +2,15 @@
 
 ## Flow
 
-`bar render`: stdin session JSON, config, `COLUMNS` in; at most two lines out; always exit 0.
+`bar render`: stdin session JSON, config, `COLUMNS` in; at most four rows out; always exit 0.
 
 1. `session::parse` (lenient) and `conf::load`.
 2. Per group (`left`, `center`, `right`): `format::parse` into tokens, split into segments at the separator, render each placeholder, drop empty segments.
-3. Plain skin: `layout::compose` joins each group's segments and fits the groups to `COLUMNS` minus margin 4 (one line, else two). Other skins: `skin::paint` draws each group and returns its text with its width (skin glyphs one cell each), then `layout::compose_groups` fits them the same way.
+3. Plain skin: `layout::join` joins each group's segments and `layout::compose_groups` fits the groups to `COLUMNS` minus margin 4 (one line, else two). Other skins: `skin::paint` draws each group and returns its text with its width (skin glyphs one cell each), then `layout::compose_groups` fits them the same way. Each configured line (`Config::lines`) goes through this alone; empty lines are skipped and the rows are capped at 4. With `set wrap on`, a line that `layout::place_groups` reports as not fitting one row is cut into rows by `layout::flow` at segment boundaries and each row is drawn as a left group; segments past the fourth row are dropped.
 
-The palette's muted colour is set per thread for the length of a render (`style::use_muted`), so `style::dim` picks it up without threading the config through every placeholder.
+The palette's muted colour is set per thread for the length of a render (`style::use_muted`), so `style::dim` picks it up without threading the config through every placeholder. The `terminal` palette works the same way (`style::use_ansi`): `fg` and `bg_code` draw codes 0-15 as ANSI 16-colour SGR while it is on.
 
-Module map: `conf` (parser, search path), `format` (placeholder syntax), `render` (wiring), `placeholders/` (core placeholders), `plugin/` (`bar-<name>` host), `cache` (background refresh), `transcript` (incremental token totals), `linescan` (shared incremental line reader), `spendhist` (daily spend totals), `prices`, `tz`, `expr` (label logic to GitHub queries), `pace` (score), `style` (SGR, OSC 8, width), `skin` (powerline and capsule painting), `palette` (named colour sets), `presets` (embedded example configs, `bar init`), `click` (toggle state, URL handler install), `check`, `preview`.
+Module map: `conf` (parser, search path), `format` (placeholder syntax), `render` (wiring), `placeholders/` (core placeholders), `plugin/` (`bar-<name>` host), `cache` (background refresh), `transcript` (incremental token totals), `linescan` (shared incremental line reader), `spendhist` (daily spend totals), `history` (usage samples behind `spark`), `prices` (rates; `models` snapshot, `norm` id normaliser, `update` fetch), `tz`, `expr` (label logic to GitHub queries), `pace` (score), `style` (SGR, OSC 8, width), `skin` (powerline and capsule painting), `palette` (named colour sets), `presets` (embedded example configs, `bar init`), `click` (toggle state, URL handler install), `check`, `preview`.
 
 ## Cache
 
@@ -18,7 +18,7 @@ Anything slow is cache-backed: `git status` (`dirty`, `ahead`; key `gitst:<repo 
 
 - State dir: `BAR_STATE_DIR`, else kit `raw_state_dir("bar")`. Files mode 0600.
 - Refresh job carries kinds and options only; secrets stay in the keychain, read by plugins.
-- Failed refresh backs off 60 s (or the ttl if shorter; the `git status` job always 60 s). Locks expire after 30 s. Stored values cap at 64 KiB.
+- A failed refresh backs off 60 s, whatever the ttl. Locks expire after 30 s. Stored values cap at 64 KiB.
 
 ## Transcript totals
 
@@ -37,9 +37,9 @@ Measured on macOS 15, release build, 20 MB synthetic transcript (a third of the 
 
 ## Spend history
 
-`src/spendhist.rs` backs `#{spendhist}`. `bar refresh` runs `Job::SpendHist` (cache key `spendhist:<claude dir>:<tz>`, ttl 60 s, failure backoff 60 s): it lists `projects/*/*.jsonl` newest first (skipping files untouched for over 63 days), scans each from its stored `Mark`, and folds assistant `usage` into `{local date: {model: [in, out, cache write, cache read]}}`. A message is counted once: a 48-bit hash of `message.id` plus `requestId` is kept per day in the state file and checked across all files. The result is one state file per claude dir and zone under `<state>/spendhist/` (0600, atomic rename; per-file marks, 62 days of totals, dedupe hashes; the hashes are trimmed oldest-first past 16 MiB). The job returns only the last 35 days, which is what the cache stores and a render reads; dollars are computed at render from the tokens, so a `set price` change applies at once. A render never opens a transcript.
+`src/spendhist.rs` backs `#{spendhist}`. `bar refresh` runs `Job::SpendHist` (cache key `spendhist:<claude dir>:<tz>`, ttl 60 s, failure backoff 60 s): it lists `projects/*/*.jsonl` newest first (skipping files untouched for over 63 days), scans each from its stored `Mark`, and folds assistant `usage` into `{local date: {model: [in, out, cache write, cache read]}}`. A message is counted once: a 48-bit hash of `message.id` plus `requestId` is kept per day in the state file and checked across all files. The result is one state file per claude dir and zone under `<state>/spendhist/` (0600, atomic rename; per-file marks, 62 days of totals, dedupe hashes; the hashes are trimmed oldest-first past 16 MiB). The job returns only the last 35 days, which is what the cache stores and a render reads; dollars are computed at render from the tokens, so a `set price` change applies at once. A render never opens a transcript. Model ids longer than 128 characters or with characters outside `A-Z a-z 0-9 - . _ : / @ +`, and a day's models past the 63rd, are counted under `other`, which is never priced (the total gets its `~`); a summary that would pass the cache value cap keeps each day's largest models and folds the rest into `other`.
 
-The offset, inode, size and mtime logic (`linescan::Mark`) is shared with `transcript`. Local dates use `localtime_r` through a small FFI declaration in `src/tz.rs`, memoised per half hour; there is no date-time dependency.
+The offset, inode, size and mtime logic (`linescan::Mark`) is shared with `transcript`. Local dates use `libc::localtime_r` in `src/tz.rs`, memoised per half hour; there is no date-time dependency.
 
 ## Check and preview
 
@@ -66,7 +66,7 @@ Wall time is not reported: it depends on machine load.
 
 ## Platforms
 
-Unix only: the crate fails to compile off `cfg(unix)`. macOS and Linux build and pass `make check`. The one FFI site is `kill(pid, 0)` in `src/placeholders/sessions.rs` (POSIX; `pid_t` is `i32` on both). Clickable commands (`src/click/`, the `bar://` app bundle, `osascript`) are macOS-only: on other systems `bar click install` writes nothing, prints that it needs macOS (and points at `--hooks-only`) and exits 2. `bar click install --hooks-only` registers only the Claude Code hooks and works on Linux. Plugin tests and the reference plugins need `jq`.
+Unix only: the crate fails to compile off `cfg(unix)`. macOS and Linux build and pass `make check`. FFI goes through the `libc` crate in two `unsafe` sites: `localtime_r` in `src/tz.rs` and `kill(pid, 0)` in `src/placeholders/sessions.rs` (POSIX; `pid_t` is `i32` on both). Clickable commands (`src/click/`, the `bar://` app bundle, `osascript`) are macOS-only: on other systems `bar click install` writes nothing, prints that it needs macOS (and points at `--hooks-only`) and exits 2. `bar click install --hooks-only` registers only the Claude Code hooks and works on Linux. Plugin tests and the reference plugins need `jq`.
 
 Linux check, from a clean copy so the host `target/` stays untouched:
 

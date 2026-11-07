@@ -55,11 +55,26 @@ enum SubCmd {
         #[command(subcommand)]
         cmd: PluginCmd,
     },
+    /// Model price data (models.dev).
+    Prices {
+        #[command(subcommand)]
+        cmd: PricesCmd,
+    },
     /// Run one background cache refresh (spawned by render).
     #[command(hide = true)]
     Refresh {
         /// Refresh request as JSON.
         request: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum PricesCmd {
+    /// Fetch models.dev prices into bar's data dir; the only network use.
+    Update {
+        /// Write this file instead of the data dir's models.json.
+        #[arg(long, value_name = "FILE")]
+        out: Option<std::path::PathBuf>,
     },
 }
 
@@ -115,6 +130,7 @@ fn main() {
         }
         Some(("click", m)) => click_cmd(m),
         Some(("plugin", m)) => plugin_cmd(m),
+        Some(("prices", m)) => prices_cmd(m),
         Some(("refresh", m)) => {
             let raw = m.get_one::<String>("request").map_or("", String::as_str);
             if let Ok(req) = Request::from_json(raw) {
@@ -123,6 +139,20 @@ fn main() {
             }
         }
         _ => {}
+    }
+}
+
+fn prices_cmd(m: &ArgMatches) {
+    if let Some(("update", u)) = m.subcommand() {
+        match hop_bar::prices::update::run(
+            u.get_one::<std::path::PathBuf>("out").map(|p| p.as_path()),
+        ) {
+            Ok((path, n)) => println!("{n} models written to {}", path.display()),
+            Err(e) => {
+                eprintln!("bar prices update: {e}");
+                std::process::exit(2);
+            }
+        }
     }
 }
 
@@ -190,7 +220,14 @@ fn init(m: &ArgMatches) {
 fn click_cmd(m: &ArgMatches) {
     match m.subcommand() {
         Some(("install", i)) => {
-            let cfg = click::InstallCfg::from_env();
+            let cfg = click::InstallCfg::from_env().unwrap_or_else(|e| {
+                eprintln!("bar click install: {e}");
+                std::process::exit(EXIT_USAGE);
+            });
+            if !i.get_flag("hooks_only") && !cfg.app.is_absolute() {
+                eprintln!("bar click install: HOME (or BAR_APP_DIR) must be an absolute path");
+                std::process::exit(EXIT_USAGE);
+            }
             let r = if i.get_flag("hooks_only") {
                 click::run_hooks_only(&cfg, i.get_flag("dry_run"), &mut std::io::stdout())
                     .map_err(click::InstallError::Failed)

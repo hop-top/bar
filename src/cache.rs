@@ -169,9 +169,11 @@ impl Cache {
         crate::click::write_atomic(dest, body)
     }
 
-    /// A refresh failed less than the backoff window ago.
-    fn backing_off(&self, key: &str, ttl: u64) -> bool {
-        let window = Duration::from_secs(FAIL_BACKOFF.min(ttl));
+    /// A refresh failed less than `FAIL_BACKOFF` ago. The window ignores
+    /// the ttl, so a short one (a plugin's 5 s floor, `ttl=1`) cannot turn
+    /// a persistently failing job into a respawn every few seconds.
+    fn backing_off(&self, key: &str) -> bool {
+        let window = Duration::from_secs(FAIL_BACKOFF);
         modified_age(&self.fail_path(key)).is_some_and(|a| a < window)
     }
 
@@ -182,13 +184,7 @@ impl Cache {
         let value = read_capped(&path);
         let fresh =
             value.is_some() && modified_age(&path).is_some_and(|a| a < Duration::from_secs(ttl));
-        // a short `ttl` must not turn a persistently failing git into a
-        // respawn every few seconds
-        let backoff_ttl = match job {
-            Job::GitStatus { .. } => ttl.max(FAIL_BACKOFF),
-            _ => ttl,
-        };
-        if fresh || self.backing_off(key, backoff_ttl) {
+        if fresh || self.backing_off(key) {
             return value;
         }
         if let Some(token) = self.try_lock(key) {

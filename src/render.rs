@@ -1,11 +1,11 @@
 //! Wires config, placeholders and layout into the status line text.
 
 use crate::cache::Cache;
-use crate::conf::{Config, LoadResult};
+use crate::conf::{Config, LoadResult, Wrap, MAX_LINES};
 use crate::expand::{CommandRunner, Expander};
 use crate::format::{parse, segments, Token};
 use crate::icons;
-use crate::layout::{compose_groups, compose_with};
+use crate::layout::{flow, join, place_groups, plain_joiner, Group};
 use crate::options::Options;
 use crate::palette;
 use crate::placeholders::{lookup, Ctx};
@@ -106,7 +106,9 @@ struct Rendered {
 }
 
 /// Text tokens survive only beside non-empty placeholders, so `repo:` loses
-/// its colon when the branch is empty.
+/// its colon when the branch is empty. Between two non-empty placeholders
+/// one text is kept, the one after the last empty placeholder, so
+/// `#{branch} #{dirty} #{ahead}` with a clean tree reads `main ↑2`.
 fn render_segment(
     seg: &[Token],
     ctx: &Ctx,
@@ -129,23 +131,40 @@ fn render_segment(
     if has_placeholder && values.iter().flatten().all(|v| v.is_empty()) {
         return None;
     }
-    let empty = |i: Option<usize>| {
-        i.and_then(|i| values.get(i))
-            .is_some_and(|v| v.as_deref() == Some(""))
-    };
+    let keep = kept_text(&values);
     let mut out = String::new();
     for (i, t) in seg.iter().enumerate() {
         match (t, &values[i]) {
-            (Token::Text(s), _) => {
-                if !empty(i.checked_sub(1)) && !empty(Some(i + 1)) {
-                    out.push_str(&dim(s));
-                }
-            }
+            (Token::Text(s), _) if keep[i] => out.push_str(&dim(s)),
             (_, Some(v)) => out.push_str(v),
             _ => {}
         }
     }
     Some(Rendered { text: out, bg })
+}
+
+/// Which text tokens (`None` in `values`) are drawn. A text beside an empty
+/// placeholder is dropped, except that every stretch between two non-empty
+/// placeholders keeps its last text, so the values stay apart.
+fn kept_text(values: &[Option<String>]) -> Vec<bool> {
+    let empty = |i: usize| values.get(i).is_some_and(|v| v.as_deref() == Some(""));
+    let full = |i: usize| values[i].as_deref().is_some_and(|v| !v.is_empty());
+    let mut keep: Vec<bool> = (0..values.len())
+        .map(|i| values[i].is_none() && !(i > 0 && empty(i - 1)) && !empty(i + 1))
+        .collect();
+    let fulls: Vec<usize> = (0..values.len()).filter(|&i| full(i)).collect();
+    for w in fulls.windows(2) {
+        let between = w[0] + 1..w[1];
+        if !between.clone().any(empty) {
+            continue;
+        }
+        if let Some(last) = between.clone().rev().find(|&i| values[i].is_none()) {
+            for i in between {
+                keep[i] = i == last;
+            }
+        }
+    }
+    keep
 }
 
 fn render_group(src: &str, ctx: &Ctx, ex: &Expander, sample: Option<Sample>) -> Vec<Rendered> {
@@ -231,32 +250,84 @@ fn render_impl(
         plugin_dirs,
     };
     let _muted = style::use_muted(config.muted);
-    let groups = [&config.left, &config.center, &config.right]
-        .map(|src| render_group(src, &ctx, &ex, sample));
-    match Paint::of(config.skin) {
-        Some(paint) => paint_line(config, paint, groups, columns),
-        None => {
-            let [l, c, r] = groups.map(|g| g.into_iter().map(|s| s.text).collect::<Vec<_>>());
-            compose_with(&l, &c, &r, columns, config.gap, config.icon_width)
+    let _ansi = style::use_ansi(palette::by_name(config.palette).is_some_and(|p| p.ansi));
+    let mut rows: Vec<String> = Vec::new();
+    for src in config.lines() {
+        let budget = MAX_LINES - rows.len();
+        if budget == 0 {
+            break;
         }
+        let groups = src.map(|g| render_group(g, &ctx, &ex, sample));
+        if groups.iter().all(Vec::is_empty) {
+            continue;
+        }
+        rows.extend(line_rows(config, groups, columns, budget));
+    }
+    rows.join("\n")
+}
+
+/// One status line as at most `budget` rows: placed as usual, or, with
+/// `set wrap on` and a line that does not fit one row, its segments
+/// flowed left to right onto rows, left-aligned. An empty line has none.
+fn line_rows(
+    config: &Config,
+    groups: [Vec<Rendered>; 3],
+    columns: Option<usize>,
+    budget: usize,
+) -> Vec<String> {
+    let paint = Paint::of(config.skin);
+    let [l, c, r] = segs(config, groups);
+    let group = |segs: &[Seg], side| match paint {
+        Some(p) => skin::paint(p, config.skin_glyphs, segs, side),
+        None => {
+            let text = join(&segs.iter().map(|s| s.text.clone()).collect::<Vec<_>>());
+            Group {
+                width: visible_width_with(&text, config.icon_width),
+                text,
+            }
+        }
+    };
+    let (gl, gc, gr) = (
+        group(&l, Side::Left),
+        group(&c, Side::Center),
+        group(&r, Side::Right),
+    );
+    let joiner = match paint {
+        Some(_) => " ".to_string(),
+        None => plain_joiner(),
+    };
+    let placed = place_groups(&gl, &gc, &gr, columns, config.gap, &joiner);
+    match columns {
+        Some(cols) if config.wrap == Wrap::On && !placed.fits => {
+            let all: Vec<Seg> = [l, c, r].into_iter().flatten().collect();
+            flow(all.len(), cols, budget, |rg| {
+                group(&all[rg], Side::Left).width
+            })
+            .into_iter()
+            .map(|rg| group(&all[rg], Side::Left).text)
+            .collect()
+        }
+        _ if placed.text.is_empty() => Vec::new(),
+        _ => placed
+            .text
+            .split('\n')
+            .take(budget)
+            .map(str::to_string)
+            .collect(),
     }
 }
 
-/// Skinned line: backgrounds cycle through the palette across all groups,
-/// left to right; a segment's `bg` option takes its place.
-fn paint_line(
-    config: &Config,
-    paint: Paint,
-    groups: [Vec<Rendered>; 3],
-    columns: Option<usize>,
-) -> String {
+/// Segments with their widths and backgrounds. Backgrounds cycle through
+/// the palette across all groups of the line, left to right; a segment's
+/// `bg` option takes its place. Plain lines ignore them.
+fn segs(config: &Config, groups: [Vec<Rendered>; 3]) -> [Vec<Seg>; 3] {
     let bgs = if config.bgs.is_empty() {
         palette::default().bgs
     } else {
         config.bgs
     };
     let mut n = 0;
-    let [l, c, r] = groups.map(|g| {
+    groups.map(|g| {
         g.into_iter()
             .map(|s| {
                 let bg = s.bg.unwrap_or(bgs[n % bgs.len()]);
@@ -267,17 +338,8 @@ fn paint_line(
                     bg,
                 }
             })
-            .collect::<Vec<_>>()
-    });
-    let p = |segs: &[Seg], side| skin::paint(paint, config.skin_glyphs, segs, side);
-    compose_groups(
-        &p(&l, Side::Left),
-        &p(&c, Side::Center),
-        &p(&r, Side::Right),
-        columns,
-        config.gap,
-        " ",
-    )
+            .collect()
+    })
 }
 
 /// What `bar render` prints: the line(s), or the short config error.
