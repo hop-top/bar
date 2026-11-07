@@ -33,6 +33,13 @@ pub struct Ctx<'a> {
 pub trait Placeholder {
     /// Styled text; `None` or empty when there is nothing to show.
     fn render(&self, ctx: &Ctx, opts: &Options) -> Option<String>;
+
+    /// As `render`; `label` false leaves out the text label (an icon takes
+    /// its place). Placeholders without a label ignore it.
+    fn render_labeled(&self, ctx: &Ctx, opts: &Options, label: bool) -> Option<String> {
+        let _ = label;
+        self.render(ctx, opts)
+    }
 }
 
 /// `None` for names not implemented (yet): they render as empty.

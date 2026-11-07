@@ -6,6 +6,7 @@ use super::info::ttl_of;
 use super::{cached_info, find, validate, ExtInfo, Found};
 use crate::cache::{hash_hex, Job};
 use crate::conf::Config;
+use crate::icons::{self, Pick};
 use crate::options::Options;
 use crate::pace::metric_score;
 use crate::placeholders::Ctx;
@@ -96,6 +97,8 @@ pub struct Metric {
 pub struct Output {
     pub text: String,
     pub label: Option<String>,
+    /// Segment icon; replaces `label` when an icon is shown.
+    pub icon: Option<String>,
     pub style: Option<String>,
     pub link: Option<String>,
     pub metric: Option<Metric>,
@@ -126,6 +129,7 @@ pub fn parse_output(raw: &str) -> Option<Output> {
     Some(Output {
         text: v.get("text")?.as_str()?.to_string(),
         label: v["label"].as_str().map(String::from),
+        icon: v["icon"].as_str().map(String::from),
         style: v["style"].as_str().map(String::from),
         link: v["link"].as_str().map(String::from),
         metric: metric(&v["metric"]),
@@ -136,6 +140,19 @@ pub fn parse_output(raw: &str) -> Option<Output> {
 /// Sanitised, coloured, linked text, after a dim unlinked `label`; `None` when nothing visible is left.
 /// `style` beats `score`, `score` beats `metric` + `rule <name>`.
 pub fn paint(out: &Output, name: &str, config: &Config, now: i64) -> Option<String> {
+    paint_with(out, name, config, now, &Pick::Auto, None)
+}
+
+/// As `paint`; the icon (explicit `pick`, else the output's, else the
+/// plugin's default `info_icon` when an icon set is chosen) replaces `label`.
+pub fn paint_with(
+    out: &Output,
+    name: &str,
+    config: &Config,
+    now: i64,
+    pick: &Pick,
+    info_icon: Option<&str>,
+) -> Option<String> {
     let text = sanitize(&out.text);
     if text.trim().is_empty() {
         return None;
@@ -170,6 +187,15 @@ pub fn paint(out: &Output, name: &str, config: &Config, now: i64) -> Option<Stri
         Some(url) => link(url, &body),
         None => body,
     };
+    // a bad output icon falls back to the plugin's own, then to the label
+    let glyph = icons::resolve(config, pick, out.icon.as_deref()).or_else(|| {
+        (*pick == Pick::Auto)
+            .then(|| icons::resolve(config, pick, info_icon))
+            .flatten()
+    });
+    if let Some(glyph) = glyph {
+        return Some(format!("{} {body}", dim(&glyph)));
+    }
     let label = out.label.as_deref().map(sanitize).unwrap_or_default();
     Some(if label.trim().is_empty() {
         body
@@ -180,11 +206,24 @@ pub fn paint(out: &Output, name: &str, config: &Config, now: i64) -> Option<Stri
 
 /// Cached output for `found`; empty while cold, on failure or bad options.
 pub fn render_found(ctx: &Ctx, found: &Found, opts: &Options) -> Option<String> {
+    render_found_with(ctx, found, opts, &Pick::Auto)
+}
+
+/// As `render_found`, with the placeholder's `icon=` choice.
+pub fn render_found_with(ctx: &Ctx, found: &Found, opts: &Options, pick: &Pick) -> Option<String> {
     let cache = ctx.cache?;
     let info = cached_info(cache, found)?;
     let plan = plan(ctx, found, &info, opts)?;
     let raw = cache.read_or_refresh(&plan.key, plan.ttl, &plan.job)?;
-    paint(&parse_output(&raw)?, &found.name, ctx.config, ctx.now)
+    let out = parse_output(&raw)?;
+    paint_with(
+        &out,
+        &found.name,
+        ctx.config,
+        ctx.now,
+        pick,
+        info.icon.as_deref(),
+    )
 }
 
 /// `#{name}` for a plugin found in `ctx.plugin_dirs`.

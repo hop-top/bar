@@ -1,6 +1,6 @@
 //! Places the left, centre and right groups on one or two lines.
 
-use crate::style::{dim, visible_width};
+use crate::style::{dim, visible_width_with};
 
 const MARGIN: i64 = 4;
 
@@ -19,8 +19,8 @@ fn spaces(n: i64) -> String {
 
 /// Left and right on the first line: padded apart when `gap` fits, joined
 /// with the separator when not.
-fn edges(left: &str, right: &str, width: i64, gap: i64) -> String {
-    let pad = width - visible_width(left) as i64 - visible_width(right) as i64;
+fn edges(left: &str, right: &str, width: i64, gap: i64, iw: usize) -> String {
+    let pad = width - visible_width_with(left, iw) as i64 - visible_width_with(right, iw) as i64;
     if right.is_empty() {
         left.to_string()
     } else if left.is_empty() {
@@ -39,18 +39,30 @@ pub fn compose(
     columns: Option<usize>,
     gap: usize,
 ) -> String {
+    compose_with(left, center, right, columns, gap, 1)
+}
+
+/// As `compose`, with private-use icon glyphs `icon_width` cells wide.
+pub fn compose_with(
+    left: &[String],
+    center: &[String],
+    right: &[String],
+    columns: Option<usize>,
+    gap: usize,
+    icon_width: usize,
+) -> String {
     let (l, c, r) = (join(left), join(center), join(right));
     let gap = gap as i64;
     let width = columns.map_or(0, |n| n as i64) - MARGIN;
     let (lw, cw, rw) = (
-        visible_width(&l) as i64,
-        visible_width(&c) as i64,
-        visible_width(&r) as i64,
+        visible_width_with(&l, icon_width) as i64,
+        visible_width_with(&c, icon_width) as i64,
+        visible_width_with(&r, icon_width) as i64,
     );
     let spare = width - lw - cw - rw;
 
     if c.is_empty() {
-        return edges(&l, &r, width, gap);
+        return edges(&l, &r, width, gap, icon_width);
     }
     if columns.is_some() && spare >= 2 * gap {
         let mut lgap = (width - cw) / 2 - lw;
@@ -64,7 +76,7 @@ pub fn compose(
         }
         return format!("{l}{}{c}{}{r}", spaces(lgap), spaces(rgap));
     }
-    let first = edges(&l, &r, width, gap);
+    let first = edges(&l, &r, width, gap, icon_width);
     if first.is_empty() {
         c
     } else {
