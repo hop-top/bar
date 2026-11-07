@@ -84,7 +84,8 @@ fn credits_sum_promo_tranches() {
     let o = fx.credits();
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     let v = out_json(&o);
-    assert_eq!(v["text"], "14d $149.07");
+    assert_eq!(v["text"], "$149.07");
+    assert_eq!(v["label"], "14d");
     assert_eq!(
         v["metric"],
         json!({"remaining":14907,"granted":20000,"expires_at":exp,"granted_at":granted_at})
@@ -105,6 +106,7 @@ fn credits_401_shows_question_mark() {
     let v = out_json(&o);
     assert_eq!(v["text"], "?");
     assert_eq!(v["style"], "bad");
+    assert!(v.get("label").is_none());
 }
 
 #[test]

@@ -123,7 +123,7 @@ set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3,a
 
 ### `bar-claude-credits`
 
-`#{claude-credits}` shows days to expiry and the prepaid Console balance, e.g. `14d $149.07`: promo tranches plus unscoped credit. Needs `curl` and macOS `security`.
+`#{claude-credits}` shows the prepaid Console balance, e.g. `$149.07`, with the days to the earliest expiry as a dim `label` (`14d`, none when unknown): promo tranches plus unscoped credit. Needs `curl` and macOS `security`.
 
 `bar-claude-credits` uses a browser session cookie and an undocumented Console endpoint (`/api/organizations/<org>/prepaid/credits`). No public API exposes the balance. The cookie can stop working at any time; the segment then shows `?` in the `bad` colour.
 
@@ -131,7 +131,7 @@ set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3,a
 - Option `account` (string) names the keychain entry too and wins over `keychain=`: `#{claude-credits[account=<entry-name>]}`, for a second Console account next to the configured one. Same character rules as `keychain=`.
 - The cookie is passed to `curl` on stdin only, never in arguments or environment.
 - Network errors and 5xx exit non-zero without output, keeping the cached value. A missing keychain entry or `org` omits the segment.
-- Emits `metric` (and `style: bad` for the `?`); colour it with a rule such as `rule claude-credits early pace final=3d bad=$50`.
+- Emits `label`, `metric` (and `style: bad` for the `?`); colour it with a rule such as `rule claude-credits early pace final=3d bad=$50`.
 
 ```
 plugin claude-credits org=00000000-0000-0000-0000-000000000000 keychain=claude-console-session-work
