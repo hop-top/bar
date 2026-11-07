@@ -17,6 +17,8 @@ name=$(printf '%s' "$input" | jq -r '.options.name // false' 2>/dev/null) || exi
 case $cwd in /*) [ -d "$cwd" ] || hidden ;; *) hidden ;; esac
 command -v gh >/dev/null 2>&1 && command -v git >/dev/null 2>&1 || hidden
 
+# No remote is a steady state, not a failure: hide instead of keeping a stale value.
+[ -n "$(git -C "$cwd" remote 2>/dev/null)" ] || hidden
 branch=$(git -C "$cwd" rev-parse --abbrev-ref HEAD 2>/dev/null) || hidden
 case $branch in ''|HEAD|-*) hidden ;; esac
 
@@ -25,7 +27,7 @@ cd -- "$cwd" || hidden
 runs=$(gh run list --branch "$branch" --limit 1 --json status,conclusion,url,workflowName 2>/dev/null) || exit 1
 
 printf '%s' "$runs" | jq -ce --arg name "$name" '
-  def clean: gsub("[\u0001-\u001f\u007f-\u009f]"; "");
+  def clean: gsub("\u001b\\][^\u0007\u001b]*(\u0007|\u001b\\\\)?"; "") | gsub("\u001b\\[[0-9;:?<=>]*[ -/]*[@-~]"; "") | gsub("[\u0001-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]"; "");
   (first(.[]?) // null) as $r
   | if $r == null then {text: ""} else
       (if $r.status != "completed" then {t: "…", s: 50}

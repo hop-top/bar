@@ -38,7 +38,7 @@ fn ci_fakes(fx: &Fx, runs: &str, gh_code: i32) {
     );
     exe(
         &fx.bin().join("git"),
-        "#!/bin/sh\necho \"$*\" >> \"$FAKE_DIR/git.log\"\n[ -f \"$FAKE_DIR/norepo\" ] && exit 128\ncat \"$FAKE_DIR/branch\"\n",
+        "#!/bin/sh\necho \"$*\" >> \"$FAKE_DIR/git.log\"\n[ -f \"$FAKE_DIR/norepo\" ] && exit 128\nif [ \"$1 $2 $3\" = \"-C $PWD remote\" ] || [ \"$3\" = remote ]; then [ -f \"$FAKE_DIR/noremote\" ] || echo origin; exit 0; fi\ncat \"$FAKE_DIR/branch\"\n",
     );
     fx.put("runs.json", runs);
     fx.put("branch", "feat/x\n");
@@ -120,6 +120,14 @@ fn bar_ci_hidden_without_runs_repo_or_gh() {
     assert!(o.status.success());
     assert_eq!(out_json(&o)["text"], "");
     assert!(!fx.log("gh.log").contains("run list"));
+    // no remote: hidden, gh never asked
+    ci_fakes(&fx, &run_json("completed", "success"), 0);
+    fx.put("noremote", "");
+    let _ = std::fs::remove_file(fx.fake.join("gh.log"));
+    let o = ci(&fx, json!({}));
+    assert!(o.status.success());
+    assert_eq!(out_json(&o)["text"], "");
+    assert!(!fx.log("gh.log").contains("run list"));
     // no gh on PATH
     let mut fx = Fx::new();
     ci_fakes(&fx, "[]", 0);
@@ -157,7 +165,7 @@ fn bar_ci_sanitizes_and_drops_bad_link() {
     let runs = json!([{"status":"completed","conclusion":"success","url":"javascript:x","workflowName":"C\u{1b}[31mI\n"}]);
     ci_fakes(&fx, &runs.to_string(), 0);
     let v = out_json(&ci(&fx, json!({"name":true})));
-    assert_eq!(v["text"], "\u{2713} C[31mI");
+    assert_eq!(v["text"], "\u{2713} CI");
     assert!(v.get("link").is_none() || v["link"].is_null());
 }
 
@@ -308,4 +316,15 @@ fn bar_health_refuses_bad_urls() {
     );
     assert!(!o.status.success());
     assert!(fx.log("curl.log").is_empty());
+}
+
+#[test]
+fn bar_health_sanitizes_label() {
+    let fx = Fx::new();
+    health_fake(&fx, "200", 0);
+    let v = out_json(&health(
+        &fx,
+        json!({"url":"https://example.com","label":"a\u{1b}[31mb\u{202e}c\u{1b}]8;;http://x\u{7}d"}),
+    ));
+    assert_eq!(v["label"], "abcd");
 }
