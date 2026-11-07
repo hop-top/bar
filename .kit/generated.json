@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "generated_by": "kit-init",
+  "files": [
+    {
+      "path": ".githooks/pre-pr",
+      "sha256": "9490355587aa0c022e1c8b27bffab6b7e9aefaea02283f9d5a5ac20e6ad0ad98",
+      "generatedAt": "2026-11-07T08:29:06.835154Z"
+    },
+    {
+      "path": ".githooks/pre-pr.ps1",
+      "sha256": "55d9ae9f6c1b60beef72be9886620cd266fb607eb69972ebe3bf02e5c5e51330",
+      "generatedAt": "2026-11-07T08:29:06.835154Z"
+    },
+    {
+      "path": ".github/workflows/release-rs-caller.yml",
+      "sha256": "ef49a0862ab17449c56eb2b723122ba3bd8a9cb734507ffbe8114e3c664278de",
+      "generatedAt": "2026-11-07T08:29:06Z"
+    },
+    {
+      "path": ".github/workflows/test-rs-caller.yml",
+      "sha256": "a4cb1a3219bd013fb50c7e14383ef3b068cd50d77da67498ea7c14d8f82c887c",
+      "generatedAt": "2026-11-07T08:29:06Z"
+    }
+  ]
+}
