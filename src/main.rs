@@ -1,6 +1,7 @@
 use std::io::Write;
 
 use clap::{Command, CommandFactory, Parser, Subcommand};
+use hop_bar::cache::{refresh_timeout, Cache, CachedRunner, Request};
 use hop_bar::{click, conf, session};
 use hop_top_kit::output::{register_output_flags, RegisterOutputFlagsOptions};
 
@@ -28,6 +29,12 @@ enum SubCmd {
     Click {
         #[command(subcommand)]
         cmd: ClickCmd,
+    },
+    /// Run one background cache refresh (spawned by render).
+    #[command(hide = true)]
+    Refresh {
+        /// Refresh request as JSON.
+        request: String,
     },
 }
 
@@ -73,6 +80,13 @@ fn main() {
                 }
             }
         }
+        Some(("refresh", m)) => {
+            let raw = m.get_one::<String>("request").map_or("", String::as_str);
+            if let Ok(req) = Request::from_json(raw) {
+                let limit = refresh_timeout(std::env::var("BAR_REFRESH_TIMEOUT").ok().as_deref());
+                Cache::new(&click::state_dir()).refresh(&req, limit);
+            }
+        }
         _ => {}
     }
 }
@@ -85,7 +99,8 @@ fn render() {
     let columns = std::env::var("COLUMNS")
         .ok()
         .and_then(|c| c.trim().parse().ok());
-    let out = hop_bar::render::run(&s, conf::load(), columns);
+    let runner = CachedRunner::new(Cache::new(&click::state_dir()));
+    let out = hop_bar::render::run(&s, conf::load(), columns, &runner);
     if !out.is_empty() {
         // a closed pipe must not panic; render always exits 0
         let mut so = std::io::stdout().lock();

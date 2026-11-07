@@ -90,9 +90,13 @@ fn render_group(src: &str, ctx: &Ctx, ex: &Expander) -> Vec<String> {
         .collect()
 }
 
-pub fn render(session: &Session, config: &Config, columns: Option<usize>) -> String {
-    let runner = ColdRunner;
-    let ex = Expander::new(&runner);
+pub fn render(
+    session: &Session,
+    config: &Config,
+    columns: Option<usize>,
+    runner: &dyn CommandRunner,
+) -> String {
+    let ex = Expander::new(runner);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs() as i64);
@@ -100,7 +104,7 @@ pub fn render(session: &Session, config: &Config, columns: Option<usize>) -> Str
         session,
         config,
         now,
-        runner: &runner,
+        runner,
     };
     compose(
         &render_group(&config.left, &ctx, &ex),
@@ -112,10 +116,15 @@ pub fn render(session: &Session, config: &Config, columns: Option<usize>) -> Str
 }
 
 /// What `bar render` prints: the line(s), or the short config error.
-pub fn run(session: &Session, load: LoadResult, columns: Option<usize>) -> String {
+pub fn run(
+    session: &Session,
+    load: LoadResult,
+    columns: Option<usize>,
+    runner: &dyn CommandRunner,
+) -> String {
     match load {
         LoadResult::Invalid(_) => CONFIG_ERROR.to_string(),
-        LoadResult::Missing => render(session, &builtin_config(), columns),
-        LoadResult::Ok(c) => render(session, &c, columns),
+        LoadResult::Missing => render(session, &builtin_config(), columns, runner),
+        LoadResult::Ok(c) => render(session, &c, columns, runner),
     }
 }

@@ -24,7 +24,7 @@ pub fn handler_installed(dir: &Path) -> bool {
     dir.join(MARKER).exists()
 }
 
-fn write_private(path: &Path, body: &str) -> std::io::Result<()> {
+pub(crate) fn write_private(path: &Path, body: &str) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
