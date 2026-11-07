@@ -1,0 +1,54 @@
+#!/bin/sh
+# bar-tlc: closed/total tasks of the track of the latest-updated claimed task,
+# else of all tasks. Needs sh, jq and tlc. Any failed tlc call emits nothing,
+# so a different kind of count never replaces the cached value.
+if [ "$1" = "--ext-info" ]; then
+  printf '%s\n' '{"name":"tlc","version":"0.1.0","description":"Closed tasks of the current track","capabilities":["discover","placeholder"],"ttl":"60s"}'
+  exit 0
+fi
+
+command -v jq >/dev/null 2>&1 && command -v tlc >/dev/null 2>&1 || exit 1
+
+cwd=$(jq -r '.session.cwd // empty' 2>/dev/null)
+[ -n "$cwd" ] && [ -d "$cwd" ] || cwd=$PWD
+
+# tlc creates an empty .tlc wherever it runs, so run it at the project root.
+root=$cwd
+while [ ! -d "$root/.tlc" ]; do
+  [ "$root" != / ] && [ -n "$root" ] || exit 1
+  root=$(dirname "$root")
+done
+cd "$root" || exit 1
+
+run() {
+  if command -v timeout >/dev/null 2>&1; then timeout 10 tlc "$@" 2>/dev/null
+  elif command -v gtimeout >/dev/null 2>&1; then gtimeout 10 tlc "$@" 2>/dev/null
+  else tlc "$@" 2>/dev/null
+  fi
+}
+
+tracks=$(run track list --status active --format json) || exit 1
+claimed=$(run task list --status IN_PROGRESS --mine --format json) || exit 1
+
+pick=$(jq -rn --argjson tr "${tracks:-[]}" --argjson tk "${claimed:-[]}" '
+  def arr: if type == "array" then . else (.tracks // .tasks // .items // .data // []) end;
+  ($tr | arr) as $tracks
+  | [ ($tk | arr) | sort_by(.updated_at // "") | reverse | .[]
+      | (.track_id // .track // empty) | tostring ] as $tids
+  | [ $tids[] as $t | $tracks[]
+      | select((.id // "") == $t or (.slug // "") == $t) ]
+  | first // empty
+  | .id // ""' 2>/dev/null) || exit 1
+
+if [ -n "$pick" ]; then
+  all=$(run task list --track "$pick" --archived --limit 100000 --format json) || exit 1
+else
+  all=$(run task list --archived --limit 100000 --format json) || exit 1
+fi
+
+printf '%s' "$all" | jq -ce '
+  (if type == "array" then . else (.tasks // .items // .data // []) end) as $t
+  | ($t | length) as $n
+  | select($n > 0)
+  | ([$t[] | select(.status != "TODO" and .status != "IN_PROGRESS")] | length) as $c
+  | {text: "\($c)∕\($n)", score: ($c * 100 / $n | floor)}' 2>/dev/null || exit 1
