@@ -24,20 +24,46 @@ case $cwd in /*) ;; *) exit 1 ;; esac
 
 # tlc creates an empty .tlc wherever it runs, so run it at the project root,
 # found by its config file; a stray empty .tlc does not count. The search
-# stops after the git work-tree root (a dir holding .git), so an enclosing
-# project never leaks in; outside a repo only cwd is checked. No project
+# stops after the git work-tree root (a dir holding .git; a linked worktree
+# also reaches its repo root), so an enclosing project never leaks in; outside a repo only cwd is checked. No project
 # hides the segment.
 none='{"text":""}'
-inrepo=
+# b: git boundary (first dir with .git). A linked worktree's .git file maps
+# to its repo root r (bare repo dir, else the main worktree), where the
+# search continues, never above.
+b=
 d=$cwd
 while :; do
-  [ ! -e "$d/.git" ] || { inrepo=1; break; }
+  [ ! -e "$d/.git" ] || { b=$d; break; }
   [ "$d" != / ] || break
   d=$(dirname -- "$d")
 done
+r=
+if [ -n "$b" ] && [ -f "$b/.git" ]; then
+  gd=$(sed -n 's/^gitdir: *//p' "$b/.git" 2>/dev/null | head -n 1)
+  case $gd in /*) ;; *) gd=$b/$gd ;; esac
+  common=
+  if [ -f "$gd/commondir" ]; then
+    rel=$(head -n 1 "$gd/commondir")
+    case $rel in /*) common=$rel ;; *) common=$gd/$rel ;; esac
+  else
+    case $gd in */worktrees/*) common=${gd%/worktrees/*} ;; esac
+  fi
+  if [ -n "$common" ] && [ -d "$common" ]; then
+    common=$(cd -- "$common" 2>/dev/null && pwd -P) || common=
+  fi
+  if [ -n "$common" ]; then
+    case $common in
+      */.git) r=$(dirname -- "$common") ;;
+      *) r=$common ;;
+    esac
+  fi
+fi
 root=$cwd
 while [ ! -f "$root/.tlc/config.yaml" ]; do
-  if [ -z "$inrepo" ] || [ -e "$root/.git" ] || [ "$root" = / ]; then
+  if [ -z "$b" ] || [ "$root" = "$b" ] || [ "$root" = / ]; then
+    # past the worktree: also try the repo root, once
+    if [ -n "$r" ] && [ -f "$r/.tlc/config.yaml" ]; then root=$r; break; fi
     printf '%s\n' "$none"
     exit 0
   fi
