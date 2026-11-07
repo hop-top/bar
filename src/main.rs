@@ -2,9 +2,9 @@ use std::io::Write;
 
 use clap::{ArgMatches, Command, CommandFactory, Parser, Subcommand};
 use hop_bar::cache::{refresh_timeout, Cache, CachedRunner, Request};
-use hop_bar::{click, conf, plugin, session};
+use hop_bar::{check, click, conf, plugin, session};
 use hop_top_kit::output::{
-    dispatch, register_output_flags, DispatchOptions, RegisterOutputFlagsOptions,
+    dispatch, register_output_flags, DispatchOptions, RegisterOutputFlagsOptions, EXIT_USAGE,
 };
 use serde_json::{json, Value};
 
@@ -23,6 +23,14 @@ struct Cli {
 enum SubCmd {
     /// Print the status line.
     Render,
+    /// Lint the config file; exit 2 on a config error.
+    Check,
+    /// Show the layout with built-in sample data.
+    Preview {
+        /// Usage pace to show.
+        #[arg(long, value_parser = hop_bar::preview::STATES, default_value = "early")]
+        state: String,
+    },
     /// Flip a usage view between bar and percentage.
     Toggle {
         /// 5h or 7d
@@ -73,6 +81,8 @@ fn main() {
     let matches = cli_cmd.get_matches();
     match matches.subcommand() {
         Some(("render", _)) => render(),
+        Some(("check", m)) => check(m),
+        Some(("preview", m)) => preview(m),
         Some(("toggle", m)) => {
             let key = m.get_one::<String>("key").map_or("", String::as_str);
             match click::toggle(&click::state_dir(), key) {
@@ -109,6 +119,37 @@ fn main() {
         }
         _ => {}
     }
+}
+
+fn check(m: &ArgMatches) {
+    let dirs = plugin::path_dirs(std::env::var_os("PATH").as_deref());
+    let report = match conf::find_path_default() {
+        Some(p) => check::check_file(&p, &dirs),
+        None => check::check_builtin(&dirs),
+    };
+    let mut out = std::io::stdout();
+    if m.get_one::<String>("format").map(String::as_str) == Some("table") {
+        let _ = out.write_all(report.to_text().as_bytes());
+    } else if let Err(e) = dispatch(m, &mut out, &report.to_json(), DispatchOptions::default()) {
+        eprintln!("bar check: {e}");
+        std::process::exit(EXIT_USAGE);
+    }
+    if report.has_errors() {
+        std::process::exit(EXIT_USAGE);
+    }
+}
+
+fn preview(m: &ArgMatches) {
+    let state = m.get_one::<String>("state").map_or("early", String::as_str);
+    let columns = std::env::var("COLUMNS")
+        .ok()
+        .and_then(|c| c.trim().parse().ok());
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64);
+    let out = hop_bar::preview::render(state, conf::load(), columns, now);
+    let mut so = std::io::stdout().lock();
+    let _ = writeln!(so, "{out}");
 }
 
 fn plugin_cmd(m: &ArgMatches) {

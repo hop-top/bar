@@ -33,8 +33,20 @@ pub fn builtin_config() -> Config {
     }
 }
 
+/// Stands in for every placeholder in a preview: no plugins, no real data.
+pub type Sample<'a> = &'a dyn Fn(&str, &Options, &Ctx) -> Option<String>;
+
 /// Core names first; anything else is a `bar-<name>` plugin.
-fn render_placeholder(name: &str, inline: &Options, ctx: &Ctx, ex: &Expander) -> String {
+fn render_placeholder(
+    name: &str,
+    inline: &Options,
+    ctx: &Ctx,
+    ex: &Expander,
+    sample: Option<Sample>,
+) -> String {
+    if let Some(sample) = sample {
+        return sample(name, &expanded(name, inline, ctx, ex), ctx).unwrap_or_default();
+    }
     let core = lookup(name);
     let found = match core {
         Some(_) => None,
@@ -43,14 +55,7 @@ fn render_placeholder(name: &str, inline: &Options, ctx: &Ctx, ex: &Expander) ->
             None => return String::new(),
         },
     };
-    let merged = match ctx.config.defaults.get(name) {
-        Some(d) => inline.merged_over(d),
-        None => inline.clone(),
-    };
-    let mut opts = Options::default();
-    for (k, v) in merged.iter() {
-        opts.set(k, &ex.expand(v));
-    }
+    let opts = expanded(name, inline, ctx, ex);
     match (core, found) {
         (Some(p), _) => p.render(ctx, &opts),
         (None, Some(f)) => plugin::render_found(ctx, &f, &opts),
@@ -59,14 +64,32 @@ fn render_placeholder(name: &str, inline: &Options, ctx: &Ctx, ex: &Expander) ->
     .unwrap_or_default()
 }
 
+/// Inline options over the configured defaults, values expanded.
+fn expanded(name: &str, inline: &Options, ctx: &Ctx, ex: &Expander) -> Options {
+    let merged = match ctx.config.defaults.get(name) {
+        Some(d) => inline.merged_over(d),
+        None => inline.clone(),
+    };
+    let mut opts = Options::default();
+    for (k, v) in merged.iter() {
+        opts.set(k, &ex.expand(v));
+    }
+    opts
+}
+
 /// Text tokens survive only beside non-empty placeholders, so `repo:` loses
 /// its colon when the branch is empty.
-fn render_segment(seg: &[Token], ctx: &Ctx, ex: &Expander) -> Option<String> {
+fn render_segment(
+    seg: &[Token],
+    ctx: &Ctx,
+    ex: &Expander,
+    sample: Option<Sample>,
+) -> Option<String> {
     let values: Vec<Option<String>> = seg
         .iter()
         .map(|t| match t {
             Token::Placeholder { name, options } => {
-                Some(render_placeholder(name, options, ctx, ex))
+                Some(render_placeholder(name, options, ctx, ex, sample))
             }
             Token::Text(_) => None,
         })
@@ -94,13 +117,13 @@ fn render_segment(seg: &[Token], ctx: &Ctx, ex: &Expander) -> Option<String> {
     Some(out)
 }
 
-fn render_group(src: &str, ctx: &Ctx, ex: &Expander) -> Vec<String> {
+fn render_group(src: &str, ctx: &Ctx, ex: &Expander, sample: Option<Sample>) -> Vec<String> {
     let Ok(tokens) = parse(src) else {
         return Vec::new();
     };
     segments(&tokens, &ctx.config.separator)
         .iter()
-        .filter_map(|seg| render_segment(seg, ctx, ex))
+        .filter_map(|seg| render_segment(seg, ctx, ex, sample))
         .collect()
 }
 
@@ -133,6 +156,36 @@ pub fn render_in(
     cache: Option<&Cache>,
     plugin_dirs: &[PathBuf],
 ) -> String {
+    render_impl(session, config, columns, runner, cache, plugin_dirs, None)
+}
+
+/// Renders `config` with every placeholder answered by `sample`.
+pub fn render_sample(
+    session: &Session,
+    config: &Config,
+    columns: Option<usize>,
+    sample: Sample,
+) -> String {
+    render_impl(
+        session,
+        config,
+        columns,
+        &ColdRunner,
+        None,
+        &[],
+        Some(sample),
+    )
+}
+
+fn render_impl(
+    session: &Session,
+    config: &Config,
+    columns: Option<usize>,
+    runner: &dyn CommandRunner,
+    cache: Option<&Cache>,
+    plugin_dirs: &[PathBuf],
+    sample: Option<Sample>,
+) -> String {
     let ex = Expander::new(runner);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -147,9 +200,9 @@ pub fn render_in(
         plugin_dirs,
     };
     compose(
-        &render_group(&config.left, &ctx, &ex),
-        &render_group(&config.center, &ctx, &ex),
-        &render_group(&config.right, &ctx, &ex),
+        &render_group(&config.left, &ctx, &ex, sample),
+        &render_group(&config.center, &ctx, &ex, sample),
+        &render_group(&config.right, &ctx, &ex, sample),
         columns,
         config.gap,
     )

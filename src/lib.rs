@@ -1,4 +1,5 @@
 pub mod cache;
+pub mod check;
 pub mod click;
 pub mod conf;
 pub mod expand;
@@ -9,6 +10,7 @@ pub mod options;
 pub mod pace;
 pub mod placeholders;
 pub mod plugin;
+pub mod preview;
 pub mod render;
 pub mod session;
 pub mod style;

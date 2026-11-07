@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: bar.preview.usage-states
+title: See the layout with sample data before wiring it up
+binary: bar
+intent: |
+  A user is tuning their status line and wants to see how the layout and
+  the usage colours look without a live session. They run bar preview for
+  each pace state and compare the output. Preview shows built-in sample
+  data only, so it is safe to run anywhere.
+preconditions:
+  - bar binary is on PATH
+steps:
+  - id: early
+    intent: |
+      Show the calm state, where plenty of budget is left and the usage
+      bars are green.
+    invoke: ["bar", "preview", "--state", "early"]
+    capture: [exit_code, stdout]
+  - id: final
+    intent: |
+      Show the last stretch with budget left unused, where the usage bars
+      turn red to say the allowance is going to waste.
+    invoke: ["bar", "preview", "--state", "final"]
+    capture: [exit_code, stdout]

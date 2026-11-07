@@ -101,7 +101,7 @@ pub enum LoadResult {
 }
 
 /// Whitespace-split; double quotes group; `#` outside quotes starts a comment.
-fn tokenize(line: &str) -> Result<Vec<String>, String> {
+pub(crate) fn tokenize(line: &str) -> Result<Vec<String>, String> {
     let mut out = Vec::new();
     let mut cur = String::new();
     let (mut in_tok, mut in_q) = (false, false);
@@ -179,7 +179,7 @@ fn kv<'a>(tok: &'a str, key: &str) -> Option<&'a str> {
     tok.strip_prefix(key)?.strip_prefix('=')
 }
 
-fn parse_options(toks: &[String]) -> Result<Options, String> {
+pub(crate) fn parse_options(toks: &[String]) -> Result<Options, String> {
     let mut o = Options::default();
     for t in toks {
         let (k, v) = t
@@ -338,12 +338,20 @@ pub fn search_paths(
     v
 }
 
-/// Seam for tests: explicit env lookup, home, and kit config dir.
-pub fn load_from(env: &dyn Fn(&str) -> Option<String>, home: &Path, kit_dir: &Path) -> LoadResult {
-    let Some(path) = search_paths(env, home, kit_dir)
+/// First existing candidate, or `None`.
+pub fn find_path(
+    env: &dyn Fn(&str) -> Option<String>,
+    home: &Path,
+    kit_dir: &Path,
+) -> Option<PathBuf> {
+    search_paths(env, home, kit_dir)
         .into_iter()
         .find(|p| p.is_file())
-    else {
+}
+
+/// Seam for tests: explicit env lookup, home, and kit config dir.
+pub fn load_from(env: &dyn Fn(&str) -> Option<String>, home: &Path, kit_dir: &Path) -> LoadResult {
+    let Some(path) = find_path(env, home, kit_dir) else {
         return LoadResult::Missing;
     };
     match std::fs::read_to_string(&path) {
@@ -356,6 +364,18 @@ pub fn load_from(env: &dyn Fn(&str) -> Option<String>, home: &Path, kit_dir: &Pa
             Err(e) => LoadResult::Invalid(e),
         },
     }
+}
+
+/// Process environment, `HOME` and the kit config dir for `bar`.
+pub fn find_path_default() -> Option<PathBuf> {
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    find_path(
+        &|k| std::env::var(k).ok(),
+        &home,
+        &hop_top_kit::xdg::raw_config_dir("bar"),
+    )
 }
 
 pub fn load() -> LoadResult {
