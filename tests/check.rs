@@ -265,3 +265,18 @@ fn preview_final_shows_bad_on_unused() {
     assert!(!run("early").contains(ramp_bad), "{}", run("early"));
     fx.bar(&["preview", "--state", "later"]).assert().code(2);
 }
+
+#[test]
+fn check_flags_bad_usage_style_values() {
+    let fx = Fx::new();
+    fx.conf("set left \"#{usage[show=bar,pct,glyphs=dots,count=used,alt=pct,time]}\"\n");
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_eq!(code, 0, "{stdout}");
+
+    for bad in ["show=bar,zzz", "alt=time,zzz", "glyphs=zzz", "count=zzz"] {
+        fx.conf(&format!("set left \"#{{usage[{bad}]}}\"\n"));
+        let (code, stdout) = out(&mut fx.bar(&["check"]));
+        assert_eq!(code, 2, "{bad}: {stdout}");
+        assert!(stdout.contains("invalid value"), "{bad}: {stdout}");
+    }
+}

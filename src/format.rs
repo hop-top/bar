@@ -64,7 +64,15 @@ fn parse_placeholder(body: &str) -> Result<Token, String> {
         }
         match part.split_once('=') {
             Some((k, v)) => options.set(k.trim(), v.trim()),
-            None => options.set(part, ""),
+            // `show=bar,pct`: a bare part continues the previous value
+            None => match options.last() {
+                Some((k, v)) => {
+                    let joined = format!("{v},{part}");
+                    let k = k.to_string();
+                    options.set(&k, &joined);
+                }
+                None => options.set(part, ""),
+            },
         }
     }
     Ok(Token::Placeholder {

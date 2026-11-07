@@ -2,9 +2,11 @@
 
 ## usage
 
-`#{usage[type=5h|7d|h|d, view=bar|pct|time, width=5, click=toggle|none]}`
+`#{usage[type=5h|7d|h|d, show=time,bar, alt=time,pct, count=left|used, glyphs=blocks, width=5, click=toggle|none]}`
 
-- `bar` and `pct` read `2h13m` then the view; `time` is the time alone. Expired or missing windows render nothing.
+- `show` lists the components in order from `time`, `bar`, `pct` (`show=bar,pct`, `show=pct,time`); default `time,bar`. `view` stays as an alias: `bar` is `time,bar`, `pct` is `time,pct`, `time` is `time`; `show` wins when both are set. `count=used` makes the percentage and the bar fill show used instead of remaining; the colour still follows the pace score of what remains. `glyphs`: `blocks` (█░), `shades` (▓░), `dots` (●○), `squares` (■□), `bars` (▰▱), `braille` (⣿⣀), `eighths` (█ with a ▏▎▍▌▋▊▉ last cell); an unknown name draws `blocks` and `bar check` flags it.
+- `bar toggle` (a click on the bar or percentage) flips between `show` and `alt`; `alt` defaults to `show` with `bar` and `pct` swapped. Time stays outside the link. Expired or missing windows render nothing.
+- Expired or missing windows render nothing.
 - The bar is one colour: every filled cell takes the colour of the exact value, the same as `pct`; empty cells are muted. The colour follows the pace score of `rule usage[type=5h]` / `rule usage[type=7d]`; without a rule the built-ins apply (`early warn=20% bad=5%`, final `1h` / `1d` with `bad=30%`).
 - Toggle state: `pct-5h` / `pct-7d` files (mode 0600) in the state directory (the kit state dir for `bar`; `BAR_STATE_DIR` overrides it, meant for tests). While a file exists, `bar` and `pct` swap. `bar toggle <5h|7d>` flips it.
 - Link `bar://toggle/<key>` is emitted only when the handler app is installed (marker `click-installed` in the state directory) and `click` is not `none`.
@@ -66,7 +68,11 @@ Quote values with spaces. `#` starts a comment.
 | `repo`, `branch` | `link` | on | Link to the repository / branch page |
 | | `max` | none | Truncate to this many characters with `…` |
 | `usage` | `type` | `5h` | `5h`, `7d`; `h`, `d` shorthand |
-| | `view` | `bar` | `bar`, `pct`, `time` |
+| | `view` | `bar` | `bar`, `pct`, `time`; alias of `show` |
+| | `show` | `time,bar` | list of `time`, `bar`, `pct` |
+| | `alt` | `show`, bar and pct swapped | list of `time`, `bar`, `pct` |
+| | `count` | `left` | `left`, `used` |
+| | `glyphs` | `blocks` | `blocks`, `shades`, `dots`, `squares`, `bars`, `braille`, `eighths` |
 | | `width` | `5` | Bar cells, clamped to 1..40 |
 | | `click` | `toggle` | `none` turns the toggle link off; the link appears only once the handler is installed (`bar click install`) |
 | `sessions`, `spend` | none | | No options |

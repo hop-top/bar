@@ -162,3 +162,13 @@ fn configured_separator_is_trimmed() {
     let s = seg("#{a}│#{b}", " │ ");
     assert_eq!(s.len(), 2);
 }
+
+#[test]
+fn bare_part_continues_previous_list_value() {
+    let t = parse("#{usage[type=5h,show=bar,pct,width=3]}").unwrap();
+    let (_, o) = ph(&t[0]);
+    assert_eq!(o.get("show"), Some("bar,pct"));
+    assert_eq!(o.get("type"), Some("5h"));
+    assert_eq!(o.get("width"), Some("3"));
+    assert_eq!(o.get("pct"), None);
+}

@@ -5,6 +5,7 @@ use crate::expr;
 use crate::format::{self, Token};
 use crate::options::Options;
 use crate::placeholders::gh::{self, Kind};
+use crate::placeholders::usage::glyphs::{GLYPH_SETS, SHOW_ITEMS};
 use crate::plugin;
 use crate::render::builtin_config;
 use serde_json::{json, Value};
@@ -95,6 +96,8 @@ enum Val {
     Any,
     Int,
     OneOf(&'static [&'static str]),
+    /// Comma list whose items all come from the set.
+    List(&'static [&'static str]),
 }
 
 const STATUS_PR: &[&str] = &["open", "closed", "merged"];
@@ -109,6 +112,10 @@ fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
         "usage" => &[
             ("type", OneOf(&["5h", "7d", "h", "d"])),
             ("view", OneOf(&["bar", "pct", "time"])),
+            ("show", List(&SHOW_ITEMS)),
+            ("alt", List(&SHOW_ITEMS)),
+            ("count", OneOf(&["left", "used"])),
+            ("glyphs", OneOf(&GLYPH_SETS)),
             ("width", Int),
             ("click", OneOf(&["toggle", "none"])),
         ],
@@ -135,6 +142,7 @@ fn val_ok(v: Val, raw: &str) -> bool {
         Val::Any => true,
         Val::Int => raw.trim().parse::<usize>().is_ok(),
         Val::OneOf(set) => set.contains(&raw),
+        Val::List(set) => raw.split(',').all(|i| set.contains(&i.trim())),
     }
 }
 
