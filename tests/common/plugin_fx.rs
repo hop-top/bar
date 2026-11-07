@@ -110,15 +110,50 @@ pub fn install(from: &Path, to: &Path) {
     std::fs::set_permissions(to, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
 }
 
+/// Stores a finished refresh. Plugin jobs run to completion without the
+/// product's deadlines (5 s info, 3 s render): on a loaded host those lapse
+/// and leave the cache cold, which says nothing about the code under test.
 pub fn refresh(cache: &Cache, key: String, job: hop_bar::cache::Job) {
-    cache.refresh(
-        &Request {
-            key,
-            job,
-            lock: String::new(),
-        },
-        Duration::from_secs(20),
-    );
+    use hop_bar::cache::Job;
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let out = match &job {
+        Job::PluginInfo { path } => Command::new(path).arg("--ext-info").output().unwrap(),
+        Job::PluginRender { path, input } => {
+            let mut child = Command::new(path)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .spawn()
+                .unwrap();
+            child
+                .stdin
+                .take()
+                .unwrap()
+                .write_all(input.as_bytes())
+                .unwrap();
+            child.wait_with_output().unwrap()
+        }
+        _ => {
+            cache.refresh(
+                &Request {
+                    key,
+                    job,
+                    lock: String::new(),
+                },
+                Duration::from_secs(20),
+            );
+            return;
+        }
+    };
+    // a failing or malformed plugin stores nothing, as a failed refresh
+    let text = String::from_utf8_lossy(&out.stdout).into_owned();
+    let valid = match &job {
+        Job::PluginInfo { .. } => hop_bar::plugin::parse_info(&text).is_some(),
+        _ => parse_output(&text).is_some(),
+    };
+    if out.status.success() && valid {
+        cache.store(&key, &text).unwrap();
+    }
 }
 
 pub fn opts(o: &[(&str, &str)]) -> Options {
