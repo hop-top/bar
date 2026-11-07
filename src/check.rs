@@ -357,6 +357,16 @@ pub fn check_text(text: &str, path: Option<PathBuf>, dirs: &[PathBuf]) -> Report
             Some("set") if t.len() == 3 && matches!(t[1].as_str(), "left" | "center" | "right") => {
                 c.layout(&t[2], i + 1);
             }
+            Some("set") if t.len() == 3 && t[1] == "claude-dir" => {
+                if !t[2].starts_with('/') && !t[2].starts_with("~/") {
+                    c.add(
+                        Level::Warning,
+                        i + 1,
+                        "claude-dir must be an absolute path (or start with ~/); it is ignored"
+                            .into(),
+                    );
+                }
+            }
             Some("default") if t.len() >= 2 => {
                 if let Ok(o) = parse_options(&t[2..]) {
                     c.placeholder(&t[1], &o, i + 1, false);

@@ -27,6 +27,8 @@ const SUMMARY_DAYS: i64 = 35;
 /// Largest state file written.
 pub const MAX_STATE: usize = 16 * 1024 * 1024;
 const MAX_ID: usize = 256;
+/// Model key suffix for requests priced at a long-context tier.
+const LONG_MARK: char = '#';
 
 /// input, output, cache write, cache read
 pub type Tokens = [u64; 4];
@@ -58,13 +60,22 @@ impl Summary {
         let mut usd = 0.0;
         let mut unknown = false;
         for (_, models) in self.days.iter().filter(|(d, _)| d.starts_with(prefix)) {
-            for (model, t) in models {
+            for (key, t) in models {
+                let (model, long) = match key.split_once(LONG_MARK) {
+                    Some((m, _)) => (m, true),
+                    None => (key.as_str(), false),
+                };
                 match prices::lookup(model, overrides) {
                     Some(r) => {
+                        let k = if long {
+                            prices::long_mult(model, overrides)
+                        } else {
+                            1
+                        };
                         usd += t
                             .iter()
                             .zip(r)
-                            .map(|(n, r)| *n as f64 * r as f64)
+                            .map(|(n, r)| *n as f64 * (r * k) as f64)
                             .sum::<f64>()
                             / 1e12;
                     }
@@ -138,7 +149,24 @@ impl State {
 
     /// The state as JSON, keeping the dedupe hashes of the newest days
     /// that fit in `max` bytes.
-    fn to_json(&self, max: usize) -> String {
+    fn fit_json(&mut self, max: usize) -> String {
+        // marks and totals must leave room for hashes: drop the marks of
+        // the least recently modified transcripts (they are rescanned)
+        let half = max / 2;
+        if self.files.len() * 90 > half {
+            let mut by_age: Vec<(i64, String)> = self
+                .files
+                .iter()
+                .map(|(p, m)| (m.mtime_ns, p.clone()))
+                .collect();
+            by_age.sort();
+            for (_, p) in by_age
+                .into_iter()
+                .take(self.files.len().saturating_sub(half / 90))
+            {
+                self.files.remove(&p);
+            }
+        }
         let files: Map<String, Value> = self
             .files
             .iter()
@@ -257,6 +285,7 @@ struct Fold<'a> {
     seen: HashSet<u64>,
     days: Days,
     min_date: String,
+    now: i64,
     dirty: bool,
 }
 
@@ -276,6 +305,8 @@ impl Fold<'_> {
         let Some(ts) = v["timestamp"].as_str().and_then(parse_ts) else {
             return;
         };
+        // a skewed clock must not open future buckets
+        let ts = ts.min(self.now);
         if model.is_empty() || model.starts_with('<') {
             return;
         }
@@ -301,12 +332,18 @@ impl Fold<'_> {
             }
             self.st.seen.entry(date.clone()).or_default().push(h);
         }
+        let long = prices::long_over(model).is_some_and(|over| t[0] + t[2] + t[3] > over);
+        let key = if long {
+            format!("{model}{LONG_MARK}long")
+        } else {
+            model.to_string()
+        };
         let slot = self
             .st
             .days
             .entry(date)
             .or_default()
-            .entry(model.to_string())
+            .entry(key)
             .or_default();
         for (s, add) in slot.iter_mut().zip(t) {
             *s = s.saturating_add(add);
@@ -387,6 +424,7 @@ pub fn update_with(
             last: None,
         },
         min_date,
+        now,
         dirty: false,
     };
     let mut marks = Vec::new();
@@ -414,7 +452,8 @@ pub fn update_with(
     drop(fold);
     st.files.extend(marks);
     if dirty {
-        save(&sfile, &st.to_json(max_state));
+        let body = st.fit_json(max_state);
+        save(&sfile, &body);
     }
     let from = day_string(today - (SUMMARY_DAYS - 1));
     Some(json!({"v": 1, "days": days_to_json(&st.days, &from)}).to_string())

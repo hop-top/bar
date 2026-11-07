@@ -1,7 +1,5 @@
 //! Local-time offsets and civil dates without a date-time dependency.
 
-use std::ffi::{c_char, c_long};
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tz {
     Utc,
@@ -25,37 +23,18 @@ impl Tz {
     }
 }
 
-/// Mirrors `struct tm` on 64-bit macOS and Linux (glibc, musl).
-#[repr(C)]
-struct Tm {
-    sec: i32,
-    min: i32,
-    hour: i32,
-    mday: i32,
-    mon: i32,
-    year: i32,
-    wday: i32,
-    yday: i32,
-    isdst: i32,
-    gmtoff: c_long,
-    zone: *const c_char,
-}
-
-extern "C" {
-    fn localtime_r(t: *const i64, out: *mut Tm) -> *mut Tm;
-}
-
 /// The process's zone (`TZ`, else the system's) at `ts`, in seconds east
 /// of UTC; 0 when the C library cannot convert it.
 pub fn local_offset(ts: i64) -> i64 {
-    // SAFETY: `Tm` is plain data for which all-zero is valid, and
+    let t: libc::time_t = ts;
+    // SAFETY: `tm` is plain data for which all-zero is valid, and
     // `localtime_r` writes only into the buffer it is given.
     unsafe {
-        let mut tm: Tm = std::mem::zeroed();
-        if localtime_r(&ts, &mut tm).is_null() {
+        let mut tm: libc::tm = std::mem::zeroed();
+        if libc::localtime_r(&t, &mut tm).is_null() {
             0
         } else {
-            tm.gmtoff
+            tm.tm_gmtoff
         }
     }
 }

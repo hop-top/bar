@@ -185,3 +185,17 @@ fn config_parses_claude_dir_and_price() {
         assert!(hop_bar::conf::parse(bad).is_err(), "{bad}");
     }
 }
+
+#[test]
+fn check_warns_on_relative_claude_dir() {
+    let r = hop_bar::check::check_text("set claude-dir rel/dir\n", None, &[]);
+    assert!(
+        r.issues.iter().any(|i| i.message.contains("claude-dir")),
+        "{:?}",
+        r.issues
+    );
+    for ok in ["set claude-dir /abs/dir\n", "set claude-dir ~/x\n"] {
+        let r = hop_bar::check::check_text(ok, None, &[]);
+        assert!(r.issues.is_empty(), "{ok}: {:?}", r.issues);
+    }
+}

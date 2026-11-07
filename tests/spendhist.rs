@@ -178,11 +178,11 @@ fn price_override_beats_builtin_by_longest_prefix() {
     ];
     assert!((s.spend("2026-11-07", &over).usd - 7.0).abs() < 1e-9);
     assert_eq!(
-        prices::lookup("claude-opus-4-5-x", &[]).unwrap()[0],
+        prices::lookup("claude-opus-4-5-20251101", &[]).unwrap()[0],
         5_000_000
     );
     assert_eq!(
-        prices::lookup("claude-opus-4-5-x", &over).unwrap()[0],
+        prices::lookup("claude-opus-4-5-20251101", &over).unwrap()[0],
         7_000_000
     );
     assert!(Price::parse("x", "a", "2", "3", "4").is_none());
@@ -321,4 +321,84 @@ fn utc_and_local_dates() {
     assert_eq!(spendhist::date_of(NOW, Tz::Utc), "2026-11-07");
     assert_eq!(spendhist::date_of(0, Tz::Utc), "1970-01-01");
     assert_eq!(spendhist::date_of(951_782_400, Tz::Utc), "2000-02-29");
+}
+
+#[test]
+fn model_ids_match_exact_version_or_date_suffix() {
+    let five = |m: &str| prices::lookup(m, &[]).map(|r| r[0]);
+    assert_eq!(five("claude-opus-5-5"), Some(4_000_000));
+    assert_eq!(five("claude-opus-5-5-20260101"), Some(4_000_000));
+    assert_eq!(five("claude-opus-5"), Some(5_000_000));
+    assert_eq!(five("claude-opus-5-20260101"), Some(5_000_000));
+    assert_eq!(five("claude-opus-5-6"), None);
+    assert_eq!(five("claude-opus-5-6-20260101"), None);
+    assert_eq!(five("claude-opus-4-20250514"), Some(15_000_000));
+    assert_eq!(five("claude-opus-4-9"), None);
+    assert_eq!(five("claude-opus-4-5-20251101"), Some(5_000_000));
+    assert_eq!(five("claude-sonnet-5-2"), None);
+}
+
+#[test]
+fn long_prompts_use_the_long_context_tier() {
+    let fx = Fx::new("long");
+    let h = "claude-haiku-5-5";
+    fx.append(
+        "p1/a.jsonl",
+        &(line("s", "2026-11-07T01:00:00Z", h, 90_000, 0, 0, 0)
+            // 150k prompt (input + cache read): long tier, 5x
+            + &line("l", "2026-11-07T01:00:01Z", h, 50_000, 0, 0, 100_000)),
+    );
+    let s = fx.run(NOW);
+    // short: 90k * 0.1/1M = 0.009, long 0.03; long: 50k*0.5/1M + 100k*0.05/1M = 0.025 + 0.005
+    assert!(
+        (s.spend("2026-11-07", &[]).usd - 0.039).abs() < 1e-9,
+        "{:?} {}",
+        s.days,
+        s.spend("2026-11-07", &[]).usd
+    );
+    // exactly 100k is still the short tier
+    let fx = Fx::new("long2");
+    fx.append(
+        "p1/a.jsonl",
+        &line("e", "2026-11-07T01:00:00Z", h, 100_000, 0, 0, 0),
+    );
+    assert!((fx.run(NOW).spend("2026-11-07", &[]).usd - 0.01).abs() < 1e-9);
+    // a model without a tier is unaffected
+    let fx = Fx::new("long3");
+    fx.append(
+        "p1/a.jsonl",
+        &line("o", "2026-11-07T01:00:00Z", OPUS, 200_000, 0, 0, 0),
+    );
+    assert!((fx.run(NOW).spend("2026-11-07", &[]).usd - 1.0).abs() < 1e-9);
+}
+
+#[test]
+fn future_timestamps_count_as_today() {
+    let fx = Fx::new("future");
+    fx.append(
+        "p1/a.jsonl",
+        &line("f", "2030-01-01T00:00:00Z", OPUS, 7, 0, 0, 0),
+    );
+    let s = fx.run(NOW);
+    assert_eq!(s.days.keys().collect::<Vec<_>>(), ["2026-11-07"]);
+    assert_eq!(tok(&s, "2026-11-07", OPUS)[0], 7);
+}
+
+#[test]
+fn many_tracked_files_still_fit_the_cap() {
+    let fx = Fx::new("manyfiles");
+    for i in 0..60 {
+        fx.append(
+            &format!("p1/f{i}.jsonl"),
+            &line(&format!("m{i}"), "2026-11-06T01:00:00Z", OPUS, 1, 1, 1, 1),
+        );
+    }
+    let cap = 3000;
+    let out = spendhist::update_with(&fx.state(), &fx.claude(), Tz::Utc, NOW, None, cap).unwrap();
+    assert_eq!(
+        tok(&Summary::parse(&out).unwrap(), "2026-11-06", OPUS)[0],
+        60
+    );
+    let len = fs::metadata(find_state(&fx.state())).unwrap().len();
+    assert!(len <= cap as u64, "{len}");
 }
