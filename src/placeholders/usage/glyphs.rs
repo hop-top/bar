@@ -3,7 +3,7 @@
 use crate::style::{dim, fg};
 
 /// Components `show` and `alt` accept.
-pub const SHOW_ITEMS: [&str; 3] = ["time", "bar", "pct"];
+pub const SHOW_ITEMS: [&str; 5] = ["time", "bar", "pct", "eta", "proj"];
 
 /// Names `glyphs` accepts; the first is the default.
 pub const GLYPH_SETS: [&str; 7] = [
@@ -15,6 +15,8 @@ pub enum Part {
     Time,
     Bar,
     Pct,
+    Eta,
+    Proj,
 }
 
 /// Known items in order, repeats dropped; unknown ones are skipped.
@@ -25,6 +27,8 @@ pub fn parse_list(raw: &str) -> Vec<Part> {
             "time" => Part::Time,
             "bar" => Part::Bar,
             "pct" => Part::Pct,
+            "eta" => Part::Eta,
+            "proj" => Part::Proj,
             _ => continue,
         };
         if !out.contains(&part) {
@@ -49,7 +53,7 @@ pub fn swapped(show: &[Part]) -> Vec<Part> {
         .map(|p| match p {
             Part::Bar => Part::Pct,
             Part::Pct => Part::Bar,
-            Part::Time => Part::Time,
+            other => *other,
         })
         .collect()
 }

@@ -62,6 +62,31 @@ pub fn score(pct_left: i64, secs_left: Option<i64>, period: i64, rule: &Rule) ->
     fit(v)
 }
 
+/// Straight-line projection of a window at its average burn so far.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Forecast {
+    /// Seconds until the budget runs out, from now. Only meaningful when
+    /// `proj` is over 100.
+    pub eta_secs: i64,
+    /// Used percent at reset, rounded, 0..=999.
+    pub proj: i64,
+}
+
+/// `None` while nothing is used or under 2% of the window has elapsed: the
+/// rate is too noisy then.
+pub fn forecast(used: f64, secs_left: i64, period: i64) -> Option<Forecast> {
+    let elapsed = period - secs_left;
+    if !used.is_finite() || used <= 0.0 || period <= 0 || elapsed * 50 < period {
+        return None;
+    }
+    let eta = (100.0 - used).max(0.0) * elapsed as f64 / used;
+    let proj = used * period as f64 / elapsed as f64;
+    Some(Forecast {
+        eta_secs: eta.min(i64::MAX as f64) as i64,
+        proj: proj.clamp(0.0, 999.0).round() as i64,
+    })
+}
+
 /// Scores outside -100..=100 carry no extra meaning; keeps the cast exact.
 fn fit(v: i64) -> i32 {
     v.clamp(-100, 100) as i32
@@ -118,4 +143,36 @@ pub fn metric_score(
         ..rule.clone()
     };
     score(pct_left, secs_left, period, &rule)
+}
+
+#[cfg(test)]
+mod forecast_tests {
+    use super::forecast;
+
+    const P: i64 = 5 * 3600;
+
+    #[test]
+    fn edges_yield_none() {
+        assert!(forecast(f64::NAN, P / 2, P).is_none());
+        assert!(forecast(-5.0, P / 2, P).is_none());
+        assert!(forecast(0.0, P / 2, P).is_none());
+        assert!(forecast(10.0, P + 1, P).is_none());
+        assert!(forecast(10.0, P, P).is_none());
+        assert!(forecast(10.0, P / 2, 0).is_none());
+        assert!(forecast(10.0, P - 359, P).is_none());
+        assert!(forecast(10.0, P - 360, P).is_some());
+    }
+
+    #[test]
+    fn over_full_window_is_zero_eta_and_capped() {
+        let f = forecast(150.0, P / 2, P).unwrap();
+        assert_eq!((f.eta_secs, f.proj), (0, 300));
+        assert_eq!(forecast(100.0, P / 2, P).unwrap().eta_secs, 0);
+    }
+
+    #[test]
+    fn halfway_math() {
+        let f = forecast(25.0, P / 2, P).unwrap();
+        assert_eq!((f.eta_secs, f.proj), (P / 2 * 3, 50));
+    }
 }

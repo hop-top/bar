@@ -109,6 +109,32 @@ pub fn install_plan(cfg: &InstallCfg) -> InstallPlan {
     }
 }
 
+/// Error from `run_install`; the CLI exits 2 on `Unsupported`, 1 otherwise.
+#[derive(Debug, PartialEq, Eq)]
+pub enum InstallError {
+    /// The app bundle needs macOS; `--hooks-only` works anywhere.
+    Unsupported,
+    Failed(String),
+}
+
+impl std::fmt::Display for InstallError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unsupported => f.write_str(
+                "the bar:// URL handler needs macOS (not supported on this platform); \
+                 use --hooks-only to register the Claude Code hooks only",
+            ),
+            Self::Failed(e) => f.write_str(e),
+        }
+    }
+}
+
+impl From<String> for InstallError {
+    fn from(e: String) -> Self {
+        Self::Failed(e)
+    }
+}
+
 /// `macos` and `dry_run` are parameters so tests cover every path without
 /// touching the machine; `run` executes one external command.
 pub fn run_install(
@@ -117,11 +143,10 @@ pub fn run_install(
     dry_run: bool,
     run: &mut dyn FnMut(&[String]) -> Result<(), String>,
     out: &mut dyn Write,
-) -> Result<(), String> {
+) -> Result<(), InstallError> {
     let io = |e: std::io::Error| e.to_string();
     if !macos {
-        writeln!(out, "bar click install: macOS only, nothing to do").map_err(io)?;
-        return Ok(());
+        return Err(InstallError::Unsupported);
     }
     let settings = plan_settings(&cfg.settings, &cfg.bar)?;
     let plan = install_plan(cfg);
@@ -156,7 +181,7 @@ pub fn run_install(
         writeln!(out, "backup {}", backup.display()).map_err(io)?;
     }
     write_private(&cfg.state_dir.join(MARKER), MARKER_CMD).map_err(io)?;
-    writeln!(out, "installed {}", cfg.app.display()).map_err(io)
+    writeln!(out, "installed {}", cfg.app.display()).map_err(|e| io(e).into())
 }
 
 /// `--hooks-only`: wires the `bar click hook` entries into `settings.json`

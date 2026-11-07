@@ -104,7 +104,7 @@ Five POSIX shell scripts ship in `plugins/`. They need `sh`, `jq` and the tool t
 
 ### `bar-tlc`
 
-`#{tlc}` shows `closed∕total` tasks (`DONE` and `SKIPPED` count as closed) of the track of your latest-updated claimed task, else of all tasks. Needs `tlc`. It runs `tlc` from the nearest ancestor of `session.cwd` holding `.tlc/config.yaml` (a stray empty `.tlc/` is skipped; a relative `cwd` falls back to the working directory) and never creates one. If any `tlc` call fails, or there is no project root, it exits non-zero with no output, so the last good value stays. Emits `score` (closed share, 0..100), so none closed is red and all closed is green.
+`#{tlc}` shows `closed∕total` tasks (`DONE` and `SKIPPED` count as closed) of the track of your latest-updated claimed task, else of all tasks. Needs `tlc`. It runs `tlc` from the nearest ancestor of `session.cwd` holding `.tlc/config.yaml` (a stray empty `.tlc/` is skipped; a relative `cwd` falls back to the working directory) and never creates one. The search stops at the git work-tree root (the first directory holding `.git`), so a project enclosing the repository is never counted; outside a repository only `cwd` itself is checked. With no project in scope, or a project with no tasks, it emits empty text and the segment hides. If any `tlc` call fails, it exits non-zero with no output, so the last good value stays. Emits `score` (closed share, 0..100), so none closed is red and all closed is green.
 
 | Option | Default | Meaning |
 |---|---|---|

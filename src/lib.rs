@@ -1,3 +1,6 @@
+#[cfg(not(unix))]
+compile_error!("bar supports Unix only (macOS, Linux); Windows is not supported");
+
 pub mod cache;
 pub mod check;
 pub mod click;
