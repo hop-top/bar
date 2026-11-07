@@ -104,10 +104,12 @@ esac
         self.put("claimed.json", "[]");
     }
 
-    /// Project root with `.tlc/` and a nested working dir; returns the latter.
+    /// Git work tree whose root holds `.tlc/`, plus a nested working dir;
+    /// returns (root, nested).
     pub fn project(&self) -> (PathBuf, PathBuf) {
         let proj = self.root.join("proj");
         let deep = proj.join("sub/deep");
+        std::fs::create_dir_all(proj.join(".git")).unwrap();
         std::fs::create_dir_all(proj.join(".tlc")).unwrap();
         std::fs::write(proj.join(".tlc/config.yaml"), "").unwrap();
         std::fs::create_dir_all(&deep).unwrap();

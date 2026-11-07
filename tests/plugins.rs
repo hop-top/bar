@@ -126,6 +126,52 @@ fn bar_tlc_runs_from_project_root() {
 }
 
 #[test]
+fn bar_tlc_enclosing_project_above_repo_root_is_not_used() {
+    let fx = Fx::new();
+    fx.tlc_fake();
+    fx.put("tasks.json", &tasks(7, 2, 3, 1));
+    let org = fx.root.join("org");
+    std::fs::create_dir_all(org.join(".tlc")).unwrap();
+    std::fs::write(org.join(".tlc/config.yaml"), "").unwrap();
+    let sub = org.join("repo/sub");
+    std::fs::create_dir_all(&sub).unwrap();
+    std::fs::write(org.join("repo/.git"), "gitdir: elsewhere").unwrap();
+    for cwd in [org.join("repo"), sub] {
+        let o = fx.tlc(&cwd);
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        assert_eq!(out_json(&o)["text"], "");
+    }
+    assert_eq!(fx.log("tlc.log"), "", "tlc must not run");
+}
+
+#[test]
+fn bar_tlc_outside_a_repo_checks_cwd_only() {
+    let fx = Fx::new();
+    fx.tlc_fake();
+    fx.put("tasks.json", &tasks(7, 2, 3, 1));
+    let proj = fx.root.join("loose");
+    std::fs::create_dir_all(proj.join(".tlc")).unwrap();
+    std::fs::write(proj.join(".tlc/config.yaml"), "").unwrap();
+    let sub = proj.join("sub");
+    std::fs::create_dir_all(&sub).unwrap();
+    let o = fx.tlc(&sub);
+    assert!(o.status.success());
+    assert_eq!(out_json(&o)["text"], "");
+    assert_eq!(out_json(&fx.tlc(&proj))["text"], "9\u{2215}13");
+}
+
+#[test]
+fn bar_tlc_no_tasks_hides_the_segment() {
+    let fx = Fx::new();
+    fx.tlc_fake();
+    let (_, deep) = fx.project();
+    fx.put("tasks.json", "[]");
+    let o = fx.tlc(&deep);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    assert_eq!(out_json(&o)["text"], "");
+}
+
+#[test]
 fn bar_tlc_partial_failure_emits_nothing() {
     let fx = Fx::new();
     fx.tlc_fake();
@@ -170,8 +216,8 @@ fn bar_tlc_no_tlc_dir_omitted() {
     let bare = fx.root.join("bare/sub");
     std::fs::create_dir_all(&bare).unwrap();
     let o = fx.tlc(&bare);
-    assert!(!o.status.success());
-    assert!(o.stdout.is_empty());
+    assert!(o.status.success());
+    assert_eq!(out_json(&o)["text"], "");
     assert!(!bare.join(".tlc").exists());
 }
 
@@ -202,7 +248,7 @@ fn bar_tlc_relative_or_dash_cwd_terminates() {
             "bar-tlc",
             &json!({"options":{},"session":{"cwd":cwd},"columns":null,"config":{}}),
         );
-        assert!(!o.status.success(), "{cwd}");
-        assert!(o.stdout.is_empty(), "{cwd}");
+        assert!(o.status.success(), "{cwd}");
+        assert_eq!(out_json(&o)["text"], "", "{cwd}");
     }
 }

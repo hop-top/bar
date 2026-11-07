@@ -1,9 +1,10 @@
 #!/bin/sh
 # bar-tlc: closed/total tasks of the track of the latest-updated claimed task,
 # else of all tasks (scope=track, the default); scope=all counts the whole
-# project. Option status filters the counted set. Needs sh, jq and tlc. Any
-# failed tlc call emits nothing, so a different kind of count never replaces
-# the cached value.
+# project. Option status filters the counted set. Needs sh, jq and tlc. No
+# project in scope, or no tasks, emits empty text (segment hidden). Any failed
+# tlc call emits nothing, so a different kind of count never replaces the
+# cached value.
 if [ "$1" = "--ext-info" ]; then
   printf '%s\n' '{"name":"tlc","version":"0.1.0","description":"Closed tasks of the current track","capabilities":["discover","placeholder"],"options":{"scope":{"type":"enum","enum":["track","all"],"default":"track"},"status":{"type":"string"}},"ttl":"60s"}'
   exit 0
@@ -22,10 +23,24 @@ case $cwd in /*) [ -d "$cwd" ] || cwd=$PWD ;; *) cwd=$PWD ;; esac
 case $cwd in /*) ;; *) exit 1 ;; esac
 
 # tlc creates an empty .tlc wherever it runs, so run it at the project root,
-# found by its config file; a stray empty .tlc does not count.
+# found by its config file; a stray empty .tlc does not count. The search
+# stops after the git work-tree root (a dir holding .git), so an enclosing
+# project never leaks in; outside a repo only cwd is checked. No project
+# hides the segment.
+none='{"text":""}'
+inrepo=
+d=$cwd
+while :; do
+  [ ! -e "$d/.git" ] || { inrepo=1; break; }
+  [ "$d" != / ] || break
+  d=$(dirname -- "$d")
+done
 root=$cwd
 while [ ! -f "$root/.tlc/config.yaml" ]; do
-  [ "$root" != / ] || exit 1
+  if [ -z "$inrepo" ] || [ -e "$root/.git" ] || [ "$root" = / ]; then
+    printf '%s\n' "$none"
+    exit 0
+  fi
   root=$(dirname -- "$root")
 done
 cd -- "$root" || exit 1
@@ -59,6 +74,6 @@ fi
 printf '%s' "$all" | jq -ce '
   (if type == "array" then . else (.tasks // .items // .data // []) end) as $t
   | ($t | length) as $n
-  | select($n > 0)
-  | ([$t[] | select(.status != "TODO" and .status != "IN_PROGRESS")] | length) as $c
-  | {text: "\($c)∕\($n)", score: ($c * 100 / $n | floor)}' 2>/dev/null || exit 1
+  | if $n == 0 then {text: ""} else
+    ([$t[] | select(.status != "TODO" and .status != "IN_PROGRESS")] | length) as $c
+  | {text: "\($c)∕\($n)", score: ($c * 100 / $n | floor)} end' 2>/dev/null || exit 1
