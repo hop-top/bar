@@ -46,6 +46,18 @@ fn applescript_dispatches_toggle_urls_only() {
 }
 
 #[test]
+fn applescript_toggle_call_is_wrapped_in_try() {
+    let s = applescript(Path::new("/opt/bar"));
+    let lines: Vec<&str> = s.lines().map(str::trim).collect();
+    let at = lines
+        .iter()
+        .position(|l| l.starts_with("do shell script") && l.contains("\" toggle \""))
+        .expect("toggle call");
+    assert_eq!(lines[at - 1], "try", "{s}");
+    assert_eq!(lines[at + 1], "end try", "{s}");
+}
+
+#[test]
 fn info_plist_sets_agent_and_scheme() {
     let cmds = info_plist_commands(Path::new("/x/bar.app"));
     let joined: Vec<String> = cmds.iter().map(|c| c.join(" ")).collect();

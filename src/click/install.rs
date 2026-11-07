@@ -49,7 +49,7 @@ fn as_literal(s: &str) -> String {
 }
 
 /// Handler for `bar://toggle/<key>` and `bar://cmd/...`; `bar` validates
-/// both. A refused command exits non-zero, so `try` keeps the applet quiet.
+/// both. A refusal exits non-zero, so `try` keeps the applet quiet.
 pub fn applescript(bar: &Path) -> String {
     format!(
         "on open location theURL\n\
@@ -57,7 +57,9 @@ pub fn applescript(bar: &Path) -> String {
          \tset theBar to quoted form of \"{}\"\n\
          \tif (count of theURL) > (count of thePrefix) and theURL starts with thePrefix then\n\
          \t\tset theKey to text ((count of thePrefix) + 1) thru -1 of theURL\n\
-         \t\tdo shell script theBar & \" toggle \" & quoted form of theKey\n\
+         \t\ttry\n\
+         \t\t\tdo shell script theBar & \" toggle \" & quoted form of theKey\n\
+         \t\tend try\n\
          \telse if theURL starts with \"bar://cmd/\" then\n\
          \t\ttry\n\
          \t\t\tdo shell script theBar & \" click run \" & quoted form of theURL\n\
