@@ -3,9 +3,9 @@
 
 use crate::conf::{Config, LoadResult};
 use crate::options::Options;
-use crate::placeholders::{lookup, spendhist, tokens, usage, Ctx};
+use crate::placeholders::{dirs, lookup, spendhist, tokens, usage, Ctx};
 use crate::render::{builtin_config, render_sample};
-use crate::session::{Session, Window};
+use crate::session::{Session, SpendLimit, Window};
 use crate::style::{bold, dim, fg};
 use std::path::Path;
 
@@ -54,7 +54,20 @@ fn session(state: &str, now: i64) -> Session {
         context_used: Some(38.0),
         five_hour: Some(win(p.five)),
         seven_day: Some(win(p.seven)),
-        ..Session::default()
+        spend_limit: Some(SpendLimit {
+            period: "monthly".into(),
+            resets_at: now + 3 * 86_400 + 4 * 3600,
+        }),
+        cost_usd: Some(1.84),
+        duration_ms: Some(27.0 * 60_000.0),
+        lines_added: 120,
+        lines_removed: 14,
+        version: "2.1.0".into(),
+        output_style: "Explanatory".into(),
+        vim_mode: "NORMAL".into(),
+        agent: "reviewer".into(),
+        thinking: true,
+        fast_mode: true,
     }
 }
 
@@ -106,7 +119,19 @@ fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Op
         "tokens" => tokens::tokens(ctx, opts, &tokens::sample_stats(ctx.now)),
         "cache" => tokens::cache(ctx, opts, &tokens::sample_stats(ctx.now)),
         "cachettl" => tokens::cachettl(ctx, opts, &tokens::sample_stats(ctx.now)),
-        "model" | "effort" | "ctx" => lookup(name)?.render_labeled(ctx, opts, label),
+        "worktree" => Some(dim("bar-feat")),
+        "sessions" => Some(format!(
+            "{} {} {}",
+            fg(c.warn, ">1"),
+            bold(&fg(c.bad, "?1")),
+            fg(c.good, "v2")
+        )),
+        "cwd" | "root" => dirs::shown("~/src/bar", opts, ""),
+        // fields of the sample session
+        "model" | "effort" | "ctx" | "spend" | "cost" | "burn" | "duration" | "lines"
+        | "version" | "style" | "vim" | "agent" | "thinking" | "fast" => {
+            lookup(name)?.render_labeled(ctx, opts, label)
+        }
         _ => None,
     }
 }

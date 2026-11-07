@@ -208,3 +208,24 @@ fn preview_final_state_has_a_clean_tree() {
     let out = render_fx::strip(&String::from_utf8(o.get_output().stdout.clone()).unwrap());
     assert!(out.contains("bar:main +2 ~3 ?1 ↑2 ↓1"), "{out:?}");
 }
+
+#[test]
+fn preview_samples_every_core_placeholder() {
+    for n in hop_bar::placeholders::names() {
+        let conf = format!("set left \"#{{{n}}}\"\n");
+        let c = hop_bar::conf::parse(&conf).unwrap();
+        let out = hop_bar::preview::render(
+            "early",
+            hop_bar::conf::LoadResult::Ok(c),
+            Some(120),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64,
+        );
+        assert!(
+            !render_fx::strip(&out).trim().is_empty(),
+            "{n} renders empty"
+        );
+    }
+}
