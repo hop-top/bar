@@ -23,11 +23,20 @@ pub struct Agents;
 
 impl Placeholder for Agents {
     fn render(&self, ctx: &Ctx, opts: &Options) -> Option<String> {
-        render_with(ctx, opts, &click::state_dir())
+        self.render_labeled(ctx, opts, true)
+    }
+
+    fn render_labeled(&self, ctx: &Ctx, opts: &Options, label: bool) -> Option<String> {
+        render_labeled_with(ctx, opts, &click::state_dir(), label)
     }
 }
 
 pub fn render_with(ctx: &Ctx, opts: &Options, state: &Path) -> Option<String> {
+    render_labeled_with(ctx, opts, state, true)
+}
+
+/// `label` false leaves out the `agents` label (an icon takes its place).
+pub fn render_labeled_with(ctx: &Ctx, opts: &Options, state: &Path, label: bool) -> Option<String> {
     let dir = hook::agents_dir(state, &ctx.session.session_id).filter(|d| hook::is_real_dir(d))?;
     let mut kinds: Vec<String> = Vec::new();
     // Invalid, stale and temp entries are skipped before the cap, so junk
@@ -54,7 +63,11 @@ pub fn render_with(ctx: &Ctx, opts: &Options, state: &Path) -> Option<String> {
     if kinds.is_empty() {
         return None;
     }
-    let head = format!("{} {}", dim("agents"), kinds.len());
+    let head = if label {
+        format!("{} {}", dim("agents"), kinds.len())
+    } else {
+        kinds.len().to_string()
+    };
     if opts.get("names") != Some("1") {
         return Some(head);
     }

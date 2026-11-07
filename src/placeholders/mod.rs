@@ -49,42 +49,52 @@ pub trait Placeholder {
     }
 }
 
-/// `None` for names not implemented (yet): they render as empty.
+/// Every core placeholder by name; anything else is a plugin.
+static REGISTRY: &[(&str, &(dyn Placeholder + Sync))] = &[
+    ("account", &account::Account),
+    ("repo", &repo::Repo),
+    ("branch", &repo::Branch),
+    ("model", &model::Model),
+    ("effort", &model::Effort),
+    ("agents", &agents::Agents),
+    ("ctx", &ctx::CtxUsed),
+    ("usage", &usage::Usage),
+    ("sessions", &sessions::Sessions),
+    ("spend", &spend::Spend),
+    ("spendhist", &spendhist::SpendHist),
+    ("tokens", &tokens::Tokens),
+    ("cache", &tokens::CacheStats),
+    ("cachettl", &tokens::CacheTtl),
+    ("cost", &cost::Cost),
+    ("burn", &cost::Burn),
+    ("duration", &cost::Duration),
+    ("lines", &cost::Lines),
+    ("version", &misc::Version),
+    ("style", &misc::Style),
+    ("vim", &misc::Vim),
+    ("agent", &misc::Agent),
+    ("thinking", &misc::Thinking),
+    ("fast", &misc::Fast),
+    ("cwd", &dirs::Cwd),
+    ("root", &dirs::Root),
+    ("prs", &gh::Prs),
+    ("issues", &gh::Issues),
+    ("dirty", &gitst::Dirty),
+    ("ahead", &gitst::Ahead),
+    ("worktree", &gitst::Worktree),
+];
+
+/// Names of all core placeholders, in registry order.
+pub fn names() -> impl Iterator<Item = &'static str> {
+    REGISTRY.iter().map(|(n, _)| *n)
+}
+
+/// `None` for names that are not core placeholders.
 pub fn lookup(name: &str) -> Option<&'static dyn Placeholder> {
-    Some(match name {
-        "account" => &account::Account,
-        "repo" => &repo::Repo,
-        "branch" => &repo::Branch,
-        "model" => &model::Model,
-        "effort" => &model::Effort,
-        "agents" => &agents::Agents,
-        "ctx" => &ctx::CtxUsed,
-        "usage" => &usage::Usage,
-        "sessions" => &sessions::Sessions,
-        "spend" => &spend::Spend,
-        "spendhist" => &spendhist::SpendHist,
-        "tokens" => &tokens::Tokens,
-        "cache" => &tokens::CacheStats,
-        "cachettl" => &tokens::CacheTtl,
-        "cost" => &cost::Cost,
-        "burn" => &cost::Burn,
-        "duration" => &cost::Duration,
-        "lines" => &cost::Lines,
-        "version" => &misc::Version,
-        "style" => &misc::Style,
-        "vim" => &misc::Vim,
-        "agent" => &misc::Agent,
-        "thinking" => &misc::Thinking,
-        "fast" => &misc::Fast,
-        "cwd" => &dirs::Cwd,
-        "root" => &dirs::Root,
-        "prs" => &gh::Prs,
-        "issues" => &gh::Issues,
-        "dirty" => &gitst::Dirty,
-        "ahead" => &gitst::Ahead,
-        "worktree" => &gitst::Worktree,
-        _ => return None,
-    })
+    REGISTRY
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, p)| *p as &'static dyn Placeholder)
 }
 
 /// The session's directory when it exists, else the process's.

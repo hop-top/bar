@@ -96,7 +96,8 @@ fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Op
                 .map_or(("work", 75), |a| (a.label.as_str(), a.color));
             Some(bold(&fg(color, label)))
         }
-        "agents" => Some(format!("{} 2", dim("agents"))),
+        "agents" if label => Some(format!("{} 2", dim("agents"))),
+        "agents" => Some("2".into()),
         "usage" => usage::render_with(ctx, opts, Path::new("/nonexistent/bar-preview")),
         "spendhist" => {
             let period = opts.get("period").unwrap_or("both");

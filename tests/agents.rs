@@ -224,18 +224,24 @@ fn bar_render_wires_agents_as_core_name() {
     let (env, cwd) = common::isolation(&root);
     let conf = root.join("xdg/bar");
     std::fs::create_dir_all(&conf).unwrap();
-    std::fs::write(conf.join("bar.conf"), "set left \"#{agents}\"\n").unwrap();
-    let out = Command::cargo_bin("bar")
-        .unwrap()
-        .arg("render")
-        .envs(env)
-        .env("COLUMNS", "80")
-        .current_dir(cwd)
-        .write_stdin(format!(r#"{{"session_id":"{SID}"}}"#))
-        .output()
-        .unwrap();
-    assert!(out.status.success());
-    assert!(plain(&String::from_utf8_lossy(&out.stdout)).contains("agents 1"));
+    let go = |c: &str| {
+        std::fs::write(conf.join("bar.conf"), c).unwrap();
+        let out = Command::cargo_bin("bar")
+            .unwrap()
+            .arg("render")
+            .envs(env.clone())
+            .env("COLUMNS", "80")
+            .current_dir(&cwd)
+            .write_stdin(format!(r#"{{"session_id":"{SID}"}}"#))
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        plain(&String::from_utf8_lossy(&out.stdout))
+    };
+    assert!(go("set left \"#{agents}\"\n").contains("agents 1"));
+    // the icon takes the label's place
+    let out = go("set icons emoji\nset left \"#{agents}\"\n");
+    assert_eq!(out.trim(), "👥 1", "{out:?}");
 }
 
 #[test]

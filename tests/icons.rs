@@ -51,13 +51,9 @@ fn none_set_output_unchanged() {
 
 #[test]
 fn builtin_table_covers_core_placeholders() {
-    let names = [
-        "model", "effort", "ctx", "repo", "branch", "prs", "issues", "usage", "account",
-        "sessions", "spend", "tokens", "cache", "cachettl",
-    ];
     let o = Options::default();
     for set in [Icons::Nerdfont, Icons::Emoji] {
-        for n in names {
+        for n in hop_bar::placeholders::names() {
             let g = icons::builtin(set, n, &o).unwrap_or_else(|| panic!("{n}"));
             assert!(visible_width_with(g, 2) <= 2, "{n} {g:?}");
         }
@@ -71,6 +67,42 @@ fn builtin_table_covers_core_placeholders() {
         );
     }
     assert!(icons::builtin(Icons::None, "model", &o).is_none());
+}
+
+#[test]
+fn builtin_icons_are_distinct_and_documented() {
+    let o = Options::default();
+    let docs =
+        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/config.md")).unwrap();
+    let table = docs
+        .split("## Icons")
+        .nth(1)
+        .unwrap()
+        .split("## ")
+        .next()
+        .unwrap();
+    for set in [Icons::Nerdfont, Icons::Emoji] {
+        let mut seen = std::collections::HashMap::new();
+        for n in hop_bar::placeholders::names() {
+            let g = icons::builtin(set, n, &o).unwrap();
+            if let Some(prev) = seen.insert(g, n) {
+                panic!("{n} and {prev} share {g:?}");
+            }
+        }
+    }
+    for n in hop_bar::placeholders::names() {
+        let row = table
+            .lines()
+            .find(|l| l.starts_with(&format!("| `{n}`")))
+            .unwrap_or_else(|| panic!("no icon row for {n}"));
+        let nf = icons::builtin(Icons::Nerdfont, n, &o).unwrap();
+        let code = format!("U+{:04X}", nf.chars().next().unwrap() as u32);
+        assert!(row.contains(&code), "{n}: {row}");
+        assert!(
+            row.contains(icons::builtin(Icons::Emoji, n, &o).unwrap()),
+            "{n}: {row}"
+        );
+    }
 }
 
 #[test]

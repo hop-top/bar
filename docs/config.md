@@ -134,7 +134,7 @@ Quote values with spaces. `#` starts a comment.
 
 ## Icons
 
-`set icons nerdfont|emoji` adds an icon to each core segment; `none` (default) leaves output as is. An icon is drawn muted, followed by one space, outside any link. When a segment has a text label (`ctx`), the icon replaces it; otherwise it prefixes the value. `icon=<glyph>` on any placeholder beats the set, `icon=none` hides it; both work with `icons none`. Glyphs are sanitised; `bar check` rejects an icon wider than 2 cells (counted with `icon-width`); values from `%…%` expressions or `default` lines are not checked ahead, and an over-wide one is dropped at render (no icon, label kept).
+`set icons nerdfont|emoji` adds an icon to every core placeholder (table below); `none` (default) leaves output as is. An icon is drawn muted, followed by one space, outside any link. When a segment has a text label (`ctx`, `agents`), the icon replaces it; otherwise it prefixes the value. `icon=<glyph>` on any placeholder beats the set, `icon=none` hides it; both work with `icons none`. Glyphs are sanitised; `bar check` rejects an icon wider than 2 cells (counted with `icon-width`); values from `%…%` expressions or `default` lines are not checked ahead, and an over-wide one is dropped at render (no icon, label kept).
 
 | Placeholder | nerdfont | emoji |
 |---|---|---|
@@ -151,6 +151,25 @@ Quote values with spaces. `#` starts a comment.
 | `sessions` | `nf-fa-terminal` U+F120 | 💬 |
 | `spend` | `nf-fa-dollar` U+F155 | 💰 |
 | `spendhist` | `nf-fa-money` U+F0D6 | 💵 |
+| `tokens` | `nf-fa-exchange` U+F0EC | 🔢 |
+| `cache` | `nf-fa-database` U+F1C0 | 💾 |
+| `cachettl` | `nf-fa-hourglass_end` U+F253 | 🕐 |
+| `dirty` | `nf-fa-pencil` U+F040 | ✏️ |
+| `ahead` | `nf-fa-arrow_up` U+F062 | ⬆️ |
+| `worktree` | `nf-fa-tree` U+F1BB | 🌳 |
+| `agents` | `nf-fa-users` U+F0C0 | 👥 |
+| `cost` | `nf-fa-credit_card` U+F09D | 💳 |
+| `burn` | `nf-fa-fire` U+F06D | 🔥 |
+| `duration` | `nf-fa-history` U+F1DA | ⌚ |
+| `lines` | `nf-fa-code` U+F121 | 📝 |
+| `version` | `nf-fa-tag` U+F02B | 🔖 |
+| `style` | `nf-fa-paint_brush` U+F1FC | 🎨 |
+| `vim` | `nf-dev-vim` U+E7C5 | ⌨️ |
+| `agent` | `nf-fa-user_secret` U+F21B | 🎭 |
+| `thinking` | `nf-fa-lightbulb_o` U+F0EB | 💭 |
+| `fast` | `nf-fa-rocket` U+F135 | 🚀 |
+| `cwd` | `nf-fa-folder_open` U+F07C | 📂 |
+| `root` | `nf-fa-home` U+F015 | 🏠 |
 
 Plugins: see [plugins](plugins.md).
 
