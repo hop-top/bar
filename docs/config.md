@@ -70,7 +70,18 @@ Quote values with spaces. `#` starts a comment.
 | | `width` | `5` | Bar cells, clamped to 1..40 |
 | | `click` | `toggle` | `none` turns the toggle link off; the link appears only once the handler is installed (`bar click install`) |
 | `sessions`, `spend` | none | | No options |
+| `cost` | `fmt` | `usd` | Session cost, `$1.23`; `<$0.01` under a cent. Hidden when absent |
+| `burn` | none | | Cost per hour, `$4.10/h`; hidden for the first 60 s of the session |
+| `duration` | none | | Session time: `45s`, `12m`, `1h05m` |
+| `lines` | none | | `+120 -14`; hidden when both are 0 |
+| `version`, `vim`, `agent` | none | | Claude Code version, vim mode, agent name; hidden when absent |
+| `style` | none | | Output style; hidden when `default` |
+| `thinking`, `fast` | none | | `think` / `fast` while enabled; hidden otherwise |
+| `cwd` | `base` | `0` | Session directory with home as `~`; `1` shows the last component only |
+| `root` | `base` | `0` | Git top-level directory of the session directory, read without running `git`; hidden outside a repository |
 | `model`, `effort`, `ctx` | `click` | on | `none` turns the command link off; the link appears only once the handler is installed (`bar click install`) |
+
+`cost`, `burn`, `duration`, `lines`, `version`, `style`, `vim`, `agent`, `thinking` and `fast` read the statusline JSON fields `cost.total_cost_usd`, `cost.total_duration_ms`, `cost.total_lines_added`, `cost.total_lines_removed`, `version`, `output_style.name`, `vim.mode`, `agent.name`, `thinking.enabled` and `fast_mode`. Missing, mistyped, negative or non-finite values hide the placeholder. `cost` is the session's own cost; `spend` is the account spend-limit window. None of these are in the default layout.
 
 ## Values
 
