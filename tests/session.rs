@@ -13,11 +13,17 @@ fn parses_full_payload() {
     assert_eq!(s.context_used, Some(42.5));
     assert_eq!(
         s.five_hour,
-        Some(Window { used_percentage: 12.5, resets_at: 1760000000 })
+        Some(Window {
+            used_percentage: 12.5,
+            resets_at: 1760000000
+        })
     );
     assert_eq!(
         s.seven_day,
-        Some(Window { used_percentage: 60.0, resets_at: 1760500000 })
+        Some(Window {
+            used_percentage: 60.0,
+            resets_at: 1760500000
+        })
     );
 }
 
