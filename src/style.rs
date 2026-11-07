@@ -3,7 +3,40 @@
 use unicode_width::UnicodeWidthStr;
 
 pub fn fg(code: u8, text: &str) -> String {
-    format!("\x1b[38;5;{code}m{text}\x1b[39m")
+    format!("{}{text}\x1b[39m", fg_code(code))
+}
+
+/// The SGR that starts foreground `code`.
+pub fn fg_code(code: u8) -> String {
+    match ansi16(code) {
+        Some(n) => format!("\x1b[{}m", if n < 8 { 30 + n } else { 82 + n }),
+        None => format!("\x1b[38;5;{code}m"),
+    }
+}
+
+/// Accent for names (repo): 256-colour blue, or ANSI cyan under the terminal
+/// palette.
+pub fn accent() -> u8 {
+    if ANSI_NOW.with(std::cell::Cell::get) {
+        6
+    } else {
+        75
+    }
+}
+
+/// Text colour for values with no configured colour: 250, or the muted
+/// colour under the terminal palette.
+pub fn neutral() -> u8 {
+    if ANSI_NOW.with(std::cell::Cell::get) {
+        muted()
+    } else {
+        250
+    }
+}
+
+/// The code when it is one of the 16 and the terminal palette is in effect.
+fn ansi16(code: u8) -> Option<u8> {
+    (code < 16 && ANSI_NOW.with(std::cell::Cell::get)).then_some(code)
 }
 
 pub fn bold(text: &str) -> String {
@@ -16,6 +49,22 @@ pub const MUTED: u8 = 250;
 
 thread_local! {
     static MUTED_NOW: std::cell::Cell<u8> = const { std::cell::Cell::new(MUTED) };
+    static ANSI_NOW: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Restores the previous ANSI mode when dropped.
+pub struct AnsiGuard(bool);
+
+impl Drop for AnsiGuard {
+    fn drop(&mut self) {
+        ANSI_NOW.with(|a| a.set(self.0));
+    }
+}
+
+/// Draws codes 0-15 as ANSI 16-colour SGR on this thread until the guard
+/// drops (`on`), so the terminal theme picks the colours.
+pub fn use_ansi(on: bool) -> AnsiGuard {
+    AnsiGuard(ANSI_NOW.with(|a| a.replace(on)))
 }
 
 /// Restores the previous muted colour when dropped.
@@ -42,7 +91,10 @@ pub fn dim(text: &str) -> String {
 }
 
 pub fn bg_code(code: u8) -> String {
-    format!("\x1b[48;5;{code}m")
+    match ansi16(code) {
+        Some(n) => format!("\x1b[{}m", if n < 8 { 40 + n } else { 92 + n }),
+        None => format!("\x1b[48;5;{code}m"),
+    }
 }
 
 /// OSC 8 hyperlink; no SGR underline, the terminal draws it. A URL holding

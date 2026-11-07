@@ -132,6 +132,7 @@ fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
             ("alt", List(&SHOW_ITEMS)),
             ("count", OneOf(&["left", "used"])),
             ("glyphs", OneOf(&GLYPH_SETS)),
+            ("color", OneOf(&["solid", "gradient"])),
             ("width", Int),
             ("click", OneOf(&["toggle", "none"])),
         ],

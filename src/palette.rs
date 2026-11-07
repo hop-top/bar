@@ -1,5 +1,7 @@
 //! Named colour palettes: muted text, state colours, usage ramp and the
-//! background list skins cycle through. 256-colour codes only.
+//! background list skins cycle through. 256-colour codes, except `terminal`:
+//! codes 0-15 there are drawn as the ANSI 16-colour SGR, so the terminal
+//! theme decides the actual colours.
 
 pub struct Palette {
     pub name: &'static str,
@@ -9,6 +11,8 @@ pub struct Palette {
     pub bad: u8,
     pub ramp: [u8; 11],
     pub bgs: &'static [u8],
+    /// Codes 0-15 are drawn as SGR 30-37/90-97 (fg) and 40-47/100-107 (bg).
+    pub ansi: bool,
 }
 
 /// Ramp of a non-default palette: its own bad, warn and good, low to high.
@@ -18,7 +22,7 @@ const fn ramp(bad: u8, warn: u8, good: u8) -> [u8; 11] {
     ]
 }
 
-pub const PALETTES: [Palette; 6] = [
+pub const PALETTES: [Palette; 7] = [
     Palette {
         name: "default",
         muted: 250,
@@ -27,6 +31,7 @@ pub const PALETTES: [Palette; 6] = [
         bad: 203,
         ramp: [196, 202, 208, 214, 220, 226, 190, 154, 118, 82, 46],
         bgs: &[238, 24, 236, 60, 23],
+        ansi: false,
     },
     Palette {
         name: "nord",
@@ -36,6 +41,7 @@ pub const PALETTES: [Palette; 6] = [
         bad: 167,
         ramp: ramp(167, 222, 144),
         bgs: &[237, 24, 239, 67, 60],
+        ansi: false,
     },
     Palette {
         name: "gruvbox",
@@ -45,6 +51,7 @@ pub const PALETTES: [Palette; 6] = [
         bad: 167,
         ramp: ramp(167, 214, 142),
         bgs: &[237, 239, 66, 241, 95],
+        ansi: false,
     },
     Palette {
         name: "dracula",
@@ -54,6 +61,7 @@ pub const PALETTES: [Palette; 6] = [
         bad: 203,
         ramp: ramp(203, 228, 84),
         bgs: &[236, 61, 238, 97, 239],
+        ansi: false,
     },
     Palette {
         name: "solarized",
@@ -63,6 +71,7 @@ pub const PALETTES: [Palette; 6] = [
         bad: 160,
         ramp: ramp(160, 136, 106),
         bgs: &[23, 235, 24, 30, 66],
+        ansi: false,
     },
     Palette {
         name: "mono",
@@ -72,10 +81,30 @@ pub const PALETTES: [Palette; 6] = [
         bad: 255,
         ramp: ramp(255, 248, 252),
         bgs: &[236, 238, 240, 242],
+        ansi: false,
+    },
+    // black and blue only: ok/warn/bad text stays readable on both
+    Palette {
+        name: "terminal",
+        muted: 8,
+        good: 2,
+        warn: 3,
+        bad: 1,
+        ramp: ramp(1, 3, 2),
+        bgs: &[0, 4],
+        ansi: true,
     },
 ];
 
-pub const NAMES: [&str; 6] = ["default", "nord", "gruvbox", "dracula", "solarized", "mono"];
+pub const NAMES: [&str; 7] = [
+    "default",
+    "nord",
+    "gruvbox",
+    "dracula",
+    "solarized",
+    "mono",
+    "terminal",
+];
 
 pub fn by_name(name: &str) -> Option<&'static Palette> {
     PALETTES.iter().find(|p| p.name == name)
