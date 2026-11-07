@@ -50,12 +50,89 @@ fn action(v: &Value) -> Action {
     }
 }
 
+/// Running-subagent registry: `<state>/agents/<session id>/<agent id>`,
+/// content the agent type. Entry names are validated, so no path escapes.
+pub fn agents_dir(state: &Path, sid: &str) -> Option<PathBuf> {
+    valid_sid(sid).then(|| state.join("agents").join(sid))
+}
+
+pub(crate) fn valid_agent_id(s: &str) -> bool {
+    (1..=64).contains(&s.len())
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+/// Registry dir for writing: refused when it is a symlink, so a planted
+/// link cannot redirect writes.
+pub(crate) fn is_real_dir(p: &Path) -> bool {
+    std::fs::symlink_metadata(p).is_ok_and(|m| m.is_dir())
+}
+
+/// Removes expired entries and orphan temp files; bounded work.
+fn prune(dir: &Path, now: i64) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in rd.flatten().take(256) {
+        let old = e
+            .metadata()
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok())
+            .is_some_and(|d| now - (d.as_secs() as i64) >= crate::placeholders::agents::STALE_SECS);
+        if old {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+}
+
+fn track_agent(state: &Path, v: &Value, sid: &str) {
+    let Some(dir) = agents_dir(state, sid) else {
+        return;
+    };
+    let s = |k: &str| v.get(k).and_then(Value::as_str).unwrap_or("");
+    let id = s("agent_id");
+    if !valid_agent_id(id) {
+        return;
+    }
+    match s("hook_event_name") {
+        "SubagentStart" => {
+            if std::fs::symlink_metadata(&dir).is_ok() && !is_real_dir(&dir) {
+                return;
+            }
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs() as i64);
+            prune(&dir, now);
+            let kind: String = s("agent_type")
+                .chars()
+                .filter(|c| !c.is_control())
+                .take(64)
+                .collect();
+            let _ = write_atomic(&dir.join(id), &kind);
+        }
+        "SubagentStop" => {
+            let _ = std::fs::remove_file(dir.join(id));
+        }
+        _ => {}
+    }
+}
+
 /// Applies one hook event (stdin JSON). Bad input does nothing.
 pub fn run_hook(state: &Path, input: &str) {
     let Ok(v) = serde_json::from_str::<Value>(input) else {
         return;
     };
     let sid = v.get("session_id").and_then(Value::as_str).unwrap_or("");
+    match v.get("hook_event_name").and_then(Value::as_str) {
+        Some("SubagentStart" | "SubagentStop") => return track_agent(state, &v, sid),
+        Some("SessionEnd") => {
+            if let Some(d) = agents_dir(state, sid).filter(|d| is_real_dir(d)) {
+                let _ = std::fs::remove_dir_all(d);
+            }
+        }
+        _ => {}
+    }
     let Some(m) = marker(state, sid) else {
         return;
     };

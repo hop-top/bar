@@ -34,6 +34,7 @@ Any executable named `bar-<name>` on `PATH` becomes the placeholder `#{name}`. T
 | `name`, `version` | Required strings. Without them, or on timeout or non-zero exit, `bar` falls back to the file name, an empty version and no capabilities. |
 | `capabilities` | Must include `placeholder`, or `bar` never renders the plugin. |
 | `options` | Allowed options; keys, choices and string defaults are sanitised like `text`. Types: `int`, `string`, `bool`, `enum` (with `enum` choices). `default` fills a missing option when it fits the type. Options of unknown type are dropped. |
+| `icon` | Optional default segment icon, used when `set icons` is not `none`. Sanitised; at most 2 cells. |
 | `ttl` | How long a render result stays fresh: seconds (`300`) or a duration (`90s`, `5m`, `1h`). Default 60 s. |
 
 The result is cached for a day per binary and modification time; renders never run `--ext-info` themselves. A cold cache renders nothing and asks in the background.
@@ -69,6 +70,7 @@ Stdout is one JSON object:
 
 - `text` (required) is stripped of escape and control characters, line and paragraph separators (U+2028, U+2029) and bidi overrides; wide characters (CJK, emoji) count as 2 cells. Nothing visible left omits the segment.
 - `label` (optional) is sanitised like `text` and drawn dim, plus a space, before `text`. It takes no colour and sits outside the link. Empty or absent: `text` alone.
+- `icon` (optional) overrides the `--ext-info` icon for this render. When an icon shows (`set icons` not `none`, or `icon=<glyph>` on the placeholder; `icon=none` hides it), it replaces `label`: dim, a space, then `text`, outside the link. An icon wider than 2 cells is dropped. `icon` is a reserved option name: it is never sent to the plugin, an `icon` entry in `options` is ignored, and `bar check` warns about it. An invalid output icon falls back to the `--ext-info` icon, then to `label`.
 - `link` becomes an OSC 8 link around `text` only, never the `label`; a URL with control characters leaves plain text.
 - Colour, first match wins:
   1. `style`: `good`, `warn`, `bad` (the `color.*` palette) or `dim`. Any other value means no colour, and it still wins over `score` and `metric`.
@@ -98,7 +100,7 @@ Save as `bar-hello`, `chmod +x`, put it on `PATH`, then `set left "#{hello[who=b
 
 ## Reference plugins
 
-Two POSIX shell scripts ship in `plugins/`. They need `sh`, `jq` and the tool they wrap; put them on `PATH` (copy or symlink) to enable `#{tlc}` and `#{claude-credits}`. Colour comes from core: `bar-tlc` emits `score`, `bar-claude-credits` emits `metric`. The only `style` either sets is `bad` on the credits `?`.
+Five POSIX shell scripts ship in `plugins/`. They need `sh`, `jq` and the tool they wrap; put them on `PATH` (copy or symlink) to enable `#{tlc}`, `#{claude-credits}`, `#{ci}`, `#{mem}` and `#{health}`. Colour comes from core: `bar-tlc` emits `score`, `bar-claude-credits` emits `metric`. The only `style` either sets is `bad` on the credits `?`.
 
 ### `bar-tlc`
 
@@ -139,3 +141,15 @@ rule claude-credits early pace final=3d bad=$50
 set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3,author=@me]} │ #{tlc}"
 set center "#{usage[type=5h]} │ #{usage[type=7d]} │ #{claude-credits}"
 ```
+
+### `bar-ci`, `bar-mem`, `bar-health`
+
+| Placeholder | Shows | Needs | Colour | `ttl` |
+|---|---|---|---|---|
+| `#{ci}` | `✓`, `✗` or `…` for the latest workflow run of the current branch, linked to the run | `git`, `gh` | `score` 100, 0, 50 | 60s |
+| `#{mem}` | `mem 63%` used memory | macOS `memory_pressure` or `vm_stat`; Linux `/proc/meminfo` | `score` is the free share | 30s |
+| `#{health}` | `✓` or `✗` for a HEAD request, linked to the URL | `curl` | `style` good or bad | 30s |
+
+- `ci`: option `name=1` appends the workflow name (`#{ci[name=1]}`). It runs `gh run list --branch <branch> --limit 1` in `session.cwd`. Empty text hides the segment without `gh`, outside a repo, with no git remote, on a detached HEAD or with no runs; a failed `gh` call (network, auth) exits non-zero and keeps the last value. The cache key has no branch, so after a branch switch an outage can show the previous branch's state until `gh` answers.
+- `mem`: no options. An unreadable source exits non-zero without output.
+- `health`: option `url` (`http` or `https`, no userinfo, no spaces or quotes) is required; option `label` is drawn dim before the mark: `#{health[url=https://example.com/up,label=api]}`. A status below 400 is up, so a redirect (3xx) counts as up and is not followed; a timeout (2 s) or error is down. The URL goes to `curl` on stdin, never in arguments. A bad or missing `url` exits non-zero with no output.

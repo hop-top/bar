@@ -18,6 +18,13 @@ pub enum Wrap {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Icons {
+    None,
+    Nerdfont,
+    Emoji,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Amount {
     Percent(u32),
     Cents(u64),
@@ -61,6 +68,9 @@ pub struct Config {
     pub wrap: Wrap,
     /// Default ttl floor for placeholders, seconds.
     pub refresh: u64,
+    pub icons: Icons,
+    /// Cells a private-use (Nerd Font) glyph occupies: 1 or 2.
+    pub icon_width: usize,
     pub colors: Colors,
     pub ramp: [u8; 11],
     pub defaults: BTreeMap<String, Options>,
@@ -79,6 +89,8 @@ impl Default for Config {
             gap: 3,
             wrap: Wrap::Auto,
             refresh: 5,
+            icons: Icons::None,
+            icon_width: 1,
             colors: Colors {
                 good: 114,
                 warn: 179,
@@ -93,6 +105,8 @@ impl Default for Config {
     }
 }
 
+/// Loaded once per run, so the size gap between variants is harmless.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum LoadResult {
     Missing,
@@ -236,6 +250,21 @@ fn apply_set(c: &mut Config, key: &str, val: &str) -> Result<(), String> {
             }
         }
         "refresh" => c.refresh = duration(val)?,
+        "icons" => {
+            c.icons = match val {
+                "none" => Icons::None,
+                "nerdfont" => Icons::Nerdfont,
+                "emoji" => Icons::Emoji,
+                _ => return Err(format!("invalid icons `{val}` (none|nerdfont|emoji)")),
+            }
+        }
+        "icon-width" => {
+            c.icon_width = match val {
+                "1" => 1,
+                "2" => 2,
+                _ => return Err(format!("invalid icon-width `{val}` (1|2)")),
+            }
+        }
         "color.good" => c.colors.good = code(val)?,
         "color.warn" => c.colors.warn = code(val)?,
         "color.bad" => c.colors.bad = code(val)?,

@@ -26,6 +26,18 @@ pub struct Session {
     pub five_hour: Option<Window>,
     pub seven_day: Option<Window>,
     pub spend_limit: Option<SpendLimit>,
+    /// `cost.total_cost_usd`; finite and non-negative or `None`.
+    pub cost_usd: Option<f64>,
+    /// `cost.total_duration_ms`; finite and non-negative or `None`.
+    pub duration_ms: Option<f64>,
+    pub lines_added: u64,
+    pub lines_removed: u64,
+    pub version: String,
+    pub output_style: String,
+    pub vim_mode: String,
+    pub agent: String,
+    pub thinking: bool,
+    pub fast_mode: bool,
 }
 
 fn str_at(v: &Value, path: &[&str]) -> Option<String> {
@@ -52,6 +64,25 @@ fn spend_limit(v: &Value) -> Option<SpendLimit> {
     })
 }
 
+/// A finite, non-negative number at `path`.
+fn num_at(v: &Value, path: &[&str]) -> Option<f64> {
+    path.iter()
+        .try_fold(v, |v, k| v.get(k))?
+        .as_f64()
+        .filter(|n| n.is_finite() && *n >= 0.0)
+}
+
+fn count_at(v: &Value, path: &[&str]) -> u64 {
+    num_at(v, path).map_or(0, |n| n as u64)
+}
+
+fn bool_at(v: &Value, path: &[&str]) -> bool {
+    path.iter()
+        .try_fold(v, |v, k| v.get(k))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
 /// Lenient: any malformed input yields defaults; unknown fields ignored.
 pub fn parse(input: &str) -> Session {
     let Ok(v) = serde_json::from_str::<Value>(input) else {
@@ -75,5 +106,15 @@ pub fn parse(input: &str) -> Session {
         five_hour: window(&v, "five_hour"),
         seven_day: window(&v, "seven_day"),
         spend_limit: spend_limit(&v),
+        cost_usd: num_at(&v, &["cost", "total_cost_usd"]),
+        duration_ms: num_at(&v, &["cost", "total_duration_ms"]),
+        lines_added: count_at(&v, &["cost", "total_lines_added"]),
+        lines_removed: count_at(&v, &["cost", "total_lines_removed"]),
+        version: str_at(&v, &["version"]).unwrap_or_default(),
+        output_style: str_at(&v, &["output_style", "name"]).unwrap_or_default(),
+        vim_mode: str_at(&v, &["vim", "mode"]).unwrap_or_default(),
+        agent: str_at(&v, &["agent", "name"]).unwrap_or_default(),
+        thinking: bool_at(&v, &["thinking", "enabled"]),
+        fast_mode: bool_at(&v, &["fast_mode"]),
     }
 }
