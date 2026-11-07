@@ -57,7 +57,7 @@ fn pick<'a>(ctx: &'a Ctx, ty: &str) -> Option<(&'static str, &'a Window, i64)> {
 /// `state` holds the toggle files and the handler marker.
 pub fn render_with(ctx: &Ctx, opts: &Options, state: &Path) -> Option<String> {
     let (key, win, period) = pick(ctx, opts.get("type").unwrap_or("5h"))?;
-    let secs = win.resets_at - ctx.now;
+    let secs = win.resets_at.saturating_sub(ctx.now);
     if secs <= 0 {
         return None;
     }

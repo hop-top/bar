@@ -191,3 +191,17 @@ fn plugin_list_and_info_cli() {
         .assert()
         .failure();
 }
+
+#[test]
+fn extreme_metric_times_never_panic() {
+    let c = cfg("rule claude-credits early pace final=3d bad=$50\n");
+    let ints = [i64::MIN, -1, 0, 1, i64::MAX];
+    for exp in ints {
+        for granted_at in ints {
+            let out = format!(
+                r#"{{"text":"$25","metric":{{"remaining":2500,"granted":20000,"expires_at":{exp},"granted_at":{granted_at}}}}}"#
+            );
+            let _ = paint(&out, "claude-credits", &c);
+        }
+    }
+}

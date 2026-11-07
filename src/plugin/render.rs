@@ -157,8 +157,8 @@ pub fn paint(out: &Output, name: &str, config: &Config, now: i64) -> Option<Stri
         .as_ref()
         .zip(config.rules.iter().find(|r| r.target == name))
     {
-        let secs = Some(m.expires_at - now).filter(|&s| s > 0);
-        let period = m.granted_at.map_or(0, |g| m.expires_at - g);
+        let secs = Some(m.expires_at.saturating_sub(now)).filter(|&s| s > 0);
+        let period = m.granted_at.map_or(0, |g| m.expires_at.saturating_sub(g));
         let s = metric_score(m.remaining, m.granted, secs, period, rule);
         fg(ramp(s, &config.ramp), &text)
     } else {

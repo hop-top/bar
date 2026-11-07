@@ -39,23 +39,32 @@ pub fn score(pct_left: i64, secs_left: Option<i64>, period: i64, rule: &Rule) ->
                 Amount::Percent(p) => i64::from(p),
                 Amount::Cents(_) => 30,
             };
-            return (100 - pct_left * 100 / (fin + 1)) as i32;
+            return fit(100_i64.saturating_sub(pct_left.saturating_mul(100) / (fin + 1)));
         }
-        share = 100 * secs / period;
-        amber = amber.max(50 * secs / period);
-        red = red.max(20 * secs / period);
+        share = secs.saturating_mul(100) / period;
+        amber = amber.max(secs.saturating_mul(50) / period);
+        red = red.max(secs.saturating_mul(20) / period);
     }
-    let top = if share <= amber { amber + 1 } else { share };
+    let top = if share <= amber {
+        amber.saturating_add(1)
+    } else {
+        share
+    };
     let v = if pct_left <= red {
         0
     } else if pct_left <= amber {
-        (pct_left - red) * 50 / (amber - red)
+        (pct_left - red).saturating_mul(50) / (amber - red)
     } else if pct_left < top {
-        50 + (pct_left - amber) * 50 / (top - amber)
+        50_i64.saturating_add((pct_left - amber).saturating_mul(50) / (top - amber))
     } else {
         100
     };
-    v as i32
+    fit(v)
+}
+
+/// Scores outside -100..=100 carry no extra meaning; keeps the cast exact.
+fn fit(v: i64) -> i32 {
+    v.clamp(-100, 100) as i32
 }
 
 fn cents_i64(c: u64) -> i64 {
@@ -88,7 +97,7 @@ pub fn metric_score(
             Amount::Cents(c) => (remaining.max(0), cents_i64(c)),
             Amount::Percent(p) => (pct_left, i64::from(p)),
         };
-        return (100 - left.saturating_mul(100) / bad.saturating_add(1)).clamp(-100, 100) as i32;
+        return fit(100_i64.saturating_sub(left.saturating_mul(100) / bad.saturating_add(1)));
     }
     if granted <= 0 {
         return 100;

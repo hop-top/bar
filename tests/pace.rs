@@ -112,3 +112,33 @@ fn pace_rule_uses_default_floors() {
         score(6, Some(6 * D), 7 * D, &weekly())
     );
 }
+
+#[test]
+fn extreme_inputs_never_overflow() {
+    let ints = [i64::MIN, -1, 0, 1, i64::MAX];
+    for rule in [weekly(), five()] {
+        for pct in ints {
+            for secs in ints {
+                for period in ints {
+                    let _ = score(pct, Some(secs), period, &rule);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn extreme_metric_inputs_never_overflow() {
+    use hop_bar::pace::metric_score;
+    let ints = [i64::MIN, -1, 0, 1, i64::MAX];
+    let rule = weekly();
+    for remaining in ints {
+        for granted in ints {
+            for secs in ints {
+                for period in ints {
+                    let _ = metric_score(remaining, granted, Some(secs), period, &rule);
+                }
+            }
+        }
+    }
+}
