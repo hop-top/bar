@@ -5,7 +5,7 @@
 `#{usage[type=5h|7d|h|d, view=bar|pct|time, width=5, click=toggle|none]}`
 
 - `bar` and `pct` read `2h13m` then the view; `time` is the time alone. Expired or missing windows render nothing.
-- Colour follows the pace score of `rule usage[type=5h]` / `rule usage[type=7d]`; without a rule the built-ins apply (`early warn=20% bad=5%`, final `1h` / `1d` with `bad=30%`).
+- The bar is one colour: every filled cell takes the colour of the exact value, the same as `pct`; empty cells are muted. The colour follows the pace score of `rule usage[type=5h]` / `rule usage[type=7d]`; without a rule the built-ins apply (`early warn=20% bad=5%`, final `1h` / `1d` with `bad=30%`).
 - Toggle state: `pct-5h` / `pct-7d` files (mode 0600) in the state directory (the kit state dir for `bar`; `BAR_STATE_DIR` overrides it, meant for tests). While a file exists, `bar` and `pct` swap. `bar toggle <5h|7d>` flips it.
 - Link `bar://toggle/<key>` is emitted only when the handler app is installed (marker `click-installed` in the state directory) and `click` is not `none`.
 

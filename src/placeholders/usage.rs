@@ -63,7 +63,7 @@ pub fn render_with(ctx: &Ctx, opts: &Options, state: &Path) -> Option<String> {
     }
     let left = pct_left(win.used_percentage);
     let rule = rule_for(ctx, key);
-    let color = |at: i64| ramp(score(at, Some(secs), period, &rule), &ctx.config.ramp);
+    let color = ramp(score(left, Some(secs), period, &rule), &ctx.config.ramp);
     let time = dim(&time_left(secs));
     let mut view = opts.get("view").unwrap_or("bar");
     if view != "time" && click::is_toggled(state, key) {
@@ -71,8 +71,8 @@ pub fn render_with(ctx: &Ctx, opts: &Options, state: &Path) -> Option<String> {
     }
     let body = match view {
         "time" => return Some(time),
-        "pct" => fg(color(left), &format!("{left}%")),
-        _ => bar(opts, left, &color),
+        "pct" => fg(color, &format!("{left}%")),
+        _ => bar(opts, left, color),
     };
     let body = match opts.get("click").unwrap_or("toggle") {
         "toggle" if click::handler_installed(state) => link(&format!("bar://toggle/{key}"), &body),
@@ -81,9 +81,8 @@ pub fn render_with(ctx: &Ctx, opts: &Options, state: &Path) -> Option<String> {
     Some(format!("{time} {body}"))
 }
 
-/// Each filled cell takes the colour of its own level; the last uses the
-/// exact percentage so it matches the percentage view.
-fn bar(opts: &Options, left: i64, color: &dyn Fn(i64) -> u8) -> String {
+/// One colour for the whole bar: the exact value's, as in the percentage view.
+fn bar(opts: &Options, left: i64, color: u8) -> String {
     let width = opts
         .get("width")
         .and_then(|w| w.parse::<i64>().ok())
@@ -91,13 +90,8 @@ fn bar(opts: &Options, left: i64, color: &dyn Fn(i64) -> u8) -> String {
         .clamp(1, 40);
     let filled = (left * width + 50) / 100;
     let mut out = String::new();
-    for i in 0..filled {
-        let at = if i == filled - 1 {
-            left
-        } else {
-            (i + 1) * 100 / width
-        };
-        out.push_str(&fg(color(at), "█"));
+    if filled > 0 {
+        out.push_str(&fg(color, &"█".repeat(filled as usize)));
     }
     let rest = "░".repeat((width - filled) as usize);
     if !rest.is_empty() {

@@ -1,9 +1,11 @@
 use hop_bar::conf::Config;
 use hop_bar::options::Options;
+use hop_bar::pace::{builtin_rule, score};
 use hop_bar::placeholders::usage::{pct_left, render_with, time_left};
 use hop_bar::placeholders::Ctx;
 use hop_bar::render::ColdRunner;
 use hop_bar::session::{Session, Window};
+use hop_bar::style::ramp;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -131,31 +133,31 @@ fn view_bar_has_width_cells() {
 }
 
 #[test]
-fn bar_cells_colour_by_own_level() {
+fn bar_cells_share_exact_value_colour() {
     let t = Tmp::new();
-    let out = go(&fresh(), &[("type", "5h")], t.path()).unwrap();
-    assert_eq!(cell_colors(&out), vec![196, 220, 190, 118, 46]);
+    for used in [4.0, 13.0, 35.0, 60.0, 85.0] {
+        let s = session(used, 18000, 0.0, 604800);
+        let left = pct_left(used);
+        let want = ramp(
+            score(left, Some(18000), 5 * 3600, &builtin_rule("5h")),
+            &Config::default().ramp,
+        );
+        let colors = cell_colors(&go(&s, &[("type", "5h")], t.path()).unwrap());
+        assert!(!colors.is_empty());
+        assert!(
+            colors.iter().all(|c| *c == want),
+            "{used}: {colors:?} != {want}"
+        );
+    }
 }
 
 #[test]
-fn bar_last_filled_cell_uses_exact_pct() {
+fn final_stretch_bar_single_colour() {
     let t = Tmp::new();
-    // 87% left: 4 cells, last at 87 (not 80)
-    let s = session(13.0, 18000, 0.0, 604800);
-    let out = go(&s, &[("type", "5h")], t.path()).unwrap();
-    let colors = cell_colors(&out);
-    assert_eq!(colors.len(), 4);
-    assert_eq!(colors[3], 82);
-}
-
-#[test]
-fn bar_final_stretch_ends_red_when_full() {
-    let t = Tmp::new();
-    let s = session(0.0, 1800, 0.0, 604800);
-    let colors = cell_colors(&go(&s, &[("type", "5h")], t.path()).unwrap());
-    assert_eq!(colors.len(), 5);
-    assert_eq!(colors[0], 220);
-    assert_eq!(colors[4], 196);
+    let s = session(43.0, 18000, 43.0, 12 * 3600 + 50 * 60);
+    let colors = cell_colors(&go(&s, &[("type", "7d")], t.path()).unwrap());
+    assert!(!colors.is_empty());
+    assert!(colors.iter().all(|c| *c == 196), "{colors:?}");
 }
 
 #[test]
@@ -167,13 +169,13 @@ fn empty_cells_dim() {
 }
 
 #[test]
-fn view_pct_matches_last_cell_colour() {
+fn view_pct_matches_bar_colour() {
     let t = Tmp::new();
     let s = session(13.0, 18000, 0.0, 604800);
     let bar = go(&s, &[("type", "5h")], t.path()).unwrap();
     let pct = go(&s, &[("type", "5h"), ("view", "pct")], t.path()).unwrap();
-    let last = *cell_colors(&bar).last().unwrap();
-    assert!(pct.contains(&format!("\x1b[38;5;{last}m87%")), "{pct:?}");
+    let c = cell_colors(&bar)[0];
+    assert!(pct.contains(&format!("\x1b[38;5;{c}m87%")), "{pct:?}");
 }
 
 #[test]
