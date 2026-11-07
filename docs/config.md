@@ -44,6 +44,55 @@ No file: built-in layout. A file with an error makes `bar render` print `bar: co
 
 Quote values with spaces. `#` starts a comment.
 
+- `separator`: changes only where segments split (the text a layout is cut at). Output between segments stays ` │ `. Default `│`.
+- `wrap`: `auto`, `on` or `off`; reserved, only `auto` behaviour exists.
+- `refresh`: default ttl floor for plugins, default `5s`. `gh` lists use 120 s and `%cmd%` values 1 h, whatever this says.
+
+## Placeholders
+
+`#{name[key=value,key=value]}`. Inline options override the matching `default` line. Defaults below are what the code applies when an option is unset.
+
+| Placeholder | Option | Default | Meaning |
+|---|---|---|---|
+| `prs` | `limit` | `5` | Most items shown; `0` hides the placeholder |
+| | `author` | none | [Value logic](#label-logic), e.g. `@me` |
+| | `status` | `open` | `open`, `closed`, `merged` |
+| | `link` | on | `false`, `no`, `off`, `0` give plain text |
+| `issues` | `limit` | `5` | As `prs` |
+| | `assignee`, `author` | none | Value logic |
+| | `label` | none | Value logic |
+| | `status` | `open` | `open`, `closed` |
+| | `link` | on | As `prs` |
+| `repo`, `branch` | `link` | on | Link to the repository / branch page |
+| | `max` | none | Truncate to this many characters with `…` |
+| `usage` | `type` | `5h` | `5h`, `7d`; `h`, `d` shorthand |
+| | `view` | `bar` | `bar`, `pct`, `time` |
+| | `width` | `5` | Bar cells, clamped to 1..40 |
+| | `click` | `toggle` | `none` turns the toggle link off |
+| `model`, `effort`, `ctx` | `click` | on | `none` turns the command link off |
+
+## Values
+
+Option values expand before use.
+
+- `@me`: passed to `gh` as the search value; GitHub resolves it to the logged-in user. It is the default for "mine" in the built-in layout.
+- `%$VAR%`: environment variable; unset gives an empty value.
+- `%cmd%`: run through `sh` with a 3 s limit. The output is cached for 1 h, keyed by the command text only, so it is shared by every session and directory. It is stored in a 0600 cache file: do not print secrets. A cold cache renders empty and refreshes in the background.
+
+## Label logic
+
+`author`, `assignee` and `label` take expressions. `&` binds tighter than `|`; parentheses group; `!` negates; quote values holding spaces.
+
+| Written | GitHub query |
+|---|---|
+| `label=a\|b` | `label:a,b` |
+| `label=a&"b c"` | `label:a label:"b c"` |
+| `label=(a\|b)&c` | `label:a,b label:c` |
+| `label=!a` | `-label:a` |
+| `label=a&b\|c` | one query per `\|` branch |
+
+Only `label` folds an OR into `label:a,b`; `author` and `assignee` run one query per OR branch. Results of all queries are merged and deduplicated by number, newest first, then cut to `limit`. At most 8 queries run per placeholder; `bar check` warns when more are written.
+
 ## bar check
 
 `bar check` lints the config without rendering and prints the file it read (or says the built-in layout is in use).
