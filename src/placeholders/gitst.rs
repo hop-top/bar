@@ -4,7 +4,7 @@
 //! from the repository files.
 
 use super::{work_dir, Ctx, Placeholder};
-use crate::cache::{Cache, Job};
+use crate::cache::{Cache, Job, MAX_VALUE};
 use crate::gitfs::{self, Found};
 use crate::options::Options;
 use crate::style::{dim, fg, sanitize};
@@ -27,6 +27,8 @@ pub struct Status {
     pub untracked: usize,
     /// `(ahead, behind)`; `None` without an upstream.
     pub ahead_behind: Option<(usize, usize)>,
+    /// Input hit the cache size cap: the counts are lower bounds.
+    pub truncated: bool,
 }
 
 pub fn cache_key(top: &Path) -> String {
@@ -36,7 +38,11 @@ pub fn cache_key(top: &Path) -> String {
 /// Counts from porcelain v2 text. A file both staged and modified counts
 /// in both columns. Unrecognised lines are skipped.
 pub fn parse(text: &str) -> Status {
-    let mut s = Status::default();
+    let mut s = Status {
+        // the cache cuts on a char boundary, up to 3 bytes short of the cap
+        truncated: text.len() + 4 > MAX_VALUE,
+        ..Status::default()
+    };
     for line in text.lines() {
         if let Some(ab) = line.strip_prefix("# branch.ab ") {
             let n = |t: Option<&str>, sign| {
@@ -64,7 +70,7 @@ pub fn parse(text: &str) -> Status {
 /// The `show` option as a subset of `set`; `None` when a part is unknown.
 pub fn parse_show(raw: &str, set: &[&'static str]) -> Option<Vec<&'static str>> {
     let mut out = Vec::new();
-    for part in raw.split([',', '+', ' ', '"']).filter(|p| !p.is_empty()) {
+    for part in raw.split(',').map(str::trim).filter(|p| !p.is_empty()) {
         out.push(*set.iter().find(|s| **s == part)?);
     }
     Some(out)
@@ -99,12 +105,17 @@ impl Placeholder for Dirty {
         };
         let s = status(ctx, opts)?;
         let c = &ctx.config.colors;
+        let more = if s.truncated { "+" } else { "" };
         let mut parts = Vec::new();
         for kind in SHOW.iter().filter(|k| show.contains(k)) {
             match *kind {
-                "staged" if s.staged > 0 => parts.push(fg(c.good, &format!("+{}", s.staged))),
-                "modified" if s.modified > 0 => parts.push(fg(c.warn, &format!("~{}", s.modified))),
-                "untracked" if s.untracked > 0 => parts.push(dim(&format!("?{}", s.untracked))),
+                "staged" if s.staged > 0 => parts.push(fg(c.good, &format!("+{}{more}", s.staged))),
+                "modified" if s.modified > 0 => {
+                    parts.push(fg(c.warn, &format!("~{}{more}", s.modified)))
+                }
+                "untracked" if s.untracked > 0 => {
+                    parts.push(dim(&format!("?{}{more}", s.untracked)))
+                }
                 _ => {}
             }
         }

@@ -186,12 +186,53 @@ fn job_roundtrips() {
 fn show_list_forms() {
     use hop_bar::placeholders::gitst::{parse_show, SHOW};
     assert_eq!(
-        parse_show("\"staged,untracked\"", SHOW),
+        parse_show("staged,untracked", SHOW),
         Some(vec!["staged", "untracked"])
     );
-    assert_eq!(
-        parse_show("modified+staged", SHOW),
-        Some(vec!["modified", "staged"])
-    );
+    assert_eq!(parse_show("modified+staged", SHOW), None);
     assert_eq!(parse_show("staged,nope", SHOW), None);
+}
+
+#[test]
+fn parse_flags_truncated_input() {
+    use hop_bar::cache::MAX_VALUE;
+    let mut text = String::from("# branch.head main\n");
+    while text.len() < MAX_VALUE {
+        text.push_str("? some/untracked/file.txt\n");
+    }
+    text.truncate(MAX_VALUE - 3); // cut mid-line
+    let s = parse(&text);
+    assert!(s.truncated);
+    assert!(s.untracked > 1000);
+    assert!(!parse(MIXED).truncated);
+}
+
+#[test]
+fn failing_git_status_backs_off_at_least_a_minute() {
+    use hop_bar::cache::Cache;
+    use std::time::SystemTime;
+    let root = tmp();
+    let exe = root.join("fake-bar");
+    std::fs::write(&exe, "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::set_permissions(&exe, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let cache = Cache::with_exe(&root.join("state"), exe);
+    let ago = |p: &Path, secs| {
+        let f = std::fs::OpenOptions::new().write(true).open(p).unwrap();
+        f.set_modified(SystemTime::now() - Duration::from_secs(secs))
+            .unwrap();
+    };
+    let git_job = Job::GitStatus { dir: "/r".into() };
+    let cmd_job = Job::Command {
+        cmd: "true".into(),
+        timeout: 1,
+    };
+    for (key, job, spawns) in [("g", git_job, false), ("c", cmd_job, true)] {
+        cache.store(key, "old").unwrap();
+        ago(&cache.path_for(key), 100);
+        std::fs::write(cache.fail_path(key), "").unwrap();
+        ago(&cache.fail_path(key), 30);
+        assert_eq!(cache.read_or_refresh(key, 10, &job).as_deref(), Some("old"));
+        assert_eq!(cache.lock_path(key).exists(), spawns, "{key}");
+    }
+    let _ = std::fs::remove_dir_all(&root);
 }

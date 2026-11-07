@@ -3,9 +3,11 @@
 use crate::conf::{parse, parse_options, tokenize};
 use crate::expr;
 use crate::format::{self, Token};
+use crate::icons;
 use crate::options::Options;
 use crate::placeholders::gh::{self, Kind};
 use crate::placeholders::gitst;
+use crate::placeholders::usage::glyphs::{GLYPH_SETS, SHOW_ITEMS};
 use crate::plugin;
 use crate::render::builtin_config;
 use serde_json::{json, Value};
@@ -96,7 +98,7 @@ enum Val {
     Any,
     Int,
     OneOf(&'static [&'static str]),
-    /// Separated list (`,` `+` or space) of values from the set.
+    /// Comma list whose items all come from the set.
     List(&'static [&'static str]),
 }
 
@@ -112,6 +114,10 @@ fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
         "usage" => &[
             ("type", OneOf(&["5h", "7d", "h", "d"])),
             ("view", OneOf(&["bar", "pct", "time"])),
+            ("show", List(&SHOW_ITEMS)),
+            ("alt", List(&SHOW_ITEMS)),
+            ("count", OneOf(&["left", "used"])),
+            ("glyphs", OneOf(&GLYPH_SETS)),
             ("width", Int),
             ("click", OneOf(&["toggle", "none"])),
         ],
@@ -141,7 +147,7 @@ fn val_ok(v: Val, raw: &str) -> bool {
         Val::Any => true,
         Val::Int => raw.trim().parse::<usize>().is_ok(),
         Val::OneOf(set) => set.contains(&raw),
-        Val::List(set) => gitst::parse_show(raw, set).is_some(),
+        Val::List(set) => raw.split(',').all(|i| set.contains(&i.trim())),
     }
 }
 
@@ -151,6 +157,7 @@ fn is_executable(p: &Path) -> bool {
 
 struct Checker<'a> {
     dirs: &'a [PathBuf],
+    icon_width: usize,
     defaults: BTreeMap<String, Options>,
     gh_missing: bool,
     gh_warned: Cell<bool>,
@@ -206,6 +213,10 @@ impl Checker<'_> {
     ) -> bool {
         let mut bad = false;
         for (k, v) in opts.iter() {
+            if k == "icon" {
+                bad |= self.icon(v, line);
+                continue;
+            }
             match spec.iter().find(|(n, _)| n == k) {
                 None => {
                     bad = true;
@@ -217,6 +228,19 @@ impl Checker<'_> {
                 }
                 _ => {}
             }
+        }
+        bad
+    }
+
+    /// Reports a bad `icon` value; true when there was one.
+    fn icon(&mut self, v: &str, line: usize) -> bool {
+        let bad = !v.contains('%') && !icons::valid(v, self.icon_width);
+        if bad {
+            let msg = format!(
+                "invalid icon `{v}` (`none` or at most {} cells)",
+                icons::MAX_CELLS
+            );
+            self.error(line, msg);
         }
         bad
     }
@@ -279,9 +303,17 @@ impl Checker<'_> {
             );
             return;
         }
+        if info.declares_icon_option {
+            let msg = format!("plugin `{name}` declares the reserved option `icon`; ignored");
+            self.add(Level::Warning, line, msg);
+        }
         let mut concrete = Options::default();
         for (k, v) in opts.iter().filter(|(_, v)| !v.contains('%')) {
-            concrete.set(k, v);
+            if k == "icon" {
+                self.icon(v, line);
+            } else {
+                concrete.set(k, v);
+            }
         }
         if let Err(e) = plugin::validate(&info.options, &concrete) {
             self.error(line, format!("{e} for `{name}`"));
@@ -294,6 +326,7 @@ pub fn check_text(text: &str, path: Option<PathBuf>, dirs: &[PathBuf]) -> Report
     let parsed = parse(text);
     let mut c = Checker {
         dirs,
+        icon_width: parsed.as_ref().map_or(1, |cfg| cfg.icon_width),
         defaults: parsed
             .as_ref()
             .map(|cfg| cfg.defaults.clone())
@@ -333,6 +366,7 @@ pub fn check_builtin(dirs: &[PathBuf]) -> Report {
     let cfg = builtin_config();
     let mut c = Checker {
         dirs,
+        icon_width: 1,
         defaults: BTreeMap::new(),
         gh_missing: !dirs.iter().any(|d| is_executable(&d.join("gh"))),
         gh_warned: Cell::new(false),

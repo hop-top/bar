@@ -10,7 +10,10 @@ use std::time::Duration;
 
 pub use discover::{discover, find, path_dirs, Found};
 pub use info::{cached_info, info, info_job, parse_info, validate, ExtInfo, OptSpec, OptType};
-pub use render::{paint, parse_output, plan, render, render_found, Metric, Output, Plan};
+pub use render::{
+    paint, paint_with, parse_output, plan, render, render_found, render_found_with, Metric, Output,
+    Plan,
+};
 
 pub const PREFIX: &str = "bar-";
 /// Capability a plugin must declare to be rendered.

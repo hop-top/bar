@@ -110,7 +110,8 @@ impl Job {
             }
             Job::GitStatus { dir } => {
                 let mut c = Command::new("git");
-                c.args(["status", "--porcelain=v2", "--branch"])
+                c.args(["-c", "core.fsmonitor=false"])
+                    .args(["status", "--porcelain=v2", "--branch"])
                     .current_dir(dir)
                     .env("GIT_OPTIONAL_LOCKS", "0");
                 run_child(c, None, limit)
@@ -288,7 +289,13 @@ impl Cache {
         let value = read_capped(&path);
         let fresh =
             value.is_some() && modified_age(&path).is_some_and(|a| a < Duration::from_secs(ttl));
-        if fresh || self.backing_off(key, ttl) {
+        // a short `ttl` must not turn a persistently failing git into a
+        // respawn every few seconds
+        let backoff_ttl = match job {
+            Job::GitStatus { .. } => ttl.max(FAIL_BACKOFF),
+            _ => ttl,
+        };
+        if fresh || self.backing_off(key, backoff_ttl) {
             return value;
         }
         if let Some(token) = self.try_lock(key) {

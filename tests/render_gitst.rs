@@ -52,7 +52,7 @@ fn show_subset() {
     let d = repo(&t, "proj");
     seed(&t, &d, MIXED);
     let o = run(&t)
-        .conf("set left \"#{repo} #{dirty[show=staged+untracked]}\"")
+        .conf("set left \"#{repo} #{dirty[show=staged,untracked]}\"")
         .env("PATH", &only_path(&t))
         .cwd(&d)
         .unset("GIT_CONFIG_NOSYSTEM")
@@ -169,4 +169,54 @@ fn check_rejects_bad_show() {
 
 fn one(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+#[test]
+fn stale_status_served_while_refresh_runs_git() {
+    let t = Tmp::new();
+    let d = repo(&t, "proj");
+    let log = seed(&t, &d, MIXED);
+    let file = Cache::new(&t.path().join("state")).path_for(&cache_key(&d));
+    let f = std::fs::OpenOptions::new().write(true).open(&file).unwrap();
+    f.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(100))
+        .unwrap();
+    let o = run(&t)
+        .conf("set left \"#{repo} #{dirty}\"")
+        .env("PATH", &only_path(&t))
+        .cwd(&d)
+        .unset("GIT_CONFIG_NOSYSTEM")
+        .go();
+    assert_eq!(one(&o.plain), "proj +1 ~3 ?1");
+    // the detached `bar refresh` runs the fake git
+    let mut calls = String::new();
+    for _ in 0..100 {
+        calls = std::fs::read_to_string(&log).unwrap_or_default();
+        if !calls.is_empty() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(
+        calls.contains("-c core.fsmonitor=false status --porcelain=v2 --branch"),
+        "{calls:?}"
+    );
+}
+
+#[test]
+fn truncated_status_marks_lower_bound() {
+    let t = Tmp::new();
+    let d = repo(&t, "proj");
+    let mut body = String::from("# branch.head main\n");
+    while body.len() < hop_bar::cache::MAX_VALUE {
+        body.push_str("? some/untracked/file.txt\n");
+    }
+    seed(&t, &d, &body);
+    let o = run(&t)
+        .conf("set left \"#{repo} #{dirty}\"")
+        .env("PATH", &only_path(&t))
+        .cwd(&d)
+        .unset("GIT_CONFIG_NOSYSTEM")
+        .go();
+    let out = one(&o.plain);
+    assert!(out.starts_with("proj ?") && out.ends_with('+'), "{out}");
 }
