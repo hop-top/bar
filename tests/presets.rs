@@ -192,3 +192,19 @@ fn init_does_not_follow_a_racing_file() {
     assert_eq!(std::fs::read_to_string(dir.join("bar.conf")).unwrap(), "a");
     assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
 }
+
+#[test]
+fn preview_final_state_has_a_clean_tree() {
+    // dirty is empty in `final`; the space before ahead must survive
+    let t = Tmp::new();
+    let o = bar(&t, &["preview", "--preset", "full", "--state", "final"])
+        .assert()
+        .success();
+    let out = render_fx::strip(&String::from_utf8(o.get_output().stdout.clone()).unwrap());
+    assert!(out.contains("bar:main ↑2 ↓1"), "{out:?}");
+    let o = bar(&t, &["preview", "--preset", "full", "--state", "early"])
+        .assert()
+        .success();
+    let out = render_fx::strip(&String::from_utf8(o.get_output().stdout.clone()).unwrap());
+    assert!(out.contains("bar:main +2 ~3 ?1 ↑2 ↓1"), "{out:?}");
+}

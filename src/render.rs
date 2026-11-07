@@ -106,7 +106,9 @@ struct Rendered {
 }
 
 /// Text tokens survive only beside non-empty placeholders, so `repo:` loses
-/// its colon when the branch is empty.
+/// its colon when the branch is empty. Between two non-empty placeholders
+/// one text is kept, the one after the last empty placeholder, so
+/// `#{branch} #{dirty} #{ahead}` with a clean tree reads `main ↑2`.
 fn render_segment(
     seg: &[Token],
     ctx: &Ctx,
@@ -129,23 +131,40 @@ fn render_segment(
     if has_placeholder && values.iter().flatten().all(|v| v.is_empty()) {
         return None;
     }
-    let empty = |i: Option<usize>| {
-        i.and_then(|i| values.get(i))
-            .is_some_and(|v| v.as_deref() == Some(""))
-    };
+    let keep = kept_text(&values);
     let mut out = String::new();
     for (i, t) in seg.iter().enumerate() {
         match (t, &values[i]) {
-            (Token::Text(s), _) => {
-                if !empty(i.checked_sub(1)) && !empty(Some(i + 1)) {
-                    out.push_str(&dim(s));
-                }
-            }
+            (Token::Text(s), _) if keep[i] => out.push_str(&dim(s)),
             (_, Some(v)) => out.push_str(v),
             _ => {}
         }
     }
     Some(Rendered { text: out, bg })
+}
+
+/// Which text tokens (`None` in `values`) are drawn. A text beside an empty
+/// placeholder is dropped, except that every stretch between two non-empty
+/// placeholders keeps its last text, so the values stay apart.
+fn kept_text(values: &[Option<String>]) -> Vec<bool> {
+    let empty = |i: usize| values.get(i).is_some_and(|v| v.as_deref() == Some(""));
+    let full = |i: usize| values[i].as_deref().is_some_and(|v| !v.is_empty());
+    let mut keep: Vec<bool> = (0..values.len())
+        .map(|i| values[i].is_none() && !(i > 0 && empty(i - 1)) && !empty(i + 1))
+        .collect();
+    let fulls: Vec<usize> = (0..values.len()).filter(|&i| full(i)).collect();
+    for w in fulls.windows(2) {
+        let between = w[0] + 1..w[1];
+        if !between.clone().any(empty) {
+            continue;
+        }
+        if let Some(last) = between.clone().rev().find(|&i| values[i].is_none()) {
+            for i in between {
+                keep[i] = i == last;
+            }
+        }
+    }
+    keep
 }
 
 fn render_group(src: &str, ctx: &Ctx, ex: &Expander, sample: Option<Sample>) -> Vec<Rendered> {

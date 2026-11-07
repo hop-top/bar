@@ -64,7 +64,7 @@ fn limit(opts: &Options) -> usize {
         .unwrap_or(5)
 }
 
-fn sample(name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Option<String> {
+fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Option<String> {
     let c = &ctx.config.colors;
     let list = |items: Vec<String>| {
         let v: Vec<String> = items.into_iter().take(limit(opts)).collect();
@@ -73,6 +73,8 @@ fn sample(name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Option<String> 
     match name {
         "repo" => Some(bold(&fg(75, "bar"))),
         "branch" => Some(dim("main")),
+        // a clean tree in the last stretch
+        "dirty" if state == "final" => None,
         "dirty" => Some(format!(
             "{} {} {}",
             fg(c.good, "+2"),
@@ -119,6 +121,6 @@ pub fn render(state: &str, load: LoadResult, columns: Option<usize>, now: i64) -
         &session(state, now),
         &config,
         Some(columns.unwrap_or(DEFAULT_COLUMNS)),
-        &sample,
+        &|name, opts, ctx, label| sample(state, name, opts, ctx, label),
     )
 }
