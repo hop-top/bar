@@ -13,10 +13,6 @@ pub use info::{cached_info, info, info_job, parse_info, validate, ExtInfo, OptSp
 pub use render::{paint, parse_output, plan, render, render_found, Metric, Output, Plan};
 
 pub const PREFIX: &str = "bar-";
-/// Core placeholder names; a plugin by the same name is never used.
-pub const CORE: &[&str] = &[
-    "account", "repo", "branch", "model", "effort", "ctx", "usage", "prs", "issues",
-];
 /// Capability a plugin must declare to be rendered.
 pub const CAPABILITY: &str = "placeholder";
 pub const INFO_TIMEOUT: Duration = Duration::from_secs(5);

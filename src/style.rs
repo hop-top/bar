@@ -28,12 +28,14 @@ pub fn ramp(score: i32, ramp: &[u8; 11]) -> u8 {
     ramp[((score.clamp(0, 100) + 9) / 10) as usize]
 }
 
-/// Drops ESC, C0, DEL and C1 controls and bidi overrides/isolates, so
-/// external text cannot inject codes or reorder what follows it.
+/// Drops ESC, C0, DEL and C1 controls, line/paragraph separators and bidi
+/// overrides/isolates, so external text cannot inject codes, break the line
+/// or reorder what follows it.
 pub fn sanitize(text: &str) -> String {
     text.chars()
         .filter(|c| {
-            !c.is_control() && !matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+            !c.is_control()
+                && !matches!(c, '\u{2028}' | '\u{2029}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
         })
         .collect()
 }

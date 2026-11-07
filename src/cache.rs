@@ -196,7 +196,7 @@ fn modified_age(path: &Path) -> Option<Duration> {
 }
 
 /// FNV-1a, 128-bit: keys become fixed hex filenames.
-fn hash_hex(key: &str) -> String {
+pub(crate) fn hash_hex(key: &str) -> String {
     let mut h: u128 = 0x6c62272e07bb014262b821756295c58d;
     for b in key.bytes() {
         h ^= u128::from(b);

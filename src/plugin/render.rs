@@ -4,7 +4,7 @@ use serde_json::{json, Map, Value};
 
 use super::info::ttl_of;
 use super::{cached_info, find, validate, ExtInfo, Found};
-use crate::cache::Job;
+use crate::cache::{hash_hex, Job};
 use crate::conf::Config;
 use crate::options::Options;
 use crate::pace::metric_score;
@@ -60,8 +60,10 @@ pub fn plan(ctx: &Ctx, found: &Found, info: &ExtInfo, opts: &Options) -> Option<
     }
     let (options, config) = (Value::Object(options), Value::Object(config));
     let path = found.path.to_string_lossy().into_owned();
-    // session data is left out of the key so the cache can hit
-    let key = format!("plugin:{}:{path}:{options}:{config}", found.name);
+    // per working directory (plugins like tlc read the repo there), but not
+    // per volatile session data, so the cache can hit
+    let cwd = hash_hex(&ctx.session.cwd);
+    let key = format!("plugin:{}:{path}:{cwd}:{options}:{config}", found.name);
     let input = json!({
         "options": options,
         "session": session_json(ctx.session),

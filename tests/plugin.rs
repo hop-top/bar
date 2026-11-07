@@ -79,8 +79,12 @@ impl Fx {
 
     /// Primes the info, then runs the render job once.
     fn prime(&self, name: &str, cfg: &Config, o: &[(&str, &str)]) {
+        self.prime_in(&session(), name, cfg, o);
+    }
+
+    fn prime_in(&self, s: &Session, name: &str, cfg: &Config, o: &[(&str, &str)]) {
         self.prime_info(name);
-        let s = session();
+        let s = s.clone();
         let cache = self.cache();
         let dirs = self.dirs();
         let ctx = ctx(&s, cfg, &cache, &dirs);
@@ -91,7 +95,11 @@ impl Fx {
     }
 
     fn show(&self, name: &str, cfg: &Config, o: &[(&str, &str)]) -> String {
-        let s = session();
+        self.show_in(&session(), name, cfg, o)
+    }
+
+    fn show_in(&self, s: &Session, name: &str, cfg: &Config, o: &[(&str, &str)]) -> String {
+        let s = s.clone();
         let cache = self.cache();
         let dirs = self.dirs();
         plugin::render(&ctx(&s, cfg, &cache, &dirs), name, &opts(o)).unwrap_or_default()
@@ -213,13 +221,68 @@ fn core_name_wins_over_plugin() {
     assert!(fx.bin.join("bar-account").is_file());
     assert!(!discover(&fx.dirs()).iter().any(|f| f.name == "account"));
     assert!(find(&fx.dirs(), "account").is_none());
-    for core in plugin::CORE {
+    for core in [
+        "account", "repo", "branch", "model", "effort", "ctx", "usage", "prs", "issues",
+    ] {
         install(
             &fx.bin.join("bar-echo"),
             &fx.bin.join(format!("bar-{core}")),
         );
         assert!(find(&fx.dirs(), core).is_none(), "{core}");
     }
+}
+
+#[test]
+fn cache_key_includes_cwd() {
+    let fx = Fx::new();
+    let c = cfg("");
+    let a = session();
+    let b = Session {
+        cwd: "/tmp/other-repo".into(),
+        ..session()
+    };
+    fx.prime_info("echo");
+    let (cache, dirs) = (fx.cache(), fx.dirs());
+    let found = fx.found("echo");
+    let inf = cached_info(&cache, &found).unwrap();
+    let key = |s: &Session| {
+        plugin::plan(&ctx(s, &c, &cache, &dirs), &found, &inf, &opts(&[]))
+            .unwrap()
+            .key
+    };
+    assert_ne!(key(&a), key(&b));
+    let same_cwd = Session {
+        session_id: "s-2".into(),
+        context_used: Some(50.0),
+        ..session()
+    };
+    assert_eq!(key(&a), key(&same_cwd), "only cwd splits the cache");
+    fx.put("out.json", r#"{"text":"A"}"#);
+    fx.prime_in(&a, "echo", &c, &[]);
+    fx.put("out.json", r#"{"text":"B"}"#);
+    fx.prime_in(&b, "echo", &c, &[]);
+    assert_eq!(fx.show_in(&a, "echo", &c, &[]), "A");
+    assert_eq!(fx.show_in(&b, "echo", &c, &[]), "B");
+}
+
+#[test]
+fn wide_and_invisible_text_measured_through_compose() {
+    let fx = Fx::new();
+    let c = cfg("set left \"#{echo}\"\n");
+    fx.put(
+        "out.json",
+        r#"{"text":"\u6f22\u5b57\ud83d\ude42\u200b\u2028\u2029x\u0085"}"#,
+    );
+    fx.prime("echo", &c, &[]);
+    let (s, cache, dirs) = (session(), fx.cache(), fx.dirs());
+    let out = render_in(&s, &c, Some(120), &ColdRunner, Some(&cache), &dirs);
+    let line = out.trim_end();
+    assert_eq!(line, "\u{6f22}\u{5b57}\u{1f642}\u{200b}x");
+    assert!(!line
+        .chars()
+        .any(|ch| ch.is_control() || matches!(ch, '\u{2028}' | '\u{2029}')));
+    assert_eq!(hop_bar::style::visible_width(line), 7);
+    assert_eq!(out.lines().count(), 1);
 }
 
 #[test]
@@ -252,6 +315,30 @@ fn ext_info_reads_fields() {
     assert_eq!(i.description, "test plugin");
     assert!(i.is_placeholder());
     assert_eq!(i.options.len(), 4);
+}
+
+#[test]
+fn ext_info_strings_sanitized() {
+    let raw = r#"{"name":"x","version":"1","capabilities":["placeholder"],
+      "options":{
+        "k\u001b[31m":{"type":"string","default":"d\u001b]8;;\u0007"},
+        "m":{"type":"enum","enum":["a\u001b[0m","\u202eb"],"default":"a\u001b[0m"}}}"#;
+    let i = parse_info(raw).unwrap();
+    let shown = i.to_json().to_string();
+    assert!(
+        !shown.contains("\\u001b") && !shown.contains('\x1b'),
+        "{shown}"
+    );
+    assert!(
+        !shown.contains('\u{202e}') && !shown.contains("\\u0007"),
+        "{shown}"
+    );
+    assert!(i.options.contains_key("k[31m"));
+    assert_eq!(i.options["m"].choices, ["a[0m", "b"]);
+    assert_eq!(i.options["m"].default, Some(json!("a[0m")));
+    assert_eq!(i.options["k[31m"].default, Some(json!("d]8;;")));
+    // the sanitised choice is what the user types and what is accepted
+    assert!(validate(&i.options, &opts(&[("m", "b")])).is_ok());
 }
 
 #[test]

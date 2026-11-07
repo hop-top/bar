@@ -4,7 +4,8 @@ use std::ffi::OsStr;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-use super::{CORE, PREFIX};
+use super::PREFIX;
+use crate::placeholders::lookup;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Found {
@@ -26,7 +27,7 @@ pub fn path_dirs(path: Option<&OsStr>) -> Vec<PathBuf> {
 
 fn valid_name(name: &str) -> bool {
     !name.is_empty()
-        && !CORE.contains(&name)
+        && lookup(name).is_none()
         && name
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')

@@ -33,7 +33,7 @@ Any executable named `bar-<name>` on `PATH` becomes the placeholder `#{name}`. T
 |---|---|
 | `name`, `version` | Required strings. Without them, or on timeout or non-zero exit, `bar` falls back to the file name, an empty version and no capabilities. |
 | `capabilities` | Must include `placeholder`, or `bar` never renders the plugin. |
-| `options` | Allowed options. Types: `int`, `string`, `bool`, `enum` (with `enum` choices). `default` fills a missing option when it fits the type. Options of unknown type are dropped. |
+| `options` | Allowed options; keys, choices and string defaults are sanitised like `text`. Types: `int`, `string`, `bool`, `enum` (with `enum` choices). `default` fills a missing option when it fits the type. Options of unknown type are dropped. |
 | `ttl` | How long a render result stays fresh: seconds (`300`) or a duration (`90s`, `5m`, `1h`). Default 60 s. |
 
 The result is cached for a day per binary and modification time; renders never run `--ext-info` themselves. A cold cache renders nothing and asks in the background.
@@ -67,17 +67,17 @@ Stdout is one JSON object:
   "metric": { "remaining": 14907, "granted": 20000, "expires_at": 1800000000, "granted_at": 1797400000 } }
 ```
 
-- `text` (required) is stripped of escape and control characters and bidi overrides. Nothing visible left omits the segment.
+- `text` (required) is stripped of escape and control characters, line and paragraph separators (U+2028, U+2029) and bidi overrides; wide characters (CJK, emoji) count as 2 cells. Nothing visible left omits the segment.
 - `link` becomes an OSC 8 link; a URL with control characters leaves plain text.
 - Colour, first match wins:
-  1. `style`: `good`, `warn`, `bad` (the `color.*` palette) or `dim`; any other value means no colour.
+  1. `style`: `good`, `warn`, `bad` (the `color.*` palette) or `dim`. Any other value means no colour, and it still wins over `score` and `metric`.
   2. `score`: clamped to 0..100, then the `ramp`.
-  3. `metric` with a `rule <name>` whose target is exactly the placeholder name, e.g. `rule claude-credits early pace final=3d bad=$50`. Amounts are cents; times are Unix seconds. In the final stretch the score is `100 - remaining * 100 / (bad + 1)`, so unspent credit turns red before it expires. Before that, the pace score of the percent left of `granted`, with `$` thresholds read as shares of the grant; `granted_at` (optional) gives the period, without it only the floors apply.
+  3. `metric` (`remaining`, `granted`, `expires_at` required; `granted_at` optional) with a `rule <name>` whose target is exactly the placeholder name, e.g. `rule claude-credits early pace final=3d bad=$50`. Amounts are cents; times are Unix seconds. In the final stretch the score is `100 - remaining * 100 / (bad + 1)`, so unspent credit turns red before it expires. Before that, the pace score of the percent left of `granted`, with `$` thresholds read as shares of the grant; `granted_at`, when present, gives the pace period (`expires_at - granted_at`); without it only the floors apply.
   4. Otherwise plain.
 
 ## Caching and failure
 
-- Results are cached per plugin, options and `plugin` line (not per session) and refreshed in the background once older than `ttl`; `plugin <name> ttl=5m` overrides the plugin's value, and `set refresh` is the floor.
+- Results are cached per plugin, working directory (`session.cwd`), options and `plugin` line; other session data does not split the cache and refreshed in the background once older than `ttl`; `plugin <name> ttl=5m` overrides the plugin's value, and `set refresh` is the floor.
 - A render never waits on a plugin. Timeouts kill the plugin's whole process group.
 - Non-zero exit, timeout or output that does not parse keeps the last good value and backs off for a minute; with nothing cached the segment is omitted.
 

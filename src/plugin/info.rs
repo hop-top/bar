@@ -138,18 +138,17 @@ fn opt_spec(v: &Value) -> Option<OptSpec> {
     };
     let choices = v["enum"]
         .as_array()
-        .map(|a| {
-            a.iter()
-                .filter_map(|c| c.as_str().map(String::from))
-                .collect()
-        })
+        .map(|a| a.iter().filter_map(clean_str).collect())
         .unwrap_or_default();
     let mut spec = OptSpec {
         kind,
         choices,
         default: None,
     };
-    spec.default = v.get("default").filter(|d| default_fits(&spec, d)).cloned();
+    spec.default = v
+        .get("default")
+        .map(|d| clean_str(d).map_or_else(|| d.clone(), Value::from))
+        .filter(|d| default_fits(&spec, d));
     Some(spec)
 }
 
@@ -168,7 +167,7 @@ pub fn parse_info(raw: &str) -> Option<ExtInfo> {
         .as_object()
         .map(|o| {
             o.iter()
-                .filter_map(|(k, s)| Some((k.clone(), opt_spec(s)?)))
+                .filter_map(|(k, s)| Some((sanitize(k), opt_spec(s)?)))
                 .collect()
         })
         .unwrap_or_default();
