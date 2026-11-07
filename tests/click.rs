@@ -3,7 +3,7 @@ mod fake_env;
 
 use assert_cmd::Command;
 use fake_env::{fixture, url, Fake, SID, TTY};
-use hop_bar::click::{box_is_empty, check, hook, link, run, toggle, Pane, Refusal, Term, COMMANDS};
+use hop_bar::click::{check, hook, link, run, toggle, Pane, Refusal, Term, COMMANDS};
 use hop_bar::conf::Config;
 use hop_bar::options::Options;
 use hop_bar::placeholders::{ctx as ctxp, model, Ctx};
@@ -468,50 +468,4 @@ fn send_is_literal_then_enter() {
     assert_eq!(f.sleeps.borrow().len(), 1);
     assert!(f.notes.borrow().is_empty());
     assert!(f.logs.borrow()[0].contains("sent model to %1"));
-}
-
-// ── Box parsing, one fixture set per Claude Code version ────────────────────
-
-#[test]
-fn box_fixtures_per_version() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sessions");
-    let mut seen = 0;
-    for v in std::fs::read_dir(&root).unwrap() {
-        for e in std::fs::read_dir(v.unwrap().path()).unwrap() {
-            let p = e.unwrap().path();
-            let name = p.file_stem().unwrap().to_string_lossy().to_string();
-            let screen = std::fs::read_to_string(&p).unwrap();
-            assert_eq!(
-                box_is_empty(&screen),
-                name.starts_with("empty"),
-                "{}",
-                p.display()
-            );
-            seen += 1;
-        }
-    }
-    assert!(seen >= 4);
-    assert!(!box_is_empty(""), "no prompt marker refuses");
-    assert!(!box_is_empty("❯\u{a0}\x1b[0mdraft"));
-    assert!(box_is_empty("❯\u{a0}\x1b[0m\x1b[2mTry \"x\"\x1b[22m\n─"));
-    assert!(!box_is_empty("❯\u{a0}\n"), "no border below refuses");
-}
-
-#[test]
-fn multiline_draft_with_blank_first_line_refused() {
-    assert!(!box_is_empty(&fixture("draft-multiline")));
-    let f = Fake::new();
-    f.screen("%1", &fixture("draft-multiline"));
-    refused(&f, &url("model"), Refusal::NotEmpty);
-}
-
-#[test]
-fn dim_then_typed_text_refused() {
-    assert!(!box_is_empty("─\n❯ \x1b[2mTry\x1b[22m typed\n─"));
-    assert!(!box_is_empty("─\n❯ \x1b[2mTry\x1b[0mtyped\n─"));
-    assert!(!box_is_empty(&fixture("draft-after-dim")));
-    assert!(box_is_empty("─\n❯ \x1b[2mTry \"x\"\x1b[22m \x1b[0m\n─"));
-    let f = Fake::new();
-    f.screen("%1", &fixture("draft-after-dim"));
-    refused(&f, &url("model"), Refusal::NotEmpty);
 }

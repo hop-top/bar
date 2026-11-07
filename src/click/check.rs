@@ -122,23 +122,16 @@ fn find_pane(env: &dyn Env, sid: &str, tty: &str) -> Option<(Pane, bool)> {
         .map(|(_, id)| (Pane(id.to_string()), true))
 }
 
-/// SGR parameters that take arguments: `38;5;n`, `38;2;r;g;b` (and 48, 58).
-fn skip_color_args(params: &[&str], i: usize) -> usize {
-    match params.get(i + 1) {
-        Some(&"5") => i + 2,
-        Some(&"2") => i + 4,
-        _ => i,
-    }
-}
-
-/// Visible text is allowed only inside dim spans (`allow_dim`), else
-/// nothing but whitespace and SGR codes. Any other escape refuses.
+/// Visible text is allowed only inside dim spans that are not reverse
+/// video (`allow_dim`), else nothing but whitespace and SGR codes. Any other
+/// escape, or an SGR parameter that does not parse, refuses.
 fn no_text_outside_dim(s: &str, allow_dim: bool) -> bool {
-    let mut dim = false;
+    let (mut dim, mut reverse) = (false, false);
     let mut it = s.chars();
     while let Some(c) = it.next() {
         if c != '\x1b' {
-            if !(c.is_whitespace() || c == '\u{a0}' || (dim && allow_dim)) {
+            let placeholder = allow_dim && dim && !reverse;
+            if !(c.is_whitespace() || c == '\u{a0}' || placeholder) {
                 return false;
             }
             continue;
@@ -154,13 +147,34 @@ fn no_text_outside_dim(s: &str, allow_dim: bool) -> bool {
                 _ => return false,
             }
         }
-        let params: Vec<&str> = raw.split(';').collect();
+        // Empty or zero-padded parameters are numbers too: `\e[m`, `\e[00m`.
+        let Ok(params) = raw
+            .split(';')
+            .map(|p| {
+                if p.is_empty() {
+                    Ok(0)
+                } else {
+                    p.parse::<u32>()
+                }
+            })
+            .collect::<Result<Vec<u32>, _>>()
+        else {
+            return false;
+        };
         let mut i = 0;
         while i < params.len() {
             match params[i] {
-                "" | "0" | "22" => dim = false,
-                "2" => dim = true,
-                "38" | "48" | "58" => i = skip_color_args(&params, i),
+                0 => (dim, reverse) = (false, false),
+                2 => dim = true,
+                22 => dim = false,
+                7 => reverse = true,
+                27 => reverse = false,
+                // 38;5;n and 38;2;r;g;b (also 48, 58) carry arguments.
+                38 | 48 | 58 => match params.get(i + 1) {
+                    Some(5) => i += 2,
+                    Some(2) => i += 4,
+                    _ => {}
+                },
                 _ => {}
             }
             i += 1;
@@ -169,35 +183,43 @@ fn no_text_outside_dim(s: &str, allow_dim: bool) -> bool {
     true
 }
 
-/// The input box border: a line of `─` once SGR codes are removed.
-fn is_border(line: &str) -> bool {
+/// Cells of a box border line (only `─` once codes are removed), else 0.
+fn border_width(line: &str) -> usize {
     let plain = crate::style::strip_codes(line);
     let t = plain.trim();
-    !t.is_empty() && t.chars().all(|c| c == '─')
+    if t.chars().all(|c| c == '─') {
+        t.chars().count()
+    } else {
+        0
+    }
 }
 
-/// Empty box: on the last prompt marker line nothing follows the marker but
-/// dim placeholder text, and every line below it up to the box border is
-/// blank (a draft can start with an empty line). Drafts and menu selections
-/// render in normal text. No border below refuses.
+/// Narrower than this is not taken for the input box.
+const MIN_BORDER: usize = 20;
+
+/// Empty box. The line right above the last prompt marker line is the top
+/// border; the bottom border is the last line below with the same width.
+/// After the marker only dim placeholder text may follow, and every line
+/// between it and the bottom border must be blank, so a draft starting
+/// with an empty line, or a typed `─` rule, refuses. No borders refuses.
 pub fn box_is_empty(screen: &str) -> bool {
     let lines: Vec<&str> = screen.lines().collect();
     let Some(i) = lines.iter().rposition(|l| l.contains('❯')) else {
         return false;
     };
-    let (_, rest) = lines[i].split_once('❯').unwrap_or_default();
-    if !no_text_outside_dim(rest, true) {
+    let top = i.checked_sub(1).map_or(0, |t| border_width(lines[t]));
+    if top < MIN_BORDER {
         return false;
     }
-    for l in &lines[i + 1..] {
-        if is_border(l) {
-            return true;
-        }
-        if !no_text_outside_dim(l, false) {
-            return false;
-        }
-    }
-    false
+    let Some(bottom) = lines.iter().rposition(|l| border_width(l) == top) else {
+        return false;
+    };
+    let (_, rest) = lines[i].split_once('❯').unwrap_or_default();
+    bottom > i
+        && no_text_outside_dim(rest, true)
+        && lines[i + 1..bottom]
+            .iter()
+            .all(|l| no_text_outside_dim(l, false))
 }
 
 fn idle_and_empty(env: &dyn Env, sid: &str, pane: &Pane, by_sid: bool) -> Result<(), Refusal> {
