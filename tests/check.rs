@@ -295,3 +295,16 @@ fn check_rejects_wide_icon() {
     let (code, _) = out(&mut fx.bar(&["check"]));
     assert_ne!(code, 2, "two 1-cell glyphs fit");
 }
+
+#[test]
+fn check_warns_when_plugin_declares_icon_option() {
+    let fx = Fx::new();
+    fx.exe(
+        "bar-ico",
+        "#!/bin/sh\necho '{\"name\":\"ico\",\"version\":\"1\",\"capabilities\":[\"placeholder\"],\"options\":{\"icon\":{\"type\":\"string\"}}}'\n",
+    );
+    fx.conf("set left \"#{ico}\"\n");
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_ne!(code, 2, "{stdout}");
+    assert!(stdout.contains("reserved option `icon`"), "{stdout}");
+}

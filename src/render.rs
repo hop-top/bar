@@ -35,7 +35,8 @@ pub fn builtin_config() -> Config {
 }
 
 /// Stands in for every placeholder in a preview: no plugins, no real data.
-pub type Sample<'a> = &'a dyn Fn(&str, &Options, &Ctx) -> Option<String>;
+/// The flag says whether the text label is drawn (false when an icon is).
+pub type Sample<'a> = &'a dyn Fn(&str, &Options, &Ctx, bool) -> Option<String>;
 
 /// Core names first; anything else is a `bar-<name>` plugin.
 fn render_placeholder(
@@ -47,18 +48,21 @@ fn render_placeholder(
 ) -> String {
     let (pick, opts) = icons::split(&expanded(name, inline, ctx, ex));
     let core = lookup(name);
-    let with_icon = |value: String| {
-        if value.is_empty() {
-            return value;
-        }
-        let default = core.and_then(|_| icons::builtin(ctx.config.icons, name, &opts));
-        match icons::resolve(ctx.config, &pick, default) {
-            Some(glyph) => icons::attach(name, &glyph, value),
-            None => value,
+    let glyph = icons::resolve(
+        ctx.config,
+        &pick,
+        core.and_then(|_| icons::builtin(ctx.config.icons, name, &opts)),
+    );
+    let label = glyph.is_none();
+    let with_icon = |value: Option<String>| {
+        let value = value.unwrap_or_default();
+        match &glyph {
+            Some(g) if !value.is_empty() => icons::attach(g, value),
+            _ => value,
         }
     };
     if let Some(sample) = sample {
-        return with_icon(sample(name, &opts, ctx).unwrap_or_default());
+        return with_icon(sample(name, &opts, ctx, label));
     }
     let found = match core {
         Some(_) => None,
@@ -68,11 +72,10 @@ fn render_placeholder(
         },
     };
     match (core, found) {
-        (Some(p), _) => p.render(ctx, &opts).map(with_icon),
-        (None, Some(f)) => plugin::render_found_with(ctx, &f, &opts, &pick),
-        (None, None) => None,
+        (Some(p), _) => with_icon(p.render_labeled(ctx, &opts, label)),
+        (None, Some(f)) => plugin::render_found_with(ctx, &f, &opts, &pick).unwrap_or_default(),
+        (None, None) => String::new(),
     }
-    .unwrap_or_default()
 }
 
 /// Inline options over the configured defaults, values expanded.

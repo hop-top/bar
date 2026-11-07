@@ -78,7 +78,7 @@ Quote values with spaces. `#` starts a comment.
 
 ## Icons
 
-`set icons nerdfont|emoji` adds an icon to each core segment; `none` (default) leaves output as is. An icon is drawn muted, followed by one space, outside any link. When a segment has a text label (`ctx`), the icon replaces it; otherwise it prefixes the value. `icon=<glyph>` on any placeholder beats the set, `icon=none` hides it; both work with `icons none`. Glyphs are sanitised; `bar check` rejects an icon wider than 2 cells (counted with `icon-width`).
+`set icons nerdfont|emoji` adds an icon to each core segment; `none` (default) leaves output as is. An icon is drawn muted, followed by one space, outside any link. When a segment has a text label (`ctx`), the icon replaces it; otherwise it prefixes the value. `icon=<glyph>` on any placeholder beats the set, `icon=none` hides it; both work with `icons none`. Glyphs are sanitised; `bar check` rejects an icon wider than 2 cells (counted with `icon-width`); values from `%…%` expressions or `default` lines are not checked ahead, and an over-wide one is dropped at render (no icon, label kept).
 
 | Placeholder | nerdfont | emoji |
 |---|---|---|

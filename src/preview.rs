@@ -63,7 +63,7 @@ fn limit(opts: &Options) -> usize {
         .unwrap_or(5)
 }
 
-fn sample(name: &str, opts: &Options, ctx: &Ctx) -> Option<String> {
+fn sample(name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Option<String> {
     let c = &ctx.config.colors;
     let list = |items: Vec<String>| {
         let v: Vec<String> = items.into_iter().take(limit(opts)).collect();
@@ -87,7 +87,7 @@ fn sample(name: &str, opts: &Options, ctx: &Ctx) -> Option<String> {
             Some(bold(&fg(color, label)))
         }
         "usage" => usage::render_with(ctx, opts, Path::new("/nonexistent/bar-preview")),
-        "model" | "effort" | "ctx" => lookup(name)?.render(ctx, opts),
+        "model" | "effort" | "ctx" => lookup(name)?.render_labeled(ctx, opts, label),
         _ => None,
     }
 }

@@ -70,7 +70,7 @@ Stdout is one JSON object:
 
 - `text` (required) is stripped of escape and control characters, line and paragraph separators (U+2028, U+2029) and bidi overrides; wide characters (CJK, emoji) count as 2 cells. Nothing visible left omits the segment.
 - `label` (optional) is sanitised like `text` and drawn dim, plus a space, before `text`. It takes no colour and sits outside the link. Empty or absent: `text` alone.
-- `icon` (optional) overrides the `--ext-info` icon for this render. When an icon shows (`set icons` not `none`, or `icon=<glyph>` on the placeholder; `icon=none` hides it), it replaces `label`: dim, a space, then `text`, outside the link. An icon wider than 2 cells is dropped. `icon` is a reserved option name: it is never sent to the plugin and cannot be declared in `options`.
+- `icon` (optional) overrides the `--ext-info` icon for this render. When an icon shows (`set icons` not `none`, or `icon=<glyph>` on the placeholder; `icon=none` hides it), it replaces `label`: dim, a space, then `text`, outside the link. An icon wider than 2 cells is dropped. `icon` is a reserved option name: it is never sent to the plugin, an `icon` entry in `options` is ignored, and `bar check` warns about it. An invalid output icon falls back to the `--ext-info` icon, then to `label`.
 - `link` becomes an OSC 8 link around `text` only, never the `label`; a URL with control characters leaves plain text.
 - Colour, first match wins:
   1. `style`: `good`, `warn`, `bad` (the `color.*` palette) or `dim`. Any other value means no colour, and it still wins over `score` and `metric`.

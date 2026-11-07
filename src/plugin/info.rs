@@ -38,6 +38,9 @@ pub struct ExtInfo {
     pub ttl: u64,
     /// Default segment icon, used when an icon set is chosen.
     pub icon: Option<String>,
+    /// The plugin declared an `icon` option; it is ignored, the name is
+    /// reserved for the generic placeholder option.
+    pub declares_icon_option: bool,
 }
 
 impl ExtInfo {
@@ -52,6 +55,7 @@ impl ExtInfo {
             options: BTreeMap::new(),
             ttl: DEFAULT_TTL,
             icon: None,
+            declares_icon_option: false,
         }
     }
 
@@ -175,9 +179,11 @@ pub fn parse_info(raw: &str) -> Option<ExtInfo> {
         .map(|o| {
             o.iter()
                 .filter_map(|(k, s)| Some((sanitize(k), opt_spec(s)?)))
+                .filter(|(k, _)| k != "icon")
                 .collect()
         })
         .unwrap_or_default();
+    let declares_icon_option = v["options"].get("icon").is_some();
     Some(ExtInfo {
         name: clean_str(&v["name"])?,
         version: clean_str(&v["version"])?,
@@ -189,6 +195,7 @@ pub fn parse_info(raw: &str) -> Option<ExtInfo> {
         options,
         ttl: ttl_of(&v["ttl"]),
         icon: clean_str(&v["icon"]).filter(|i| !i.trim().is_empty()),
+        declares_icon_option,
     })
 }
 

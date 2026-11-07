@@ -291,6 +291,10 @@ impl Checker<'_> {
             );
             return;
         }
+        if info.declares_icon_option {
+            let msg = format!("plugin `{name}` declares the reserved option `icon`; ignored");
+            self.add(Level::Warning, line, msg);
+        }
         let mut concrete = Options::default();
         for (k, v) in opts.iter().filter(|(_, v)| !v.contains('%')) {
             if k == "icon" {

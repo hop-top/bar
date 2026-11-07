@@ -187,8 +187,13 @@ pub fn paint_with(
         Some(url) => link(url, &body),
         None => body,
     };
-    let default = out.icon.as_deref().or(info_icon);
-    if let Some(glyph) = icons::resolve(config, pick, default) {
+    // a bad output icon falls back to the plugin's own, then to the label
+    let glyph = icons::resolve(config, pick, out.icon.as_deref()).or_else(|| {
+        (*pick == Pick::Auto)
+            .then(|| icons::resolve(config, pick, info_icon))
+            .flatten()
+    });
+    if let Some(glyph) = glyph {
         return Some(format!("{} {body}", dim(&glyph)));
     }
     let label = out.label.as_deref().map(sanitize).unwrap_or_default();

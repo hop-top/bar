@@ -58,18 +58,8 @@ pub fn resolve(config: &Config, pick: &Pick, default: Option<&str>) -> Option<St
         .then_some(glyph)
 }
 
-/// Core placeholders that print a text label, which an icon replaces.
-const LABELS: &[(&str, &str)] = &[("ctx", "ctx")];
-
 /// `value` led by the muted icon and a space. Outside any link in `value`.
-pub fn attach(name: &str, glyph: &str, value: String) -> String {
-    let value = match LABELS.iter().find(|(n, _)| *n == name) {
-        Some((_, label)) => {
-            let lead = format!("{} ", dim(label));
-            value.strip_prefix(&lead).map(String::from).unwrap_or(value)
-        }
-        None => value,
-    };
+pub fn attach(glyph: &str, value: String) -> String {
     format!("{} {value}", dim(glyph))
 }
 

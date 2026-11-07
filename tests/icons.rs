@@ -231,8 +231,12 @@ cat "$here/out.json"
 "#;
 
 fn plugin_line(set: &str, out: &str, layout: &str) -> String {
+    plugin_line_with(PLUGIN, set, out, layout)
+}
+
+fn plugin_line_with(script: &str, set: &str, out: &str, layout: &str) -> String {
     let fx = Fx::new();
-    fx.put("bar-echo", PLUGIN);
+    fx.put("bar-echo", script);
     fx.put("out.json", out);
     let c = plugin_fx::cfg(&format!("{set}\nset left \"{layout}\"\n"));
     fx.prime("echo", &c, &[]);
@@ -283,6 +287,74 @@ fn plugin_info_icon_parsed_and_sanitized() {
 
 #[test]
 fn oversized_plugin_icon_dropped() {
-    let out = r#"{"text":"v","icon":"toolong"}"#;
-    assert_eq!(plugin_line("set icons emoji", out, "#{echo}"), "v");
+    let out = r#"{"text":"v","label":"lbl","icon":"toolong"}"#;
+    assert_eq!(
+        plugin_line("set icons emoji", out, "#{echo}"),
+        "I v",
+        "falls back to the ext-info icon"
+    );
+    let bare = PLUGIN.replace(r#""icon":"I","#, r#""icon":"toolong","#);
+    assert_eq!(
+        plugin_line_with(&bare, "set icons emoji", out, "#{echo}"),
+        "lbl v",
+        "then to the label"
+    );
+}
+
+#[test]
+fn declared_icon_option_ignored() {
+    let i = hop_bar::plugin::parse_info(
+        r#"{"name":"n","version":"1","capabilities":[],"options":{"icon":{"type":"string"},"k":{"type":"int"}}}"#,
+    )
+    .unwrap();
+    assert!(i.declares_icon_option);
+    assert!(!i.options.contains_key("icon") && i.options.contains_key("k"));
+}
+
+#[test]
+fn icon_replaces_ctx_label_in_every_set() {
+    let t = Tmp::new();
+    for set in ["nerdfont", "emoji"] {
+        let o = line(&t, &conf(&format!("set icons {set}"), "#{ctx}"), CTX_STDIN);
+        assert!(!o.plain.contains("ctx"), "{}", o.plain);
+        assert!(o.plain.trim().ends_with("38%"));
+    }
+}
+
+fn preview(t: &Tmp, conf: &str, cols: &str) -> String {
+    use assert_cmd::Command;
+    let (iso, cwd) = common::isolation(t.path());
+    t.write("xdg/bar/bar.conf", conf);
+    let o = Command::cargo_bin("bar")
+        .unwrap()
+        .arg("preview")
+        .envs(iso)
+        .env("COLUMNS", cols)
+        .current_dir(cwd)
+        .output()
+        .unwrap();
+    String::from_utf8(o.stdout).unwrap()
+}
+
+#[test]
+fn preview_unchanged_with_icons_none() {
+    let t = Tmp::new();
+    for cols in ["60", "200"] {
+        let base = preview(&t, "set gap 3", cols);
+        let none = preview(&t, "set icons none\nset icon-width 2", cols);
+        assert_eq!(base, none, "COLUMNS={cols}");
+    }
+}
+
+#[test]
+fn preview_shows_gh_icons() {
+    let t = Tmp::new();
+    let o = preview(
+        &t,
+        "set icons emoji\nset left \"#{prs} #{issues} #{ctx}\"",
+        "200",
+    );
+    let o = strip_codes(&o);
+    assert!(o.contains("🔀 #131") && o.contains("🐛 !57"), "{o}");
+    assert!(!o.contains("ctx"), "{o}");
 }
