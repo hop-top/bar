@@ -1,7 +1,7 @@
 //! Places the left, centre and right groups on one or two lines, or flows
 //! segments onto rows when wrapping.
 
-use crate::style::{dim, visible_width_with};
+use crate::style::{dim, visible_width, visible_width_with};
 use std::ops::Range;
 
 const MARGIN: i64 = 4;
@@ -13,14 +13,26 @@ pub struct Group {
     pub width: usize,
 }
 
+/// Placed groups: the text, and whether it is one row within the usable
+/// width (always true without `COLUMNS`, where nothing is measured).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Placed {
+    pub text: String,
+    pub fits: bool,
+}
+
+/// The muted ` │ ` drawn between plain segments.
+pub fn plain_joiner() -> String {
+    format!(" {} ", dim("│"))
+}
+
 /// Segments joined with the muted ` │ ` separator, empty ones dropped.
 pub fn join(segs: &[String]) -> String {
-    let sep = format!(" {} ", dim("│"));
     segs.iter()
         .filter(|s| !s.is_empty())
         .cloned()
         .collect::<Vec<_>>()
-        .join(&sep)
+        .join(&plain_joiner())
 }
 
 fn spaces(n: i64) -> String {
@@ -28,18 +40,20 @@ fn spaces(n: i64) -> String {
 }
 
 /// Left and right on the first line: padded apart when `gap` fits, joined
-/// with `joiner` when not.
-fn edges(left: &Group, right: &Group, width: i64, gap: i64, joiner: &str) -> String {
+/// with `joiner` when not. Returns the text and the cells it takes.
+fn edges(left: &Group, right: &Group, width: i64, gap: i64, joiner: &str) -> (String, i64) {
     let (l, r) = (&left.text, &right.text);
-    let pad = width - left.width as i64 - right.width as i64;
+    let (lw, rw) = (left.width as i64, right.width as i64);
+    let pad = width - lw - rw;
     if r.is_empty() {
-        l.to_string()
+        (l.to_string(), lw)
     } else if l.is_empty() {
-        format!("{}{r}", spaces(pad))
+        (format!("{}{r}", spaces(pad)), pad.max(0) + rw)
     } else if pad >= gap {
-        format!("{l}{}{r}", spaces(pad))
+        (format!("{l}{}{r}", spaces(pad)), lw + pad.max(0) + rw)
     } else {
-        format!("{l}{joiner}{r}")
+        let jw = visible_width(joiner) as i64;
+        (format!("{l}{joiner}{r}"), lw + jw + rw)
     }
 }
 
@@ -69,14 +83,13 @@ pub fn compose_with(
             text,
         }
     };
-    let joiner = format!(" {} ", dim("│"));
     compose_groups(
         &group(left),
         &group(center),
         &group(right),
         columns,
         gap,
-        &joiner,
+        &plain_joiner(),
     )
 }
 
@@ -90,14 +103,31 @@ pub fn compose_groups(
     gap: usize,
     joiner: &str,
 ) -> String {
+    place_groups(left, center, right, columns, gap, joiner).text
+}
+
+/// As `compose_groups`, also saying whether the result fits one row.
+pub fn place_groups(
+    left: &Group,
+    center: &Group,
+    right: &Group,
+    columns: Option<usize>,
+    gap: usize,
+    joiner: &str,
+) -> Placed {
     let (l, c, r) = (&left.text, &center.text, &right.text);
     let gap = gap as i64;
     let width = columns.map_or(0, |n| n as i64) - MARGIN;
     let (lw, cw, rw) = (left.width as i64, center.width as i64, right.width as i64);
     let spare = width - lw - cw - rw;
+    let one_row = |text: String, cells: i64| Placed {
+        text,
+        fits: columns.is_none() || cells <= width,
+    };
 
     if c.is_empty() {
-        return edges(left, right, width, gap, joiner);
+        let (text, cells) = edges(left, right, width, gap, joiner);
+        return one_row(text, cells);
     }
     if columns.is_some() && spare >= 2 * gap {
         let mut lgap = (width - cw) / 2 - lw;
@@ -109,43 +139,22 @@ pub fn compose_groups(
         if r.is_empty() {
             rgap = 0;
         }
-        return format!("{l}{}{c}{}{r}", spaces(lgap), spaces(rgap));
+        let text = format!("{l}{}{c}{}{r}", spaces(lgap), spaces(rgap));
+        return one_row(text, lw + lgap + cw + rgap + rw);
     }
-    let first = edges(left, right, width, gap, joiner);
+    let (first, _) = edges(left, right, width, gap, joiner);
     if first.is_empty() {
-        c.to_string()
-    } else {
-        format!("{first}\n{c}")
+        return one_row(c.to_string(), cw);
     }
-}
-
-/// Whether `compose_groups` puts the groups on one row no wider than the
-/// usable width. Without `columns` nothing is measured, so it is true.
-pub fn fits_one_row(
-    left: &Group,
-    center: &Group,
-    right: &Group,
-    columns: Option<usize>,
-    gap: usize,
-    joiner_width: usize,
-) -> bool {
-    let Some(cols) = columns else {
-        return true;
-    };
-    let width = cols as i64 - MARGIN;
-    let (lw, cw, rw) = (left.width as i64, center.width as i64, right.width as i64);
-    if !center.text.is_empty() {
-        return width - lw - cw - rw >= 2 * gap as i64;
+    Placed {
+        text: format!("{first}\n{c}"),
+        fits: columns.is_none(),
     }
-    if left.text.is_empty() || right.text.is_empty() {
-        return lw.max(rw) <= width;
-    }
-    width - lw - rw >= gap as i64 || lw + joiner_width as i64 + rw <= width
 }
 
 /// Splits `n` segments, in order, into rows whose `measure` stays within
 /// the usable width of `columns`; a segment too wide for any row gets its
-/// own. At most `max_rows` rows: the last takes whatever is left.
+/// own. At most `max_rows` rows; segments that do not fit are dropped.
 pub fn flow(
     n: usize,
     columns: usize,
@@ -156,10 +165,6 @@ pub fn flow(
     let mut rows = Vec::new();
     let mut start = 0;
     while start < n && rows.len() < max_rows {
-        if rows.len() + 1 == max_rows {
-            rows.push(start..n);
-            break;
-        }
         let mut end = start + 1;
         while end < n && measure(start..end + 1) <= width {
             end += 1;

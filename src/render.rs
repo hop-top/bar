@@ -5,7 +5,7 @@ use crate::conf::{Config, LoadResult, Wrap, MAX_LINES};
 use crate::expand::{CommandRunner, Expander};
 use crate::format::{parse, segments, Token};
 use crate::icons;
-use crate::layout::{compose_groups, fits_one_row, flow, join, Group};
+use crate::layout::{flow, join, place_groups, plain_joiner, Group};
 use crate::options::Options;
 use crate::palette;
 use crate::placeholders::{lookup, Ctx};
@@ -293,13 +293,11 @@ fn line_rows(
     );
     let joiner = match paint {
         Some(_) => " ".to_string(),
-        None => format!(" {} ", dim("│")),
+        None => plain_joiner(),
     };
-    let jw = visible_width_with(&joiner, 1);
+    let placed = place_groups(&gl, &gc, &gr, columns, config.gap, &joiner);
     match columns {
-        Some(cols)
-            if config.wrap == Wrap::On && !fits_one_row(&gl, &gc, &gr, columns, config.gap, jw) =>
-        {
+        Some(cols) if config.wrap == Wrap::On && !placed.fits => {
             let all: Vec<Seg> = [l, c, r].into_iter().flatten().collect();
             flow(all.len(), cols, budget, |rg| {
                 group(&all[rg], Side::Left).width
@@ -308,13 +306,13 @@ fn line_rows(
             .map(|rg| group(&all[rg], Side::Left).text)
             .collect()
         }
-        _ => {
-            let out = compose_groups(&gl, &gc, &gr, columns, config.gap, &joiner);
-            if out.is_empty() {
-                return Vec::new();
-            }
-            out.split('\n').take(budget).map(str::to_string).collect()
-        }
+        _ if placed.text.is_empty() => Vec::new(),
+        _ => placed
+            .text
+            .split('\n')
+            .take(budget)
+            .map(str::to_string)
+            .collect(),
     }
 }
 

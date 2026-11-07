@@ -88,7 +88,7 @@ Each line is laid out on its own, with the same `COLUMNS`, margin, gap and skin:
 
 `set wrap on` changes the second case. A line that does not fit on one row has its segments flowed, left group first, then centre, then right, onto rows of `COLUMNS` minus 4 cells, breaking only between segments; a segment wider than a row gets a row to itself. Wrapped rows are left-aligned (centre and right alignment are dropped) and keep the skin: backgrounds keep cycling, and Powerline arrows point right. Without `COLUMNS` nothing is measured, so wrapping never starts.
 
-A render prints at most 4 rows, all lines together. Rows past the fourth are dropped; with `wrap on`, the fourth row takes every remaining segment of its line and runs as long as it needs, as an unwrapped line does today.
+A render prints at most 4 rows, all lines together. Rows past the fourth are dropped. With `wrap on`, the fourth row is filled like any other, whole segments while they fit, and the segments after it are dropped; segments are never cut.
 
 ## Placeholders
 

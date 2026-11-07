@@ -157,17 +157,17 @@ fn wrap_on_breaks_at_segment_boundaries() {
     let cases: [(usize, Vec<Vec<&str>>); 5] = [
         (40, vec![vec![A, B, C], vec![D, E]]),
         (30, vec![vec![A, B], vec![C, D], vec![E]]),
-        // five rows needed; the fourth takes the rest
-        (20, vec![vec![A], vec![B], vec![C], vec![D, E]]),
-        (14, vec![vec![A], vec![B], vec![C], vec![D, E]]),
+        // five rows needed: four printed, the last segment dropped
+        (20, vec![vec![A], vec![B], vec![C], vec![D]]),
+        (14, vec![vec![A], vec![B], vec![C], vec![D]]),
         // a segment wider than the row stands alone
-        (8, vec![vec![A], vec![B], vec![C], vec![D, E]]),
+        (8, vec![vec![A], vec![B], vec![C], vec![D]]),
     ];
     for (cols, want) in cases {
         let want: Vec<String> = want.iter().map(|r| joined(r)).collect();
         let got = rows(&src, Some(cols));
         assert_eq!(got, want, "COLUMNS={cols}");
-        for r in &got[..got.len() - 1] {
+        for r in &got {
             let single = !r.contains(" │ ");
             assert!(single || visible_width(r) <= cols - 4, "{cols}: {r:?}");
         }
@@ -185,13 +185,58 @@ fn wrap_on_shares_the_four_row_cap_across_lines() {
     let two = format!(
         "set left \"{A} │ {B} │ {C}\"\nset left@2 \"{D} │ {E}\"\nset left@3 xx\nset wrap on\n"
     );
-    // line 1 takes three rows, line 2 squeezes into the last, line 3 is cut
+    // line 1 takes three rows, line 2 gets the last (what fits), line 3 is cut
     assert_eq!(
         rows(&two, Some(20)),
-        [A.to_string(), B.to_string(), C.to_string(), joined(&[D, E])]
+        [A.to_string(), B.to_string(), C.to_string(), D.to_string()]
     );
     let src = format!("{}set left@2 ff\nset wrap on\n", abcde());
     assert_eq!(rows(&src, Some(20)).len(), 4);
+}
+
+#[test]
+fn wrap_on_fourth_row_fits_and_drops_the_rest() {
+    // ten 3-cell segments, two per 10-cell row: eight shown, two dropped
+    let segs: Vec<String> = (0..10).map(|i| format!("s{i:02}")).collect();
+    let src = format!("set left \"{}\"\nset wrap on\n", segs.join(" │ "));
+    let got = rows(&src, Some(14));
+    let want: Vec<String> = segs[..8].chunks(2).map(|p| p.join(" │ ")).collect();
+    assert_eq!(got, want);
+    for r in &got {
+        assert!(visible_width(r) <= 10, "{r:?}");
+    }
+}
+
+#[test]
+fn wrap_on_flows_exactly_when_wrap_off_overflows() {
+    // the fit test is the placement itself: wrap on changes nothing while
+    // the wrap-off layout is one row within COLUMNS - 4
+    let configs = [
+        abcde(),
+        format!("set left \"{A} │ {B}\"\nset right \"{E}\"\n"),
+        format!("set center \"{D}\"\nset right \"{E}\"\n"),
+        format!("set left \"{A}\"\nset center \"{D}\"\n"),
+        format!("set skin powerline\nset skin-glyphs ascii\n{}", abcde()),
+        format!("set skin capsule\nset skin-glyphs ascii\n{}", abcde()),
+    ];
+    for src in &configs {
+        for cols in (6..=120).step_by(1) {
+            let off = raw(src, Some(cols));
+            let on = raw(&format!("{src}set wrap on\n"), Some(cols));
+            let fits = !off.contains('\n') && visible_width(&off) <= cols - 4;
+            if fits {
+                assert_eq!(on, off, "COLUMNS={cols} {src:?}");
+            } else {
+                // flowed: every row within width unless it is one segment
+                for r in on.split('\n').map(strip_codes) {
+                    let one = !r.contains(" │ ")
+                        && !r.trim_end_matches('>').contains('>')
+                        && r.matches('(').count() <= 1;
+                    assert!(one || visible_width(&r) <= cols - 4, "COLUMNS={cols} {r:?}");
+                }
+            }
+        }
+    }
 }
 
 // --- skins ---
@@ -247,6 +292,32 @@ fn wrapped_rows_inherit_the_skin() {
             c(E)
         ]
     );
+}
+
+#[test]
+fn centre_line_under_skin_with_wrap_on() {
+    let src = format!("set skin powerline\nset wrap on\n{}", abcde());
+    // fits: centred, right group drawn with left-pointing arrows
+    let wide = raw(&src, Some(80));
+    assert!(
+        !wide.contains('\n') && wide.contains('\u{e0b2}'),
+        "{wide:?}"
+    );
+    assert!(strip_codes(&wide).contains(&" ".repeat(5)), "{wide:?}");
+    // wrapped: every row a left group that opens and closes its background
+    let out = raw(&src, Some(30));
+    let bgs = palette::default().bgs;
+    let rows: Vec<&str> = out.split('\n').collect();
+    assert_eq!(rows.len(), 3, "{out:?}");
+    for (i, r) in rows.iter().enumerate() {
+        assert!(r.starts_with(&bg_code(bgs[(2 * i) % bgs.len()])), "{r:?}");
+        assert!(r.contains("\x1b[49m\x1b[38;5;"), "{r:?}");
+        assert!(r.ends_with("\u{e0b0}\x1b[39m"), "{r:?}");
+        assert!(!r.contains('\u{e0b2}'), "{r:?}");
+    }
+    // the centre segment starts row 2, left-aligned
+    assert!(strip_codes(rows[1]).starts_with(&format!(" {C} ")));
+    assert!(strip_codes(rows[1]).contains(D));
 }
 
 // --- check, preview, presets ---
