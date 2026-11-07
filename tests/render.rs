@@ -1,3 +1,5 @@
+mod common;
+
 use assert_cmd::Command;
 use hop_bar::placeholders::account::glob_match;
 use hop_bar::placeholders::repo::remote_url;
@@ -108,12 +110,15 @@ impl<'a> Run<'a> {
         if let Some(c) = self.conf {
             self.home.write("xdg/bar/bar.conf", c);
         }
+        let (iso, cwd) = common::isolation(h);
         let mut cmd = Command::cargo_bin("bar").unwrap();
+        cmd.envs(iso);
         cmd.arg("render")
             .env("HOME", h)
             .env("XDG_CONFIG_HOME", h.join("xdg"))
             .env("COLUMNS", "200")
             .env_remove("CLAUDE_CONFIG_DIR")
+            .current_dir(&cwd)
             .env_remove("ANTHROPIC_API_KEY");
         for (k, v) in &self.env {
             cmd.env(k, v);
@@ -467,7 +472,10 @@ fn closed_stdout_exits_zero() {
     use std::process::Stdio;
     let t = Tmp::new();
     let h = t.path();
+    let (iso, cwd) = common::isolation(h);
     let mut child = Std::new(assert_cmd::cargo::cargo_bin("bar"))
+        .envs(iso)
+        .current_dir(cwd)
         .arg("render")
         .env("HOME", h)
         .env("XDG_CONFIG_HOME", h.join("xdg"))
@@ -482,4 +490,25 @@ fn closed_stdout_exits_zero() {
     let _ = stdin.write_all(br#"{"model":{"display_name":"Opus"}}"#);
     drop(stdin);
     assert_eq!(child.wait().unwrap().code(), Some(0));
+}
+
+#[test]
+fn default_layout_in_github_repo_stays_in_temp_state() {
+    let t = Tmp::new();
+    let d = repo(&t, "proj");
+    git(
+        &d,
+        &["remote", "add", "origin", "https://github.com/o/r.git"],
+    );
+    let out = run(&t).cwd(&d).go();
+    assert!(out.plain.contains("r:main"), "{}", out.plain);
+    // the cold prs/issues lists spawn detached refreshes; they must hit the fake gh
+    let log = common::gh_log(t.path());
+    let start = std::time::Instant::now();
+    while std::fs::read_to_string(&log).map_or(true, |l| !l.contains("pr list")) {
+        assert!(start.elapsed().as_secs() < 10, "fake gh never called");
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(t.path().join("state/cache").is_dir());
+    assert!(!t.path().join("xdg-state").exists());
 }

@@ -164,6 +164,7 @@ fn hash_hex(key: &str) -> String {
     format!("{h:032x}")
 }
 
+#[derive(Clone)]
 pub struct Cache {
     state: PathBuf,
     dir: PathBuf,

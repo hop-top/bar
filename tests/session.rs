@@ -1,3 +1,5 @@
+mod common;
+
 use assert_cmd::Command;
 use hop_bar::session::{self, Window};
 
@@ -52,8 +54,14 @@ fn workspace_current_dir_wins_over_cwd() {
 #[test]
 fn render_exits_zero_on_garbage_stdin() {
     for input in [&b"\xff\xfe{{{"[..], b"null", b"[1,2]", b"{\"cwd\":5}", b""] {
+        let root = std::env::temp_dir().join(format!("bar-session-{}", std::process::id()));
+        let (iso, cwd) = common::isolation(&root);
         Command::cargo_bin("bar")
             .unwrap()
+            .envs(iso)
+            .current_dir(cwd)
+            .env("HOME", &root)
+            .env("XDG_CONFIG_HOME", root.join("xdg"))
             .arg("render")
             .write_stdin(input)
             .assert()

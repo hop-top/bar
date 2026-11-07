@@ -1,3 +1,5 @@
+mod common;
+
 use assert_cmd::Command;
 use predicates::prelude::*;
 
@@ -35,8 +37,10 @@ fn render_shows_cwd_dirname() {
     let home = std::env::temp_dir().join(format!("bar-cli-{}", std::process::id()));
     let dir = home.join("proj");
     std::fs::create_dir_all(&dir).unwrap();
+    let (iso, _) = common::isolation(&home);
     bar()
         .arg("render")
+        .envs(iso)
         .env("HOME", &home)
         .env("XDG_CONFIG_HOME", home.join("xdg"))
         .env("COLUMNS", "200")

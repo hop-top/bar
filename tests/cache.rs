@@ -1,3 +1,5 @@
+mod common;
+
 use hop_bar::cache::{Cache, CachedRunner, Job, Request};
 use hop_bar::expand::CommandRunner;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
@@ -310,11 +312,13 @@ fn render_returns_within_50ms_with_slow_job() {
     .unwrap();
     let run = || {
         let start = Instant::now();
+        let (iso, cwd) = common::isolation(t.path());
         let out = std::process::Command::new(bin())
             .arg("render")
+            .envs(iso)
+            .current_dir(cwd)
             .env("HOME", t.path())
             .env("XDG_CONFIG_HOME", t.path().join("cfg"))
-            .env("BAR_STATE_DIR", t.path().join("state"))
             .stdin(std::process::Stdio::null())
             .output()
             .unwrap();
