@@ -185,7 +185,7 @@ impl Checker<'_> {
                     self.gh_checks(name, opts, line, used, bad);
                 }
             }
-            None => self.plugin(name, opts, line),
+            None => self.plugin(name, opts, line, used),
         }
     }
 
@@ -253,9 +253,15 @@ impl Checker<'_> {
         }
     }
 
-    fn plugin(&mut self, name: &str, opts: &Options, line: usize) {
+    fn plugin(&mut self, name: &str, opts: &Options, line: usize, used: bool) {
         let Some(found) = plugin::find(self.dirs, name) else {
-            self.error(line, format!("unknown placeholder `{name}`"));
+            if used {
+                self.error(line, format!("unknown placeholder `{name}`"));
+            } else {
+                // a `default` line may be shared by machines without the plugin
+                let msg = format!("plugin `{name}` not on PATH");
+                self.add(Level::Warning, line, msg);
+            }
             return;
         };
         let info = plugin::info(&found);

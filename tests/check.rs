@@ -131,6 +131,25 @@ fn check_flags_unknown_placeholder_and_unknown_option() {
 }
 
 #[test]
+fn default_for_absent_plugin_warns_but_layout_use_errors() {
+    let fx = Fx::new();
+    fx.conf("default nosuch limit=2\nset left \"#{model}\"\n");
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_eq!(code, 0, "{stdout}");
+    assert!(stdout.contains("line 1: warning:"), "{stdout}");
+    assert!(stdout.contains("`nosuch`"), "{stdout}");
+    assert!(!stdout.contains("error:"), "{stdout}");
+    fx.conf("default nosuch limit=2\nset left \"#{nosuch}\"\n");
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_eq!(code, 2, "{stdout}");
+    assert!(
+        stdout.contains("line 2: error: unknown placeholder `nosuch`"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("line 1: warning:"), "{stdout}");
+}
+
+#[test]
 fn check_flags_multi_query_cost() {
     let fx = Fx::new();
     fx.exe("gh", "#!/bin/sh\n");

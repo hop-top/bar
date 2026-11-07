@@ -100,7 +100,7 @@ Values holding spaces, commas or colons are quoted in the query (`area:core` bec
 - Parse errors with line numbers. An unreadable file is one error without a line.
 - Layout placeholders (`left`, `center`, `right`) and `default` lines: unknown placeholder, unknown option, bad option value. Plugin placeholders are checked against their `--ext-info` schema.
 - `prs` / `issues`: invalid `limit`, invalid `author` / `assignee` / `label` expression.
-- Warnings: `gh` not on `PATH` while `prs` or `issues` is used; an expression that expands to more than 8 queries (only the first 8 run).
+- Warnings: `gh` not on `PATH` while `prs` or `issues` is used; a `default` line for a plugin that is not on `PATH` (a layout using it is an error); an expression that expands to more than 8 queries (only the first 8 run).
 - Options holding `%command%` or `%$VAR%` are skipped; they resolve at render time.
 
 Exit 0 when there are no errors (warnings allowed), 2 on a config error. `--format json` prints `{path, ok, issues: [{level, line, message}]}`; `line` is 0 when an issue has no line.
