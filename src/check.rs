@@ -62,6 +62,7 @@ impl Report {
             "prices": {
                 "snapshot": a.snapshot.fetched(),
                 "user_file": a.user_file.as_ref().map(|p| p.display().to_string()),
+                "ignored": a.ignored,
             },
             "ok": !self.has_errors(),
             "issues": issues,
@@ -85,6 +86,12 @@ impl Report {
                 a.snapshot.fetched()
             ),
         });
+        if let Some(why) = &a.ignored {
+            out.push_str(&format!(
+                "prices: {} ignored, {why}\n",
+                models::user_path().display()
+            ));
+        }
         for i in &self.issues {
             let at = if i.line == 0 {
                 String::new()

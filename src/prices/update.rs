@@ -6,41 +6,60 @@
 use super::models::user_path;
 use serde_json::Value;
 use std::collections::BTreeMap;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 pub const URL: &str = "https://models.dev/api.json";
 /// Larger than the real feed by a wide margin; a runaway body stops here.
-const MAX_BYTES: &str = "67108864";
+const MAX_BYTES: usize = 64 << 20;
 
 /// Fetches, trims and writes to `out` (default: the data-dir file).
 /// Returns the path and the number of models kept.
 pub fn run(out: Option<&Path>) -> Result<(PathBuf, usize), String> {
     let body = fetch()?;
-    let days = crate::tz::day_string(
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_secs() as i64 / 86_400),
-    );
-    let (text, n) = trim(&body, &days)?;
+    let (text, n) = trim(&body, &super::models::today())?;
     let path = out.map_or_else(user_path, Path::to_path_buf);
     write_atomic(&path, &text).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok((path, n))
 }
 
 fn fetch() -> Result<Vec<u8>, String> {
-    let o = Command::new("curl")
+    let mut child = Command::new("curl")
         .args(["-fsS", "--max-time", "60", "--proto", "=https"])
-        .args(["--proto-redir", "=https", "--max-filesize", MAX_BYTES, URL])
-        .output()
+        .args(["--proto-redir", "=https", "--max-filesize"])
+        .arg(MAX_BYTES.to_string())
+        .arg(URL)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .map_err(|e| format!("curl: {e}"))?;
+    let out = child.stdout.take().ok_or("curl: no output")?;
+    let body = read_capped(out, MAX_BYTES);
+    if body.is_err() {
+        let _ = child.kill();
+    }
+    let o = child.wait_with_output().map_err(|e| format!("curl: {e}"))?;
+    let body = body?;
     if !o.status.success() {
         let err = String::from_utf8_lossy(&o.stderr);
         return Err(format!("curl failed ({}): {}", o.status, err.trim()));
     }
-    Ok(o.stdout)
+    Ok(body)
+}
+
+/// Reads at most `cap` bytes; a longer stream is an error, not a
+/// truncated body, whatever the server declared up front.
+pub fn read_capped(r: impl Read, cap: usize) -> Result<Vec<u8>, String> {
+    let mut buf = Vec::new();
+    r.take(cap as u64 + 1)
+        .read_to_end(&mut buf)
+        .map_err(|e| format!("read: {e}"))?;
+    if buf.len() > cap {
+        return Err(format!("response over {cap} bytes"));
+    }
+    Ok(buf)
 }
 
 /// The trimmed snapshot text for a models.dev body, and its model
@@ -60,12 +79,10 @@ pub fn trim(body: &[u8], fetched: &str) -> Result<(String, usize), String> {
                 continue;
             };
             let opt = |n: Option<&Value>| n.map_or("null".to_string(), Value::to_string);
-            let ctx = m["limit"].get("context").filter(|n| n.is_u64());
             let row = format!(
-                "[{i},{o},{},{},{}]",
+                "[{i},{o},{},{}]",
                 opt(num("cache_write")),
-                opt(num("cache_read")),
-                opt(ctx)
+                opt(num("cache_read"))
             );
             providers.entry(p).or_default().insert(id, row);
         }

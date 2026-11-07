@@ -33,6 +33,7 @@ class Bar < Formula
 
   def install
     bin.install "bar"
+    doc.install "LICENSE-models.dev"
   end
 
   test do

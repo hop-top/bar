@@ -2,8 +2,8 @@
 //! replaced by a newer copy in bar's data dir (`bar prices update`).
 //!
 //! File shape: `{"source", "fetched": "YYYY-MM-DD", "providers":
-//! {provider: {model: [input, output, cache_write, cache_read,
-//! context]}}}`; rates are USD per million tokens, `null` where the
+//! {provider: {model: [input, output, cache_write, cache_read]}}}`;
+//! rates are USD per million tokens, `null` where the
 //! provider lists none. A missing cache rate is priced as plain input.
 
 use super::norm::candidates;
@@ -11,9 +11,32 @@ use super::Rates;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::OnceLock;
 
 const EMBEDDED: &str = include_str!("../../data/models.json");
+
+static PARSES: AtomicUsize = AtomicUsize::new(0);
+
+/// How many snapshots this process has parsed; lets tests check that
+/// lookups served by overrides or the built-in table never load one.
+pub fn parses() -> usize {
+    PARSES.load(Ordering::Relaxed)
+}
+
+/// `YYYY-MM-DD` with a plausible month and day.
+fn date_ok(d: &str) -> bool {
+    let b = d.as_bytes();
+    let num = |r: std::ops::Range<usize>| d.get(r).and_then(|t| t.parse::<u32>().ok());
+    b.len() == 10
+        && b[4] == b'-'
+        && b[7] == b'-'
+        && b.iter()
+            .enumerate()
+            .all(|(i, c)| i == 4 || i == 7 || c.is_ascii_digit())
+        && num(5..7).is_some_and(|m| (1..=12).contains(&m))
+        && num(8..10).is_some_and(|d| (1..=31).contains(&d))
+}
 
 #[derive(Debug)]
 pub struct Snapshot {
@@ -25,8 +48,13 @@ pub struct Snapshot {
 
 impl Snapshot {
     pub fn parse(text: &str) -> Option<Snapshot> {
+        PARSES.fetch_add(1, Ordering::Relaxed);
         let v: Value = serde_json::from_str(text).ok()?;
-        let fetched = v.get("fetched")?.as_str()?.to_string();
+        let fetched = v
+            .get("fetched")?
+            .as_str()
+            .filter(|d| date_ok(d))?
+            .to_string();
         let mut by_id: HashMap<String, Vec<(String, Rates)>> = HashMap::new();
         let mut len = 0;
         for (provider, models) in v.get("providers")?.as_object()? {
@@ -61,25 +89,34 @@ impl Snapshot {
         self.len == 0
     }
 
-    /// Rates for `model`. With a `provider` the match stays inside it.
-    /// Without, a vendor named by the id's prefix is tried first, then
-    /// every provider; providers that disagree on the price make the
-    /// model unknown. The first spelling that matches anything decides.
+    /// Rates for `model`. A `provider`, or the vendor an id's prefix
+    /// names, keeps the match inside that provider. With neither, every
+    /// provider that lists the id counts; free (all-zero) listings are
+    /// ignored when a priced one exists, and providers that still
+    /// disagree make the model unknown. The first spelling that matches
+    /// anything decides.
     pub fn lookup(&self, model: &str, provider: Option<&str>) -> Option<Rates> {
         for c in candidates(model) {
             let Some(all) = self.by_id.get(&c.id) else {
                 continue;
             };
-            let hint = provider.or(c.vendor.as_deref());
-            let of = |p: &str| all.iter().find(|(q, _)| q == p).map(|(_, r)| *r);
-            if let Some(r) = hint.and_then(of) {
-                return Some(r);
+            if let Some(p) = provider.or(c.vendor.as_deref()) {
+                match all.iter().find(|(q, _)| q == p) {
+                    Some((_, r)) => return Some(*r),
+                    None => continue,
+                }
             }
-            if provider.is_some() {
-                continue;
-            }
-            let first = all[0].1;
-            return all.iter().all(|(_, r)| *r == first).then_some(first);
+            let priced: Vec<Rates> = all
+                .iter()
+                .map(|(_, r)| *r)
+                .filter(|r| *r != [0; 4])
+                .collect();
+            let first = *priced.first().or(Some(&all[0].1))?;
+            return if priced.is_empty() || priced.iter().all(|r| *r == first) {
+                Some(first)
+            } else {
+                None
+            };
         }
         None
     }
@@ -128,27 +165,49 @@ pub struct Active {
     pub snapshot: &'static Snapshot,
     /// The data-dir copy, when it is in use.
     pub user_file: Option<PathBuf>,
+    /// Why a data-dir copy that exists was not used.
+    pub ignored: Option<String>,
 }
 
-/// The snapshot prices come from: the data-dir copy when it is dated
-/// the same day as the embedded one or later, else the embedded one.
+/// Today as `YYYY-MM-DD` (UTC).
+pub fn today() -> String {
+    crate::tz::day_string(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs() as i64 / 86_400),
+    )
+}
+
+/// The snapshot prices come from: the data-dir copy when it is valid,
+/// not dated in the future, and dated the same day as the embedded one
+/// or later; else the embedded one.
 pub fn active() -> &'static Active {
     static A: OnceLock<Active> = OnceLock::new();
     A.get_or_init(|| {
         let path = user_path();
-        let user = std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|t| Snapshot::parse(&t))
-            .filter(|s| s.fetched() >= embedded().fetched());
-        match user {
-            Some(s) => Active {
-                snapshot: Box::leak(Box::new(s)),
-                user_file: Some(path),
-            },
-            None => Active {
-                snapshot: embedded(),
-                user_file: None,
-            },
+        let mut ignored = None;
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            match Snapshot::parse(&text) {
+                None => ignored = Some("not a valid price file".to_string()),
+                Some(s) if s.fetched() > today().as_str() => {
+                    ignored = Some(format!("dated {} (in the future)", s.fetched()))
+                }
+                Some(s) if s.fetched() < embedded().fetched() => {
+                    ignored = Some(format!("dated {} (older than built in)", s.fetched()))
+                }
+                Some(s) => {
+                    return Active {
+                        snapshot: Box::leak(Box::new(s)),
+                        user_file: Some(path),
+                        ignored: None,
+                    }
+                }
+            }
+        }
+        Active {
+            snapshot: embedded(),
+            user_file: None,
+            ignored,
         }
     })
 }

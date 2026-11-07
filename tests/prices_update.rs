@@ -142,3 +142,40 @@ fn check_reports_embedded_then_user_file() {
         .ends_with("models.json"));
     assert!(v["prices"]["snapshot"].as_str().unwrap().starts_with("20"));
 }
+
+fn user_file(root: &Path, fetched: &str, valid: bool) {
+    let dir = root.join("data/bar");
+    std::fs::create_dir_all(&dir).unwrap();
+    let body = if valid {
+        format!(r#"{{"fetched":"{fetched}","providers":{{}}}}"#)
+    } else {
+        "garbage".to_string()
+    };
+    std::fs::write(dir.join("models.json"), body).unwrap();
+}
+
+#[test]
+fn check_ignores_bad_user_files_and_says_why() {
+    for (fetched, valid, why) in [
+        ("2099-01-01", true, "future"),
+        ("2001-01-01", true, "older"),
+        ("zzz", true, "not a valid price file"),
+        ("", false, "not a valid price file"),
+    ] {
+        let (root, bin) = fx("bad", "true");
+        user_file(&root, fetched, valid);
+        let t = String::from_utf8_lossy(&bar(&root, &bin).arg("check").output().unwrap().stdout)
+            .into_owned();
+        assert!(
+            t.contains("built in") && t.contains("ignored") && t.contains(why),
+            "{t}"
+        );
+        let j = bar(&root, &bin)
+            .args(["check", "--format", "json"])
+            .output()
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&j.stdout).unwrap();
+        assert!(v["prices"]["user_file"].is_null());
+        assert!(v["prices"]["ignored"].as_str().unwrap().contains(why));
+    }
+}

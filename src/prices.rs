@@ -55,8 +55,11 @@ fn matches(model: &str, entry: &str) -> bool {
 /// The table entry for `model`, also through the id normaliser (Bedrock,
 /// Vertex and gateway spellings of the same Anthropic model).
 fn builtin(model: &str) -> Option<&'static (&'static str, Rates)> {
+    // the table is Anthropic's: only an unprefixed or `anthropic` id
+    // reaches it, so `other/claude-opus-4-5` is not priced as Claude
     norm::candidates(model)
         .iter()
+        .filter(|c| c.vendor.as_deref().is_none_or(|v| v == "anthropic"))
         .find_map(|c| BUILTIN.iter().find(|(p, _)| matches(&c.id, p)))
 }
 
@@ -114,7 +117,7 @@ impl Price {
 /// matching prefix wins, a later line breaking ties. Models the built-in
 /// table lacks fall back to the models.dev snapshot.
 pub fn lookup(model: &str, overrides: &[Price]) -> Option<Rates> {
-    lookup_in(model, None, overrides, models::active().snapshot)
+    lookup_with(model, None, overrides, || models::active().snapshot)
 }
 
 /// `lookup` against a given snapshot, optionally inside one `provider`.
@@ -123,6 +126,17 @@ pub fn lookup_in(
     provider: Option<&str>,
     overrides: &[Price],
     snap: &models::Snapshot,
+) -> Option<Rates> {
+    lookup_with(model, provider, overrides, || snap)
+}
+
+/// The snapshot is only fetched, so parsed, when nothing earlier priced
+/// the model.
+fn lookup_with<'a>(
+    model: &str,
+    provider: Option<&str>,
+    overrides: &[Price],
+    snap: impl FnOnce() -> &'a models::Snapshot,
 ) -> Option<Rates> {
     let mut best: Option<&Price> = None;
     for p in overrides.iter().filter(|p| model.starts_with(&p.prefix)) {
@@ -135,6 +149,6 @@ pub fn lookup_in(
     }
     match builtin(model) {
         Some((_, r)) => Some(*r),
-        None => snap.lookup(model, provider),
+        None => snap().lookup(model, provider),
     }
 }
