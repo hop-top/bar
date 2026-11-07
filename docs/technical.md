@@ -10,7 +10,7 @@
 
 The palette's muted colour is set per thread for the length of a render (`style::use_muted`), so `style::dim` picks it up without threading the config through every placeholder.
 
-Module map: `conf` (parser, search path), `format` (placeholder syntax), `render` (wiring), `placeholders/` (core placeholders), `plugin/` (`bar-<name>` host), `cache` (background refresh), `transcript` (incremental token totals), `linescan` (shared incremental line reader), `spendhist` (daily spend totals), `prices`, `tz`, `expr` (label logic to GitHub queries), `pace` (score), `style` (SGR, OSC 8, width), `skin` (powerline and capsule painting), `palette` (named colour sets), `presets` (embedded example configs, `bar init`), `click` (toggle state, URL handler install), `check`, `preview`.
+Module map: `conf` (parser, search path), `format` (placeholder syntax), `render` (wiring), `placeholders/` (core placeholders), `plugin/` (`bar-<name>` host), `cache` (background refresh), `transcript` (incremental token totals), `linescan` (shared incremental line reader), `spendhist` (daily spend totals), `prices` (rates; `models` snapshot, `norm` id normaliser, `update` fetch), `tz`, `expr` (label logic to GitHub queries), `pace` (score), `style` (SGR, OSC 8, width), `skin` (powerline and capsule painting), `palette` (named colour sets), `presets` (embedded example configs, `bar init`), `click` (toggle state, URL handler install), `check`, `preview`.
 
 ## Cache
 
