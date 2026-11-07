@@ -16,9 +16,13 @@ use serde_json::{json, Map, Value};
 
 use crate::cache::hash_hex;
 use crate::linescan::{has_usage_key, Mark};
-use crate::prices::{self, Price};
+use crate::prices;
 use crate::transcript::parse_ts;
 pub use crate::tz::{day_of, day_string, Tz};
+
+mod summary;
+use summary::{add, days_from_json, days_to_json, model_key, summary_json, LONG_MARK, MAX_MODELS};
+pub use summary::{Spend, Summary, Tokens, OTHER};
 
 /// Days of history kept, today included.
 pub const KEEP_DAYS: i64 = 62;
@@ -27,89 +31,6 @@ const SUMMARY_DAYS: i64 = 35;
 /// Largest state file written.
 pub const MAX_STATE: usize = 16 * 1024 * 1024;
 const MAX_ID: usize = 256;
-/// Model key suffix for requests priced at a long-context tier.
-const LONG_MARK: char = '#';
-
-/// input, output, cache write, cache read
-pub type Tokens = [u64; 4];
-
-#[derive(Debug, Clone, Default)]
-pub struct Summary {
-    pub days: BTreeMap<String, BTreeMap<String, Tokens>>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Spend {
-    pub usd: f64,
-    /// Tokens of a model without a price were left out of `usd`.
-    pub unknown: bool,
-}
-
-impl Summary {
-    pub fn parse(s: &str) -> Option<Summary> {
-        let v: Value = serde_json::from_str(s).ok()?;
-        (v["v"] == 1).then_some(())?;
-        Some(Summary {
-            days: days_from_json(v.get("days")?)?,
-        })
-    }
-
-    /// Dollars for the days whose date starts with `prefix` (`2026-11-07`
-    /// for a day, `2026-11` for a month).
-    pub fn spend(&self, prefix: &str, overrides: &[Price]) -> Spend {
-        let mut usd = 0.0;
-        let mut unknown = false;
-        for (_, models) in self.days.iter().filter(|(d, _)| d.starts_with(prefix)) {
-            for (key, t) in models {
-                let (model, long) = match key.split_once(LONG_MARK) {
-                    Some((m, _)) => (m, true),
-                    None => (key.as_str(), false),
-                };
-                match prices::lookup(model, overrides) {
-                    Some(r) => {
-                        let k = if long {
-                            prices::long_mult(model, overrides)
-                        } else {
-                            1
-                        };
-                        usd += t
-                            .iter()
-                            .zip(r)
-                            .map(|(n, r)| *n as f64 * (r * k) as f64)
-                            .sum::<f64>()
-                            / 1e12;
-                    }
-                    None => unknown |= t.iter().any(|n| *n > 0),
-                }
-            }
-        }
-        Spend { usd, unknown }
-    }
-}
-
-fn days_from_json(v: &Value) -> Option<BTreeMap<String, BTreeMap<String, Tokens>>> {
-    let mut out = BTreeMap::new();
-    for (day, models) in v.as_object()? {
-        let mut m = BTreeMap::new();
-        for (model, t) in models.as_object()? {
-            let a = t.as_array()?;
-            let n = |i: usize| a.get(i).and_then(Value::as_u64).unwrap_or(0);
-            m.insert(model.clone(), [n(0), n(1), n(2), n(3)]);
-        }
-        out.insert(day.clone(), m);
-    }
-    Some(out)
-}
-
-fn days_to_json(days: &BTreeMap<String, BTreeMap<String, Tokens>>, from: &str) -> Value {
-    let mut o = Map::new();
-    for (d, models) in days.iter().filter(|(d, _)| d.as_str() >= from) {
-        let m: Map<String, Value> = models.iter().map(|(k, t)| (k.clone(), json!(t))).collect();
-        o.insert(d.clone(), Value::Object(m));
-    }
-    Value::Object(o)
-}
-
 #[derive(Default)]
 struct State {
     files: BTreeMap<String, Mark>,
@@ -332,22 +253,22 @@ impl Fold<'_> {
             }
             self.st.seen.entry(date.clone()).or_default().push(h);
         }
-        let long = prices::long_over(model).is_some_and(|over| t[0] + t[2] + t[3] > over);
+        let model = model_key(model);
+        let long = model != OTHER
+            && prices::long_over(model).is_some_and(|over| t[0] + t[2] + t[3] > over);
         let key = if long {
             format!("{model}{LONG_MARK}long")
         } else {
             model.to_string()
         };
-        let slot = self
-            .st
-            .days
-            .entry(date)
-            .or_default()
-            .entry(key)
-            .or_default();
-        for (s, add) in slot.iter_mut().zip(t) {
-            *s = s.saturating_add(add);
-        }
+        let day = self.st.days.entry(date).or_default();
+        // one slot stays free for the overflow bucket
+        let key = if day.contains_key(&key) || day.len() < MAX_MODELS - 1 {
+            key
+        } else {
+            OTHER.to_string()
+        };
+        add(day.entry(key).or_default(), &t);
         self.dirty = true;
     }
 }
@@ -456,5 +377,5 @@ pub fn update_with(
         save(&sfile, &body);
     }
     let from = day_string(today - (SUMMARY_DAYS - 1));
-    Some(json!({"v": 1, "days": days_to_json(&st.days, &from)}).to_string())
+    Some(summary_json(&st.days, &from))
 }
