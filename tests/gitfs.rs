@@ -18,7 +18,6 @@ impl Tmp {
         // the reader consults global git config; keep the machine's out
         ISOLATE.call_once(|| {
             std::env::set_var("GIT_CONFIG_GLOBAL", "/dev/null");
-            std::env::set_var("GIT_CONFIG_SYSTEM", "/dev/null");
         });
         let p = std::env::temp_dir().join(format!(
             "bar-gitfs-{}-{}",
@@ -46,7 +45,7 @@ fn git_cmd(dir: &Path, args: &[&str]) -> Std {
         .args(args)
         .env("HOME", dir)
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
-        .env("GIT_CONFIG_SYSTEM", "/dev/null");
+        .env("GIT_CONFIG_NOSYSTEM", "1");
     c
 }
 
@@ -228,14 +227,13 @@ fn no_repo_none() {
     assert_eq!(remote_url(&d), None);
 }
 
-#[test]
-fn render_spawns_no_git_on_plain_repo() {
-    let t = Tmp::new();
-    let d = repo(&t, "proj");
-    git(
-        &d,
-        &["remote", "add", "origin", "https://github.com/o/r.git"],
-    );
+/// Renders `d` with a fake `git` first on `PATH`; returns the output and
+/// what the fake logged. `edit` adjusts the isolated environment.
+fn render_with_fake_git(
+    t: &Tmp,
+    d: &Path,
+    edit: impl FnOnce(&mut Vec<(&'static str, std::ffi::OsString)>),
+) -> (String, String) {
     let home = t.path().join("home");
     let (mut iso, cwd) = common::isolation(&home);
     let log = t.path().join("git-calls.log");
@@ -256,25 +254,116 @@ fn render_spawns_no_git_on_plain_repo() {
             *v = p;
         }
     }
-    let out = Command::cargo_bin("bar")
-        .unwrap()
+    edit(&mut iso);
+    let mut child = Std::new(assert_cmd::cargo::cargo_bin("bar"));
+    child
         .envs(iso)
         .arg("render")
         .env("COLUMNS", "200")
         .current_dir(cwd)
-        .write_stdin(format!(
-            r#"{{"workspace":{{"current_dir":"{}"}}}}"#,
-            d.display()
-        ))
-        .output()
-        .unwrap();
-    let text = String::from_utf8(out.stdout).unwrap();
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped());
+    let mut child = child.spawn().unwrap();
+    std::io::Write::write_all(
+        &mut child.stdin.take().unwrap(),
+        format!(r#"{{"workspace":{{"current_dir":"{}"}}}}"#, d.display()).as_bytes(),
+    )
+    .unwrap();
+    // a reader that blocks on a FIFO must fail the test, not hang it
+    let start = std::time::Instant::now();
+    while child.try_wait().unwrap().is_none() {
+        if start.elapsed() > std::time::Duration::from_secs(5) {
+            let _ = child.kill();
+            panic!("render blocked");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let mut text = String::new();
+    std::io::Read::read_to_string(&mut child.stdout.take().unwrap(), &mut text).unwrap();
+    // background refreshes of prs/issues run detached; give them time
+    std::thread::sleep(std::time::Duration::from_millis(800));
+    (text, std::fs::read_to_string(&log).unwrap_or_default())
+}
+
+fn github_repo(t: &Tmp) -> PathBuf {
+    let d = repo(t, "proj");
+    git(
+        &d,
+        &["remote", "add", "origin", "https://github.com/o/r.git"],
+    );
+    d
+}
+
+/// The isolation sets `GIT_CONFIG_NOSYSTEM`, which sends the reader to git.
+fn keep_fast_path(env: &mut Vec<(&'static str, std::ffi::OsString)>) {
+    env.retain(|(k, _)| *k != "GIT_CONFIG_NOSYSTEM");
+}
+
+#[test]
+fn render_spawns_no_git_on_plain_repo() {
+    let t = Tmp::new();
+    let d = github_repo(&t);
+    let (text, calls) = render_with_fake_git(&t, &d, keep_fast_path);
     assert!(
         text.contains("main") && text.contains("github.com/o/r"),
         "{text:?}"
     );
-    // background refreshes of prs/issues run detached; give them time
-    std::thread::sleep(std::time::Duration::from_millis(800));
-    let calls = std::fs::read_to_string(&log).unwrap_or_default();
     assert_eq!(calls, "", "git was spawned");
+}
+
+#[test]
+fn config_env_hands_over_to_git() {
+    for (k, v) in [
+        ("GIT_CONFIG_COUNT", "0"),
+        ("GIT_CONFIG_PARAMETERS", ""),
+        ("GIT_CONFIG_SYSTEM", "/dev/null"),
+        ("GIT_CONFIG_NOSYSTEM", "1"),
+    ] {
+        let t = Tmp::new();
+        let d = github_repo(&t);
+        let (_, calls) = render_with_fake_git(&t, &d, |env| {
+            keep_fast_path(env);
+            env.push((k, v.into()));
+        });
+        assert!(calls.contains("get-url"), "{k}: git not asked: {calls:?}");
+    }
+}
+
+#[test]
+fn fifo_in_git_files_never_blocks() {
+    for rel in [".git/config", ".git/commondir"] {
+        let t = Tmp::new();
+        let d = github_repo(&t);
+        let fifo = d.join(rel);
+        let _ = std::fs::remove_file(&fifo);
+        assert!(Std::new("mkfifo").arg(&fifo).status().unwrap().success());
+        let (_, calls) = render_with_fake_git(&t, &d, keep_fast_path);
+        assert!(calls.contains("get-url"), "{rel}: not handed to git");
+    }
+}
+
+#[test]
+fn fifo_global_config_never_blocks() {
+    let t = Tmp::new();
+    let d = github_repo(&t);
+    let fifo = t.path().join("global-fifo");
+    assert!(Std::new("mkfifo").arg(&fifo).status().unwrap().success());
+    let (_, calls) = render_with_fake_git(&t, &d, |env| {
+        keep_fast_path(env);
+        env.retain(|(k, _)| *k != "GIT_CONFIG_GLOBAL");
+        env.push(("GIT_CONFIG_GLOBAL", fifo.clone().into()));
+    });
+    assert!(calls.contains("get-url"), "not handed to git");
+}
+
+#[test]
+fn oversized_config_hands_over_to_git() {
+    let t = Tmp::new();
+    let d = github_repo(&t);
+    let cfg = d.join(".git/config");
+    let mut body = std::fs::read_to_string(&cfg).unwrap();
+    body.push_str(&format!("# {}\n", "x".repeat(2 * 1024 * 1024)));
+    std::fs::write(&cfg, body).unwrap();
+    let (_, calls) = render_with_fake_git(&t, &d, keep_fast_path);
+    assert!(calls.contains("get-url"), "{calls:?}");
 }

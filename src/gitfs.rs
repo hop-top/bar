@@ -3,7 +3,11 @@
 //! git would reports `Unsupported`; callers then ask git itself.
 
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
+
+/// Larger files are not read; git itself is asked instead.
+const MAX_FILE: u64 = 1024 * 1024;
 
 /// The files cannot be interpreted faithfully without git.
 #[derive(Debug, PartialEq, Eq)]
@@ -24,8 +28,31 @@ pub struct Repo {
     common_dir: PathBuf,
 }
 
-fn read(p: &Path) -> Option<String> {
-    fs::read_to_string(p).ok()
+/// `Ok(None)` when the file does not exist (or is `/dev/null`, git's own
+/// "no config" idiom). Anything but a small regular UTF-8 file is
+/// `Unsupported`, so a FIFO or device never blocks the reader.
+fn read(p: &Path) -> Result<Option<String>, Unsupported> {
+    let meta = match fs::metadata(p) {
+        Ok(m) => m,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(Unsupported),
+    };
+    if !meta.is_file() {
+        return if p == Path::new("/dev/null") {
+            Ok(None)
+        } else {
+            Err(Unsupported)
+        };
+    }
+    let mut body = String::new();
+    let file = fs::File::open(p).map_err(|_| Unsupported)?;
+    file.take(MAX_FILE + 1)
+        .read_to_string(&mut body)
+        .map_err(|_| Unsupported)?;
+    if body.len() as u64 > MAX_FILE {
+        return Err(Unsupported);
+    }
+    Ok(Some(body))
 }
 
 fn looks_bare(d: &Path) -> bool {
@@ -34,9 +61,17 @@ fn looks_bare(d: &Path) -> bool {
 
 /// Find the repository containing `dir`, the way git walks upward.
 pub fn discover(dir: &Path) -> Found {
-    if ["GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR"]
-        .iter()
-        .any(|k| std::env::var_os(k).is_some())
+    if [
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_COMMON_DIR",
+        "GIT_CONFIG_COUNT",
+        "GIT_CONFIG_PARAMETERS",
+        "GIT_CONFIG_SYSTEM",
+        "GIT_CONFIG_NOSYSTEM",
+    ]
+    .iter()
+    .any(|k| std::env::var_os(k).is_some())
     {
         return Found::Unsupported;
     }
@@ -46,7 +81,7 @@ pub fn discover(dir: &Path) -> Found {
             return open(d, dot);
         }
         if dot.is_file() {
-            let Some(body) = read(&dot) else {
+            let Ok(Some(body)) = read(&dot) else {
                 return Found::Unsupported;
             };
             let Some(target) = body.lines().next().and_then(|l| l.strip_prefix("gitdir:")) else {
@@ -66,8 +101,9 @@ fn open(top: &Path, git_dir: PathBuf) -> Found {
         return Found::Unsupported;
     }
     let common_dir = match read(&git_dir.join("commondir")) {
-        Some(c) => git_dir.join(c.trim()),
-        None => git_dir.clone(),
+        Ok(Some(c)) => git_dir.join(c.trim()),
+        Ok(None) => git_dir.clone(),
+        Err(Unsupported) => return Found::Unsupported,
     };
     Found::Repo(Repo {
         top: top.to_path_buf(),
@@ -79,7 +115,7 @@ fn open(top: &Path, git_dir: PathBuf) -> Found {
 impl Repo {
     /// Current branch; `None` when HEAD is detached.
     pub fn branch(&self) -> Result<Option<String>, Unsupported> {
-        let head = read(&self.git_dir.join("HEAD")).ok_or(Unsupported)?;
+        let head = read(&self.git_dir.join("HEAD"))?.ok_or(Unsupported)?;
         let head = head.trim();
         match head.strip_prefix("ref:") {
             Some(r) => match r.trim().strip_prefix("refs/heads/") {
@@ -95,18 +131,14 @@ impl Repo {
     /// `remote.origin.url` as git would report it.
     pub fn origin_url(&self) -> Result<Option<String>, Unsupported> {
         for g in global_configs() {
-            if let Some(body) = read(&g) {
-                if rewrites_or_includes(&body) {
-                    return Err(Unsupported);
-                }
+            if read(&g)?.is_some_and(|body| rewrites_or_includes(&body)) {
+                return Err(Unsupported);
             }
         }
-        let body = match fs::read_to_string(self.common_dir.join("config")) {
-            Ok(b) => b,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(_) => return Err(Unsupported),
-        };
-        origin_from_config(&body)
+        match read(&self.common_dir.join("config"))? {
+            Some(body) => origin_from_config(&body),
+            None => Ok(None),
+        }
     }
 }
 
