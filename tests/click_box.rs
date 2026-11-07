@@ -121,3 +121,46 @@ fn reverse_video_inside_dim_refused() {
     assert!(!box_is_empty(&boxed("❯ \x1b[7m\x1b[2mx\x1b[0m")));
     assert!(box_is_empty(&boxed("❯ \x1b[2m\x1b[7m\x1b[27mTry\x1b[22m")));
 }
+
+/// Real top border and marker, then a typed rule and a typed marker that
+/// would pose as a second, empty box above the real bottom border.
+#[test]
+fn typed_marker_after_typed_rule_refused() {
+    let spoof = format!(
+        "{}\n❯\u{a0}\n{}\n❯\u{a0}\n{}\n  \x1b[2m? for shortcuts\x1b[22m\n",
+        rule(60),
+        "─".repeat(60),
+        rule(60)
+    );
+    assert!(!box_is_empty(&spoof));
+    assert!(!box_is_empty(&fixture("draft-typed-box")));
+    // A marker below the box (a menu or dialog) is ambiguous too.
+    assert!(!box_is_empty(&format!("{}\n ❯ 1. Yes\n", boxed("❯\u{a0}"))));
+    let f = Fake::new();
+    f.screen("%1", &fixture("draft-typed-box"));
+    refused(&f, &url("model"), Refusal::NotEmpty);
+}
+
+#[test]
+fn typed_marker_after_shifted_typed_rule_refused() {
+    // Draft `x`, `foo`, a rule, `❯`: the fake box sits lines below the real top.
+    for indent in ["", "  "] {
+        let body = format!(
+            "❯\u{a0}x\n{indent}foo\n{indent}{}\n{indent}❯",
+            "─".repeat(60)
+        );
+        assert!(!box_is_empty(&boxed(&body)), "{indent:?}");
+    }
+}
+
+#[test]
+fn draft_of_n_lines_ending_in_typed_box_refused() {
+    for n in [1, 3, 10] {
+        let mut body = String::from("❯\u{a0}first");
+        for k in 0..n {
+            body.push_str(&format!("\nline {k}"));
+        }
+        body.push_str(&format!("\n{}\n❯\u{a0}", "─".repeat(60)));
+        assert!(!box_is_empty(&boxed(&body)), "{n}");
+    }
+}

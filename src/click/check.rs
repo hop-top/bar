@@ -123,14 +123,14 @@ fn find_pane(env: &dyn Env, sid: &str, tty: &str) -> Option<(Pane, bool)> {
 }
 
 /// Visible text is allowed only inside dim spans that are not reverse
-/// video (`allow_dim`), else nothing but whitespace and SGR codes. Any other
+/// video; elsewhere nothing but whitespace and SGR codes. Any other
 /// escape, or an SGR parameter that does not parse, refuses.
-fn no_text_outside_dim(s: &str, allow_dim: bool) -> bool {
+fn only_dim_text(s: &str) -> bool {
     let (mut dim, mut reverse) = (false, false);
     let mut it = s.chars();
     while let Some(c) = it.next() {
         if c != '\x1b' {
-            let placeholder = allow_dim && dim && !reverse;
+            let placeholder = dim && !reverse;
             if !(c.is_whitespace() || c == '\u{a0}' || placeholder) {
                 return false;
             }
@@ -197,29 +197,29 @@ fn border_width(line: &str) -> usize {
 /// Narrower than this is not taken for the input box.
 const MIN_BORDER: usize = 20;
 
-/// Empty box. The line right above the last prompt marker line is the top
-/// border; the bottom border is the last line below with the same width.
-/// After the marker only dim placeholder text may follow, and every line
-/// between it and the bottom border must be blank, so a draft starting
-/// with an empty line, or a typed `─` rule, refuses. No borders refuses.
+/// Empty box. A box opens where a border (only `─`, at least
+/// `MIN_BORDER` cells) sits right above a line holding the `❯` marker; the
+/// real box always opens that way, so a draft that types a fake box adds a
+/// second opening. Ambiguity refuses, hence all of:
+/// - exactly one opening on screen, and no `❯` line below its marker;
+/// - the very next line is the bottom border: same width, and the last such
+///   line on screen (a draft of more than one line refuses);
+/// - after the marker only dim placeholder text, never reverse video.
 pub fn box_is_empty(screen: &str) -> bool {
     let lines: Vec<&str> = screen.lines().collect();
-    let Some(i) = lines.iter().rposition(|l| l.contains('❯')) else {
+    let openings: Vec<usize> = (1..lines.len())
+        .filter(|&k| lines[k].contains('❯') && border_width(lines[k - 1]) >= MIN_BORDER)
+        .collect();
+    let [i] = openings[..] else {
         return false;
     };
-    let top = i.checked_sub(1).map_or(0, |t| border_width(lines[t]));
-    if top < MIN_BORDER {
+    if lines[i + 1..].iter().any(|l| l.contains('❯')) {
         return false;
     }
-    let Some(bottom) = lines.iter().rposition(|l| border_width(l) == top) else {
-        return false;
-    };
+    let width = border_width(lines[i - 1]);
+    let bottom = lines.iter().rposition(|l| border_width(l) == width);
     let (_, rest) = lines[i].split_once('❯').unwrap_or_default();
-    bottom > i
-        && no_text_outside_dim(rest, true)
-        && lines[i + 1..bottom]
-            .iter()
-            .all(|l| no_text_outside_dim(l, false))
+    bottom == Some(i + 1) && only_dim_text(rest)
 }
 
 fn idle_and_empty(env: &dyn Env, sid: &str, pane: &Pane, by_sid: bool) -> Result<(), Refusal> {
