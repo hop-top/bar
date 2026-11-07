@@ -305,8 +305,8 @@ fn issue_otherwise_muted() {
     f.out("out.json", &format!("[{}]", issue(42, "docs")));
     f.prime(Kind::Issue, &[]);
     let out = f.show(Kind::Issue, &[]);
-    assert!(out.contains("\x1b[2m!42\x1b[22m"), "{out:?}");
-    assert!(!out.contains("38;5;"), "{out:?}");
+    assert!(out.contains("\x1b[38;5;250m!42\x1b[39m"), "{out:?}");
+    assert!(!out.replace("38;5;250m", "").contains("38;5;"), "{out:?}");
 }
 
 #[test]

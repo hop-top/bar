@@ -10,8 +10,11 @@ pub fn bold(text: &str) -> String {
     format!("\x1b[1m{text}\x1b[22m")
 }
 
+/// Muted text colour (256-colour palette); SGR 2 faint renders too dark.
+pub const MUTED: u8 = 250;
+
 pub fn dim(text: &str) -> String {
-    format!("\x1b[2m{text}\x1b[22m")
+    fg(MUTED, text)
 }
 
 /// OSC 8 hyperlink; no SGR underline, the terminal draws it. A URL holding

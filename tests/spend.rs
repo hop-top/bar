@@ -35,7 +35,7 @@ fn limit(period: &str, left: i64) -> Session {
 #[test]
 fn monthly_shows_dim_time_left() {
     let out = go(&limit("monthly", 3 * 86400 + 4 * 3600)).unwrap();
-    assert_eq!(out, "\x1b[2m3d4h\x1b[22m");
+    assert_eq!(out, "\x1b[38;5;250m3d4h\x1b[39m");
 }
 
 #[test]

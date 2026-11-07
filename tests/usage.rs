@@ -163,7 +163,7 @@ fn empty_cells_dim() {
     let t = Tmp::new();
     let s = session(60.0, 18000, 0.0, 604800);
     let out = go(&s, &[("type", "5h")], t.path()).unwrap();
-    assert!(out.contains("\x1b[2m░░░\x1b[22m"), "{out:?}");
+    assert!(out.contains("\x1b[38;5;250m░░░\x1b[39m"), "{out:?}");
 }
 
 #[test]

@@ -56,7 +56,8 @@ fn model_and_effort_link_separately() {
         .go();
     // two independent styled spans, so a later task can link each on its own
     assert!(
-        o.raw.contains("\x1b[2mOpus\x1b[22m\x1b[2m[high]\x1b[22m"),
+        o.raw
+            .contains("\x1b[38;5;250mOpus\x1b[39m\x1b[38;5;250m[high]\x1b[39m"),
         "{:?}",
         o.raw
     );
