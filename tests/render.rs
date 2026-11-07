@@ -68,6 +68,8 @@ fn strip(s: &str) -> String {
 }
 
 struct Out {
+    /// PATH the spawned `bar` received.
+    path: std::ffi::OsString,
     raw: String,
     plain: String,
 }
@@ -111,6 +113,7 @@ impl<'a> Run<'a> {
             self.home.write("xdg/bar/bar.conf", c);
         }
         let (iso, cwd) = common::isolation(h);
+        let path = iso.iter().find(|(k, _)| *k == "PATH").unwrap().1.clone();
         let mut cmd = Command::cargo_bin("bar").unwrap();
         cmd.envs(iso);
         cmd.arg("render")
@@ -127,6 +130,7 @@ impl<'a> Run<'a> {
         let raw = String::from_utf8(o.get_output().stdout.clone()).unwrap();
         Out {
             plain: strip(&raw),
+            path,
             raw,
         }
     }
@@ -509,18 +513,18 @@ fn default_layout_in_github_repo_stays_in_temp_state() {
         assert!(start.elapsed().as_secs() < 10, "fake gh never called");
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
-    assert!(t.path().join("state/cache").is_dir());
-    assert!(!t.path().join("xdg-state").exists());
-    for stray in [
-        "Library/Application Support/bar",
-        ".local/state/bar",
-        ".cache/bar",
-    ] {
-        assert!(!t.path().join(stray).exists(), "{stray}");
-    }
-    let (iso, _) = common::isolation(t.path());
-    let path = iso.iter().find(|(k, _)| *k == "PATH").unwrap().1.clone();
-    let first = std::env::split_paths(&path).next().unwrap();
+    // the fake gh the process resolved first is the one that logged the call
+    let first = std::env::split_paths(&out.path).next().unwrap();
     assert_eq!(first, t.path().join("fake-bin"));
     assert!(first.join("gh").is_file());
+    // everything the run created lives in what the harness and test made:
+    // state, fake-bin, neutral cwd, the repo, the fake gh log
+    let allowed = ["state", "fake-bin", "neutral-cwd", "proj", "fake-gh.log"];
+    let stray: Vec<String> = std::fs::read_dir(t.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| !allowed.contains(&n.as_str()))
+        .collect();
+    assert!(stray.is_empty(), "stray entries under temp HOME: {stray:?}");
+    assert!(t.path().join("state/cache").is_dir());
 }
