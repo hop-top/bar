@@ -190,7 +190,14 @@ fn init(m: &ArgMatches) {
 fn click_cmd(m: &ArgMatches) {
     match m.subcommand() {
         Some(("install", i)) => {
-            let cfg = click::InstallCfg::from_env();
+            let cfg = click::InstallCfg::from_env().unwrap_or_else(|e| {
+                eprintln!("bar click install: {e}");
+                std::process::exit(EXIT_USAGE);
+            });
+            if !i.get_flag("hooks_only") && !cfg.app.is_absolute() {
+                eprintln!("bar click install: HOME (or BAR_APP_DIR) must be an absolute path");
+                std::process::exit(EXIT_USAGE);
+            }
             let r = if i.get_flag("hooks_only") {
                 click::run_hooks_only(&cfg, i.get_flag("dry_run"), &mut std::io::stdout())
                     .map_err(click::InstallError::Failed)

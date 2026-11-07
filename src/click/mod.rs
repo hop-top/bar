@@ -33,10 +33,13 @@ pub fn state_dir() -> PathBuf {
 }
 
 /// Claude Code's config dir: `CLAUDE_CONFIG_DIR`, else `~/.claude`.
+/// Absolute only: a relative `CLAUDE_CONFIG_DIR` or `HOME` (or none)
+/// yields `None`, never a path under the working directory.
 pub fn claude_dir() -> Option<PathBuf> {
+    let abs = |p: PathBuf| p.is_absolute().then_some(p);
     match std::env::var_os("CLAUDE_CONFIG_DIR").filter(|v| !v.is_empty()) {
-        Some(d) => Some(PathBuf::from(d)),
-        None => Some(PathBuf::from(std::env::var_os("HOME")?).join(".claude")),
+        Some(d) => abs(PathBuf::from(d)),
+        None => Some(abs(PathBuf::from(std::env::var_os("HOME")?))?.join(".claude")),
     }
 }
 

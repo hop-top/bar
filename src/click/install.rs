@@ -17,21 +17,24 @@ pub struct InstallCfg {
 }
 
 impl InstallCfg {
-    pub fn from_env() -> InstallCfg {
+    /// Fails without an absolute Claude config dir (`HOME` or
+    /// `CLAUDE_CONFIG_DIR`), so nothing lands under the working directory.
+    pub fn from_env() -> Result<InstallCfg, String> {
+        let claude = claude_dir().ok_or(
+            "HOME must be an absolute path (or CLAUDE_CONFIG_DIR, when set, must be absolute)",
+        )?;
         let apps = std::env::var_os("BAR_APP_DIR")
             .filter(|v| !v.is_empty())
             .map(PathBuf::from)
             .unwrap_or_else(|| {
                 PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join("Applications")
             });
-        InstallCfg {
+        Ok(InstallCfg {
             bar: std::env::current_exe().unwrap_or_else(|_| PathBuf::from("bar")),
             state_dir: state_dir(),
             app: apps.join("bar-click.app"),
-            settings: claude_dir()
-                .unwrap_or_else(|| PathBuf::from(".claude"))
-                .join("settings.json"),
-        }
+            settings: claude.join("settings.json"),
+        })
     }
 
     fn script_path(&self) -> PathBuf {
