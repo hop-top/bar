@@ -1,7 +1,8 @@
 use super::{truncate, Ctx, Placeholder};
 use crate::click::{self, hook};
 use crate::options::Options;
-use crate::style::dim;
+use crate::style::{dim, sanitize};
+use std::io::Read;
 use std::path::Path;
 use std::time::SystemTime;
 
@@ -11,6 +12,10 @@ pub const STALE_SECS: i64 = 6 * 3600;
 /// Live agents counted per render, and directory entries scanned.
 const MAX_ENTRIES: usize = 64;
 const MAX_SCAN: usize = 256;
+/// Bytes read per entry (the hook writes at most 64 chars) and chars of
+/// joined names kept before `max=` applies.
+const MAX_KIND_BYTES: u64 = 256;
+const MAX_NAMES_CHARS: usize = 512;
 
 /// `agents 2`: subagents running in this session, from the registry
 /// `bar click hook` keeps. Hidden at 0. Option `names=1` appends the types.
@@ -44,8 +49,7 @@ pub fn render_with(ctx: &Ctx, opts: &Options, state: &Path) -> Option<String> {
         if !meta.is_file() || ctx.now - mtime >= STALE_SECS {
             continue;
         }
-        let kind = std::fs::read_to_string(e.path()).unwrap_or_default();
-        kinds.push(kind.trim().to_owned());
+        kinds.push(read_kind(&e.path()));
     }
     if kinds.is_empty() {
         return None;
@@ -59,5 +63,14 @@ pub fn render_with(ctx: &Ctx, opts: &Options, state: &Path) -> Option<String> {
     if list.is_empty() {
         return Some(head);
     }
-    Some(format!("{head} {}", truncate(list.join(" "), opts)))
+    let names: String = list.join(" ").chars().take(MAX_NAMES_CHARS).collect();
+    Some(format!("{head} {}", truncate(names, opts)))
+}
+
+/// The agent type in an entry: bounded read, sanitized, since anything
+/// that can write the state dir could have planted it.
+fn read_kind(path: &Path) -> String {
+    let mut buf = Vec::new();
+    let _ = std::fs::File::open(path).and_then(|f| f.take(MAX_KIND_BYTES).read_to_end(&mut buf));
+    sanitize(&String::from_utf8_lossy(&buf)).trim().to_owned()
 }

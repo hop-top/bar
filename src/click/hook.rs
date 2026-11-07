@@ -104,9 +104,8 @@ fn track_agent(state: &Path, v: &Value, sid: &str) {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0, |d| d.as_secs() as i64);
             prune(&dir, now);
-            let kind: String = s("agent_type")
+            let kind: String = crate::style::sanitize(s("agent_type"))
                 .chars()
-                .filter(|c| !c.is_control())
                 .take(64)
                 .collect();
             let _ = write_atomic(&dir.join(id), &kind);
