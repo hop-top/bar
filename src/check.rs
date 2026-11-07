@@ -104,6 +104,7 @@ fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
     use Val::*;
     Some(match name {
         "account" | "sessions" | "spend" => &[],
+        "agents" => &[("names", Any), ("max", Int)],
         "model" | "effort" | "ctx" => &[("click", Any)],
         "repo" | "branch" => &[("max", Int), ("link", Any)],
         "usage" => &[

@@ -86,6 +86,7 @@ fn sample(name: &str, opts: &Options, ctx: &Ctx) -> Option<String> {
                 .map_or(("work", 75), |a| (a.label.as_str(), a.color));
             Some(bold(&fg(color, label)))
         }
+        "agents" => Some(format!("{} 2", dim("agents"))),
         "usage" => usage::render_with(ctx, opts, Path::new("/nonexistent/bar-preview")),
         "model" | "effort" | "ctx" => lookup(name)?.render(ctx, opts),
         _ => None,

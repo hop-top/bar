@@ -50,12 +50,58 @@ fn action(v: &Value) -> Action {
     }
 }
 
+/// Running-subagent registry: `<state>/agents/<session id>/<agent id>`,
+/// content the agent type. Entry names are validated, so no path escapes.
+pub fn agents_dir(state: &Path, sid: &str) -> Option<PathBuf> {
+    valid_sid(sid).then(|| state.join("agents").join(sid))
+}
+
+pub(crate) fn valid_agent_id(s: &str) -> bool {
+    (1..=64).contains(&s.len())
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+fn track_agent(state: &Path, v: &Value, sid: &str) {
+    let Some(dir) = agents_dir(state, sid) else {
+        return;
+    };
+    let s = |k: &str| v.get(k).and_then(Value::as_str).unwrap_or("");
+    let id = s("agent_id");
+    if !valid_agent_id(id) {
+        return;
+    }
+    match s("hook_event_name") {
+        "SubagentStart" => {
+            let kind: String = s("agent_type")
+                .chars()
+                .filter(|c| !c.is_control())
+                .take(64)
+                .collect();
+            let _ = write_atomic(&dir.join(id), &kind);
+        }
+        "SubagentStop" => {
+            let _ = std::fs::remove_file(dir.join(id));
+        }
+        _ => {}
+    }
+}
+
 /// Applies one hook event (stdin JSON). Bad input does nothing.
 pub fn run_hook(state: &Path, input: &str) {
     let Ok(v) = serde_json::from_str::<Value>(input) else {
         return;
     };
     let sid = v.get("session_id").and_then(Value::as_str).unwrap_or("");
+    match v.get("hook_event_name").and_then(Value::as_str) {
+        Some("SubagentStart" | "SubagentStop") => return track_agent(state, &v, sid),
+        Some("SessionEnd") => {
+            if let Some(d) = agents_dir(state, sid) {
+                let _ = std::fs::remove_dir_all(d);
+            }
+        }
+        _ => {}
+    }
     let Some(m) = marker(state, sid) else {
         return;
     };
