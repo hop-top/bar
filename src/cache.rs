@@ -396,11 +396,7 @@ fn run_command(cmd: &str, limit: Duration) -> Option<String> {
 
 /// Stdout of `cmd` when it exits 0 within `limit`; killed with its group
 /// otherwise. `input`, if any, is written to its stdin, else stdin is closed.
-pub(crate) fn run_child(
-    mut cmd: Command,
-    input: Option<Vec<u8>>,
-    limit: Duration,
-) -> Option<String> {
+fn run_child(mut cmd: Command, input: Option<Vec<u8>>, limit: Duration) -> Option<String> {
     let deadline = Instant::now() + limit;
     let mut child = cmd
         .stdin(if input.is_some() {
