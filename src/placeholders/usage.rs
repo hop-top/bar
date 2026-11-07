@@ -5,7 +5,10 @@ use crate::options::Options;
 use crate::pace::{builtin_rule, score};
 use crate::session::Window;
 use crate::style::{dim, fg, link, ramp};
+use glyphs::{parse_list, swapped, view_alias, Part};
 use std::path::Path;
+
+pub mod glyphs;
 
 /// `2h13m ███░░`: time to reset plus a pace-coloured bar, percentage or time.
 pub struct Usage;
@@ -65,37 +68,47 @@ pub fn render_with(ctx: &Ctx, opts: &Options, state: &Path) -> Option<String> {
     let rule = rule_for(ctx, key);
     let color = ramp(score(left, Some(secs), period, &rule), &ctx.config.ramp);
     let time = dim(&time_left(secs));
-    let mut view = opts.get("view").unwrap_or("bar");
-    if view != "time" && click::is_toggled(state, key) {
-        view = if view == "bar" { "pct" } else { "bar" };
+    let mut show = match opts.get("show") {
+        Some(raw) if !parse_list(raw).is_empty() => parse_list(raw),
+        _ => view_alias(opts.get("view").unwrap_or("bar")),
+    };
+    if click::is_toggled(state, key) {
+        show = match opts.get("alt").map(parse_list) {
+            Some(alt) if !alt.is_empty() => alt,
+            _ => swapped(&show),
+        };
     }
-    let body = match view {
-        "time" => return Some(time),
-        "pct" => fg(color, &format!("{left}%")),
-        _ => bar(opts, left, color),
+    let value = if opts.get("count") == Some("used") {
+        100 - left
+    } else {
+        left
     };
-    let body = match opts.get("click").unwrap_or("toggle") {
-        "toggle" if click::handler_installed(state) => link(&format!("bar://toggle/{key}"), &body),
-        _ => body,
+    let linked =
+        opts.get("click").unwrap_or("toggle") == "toggle" && click::handler_installed(state);
+    let wrap = |body: String| {
+        if linked {
+            link(&format!("bar://toggle/{key}"), &body)
+        } else {
+            body
+        }
     };
-    Some(format!("{time} {body}"))
+    let parts: Vec<String> = show
+        .iter()
+        .map(|p| match p {
+            Part::Time => time.clone(),
+            Part::Pct => wrap(fg(color, &format!("{value}%"))),
+            Part::Bar => wrap(bar(opts, value, color)),
+        })
+        .collect();
+    Some(parts.join(" "))
 }
 
 /// One colour for the whole bar: the exact value's, as in the percentage view.
-fn bar(opts: &Options, left: i64, color: u8) -> String {
+fn bar(opts: &Options, value: i64, color: u8) -> String {
     let width = opts
         .get("width")
         .and_then(|w| w.parse::<i64>().ok())
         .unwrap_or(5)
         .clamp(1, 40);
-    let filled = (left * width + 50) / 100;
-    let mut out = String::new();
-    if filled > 0 {
-        out.push_str(&fg(color, &"█".repeat(filled as usize)));
-    }
-    let rest = "░".repeat((width - filled) as usize);
-    if !rest.is_empty() {
-        out.push_str(&dim(&rest));
-    }
-    out
+    glyphs::bar(opts.get("glyphs").unwrap_or("blocks"), width, value, color)
 }

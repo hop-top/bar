@@ -265,3 +265,61 @@ fn preview_final_shows_bad_on_unused() {
     assert!(!run("early").contains(ramp_bad), "{}", run("early"));
     fx.bar(&["preview", "--state", "later"]).assert().code(2);
 }
+
+#[test]
+fn check_flags_bad_usage_style_values() {
+    let fx = Fx::new();
+    fx.conf("set left \"#{usage[show=bar,pct,glyphs=dots,count=used,alt=pct,time]}\"\n");
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_eq!(code, 0, "{stdout}");
+
+    for bad in ["show=bar,zzz", "alt=time,zzz", "glyphs=zzz", "count=zzz"] {
+        fx.conf(&format!("set left \"#{{usage[{bad}]}}\"\n"));
+        let (code, stdout) = out(&mut fx.bar(&["check"]));
+        assert_eq!(code, 2, "{bad}: {stdout}");
+        assert!(stdout.contains("invalid value"), "{bad}: {stdout}");
+    }
+}
+
+// --- icons ---
+
+#[test]
+fn check_accepts_icon_everywhere() {
+    let fx = Fx::new();
+    fx.plugin("bar-echo");
+    fx.conf(
+        "set icons emoji\nset icon-width 2\ndefault model icon=none\n\
+         set left \"#{model[icon=X]}#{effort[icon=\u{f2db}]}#{ctx[icon=🧠]}#{usage[icon=A]}#{account[icon=A]}#{sessions[icon=A]}#{spend[icon=A]}#{repo[icon=A]}#{branch[icon=A]}#{prs[icon=A]}#{issues[icon=A]}#{echo[icon=A]}\"\n",
+    );
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert!(!stdout.contains(": error"), "{stdout}");
+    assert_ne!(code, 2, "{stdout}");
+}
+
+#[test]
+fn check_rejects_wide_icon() {
+    let fx = Fx::new();
+    fx.conf("set left \"#{model[icon=abc]}\"\n");
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_eq!(code, 2);
+    assert!(stdout.contains("icon"), "{stdout}");
+    fx.conf("set icon-width 2\nset left \"#{model[icon=\u{f2db}\u{f2db}]}\"\n");
+    let (code, _) = out(&mut fx.bar(&["check"]));
+    assert_eq!(code, 2, "two 2-cell glyphs are 4 cells");
+    fx.conf("set left \"#{model[icon=\u{f2db}\u{f2db}]}\"\n");
+    let (code, _) = out(&mut fx.bar(&["check"]));
+    assert_ne!(code, 2, "two 1-cell glyphs fit");
+}
+
+#[test]
+fn check_warns_when_plugin_declares_icon_option() {
+    let fx = Fx::new();
+    fx.exe(
+        "bar-ico",
+        "#!/bin/sh\necho '{\"name\":\"ico\",\"version\":\"1\",\"capabilities\":[\"placeholder\"],\"options\":{\"icon\":{\"type\":\"string\"}}}'\n",
+    );
+    fx.conf("set left \"#{ico}\"\n");
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_ne!(code, 2, "{stdout}");
+    assert!(stdout.contains("reserved option `icon`"), "{stdout}");
+}

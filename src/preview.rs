@@ -53,7 +53,7 @@ fn session(state: &str, now: i64) -> Session {
         context_used: Some(38.0),
         five_hour: Some(win(p.five)),
         seven_day: Some(win(p.seven)),
-        spend_limit: None,
+        ..Session::default()
     }
 }
 
@@ -63,7 +63,7 @@ fn limit(opts: &Options) -> usize {
         .unwrap_or(5)
 }
 
-fn sample(name: &str, opts: &Options, ctx: &Ctx) -> Option<String> {
+fn sample(name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Option<String> {
     let c = &ctx.config.colors;
     let list = |items: Vec<String>| {
         let v: Vec<String> = items.into_iter().take(limit(opts)).collect();
@@ -72,6 +72,13 @@ fn sample(name: &str, opts: &Options, ctx: &Ctx) -> Option<String> {
     match name {
         "repo" => Some(bold(&fg(75, "bar"))),
         "branch" => Some(dim("main")),
+        "dirty" => Some(format!(
+            "{} {} {}",
+            fg(c.good, "+2"),
+            fg(c.warn, "~3"),
+            dim("?1")
+        )),
+        "ahead" => Some(format!("{} {}", fg(c.good, "↑2"), fg(c.warn, "↓1"))),
         "prs" => list(vec![
             fg(c.bad, "#131"),
             fg(c.warn, "#129"),
@@ -86,8 +93,9 @@ fn sample(name: &str, opts: &Options, ctx: &Ctx) -> Option<String> {
                 .map_or(("work", 75), |a| (a.label.as_str(), a.color));
             Some(bold(&fg(color, label)))
         }
+        "agents" => Some(format!("{} 2", dim("agents"))),
         "usage" => usage::render_with(ctx, opts, Path::new("/nonexistent/bar-preview")),
-        "model" | "effort" | "ctx" => lookup(name)?.render(ctx, opts),
+        "model" | "effort" | "ctx" => lookup(name)?.render_labeled(ctx, opts, label),
         _ => None,
     }
 }

@@ -2,9 +2,10 @@
 
 ## usage
 
-`#{usage[type=5h|7d|h|d, view=bar|pct|time, width=5, click=toggle|none]}`
+`#{usage[type=5h|7d|h|d, show=time,bar, alt=time,pct, count=left|used, glyphs=blocks, width=5, click=toggle|none]}`
 
-- `bar` and `pct` read `2h13m` then the view; `time` is the time alone. Expired or missing windows render nothing.
+- `show` lists the components in order from `time`, `bar`, `pct` (`show=bar,pct`, `show=pct,time`); default `time,bar`. `view` stays as an alias: `bar` is `time,bar`, `pct` is `time,pct`, `time` is `time`; `show` wins when both are set. `count=used` makes the percentage and the bar fill show used instead of remaining; the colour still follows the pace score of what remains. `glyphs`: `blocks` (█░), `shades` (▓░), `dots` (●○), `squares` (■□), `bars` (▰▱), `braille` (⣿⣀), `eighths` (█ with a ▏▎▍▌▋▊▉ last cell); an unknown name draws `blocks` and `bar check` flags it.
+- `bar toggle` (a click on the bar or percentage) flips between `show` and `alt`; `alt` defaults to `show` with `bar` and `pct` swapped. Time stays outside the link. Expired or missing windows render nothing.
 - The bar is one colour: every filled cell takes the colour of the exact value, the same as `pct`; empty cells are muted. The colour follows the pace score of `rule usage[type=5h]` / `rule usage[type=7d]`; without a rule the built-ins apply (`early warn=20% bad=5%`, final `1h` / `1d` with `bad=30%`).
 - Toggle state: `pct-5h` / `pct-7d` files (mode 0600) in the state directory (the kit state dir for `bar`; `BAR_STATE_DIR` overrides it, meant for tests). While a file exists, `bar` and `pct` swap. `bar toggle <5h|7d>` flips it.
 - Link `bar://toggle/<key>` is emitted only when the handler app is installed (marker `click-installed` in the state directory) and `click` is not `none`.
@@ -36,7 +37,7 @@ No file: built-in layout. A file with an error makes `bar render` print `bar: co
 
 | Directive | Form |
 |-----------|------|
-| `set` | `set <key> <value>`; keys `left center right separator gap wrap refresh color.good color.warn color.bad ramp` |
+| `set` | `set <key> <value>`; keys `left center right separator gap wrap refresh icons icon-width color.good color.warn color.bad ramp` |
 | `default` | `default <placeholder> key=value ...` |
 | `account` | `account "<glob>" <label> <color>` |
 | `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%` |
@@ -47,6 +48,9 @@ Quote values with spaces. `#` starts a comment.
 - `separator`: changes only where segments split (the text a layout is cut at). Output between segments stays ` │ `. Default `│`.
 - `wrap`: `auto`, `on` or `off`; reserved, only `auto` behaviour exists.
 - `refresh`: default ttl floor for plugins, default `5s`. `gh` lists use 120 s and `%cmd%` values 1 h, whatever this says.
+
+- `icons`: `none` (default, output unchanged), `nerdfont` or `emoji`. See [Icons](#icons).
+- `icon-width`: `1` (default) or `2`; cells a Nerd Font glyph (private-use codepoint) takes in your font. Layout uses it to pad; emoji widths come from Unicode.
 
 ## Placeholders
 
@@ -63,14 +67,57 @@ Quote values with spaces. `#` starts a comment.
 | | `label` | none | Value logic |
 | | `status` | `open` | `open`, `closed` |
 | | `link` | on | As `prs` |
+| `dirty` | `show` | all | Comma list of `staged`, `modified`, `untracked`, e.g. `show=staged,modified`. Output `+2 ~3 ?1`; each part omitted at 0, hidden when clean. Unmerged paths count as modified; a `+` suffix on a count (`?2000+`) marks a lower bound when git's output was cut at 64 KiB |
+| | `ttl` | `10` | Seconds before the cached `git status` is refreshed in the background (minimum 1) |
+| `ahead` | `ttl` | `10` | As `dirty`. Output `↑2 ↓1`; hidden at 0/0 or without an upstream |
+| `worktree` | none | | Directory name of a linked worktree; hidden in the main worktree |
 | `repo`, `branch` | `link` | on | Link to the repository / branch page |
 | | `max` | none | Truncate to this many characters with `…` |
 | `usage` | `type` | `5h` | `5h`, `7d`; `h`, `d` shorthand |
-| | `view` | `bar` | `bar`, `pct`, `time` |
+| | `view` | `bar` | `bar`, `pct`, `time`; alias of `show` |
+| | `show` | `time,bar` | list of `time`, `bar`, `pct` |
+| | `alt` | `show`, bar and pct swapped | list of `time`, `bar`, `pct` |
+| | `count` | `left` | `left`, `used` |
+| | `glyphs` | `blocks` | `blocks`, `shades`, `dots`, `squares`, `bars`, `braille`, `eighths` |
 | | `width` | `5` | Bar cells, clamped to 1..40 |
 | | `click` | `toggle` | `none` turns the toggle link off; the link appears only once the handler is installed (`bar click install`) |
+| `agents` | `names` | off | `1` appends the running subagents' types |
+| | `max` | none | Truncate the names with `…` |
 | `sessions`, `spend` | none | | No options |
+| every placeholder, plugins included | `icon` | set default | A glyph (at most 2 cells), or `none` to hide it. See [Icons](#icons) |
+| `cost` | `fmt` | `usd` | Session cost, `$1.23`; `<$0.01` under a cent. Hidden when absent |
+| `burn` | none | | Cost per hour, `$4.10/h`; hidden for the first 60 s of the session |
+| `duration` | none | | Session time: `45s`, `12m`, `1h05m` |
+| `lines` | none | | `+120 -14`; hidden when both are 0 |
+| `version`, `vim`, `agent` | none | | Claude Code version, vim mode, agent name; hidden when absent |
+| `style` | none | | Output style; hidden when `default` |
+| `thinking`, `fast` | none | | `think` / `fast` while enabled; hidden otherwise |
+| `cwd` | `base` | `0` | Session directory with home as `~`; `1` shows the last component only |
+| `root` | `base` | `0` | Git top-level directory of the session directory, read without running `git`; hidden outside a repository |
 | `model`, `effort`, `ctx` | `click` | on | `none` turns the command link off; the link appears only once the handler is installed (`bar click install`) |
+
+`cost`, `burn`, `duration`, `lines`, `version`, `style`, `vim`, `agent`, `thinking` and `fast` read the statusline JSON fields `cost.total_cost_usd`, `cost.total_duration_ms`, `cost.total_lines_added`, `cost.total_lines_removed`, `version`, `output_style.name`, `vim.mode`, `agent.name`, `thinking.enabled` and `fast_mode`. Missing, mistyped, negative or non-finite values hide the placeholder. `cost` is the session's own cost; `spend` is the account spend-limit window. None of these are in the default layout.
+
+## Icons
+
+`set icons nerdfont|emoji` adds an icon to each core segment; `none` (default) leaves output as is. An icon is drawn muted, followed by one space, outside any link. When a segment has a text label (`ctx`), the icon replaces it; otherwise it prefixes the value. `icon=<glyph>` on any placeholder beats the set, `icon=none` hides it; both work with `icons none`. Glyphs are sanitised; `bar check` rejects an icon wider than 2 cells (counted with `icon-width`); values from `%…%` expressions or `default` lines are not checked ahead, and an over-wide one is dropped at render (no icon, label kept).
+
+| Placeholder | nerdfont | emoji |
+|---|---|---|
+| `model` | `nf-fa-microchip` U+F2DB | 🤖 |
+| `effort` | `nf-fa-bolt` U+F0E7 | ⚡ |
+| `ctx` | `nf-fa-tachometer` U+F0E4 | 🧠 |
+| `repo` | `nf-oct-repo` U+F401 | 📁 |
+| `branch` | `nf-oct-git_branch` U+F418 | 🌿 |
+| `prs` | `nf-oct-git_pull_request` U+F407 | 🔀 |
+| `issues` | `nf-oct-issue_opened` U+F41B | 🐛 |
+| `usage` 5h | `nf-fa-clock_o` U+F017 | ⏳ |
+| `usage` 7d | `nf-fa-calendar` U+F073 | 📅 |
+| `account` | `nf-fa-user` U+F007 | 👤 |
+| `sessions` | `nf-fa-terminal` U+F120 | 💬 |
+| `spend` | `nf-fa-dollar` U+F155 | 💰 |
+
+Plugins: see [plugins](plugins.md).
 
 ## Values
 
@@ -127,6 +174,7 @@ Width comes from `COLUMNS`, else 120.
 - Idle and empty box are checked twice, a second apart, then `tmux send-keys -l "/<command>"` and `Enter`.
 - Empty box: a box opens where a border (only `─`, at least 20 cells) sits right above a line holding the `❯` prompt marker. The real box always opens that way, so a draft that types a fake box adds a second opening, and ambiguity refuses: there must be exactly one opening on screen and no `❯` line below its marker; the very next line must be the bottom border (same width, and the last such line on screen), so any draft of more than one line refuses; and after the marker only dim placeholder text may follow (outside dim spans only whitespace and SGR codes; reverse video refuses; `\e[0m`, `\e[00m` and `\e[m` all reset). The parser reads screen output: `tests/fixtures/sessions/synthetic/` holds hand-made panes (`empty*.ansi` must parse as empty, every other file must refuse); real captures go in a dir named after the Claude Code version (`claude --version`), and the test checks every dir there.
 - Waiting state: `bar click hook` reads Claude Code hook JSON on stdin and keeps `sessions/<session id>` (mode 0600) in the state directory: set on a permission request, permission or elicitation notification, `AskUserQuestion` or a failed stop; cleared on prompt submit, session end, and the main agent's stop or tool result.
+- Running subagents: the same hook keeps `agents/<session id>/<agent id>` (mode 0600, content the agent type) on `SubagentStart`, removes it on `SubagentStop`, and drops the session's directory on `SessionEnd`. `#{agents}` counts entries younger than 6 hours, so a subagent that died without a stop event ages out; the flip side is that a live agent running longer than 6 hours drops out of the count. Expired entries and orphan temp files are pruned on the next `SubagentStart`. Only agent ids of 1 to 64 characters from `A-Z a-z 0-9 - _` are tracked; others are ignored. Claude Code's statusline JSON has no subagent field and its transcript has no cheap running signal, so `#{agents}` needs the hooks registered: `bar click install` (macOS) or `bar click install --hooks-only` (any platform, hooks only, no app). Internal agents (prompt suggestions, side questions) also fire these events and count while they run.
 
 `bar click install` also wires the hook: it adds a `'<bar>' click hook` command entry under `hooks` in Claude Code's `settings.json` (`CLAUDE_CONFIG_DIR`, else `~/.claude`) for each event above that lacks one, prints every addition before writing, re-reads the file right before writing (after the app is built) so a concurrent edit is kept, copies it to a unique `settings.json.bak-<time>-<pid>`, and writes atomically, keeping the file's mode. A symlinked `settings.json` is written through to its target; a link to a missing file is refused. A file it cannot parse as Claude Code settings is left untouched and the install stops. `--dry-run` prints the additions and writes nothing.
 

@@ -42,6 +42,9 @@ fn find_close(s: &str) -> Option<usize> {
     None
 }
 
+/// Options whose value is a comma list, so a bare part after one extends it.
+const LIST_KEYS: [&str; 2] = ["show", "alt"];
+
 fn parse_placeholder(body: &str) -> Result<Token, String> {
     let (name, opts) = match body.find('[') {
         Some(i) => {
@@ -57,14 +60,25 @@ fn parse_placeholder(body: &str) -> Result<Token, String> {
         return Err("empty placeholder name".into());
     }
     let mut options = Options::default();
+    let mut last_key: Option<String> = None;
     for part in split_unquoted(opts, ',') {
         let part = part.trim();
         if part.is_empty() {
             continue;
         }
         match part.split_once('=') {
-            Some((k, v)) => options.set(k.trim(), v.trim()),
-            None => options.set(part, ""),
+            Some((k, v)) => {
+                options.set(k.trim(), v.trim());
+                last_key = Some(k.trim().to_string());
+            }
+            // `show=bar,pct`: a bare part continues a list-valued option
+            None => match last_key.as_deref().filter(|k| LIST_KEYS.contains(k)) {
+                Some(k) => {
+                    let joined = format!("{},{part}", options.get(k).unwrap_or(""));
+                    options.set(k, &joined);
+                }
+                None => options.set(part, ""),
+            },
         }
     }
     Ok(Token::Placeholder {

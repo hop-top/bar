@@ -437,3 +437,57 @@ fn install_writes_through_settings_symlink() {
         .file_type()
         .is_symlink());
 }
+
+#[test]
+fn hooks_only_writes_hooks_idempotently_and_no_app() {
+    let t = Tmp::new();
+    let c = cfg(&t);
+    std::fs::create_dir_all(c.settings.parent().unwrap()).unwrap();
+    std::fs::write(
+        &c.settings,
+        r#"{"model":"x","hooks":{"Stop":[{"hooks":[{"type":"command","command":"other"}]}]}}"#,
+    )
+    .unwrap();
+    let mut out = Vec::new();
+    hop_bar::click::run_hooks_only(&c, false, &mut out).unwrap();
+    let v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&c.settings).unwrap()).unwrap();
+    assert_eq!(v["model"], "x");
+    for ev in ["SubagentStart", "SubagentStop", "SessionEnd", "Stop"] {
+        assert!(
+            v["hooks"][ev].as_array().is_some_and(|a| !a.is_empty()),
+            "{ev}"
+        );
+    }
+    assert_eq!(v["hooks"]["Stop"].as_array().unwrap().len(), 2);
+    assert!(!c.app.exists() && !c.state_dir.exists());
+    let first = std::fs::read_to_string(&c.settings).unwrap();
+    hop_bar::click::run_hooks_only(&c, false, &mut out).unwrap();
+    assert_eq!(std::fs::read_to_string(&c.settings).unwrap(), first);
+}
+
+#[test]
+fn hooks_only_dry_run_writes_nothing() {
+    let t = Tmp::new();
+    let c = cfg(&t);
+    let mut out = Vec::new();
+    hop_bar::click::run_hooks_only(&c, true, &mut out).unwrap();
+    assert!(!c.settings.exists());
+    assert!(String::from_utf8(out).unwrap().contains("SubagentStart"));
+}
+
+#[test]
+fn cli_hooks_only_flag_is_accepted() {
+    let t = Tmp::new();
+    let claude = t.path().join("claude");
+    Command::cargo_bin("bar")
+        .unwrap()
+        .args(["click", "install", "--hooks-only"])
+        .env("HOME", t.path())
+        .env("CLAUDE_CONFIG_DIR", &claude)
+        .env("BAR_STATE_DIR", t.path().join("state"))
+        .assert()
+        .success();
+    assert!(claude.join("settings.json").exists());
+    assert!(!t.path().join("Applications").exists());
+}

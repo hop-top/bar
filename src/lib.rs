@@ -9,6 +9,7 @@ pub mod expand;
 pub mod expr;
 pub mod format;
 pub mod gitfs;
+pub mod icons;
 pub mod layout;
 pub mod options;
 pub mod pace;

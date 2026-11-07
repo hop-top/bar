@@ -10,7 +10,13 @@ pub struct CtxUsed;
 
 impl Placeholder for CtxUsed {
     fn render(&self, ctx: &Ctx, opts: &Options) -> Option<String> {
-        render_with(ctx, opts, &click::state_dir(), || Term::current().clone())
+        self.render_labeled(ctx, opts, true)
+    }
+
+    fn render_labeled(&self, ctx: &Ctx, opts: &Options, label: bool) -> Option<String> {
+        render_parts(ctx, opts, &click::state_dir(), label, || {
+            Term::current().clone()
+        })
     }
 }
 
@@ -19,6 +25,16 @@ pub fn render_with(
     ctx: &Ctx,
     opts: &Options,
     state: &Path,
+    term: impl FnOnce() -> Term,
+) -> Option<String> {
+    render_parts(ctx, opts, state, true, term)
+}
+
+fn render_parts(
+    ctx: &Ctx,
+    opts: &Options,
+    state: &Path,
+    label: bool,
     term: impl FnOnce() -> Term,
 ) -> Option<String> {
     let used = ctx.session.context_used?;
@@ -31,5 +47,9 @@ pub fn render_with(
     let value = fg(color, &format!("{pct}%"));
     let sid = &ctx.session.session_id;
     let value = click::with_cmd_link(value, "compact", sid, opts, state, term);
-    Some(format!("{} {value}", dim("ctx")))
+    Some(if label {
+        format!("{} {value}", dim("ctx"))
+    } else {
+        value
+    })
 }

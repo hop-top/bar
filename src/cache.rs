@@ -38,6 +38,8 @@ pub enum Job {
     Command { cmd: String, timeout: u64 },
     /// `gh <args>` run directly, no shell; stdout on success.
     Gh { args: Vec<String> },
+    /// `git status --porcelain=v2 --branch` in `dir` (absolute), no shell.
+    GitStatus { dir: String },
     /// `<path> --ext-info`, no shell; stdout when it parses as plugin info.
     PluginInfo { path: String },
     /// `<path>` with `input` on stdin, no shell; stdout when it parses as
@@ -52,6 +54,7 @@ impl Job {
                 json!({"kind": "command", "cmd": cmd, "timeout": timeout})
             }
             Job::Gh { args } => json!({"kind": "gh", "args": args}),
+            Job::GitStatus { dir } => json!({"kind": "git-status", "dir": dir}),
             Job::PluginInfo { path } => json!({"kind": "plugin-info", "path": path}),
             Job::PluginRender { path, input } => {
                 json!({"kind": "plugin-render", "path": path, "input": input})
@@ -72,6 +75,13 @@ impl Job {
                     .iter()
                     .map(|a| a.as_str().map(String::from).ok_or("gh arg not a string"))
                     .collect::<Result<_, _>>()?,
+            }),
+            Some("git-status") => Ok(Job::GitStatus {
+                dir: v["dir"]
+                    .as_str()
+                    .filter(|d| Path::new(d).is_absolute())
+                    .ok_or("git-status job without absolute dir")?
+                    .into(),
             }),
             Some("plugin-info") => Ok(Job::PluginInfo {
                 path: plugin_path(v)?,
@@ -96,6 +106,14 @@ impl Job {
             Job::Gh { args } => {
                 let mut c = Command::new("gh");
                 c.args(args);
+                run_child(c, None, limit)
+            }
+            Job::GitStatus { dir } => {
+                let mut c = Command::new("git");
+                c.args(["-c", "core.fsmonitor=false"])
+                    .args(["status", "--porcelain=v2", "--branch"])
+                    .current_dir(dir)
+                    .env("GIT_OPTIONAL_LOCKS", "0");
                 run_child(c, None, limit)
             }
             Job::PluginInfo { path } => {
@@ -271,7 +289,13 @@ impl Cache {
         let value = read_capped(&path);
         let fresh =
             value.is_some() && modified_age(&path).is_some_and(|a| a < Duration::from_secs(ttl));
-        if fresh || self.backing_off(key, ttl) {
+        // a short `ttl` must not turn a persistently failing git into a
+        // respawn every few seconds
+        let backoff_ttl = match job {
+            Job::GitStatus { .. } => ttl.max(FAIL_BACKOFF),
+            _ => ttl,
+        };
+        if fresh || self.backing_off(key, backoff_ttl) {
             return value;
         }
         if let Some(token) = self.try_lock(key) {
