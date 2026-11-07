@@ -1,0 +1,135 @@
+use hop_bar::conf::Config;
+use hop_bar::expand::{CommandRunner, Expander};
+use hop_bar::format::{parse, segments, Token};
+use hop_bar::options::Options;
+use std::cell::Cell;
+
+fn ph(t: &Token) -> (&str, &Options) {
+    match t {
+        Token::Placeholder { name, options } => (name, options),
+        other => panic!("not a placeholder: {other:?}"),
+    }
+}
+
+struct Fake {
+    out: Option<String>,
+    calls: Cell<usize>,
+}
+
+impl CommandRunner for Fake {
+    fn run(&self, _cmd: &str) -> Option<String> {
+        self.calls.set(self.calls.get() + 1);
+        self.out.clone()
+    }
+}
+
+fn fake(out: Option<&str>) -> Fake {
+    Fake {
+        out: out.map(String::from),
+        calls: Cell::new(0),
+    }
+}
+
+fn no_env(_: &str) -> Option<String> {
+    None
+}
+
+#[test]
+fn splits_text_and_placeholders() {
+    let t = parse("a #{model}#{ctx} b").unwrap();
+    assert_eq!(t.len(), 4);
+    assert_eq!(t[0], Token::Text("a ".into()));
+    assert_eq!(ph(&t[1]).0, "model");
+    assert_eq!(ph(&t[2]).0, "ctx");
+    assert_eq!(t[3], Token::Text(" b".into()));
+    assert!(parse("#{open").is_err());
+}
+
+#[test]
+fn parses_options() {
+    let t = parse("#{prs[limit=3,author=@me]}").unwrap();
+    let (name, o) = ph(&t[0]);
+    assert_eq!(name, "prs");
+    assert_eq!(o.get("limit"), Some("3"));
+    assert_eq!(o.get("author"), Some("@me"));
+}
+
+#[test]
+fn value_keeps_pipes_and_ampersands() {
+    let t = parse(r#"#{issues[label=(a|b)&"c d",x=!y]}"#).unwrap();
+    let (_, o) = ph(&t[0]);
+    assert_eq!(o.get("label"), Some(r#"(a|b)&"c d""#));
+    assert_eq!(o.get("x"), Some("!y"));
+}
+
+#[test]
+fn comma_inside_quotes_is_not_a_separator() {
+    let t = parse(r#"#{issues[label="a,b",limit=2]}"#).unwrap();
+    let (_, o) = ph(&t[0]);
+    assert_eq!(o.get("label"), Some(r#""a,b""#));
+    assert_eq!(o.get("limit"), Some("2"));
+}
+
+#[test]
+fn inline_overrides_default() {
+    let mut c = Config::default();
+    let mut d = Options::default();
+    d.set("limit", "5");
+    d.set("author", "@me");
+    c.defaults.insert("prs".into(), d);
+    let t = parse("#{prs[limit=3]}").unwrap();
+    let (name, o) = ph(&t[0]);
+    let m = o.merged_over(&c.defaults[name]);
+    assert_eq!(m.get("limit"), Some("3"));
+    assert_eq!(m.get("author"), Some("@me"));
+}
+
+#[test]
+fn expands_env() {
+    let env = |k: &str| (k == "USER").then(|| "jad".to_string());
+    let r = fake(None);
+    let e = Expander::with_env(&r, &env);
+    assert_eq!(e.expand("hi %$USER%!"), "hi jad!");
+}
+
+#[test]
+fn unset_env_is_empty() {
+    let r = fake(None);
+    let e = Expander::with_env(&r, &no_env);
+    assert_eq!(e.expand("[%$NOPE%]"), "[]");
+}
+
+#[test]
+fn expands_command() {
+    let r = fake(Some("jadb\n"));
+    let e = Expander::with_env(&r, &no_env);
+    assert_eq!(e.expand("%gh api user -q .login%"), "jadb");
+    assert_eq!(e.expand("x%gh api user -q .login%"), "xjadb");
+    assert_eq!(r.calls.get(), 1);
+}
+
+#[test]
+fn at_me_passes_through_unchanged() {
+    let r = fake(Some("x"));
+    let e = Expander::with_env(&r, &no_env);
+    assert_eq!(e.expand("@me"), "@me");
+    assert_eq!(e.expand("50% done"), "50% done");
+    assert_eq!(r.calls.get(), 0);
+}
+
+#[test]
+fn failing_command_expands_empty() {
+    let r = fake(None);
+    let e = Expander::with_env(&r, &no_env);
+    assert_eq!(e.expand("a%false%b"), "ab");
+}
+
+#[test]
+fn literal_separator_splits_segments() {
+    let t = parse("#{model}#{effort} │ #{ctx} │ #{prs}").unwrap();
+    let s = segments(&t, "│");
+    assert_eq!(s.len(), 3);
+    assert_eq!(s[0].len(), 2);
+    assert_eq!(ph(&s[1][0]).0, "ctx");
+    assert_eq!(ph(&s[2][0]).0, "prs");
+}
