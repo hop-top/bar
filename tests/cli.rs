@@ -29,3 +29,13 @@ fn version_reports_bar() {
         .success()
         .stdout(predicate::str::starts_with("bar "));
 }
+
+#[test]
+fn render_prints_cwd_basename() {
+    bar()
+        .arg("render")
+        .write_stdin(r#"{"workspace":{"current_dir":"/work/proj"}}"#)
+        .assert()
+        .success()
+        .stdout("proj\n");
+}
