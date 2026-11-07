@@ -3,7 +3,14 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-pub const NAMES: [&str; 5] = ["minimal", "full", "powerline", "capsule", "compact"];
+pub const NAMES: [&str; 6] = [
+    "minimal",
+    "full",
+    "powerline",
+    "capsule",
+    "compact",
+    "two-line",
+];
 
 /// Preset `bar init` writes when none is named.
 pub const DEFAULT: &str = "full";
@@ -15,6 +22,7 @@ pub fn get(name: &str) -> Option<&'static str> {
         "powerline" => include_str!("../presets/powerline.conf"),
         "capsule" => include_str!("../presets/capsule.conf"),
         "compact" => include_str!("../presets/compact.conf"),
+        "two-line" => include_str!("../presets/two-line.conf"),
         _ => return None,
     })
 }

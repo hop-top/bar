@@ -1,11 +1,11 @@
 //! Wires config, placeholders and layout into the status line text.
 
 use crate::cache::Cache;
-use crate::conf::{Config, LoadResult};
+use crate::conf::{Config, LoadResult, Wrap, MAX_LINES};
 use crate::expand::{CommandRunner, Expander};
 use crate::format::{parse, segments, Token};
 use crate::icons;
-use crate::layout::{compose_groups, compose_with};
+use crate::layout::{flow, join, place_groups, plain_joiner, Group};
 use crate::options::Options;
 use crate::palette;
 use crate::placeholders::{lookup, Ctx};
@@ -251,32 +251,83 @@ fn render_impl(
     };
     let _muted = style::use_muted(config.muted);
     let _ansi = style::use_ansi(palette::by_name(config.palette).is_some_and(|p| p.ansi));
-    let groups = [&config.left, &config.center, &config.right]
-        .map(|src| render_group(src, &ctx, &ex, sample));
-    match Paint::of(config.skin) {
-        Some(paint) => paint_line(config, paint, groups, columns),
-        None => {
-            let [l, c, r] = groups.map(|g| g.into_iter().map(|s| s.text).collect::<Vec<_>>());
-            compose_with(&l, &c, &r, columns, config.gap, config.icon_width)
+    let mut rows: Vec<String> = Vec::new();
+    for src in config.lines() {
+        let budget = MAX_LINES - rows.len();
+        if budget == 0 {
+            break;
         }
+        let groups = src.map(|g| render_group(g, &ctx, &ex, sample));
+        if groups.iter().all(Vec::is_empty) {
+            continue;
+        }
+        rows.extend(line_rows(config, groups, columns, budget));
+    }
+    rows.join("\n")
+}
+
+/// One status line as at most `budget` rows: placed as usual, or, with
+/// `set wrap on` and a line that does not fit one row, its segments
+/// flowed left to right onto rows, left-aligned. An empty line has none.
+fn line_rows(
+    config: &Config,
+    groups: [Vec<Rendered>; 3],
+    columns: Option<usize>,
+    budget: usize,
+) -> Vec<String> {
+    let paint = Paint::of(config.skin);
+    let [l, c, r] = segs(config, groups);
+    let group = |segs: &[Seg], side| match paint {
+        Some(p) => skin::paint(p, config.skin_glyphs, segs, side),
+        None => {
+            let text = join(&segs.iter().map(|s| s.text.clone()).collect::<Vec<_>>());
+            Group {
+                width: visible_width_with(&text, config.icon_width),
+                text,
+            }
+        }
+    };
+    let (gl, gc, gr) = (
+        group(&l, Side::Left),
+        group(&c, Side::Center),
+        group(&r, Side::Right),
+    );
+    let joiner = match paint {
+        Some(_) => " ".to_string(),
+        None => plain_joiner(),
+    };
+    let placed = place_groups(&gl, &gc, &gr, columns, config.gap, &joiner);
+    match columns {
+        Some(cols) if config.wrap == Wrap::On && !placed.fits => {
+            let all: Vec<Seg> = [l, c, r].into_iter().flatten().collect();
+            flow(all.len(), cols, budget, |rg| {
+                group(&all[rg], Side::Left).width
+            })
+            .into_iter()
+            .map(|rg| group(&all[rg], Side::Left).text)
+            .collect()
+        }
+        _ if placed.text.is_empty() => Vec::new(),
+        _ => placed
+            .text
+            .split('\n')
+            .take(budget)
+            .map(str::to_string)
+            .collect(),
     }
 }
 
-/// Skinned line: backgrounds cycle through the palette across all groups,
-/// left to right; a segment's `bg` option takes its place.
-fn paint_line(
-    config: &Config,
-    paint: Paint,
-    groups: [Vec<Rendered>; 3],
-    columns: Option<usize>,
-) -> String {
+/// Segments with their widths and backgrounds. Backgrounds cycle through
+/// the palette across all groups of the line, left to right; a segment's
+/// `bg` option takes its place. Plain lines ignore them.
+fn segs(config: &Config, groups: [Vec<Rendered>; 3]) -> [Vec<Seg>; 3] {
     let bgs = if config.bgs.is_empty() {
         palette::default().bgs
     } else {
         config.bgs
     };
     let mut n = 0;
-    let [l, c, r] = groups.map(|g| {
+    groups.map(|g| {
         g.into_iter()
             .map(|s| {
                 let bg = s.bg.unwrap_or(bgs[n % bgs.len()]);
@@ -287,17 +338,8 @@ fn paint_line(
                     bg,
                 }
             })
-            .collect::<Vec<_>>()
-    });
-    let p = |segs: &[Seg], side| skin::paint(paint, config.skin_glyphs, segs, side);
-    compose_groups(
-        &p(&l, Side::Left),
-        &p(&c, Side::Center),
-        &p(&r, Side::Right),
-        columns,
-        config.gap,
-        " ",
-    )
+            .collect()
+    })
 }
 
 /// What `bar render` prints: the line(s), or the short config error.

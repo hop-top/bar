@@ -15,11 +15,23 @@ pub struct ConfError {
     pub message: String,
 }
 
+/// What a line too wide for `COLUMNS` does: `Off` keeps the two-row
+/// layout, `On` flows its segments onto more rows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Wrap {
-    Auto,
-    On,
     Off,
+    On,
+}
+
+/// Most status lines a config can set, and most rows a render prints.
+pub const MAX_LINES: usize = 4;
+
+/// The three groups of one status line.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Line {
+    pub left: String,
+    pub center: String,
+    pub right: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,6 +95,8 @@ pub struct Config {
     pub left: String,
     pub center: String,
     pub right: String,
+    /// Lines 2 and up (`set left@2` ...); `left`/`center`/`right` are line 1.
+    pub more_lines: [Line; MAX_LINES - 1],
     pub separator: String,
     pub gap: usize,
     pub wrap: Wrap,
@@ -117,9 +131,10 @@ impl Default for Config {
             left: String::new(),
             center: String::new(),
             right: String::new(),
+            more_lines: Default::default(),
             separator: "│".into(),
             gap: 3,
-            wrap: Wrap::Auto,
+            wrap: Wrap::Off,
             refresh: 5,
             icons: Icons::None,
             icon_width: 1,
@@ -142,6 +157,31 @@ impl Default for Config {
             prices: Vec::new(),
         }
     }
+}
+
+impl Config {
+    /// Left, centre and right sources of every line, line 1 first.
+    pub fn lines(&self) -> [[&str; 3]; MAX_LINES] {
+        let mut out = [[""; 3]; MAX_LINES];
+        out[0] = [&self.left, &self.center, &self.right];
+        for (o, l) in out[1..].iter_mut().zip(&self.more_lines) {
+            *o = [&l.left, &l.center, &l.right];
+        }
+        out
+    }
+}
+
+/// `left`, `left@N`, `center@N`, `right@N`: the group and its 1-based
+/// line. `None` for any other key; `Err` for a bad or out-of-range `N`.
+pub fn layout_key(key: &str) -> Option<Result<(&str, usize), String>> {
+    let (group, n) = key.split_once('@').unwrap_or((key, "1"));
+    if !matches!(group, "left" | "center" | "right") {
+        return None;
+    }
+    Some(match n.parse::<usize>() {
+        Ok(n) if (1..=MAX_LINES).contains(&n) => Ok((group, n)),
+        _ => Err(format!("invalid line `{n}` in `{key}` (1-{MAX_LINES})")),
+    })
 }
 
 /// Loaded once per run, so the size gap between variants is harmless.

@@ -1,23 +1,42 @@
 //! `set` directives: one key and value each, plus `set price` and the
 //! palette fill-in applied after the whole file is read.
 
-use super::{code, duration, Config, Icons, Skin, SkinGlyphs, Wrap};
+use super::{code, duration, layout_key, Config, Icons, Skin, SkinGlyphs, Wrap};
 use crate::palette;
 use crate::prices::Price;
 
+/// The source string a layout key sets.
+fn group_slot<'a>(c: &'a mut Config, group: &str, line: usize) -> &'a mut String {
+    if line == 1 {
+        return match group {
+            "left" => &mut c.left,
+            "center" => &mut c.center,
+            _ => &mut c.right,
+        };
+    }
+    let l = &mut c.more_lines[line - 2];
+    match group {
+        "left" => &mut l.left,
+        "center" => &mut l.center,
+        _ => &mut l.right,
+    }
+}
+
 pub(super) fn apply_set(c: &mut Config, key: &str, val: &str) -> Result<(), String> {
+    if let Some(k) = layout_key(key) {
+        let (group, line) = k?;
+        *group_slot(c, group, line) = val.into();
+        return Ok(());
+    }
     match key {
-        "left" => c.left = val.into(),
-        "center" => c.center = val.into(),
-        "right" => c.right = val.into(),
         "separator" => c.separator = val.into(),
         "gap" => c.gap = val.parse().map_err(|_| format!("invalid gap `{val}`"))?,
         "wrap" => {
             c.wrap = match val {
-                "auto" => Wrap::Auto,
+                // `auto` predates `on`/`off`: today's layout
+                "off" | "auto" => Wrap::Off,
                 "on" => Wrap::On,
-                "off" => Wrap::Off,
-                _ => return Err(format!("invalid wrap `{val}` (auto|on|off)")),
+                _ => return Err(format!("invalid wrap `{val}` (off|on)")),
             }
         }
         "refresh" => c.refresh = duration(val)?,
