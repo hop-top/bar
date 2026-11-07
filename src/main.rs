@@ -28,7 +28,7 @@ enum SubCmd {
         /// 5h or 7d
         key: String,
     },
-    /// Click handler app.
+    /// Click handler app and clickable commands.
     Click {
         #[command(subcommand)]
         cmd: ClickCmd,
@@ -65,6 +65,13 @@ enum ClickCmd {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Type an allow-listed slash command into its session (handler entry).
+    Run {
+        /// bar://cmd/<command>?tty=<ttysN>&sid=<session id>
+        url: String,
+    },
+    /// Claude Code hook: keep the session's waiting marker (stdin JSON).
+    Hook,
 }
 
 fn main() {
@@ -83,22 +90,7 @@ fn main() {
                 }
             }
         }
-        Some(("click", m)) => {
-            if let Some(("install", i)) = m.subcommand() {
-                let cfg = click::InstallCfg::from_env();
-                let r = click::run_install(
-                    &cfg,
-                    cfg!(target_os = "macos"),
-                    i.get_flag("dry_run"),
-                    &mut click::exec,
-                    &mut std::io::stdout(),
-                );
-                if let Err(e) = r {
-                    eprintln!("bar click install: {e}");
-                    std::process::exit(1);
-                }
-            }
-        }
+        Some(("click", m)) => click_cmd(m),
         Some(("plugin", m)) => plugin_cmd(m),
         Some(("refresh", m)) => {
             let raw = m.get_one::<String>("request").map_or("", String::as_str);
@@ -106,6 +98,38 @@ fn main() {
                 let limit = refresh_timeout(std::env::var("BAR_REFRESH_TIMEOUT").ok().as_deref());
                 Cache::new(&click::state_dir()).refresh(&req, limit);
             }
+        }
+        _ => {}
+    }
+}
+
+fn click_cmd(m: &ArgMatches) {
+    match m.subcommand() {
+        Some(("install", i)) => {
+            let cfg = click::InstallCfg::from_env();
+            let r = click::run_install(
+                &cfg,
+                cfg!(target_os = "macos"),
+                i.get_flag("dry_run"),
+                &mut click::exec,
+                &mut std::io::stdout(),
+            );
+            if let Err(e) = r {
+                eprintln!("bar click install: {e}");
+                std::process::exit(1);
+            }
+        }
+        Some(("run", r)) => {
+            let url = r.get_one::<String>("url").map_or("", String::as_str);
+            if let Err(e) = click::run(&click::sys::System::from_env(), url) {
+                eprintln!("bar click run: refused: {e}");
+                std::process::exit(1);
+            }
+        }
+        Some(("hook", _)) => {
+            let mut buf = Vec::new();
+            let _ = std::io::Read::read_to_end(&mut std::io::stdin(), &mut buf);
+            click::hook::run_hook(&click::state_dir(), &String::from_utf8_lossy(&buf));
         }
         _ => {}
     }

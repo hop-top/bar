@@ -1,58 +1,19 @@
-//! Toggle state and the macOS URL-handler app (`bar click install`).
+//! `bar click install`: the macOS `bar://` URL handler app and the
+//! waiting-state hook in Claude Code's `settings.json`.
 
+use super::settings::{apply_settings, plan_settings};
+use super::{claude_dir, state_dir, write_private, MARKER};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-const KEYS: [&str; 2] = ["5h", "7d"];
-const MARKER: &str = "click-installed";
 const LSREGISTER: &str = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
-
-/// `BAR_STATE_DIR` overrides the kit's state dir (tests, relocation).
-pub fn state_dir() -> PathBuf {
-    std::env::var_os("BAR_STATE_DIR")
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| hop_top_kit::xdg::raw_state_dir("bar"))
-}
-
-pub fn is_toggled(dir: &Path, key: &str) -> bool {
-    dir.join(format!("pct-{key}")).exists()
-}
-
-/// The install step writes this; links need a handler to open them.
-pub fn handler_installed(dir: &Path) -> bool {
-    dir.join(MARKER).exists()
-}
-
-pub(crate) fn write_private(path: &Path, body: &str) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let mut o = std::fs::OpenOptions::new();
-    o.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut o, 0o600);
-    o.open(path)?.write_all(body.as_bytes())
-}
-
-/// Flips `pct-<key>`; `Ok(true)` when the percentage view is now on.
-pub fn toggle(dir: &Path, key: &str) -> Result<bool, String> {
-    if !KEYS.contains(&key) {
-        return Err(format!("unknown key `{key}` (expected 5h or 7d)"));
-    }
-    let f = dir.join(format!("pct-{key}"));
-    if f.exists() {
-        std::fs::remove_file(&f).map_err(|e| e.to_string())?;
-        return Ok(false);
-    }
-    write_private(&f, "").map_err(|e| e.to_string())?;
-    Ok(true)
-}
 
 pub struct InstallCfg {
     pub bar: PathBuf,
     pub state_dir: PathBuf,
     pub app: PathBuf,
+    /// Claude Code `settings.json` that receives the hook.
+    pub settings: PathBuf,
 }
 
 impl InstallCfg {
@@ -67,6 +28,9 @@ impl InstallCfg {
             bar: std::env::current_exe().unwrap_or_else(|_| PathBuf::from("bar")),
             state_dir: state_dir(),
             app: apps.join("bar-click.app"),
+            settings: claude_dir()
+                .unwrap_or_else(|| PathBuf::from(".claude"))
+                .join("settings.json"),
         }
     }
 
@@ -84,14 +48,20 @@ fn as_literal(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-/// Handler for `bar://toggle/<key>`; `bar toggle` validates the key.
+/// Handler for `bar://toggle/<key>` and `bar://cmd/...`; `bar` validates
+/// both. A refused command exits non-zero, so `try` keeps the applet quiet.
 pub fn applescript(bar: &Path) -> String {
     format!(
         "on open location theURL\n\
          \tset thePrefix to \"bar://toggle/\"\n\
+         \tset theBar to quoted form of \"{}\"\n\
          \tif (count of theURL) > (count of thePrefix) and theURL starts with thePrefix then\n\
          \t\tset theKey to text ((count of thePrefix) + 1) thru -1 of theURL\n\
-         \t\tdo shell script quoted form of \"{}\" & \" toggle \" & quoted form of theKey\n\
+         \t\tdo shell script theBar & \" toggle \" & quoted form of theKey\n\
+         \telse if theURL starts with \"bar://cmd/\" then\n\
+         \t\ttry\n\
+         \t\t\tdo shell script theBar & \" click run \" & quoted form of theURL\n\
+         \t\tend try\n\
          \tend if\n\
          end open location\n",
         as_literal(&bar.display().to_string())
@@ -151,13 +121,20 @@ pub fn run_install(
         writeln!(out, "bar click install: macOS only, nothing to do").map_err(io)?;
         return Ok(());
     }
+    let settings = plan_settings(&cfg.settings, &cfg.bar)?;
     let plan = install_plan(cfg);
     if dry_run {
         writeln!(out, "{}", plan.script).map_err(io)?;
         for c in &plan.commands {
             writeln!(out, "{}", c.join(" ")).map_err(io)?;
         }
+        for l in settings.describe() {
+            writeln!(out, "{l}").map_err(io)?;
+        }
         return Ok(());
+    }
+    for l in settings.describe() {
+        writeln!(out, "{l}").map_err(io)?;
     }
     if let Some(parent) = cfg.app.parent() {
         std::fs::create_dir_all(parent).map_err(io)?;
@@ -165,6 +142,9 @@ pub fn run_install(
     write_private(&cfg.script_path(), &plan.script).map_err(io)?;
     for c in &plan.commands {
         run(c).map_err(|e| format!("{}: {e}", c[0]))?;
+    }
+    if let Some(backup) = apply_settings(&settings).map_err(io)? {
+        writeln!(out, "backup {}", backup.display()).map_err(io)?;
     }
     write_private(&cfg.state_dir.join(MARKER), "").map_err(io)?;
     writeln!(out, "installed {}", cfg.app.display()).map_err(io)
