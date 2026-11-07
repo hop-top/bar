@@ -72,6 +72,9 @@ enum ClickCmd {
         /// Print the script and commands without running them.
         #[arg(long)]
         dry_run: bool,
+        /// Only register the Claude Code hooks (any platform); no URL handler app.
+        #[arg(long)]
+        hooks_only: bool,
     },
     /// Type an allow-listed slash command into its session (handler entry).
     Run {
@@ -148,13 +151,17 @@ fn click_cmd(m: &ArgMatches) {
     match m.subcommand() {
         Some(("install", i)) => {
             let cfg = click::InstallCfg::from_env();
-            let r = click::run_install(
-                &cfg,
-                cfg!(target_os = "macos"),
-                i.get_flag("dry_run"),
-                &mut click::exec,
-                &mut std::io::stdout(),
-            );
+            let r = if i.get_flag("hooks_only") {
+                click::run_hooks_only(&cfg, i.get_flag("dry_run"), &mut std::io::stdout())
+            } else {
+                click::run_install(
+                    &cfg,
+                    cfg!(target_os = "macos"),
+                    i.get_flag("dry_run"),
+                    &mut click::exec,
+                    &mut std::io::stdout(),
+                )
+            };
             if let Err(e) = r {
                 eprintln!("bar click install: {e}");
                 std::process::exit(1);

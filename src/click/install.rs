@@ -159,6 +159,23 @@ pub fn run_install(
     writeln!(out, "installed {}", cfg.app.display()).map_err(io)
 }
 
+/// `--hooks-only`: wires the `bar click hook` entries into `settings.json`
+/// and nothing else (no app bundle, any platform).
+pub fn run_hooks_only(cfg: &InstallCfg, dry_run: bool, out: &mut dyn Write) -> Result<(), String> {
+    let io = |e: std::io::Error| e.to_string();
+    let plan = plan_settings(&cfg.settings, &cfg.bar)?;
+    for l in plan.describe() {
+        writeln!(out, "{l}").map_err(io)?;
+    }
+    if dry_run {
+        return Ok(());
+    }
+    if let Some(backup) = apply_settings(&plan).map_err(io)? {
+        writeln!(out, "backup {}", backup.display()).map_err(io)?;
+    }
+    Ok(())
+}
+
 /// Runs a real command; fails on spawn error or non-zero exit.
 pub fn exec(cmd: &[String]) -> Result<(), String> {
     let st = std::process::Command::new(&cmd[0])

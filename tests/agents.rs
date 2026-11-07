@@ -237,3 +237,82 @@ fn bar_render_wires_agents_as_core_name() {
     assert!(out.status.success());
     assert!(plain(&String::from_utf8_lossy(&out.stdout)).contains("agents 1"));
 }
+
+#[test]
+fn session_end_leaves_other_sessions_alone() {
+    let t = Tmp::new();
+    let s = t.state();
+    let other = "aaaa-bbbb";
+    start(&s, "agent-a1", "Explore");
+    run_hook(
+        &s,
+        &format!(
+            r#"{{"session_id":"{other}","hook_event_name":"SubagentStart","agent_id":"agent-z","agent_type":"X"}}"#
+        ),
+    );
+    run_hook(
+        &s,
+        &format!(r#"{{"session_id":"{SID}","hook_event_name":"SessionEnd"}}"#),
+    );
+    assert_eq!(go(&s, SID, &Options::default(), now()), None);
+    assert_eq!(
+        plain(&go(&s, other, &Options::default(), now()).unwrap()),
+        "agents 1"
+    );
+}
+
+#[test]
+fn long_ids_and_symlinked_agents_dir_are_rejected() {
+    let t = Tmp::new();
+    let s = t.state();
+    start(&s, &"a".repeat(65), "Explore");
+    assert_eq!(go(&s, SID, &Options::default(), now()), None);
+    let target = t.0.join("elsewhere");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::create_dir_all(s.join("agents")).unwrap();
+    std::os::unix::fs::symlink(&target, s.join("agents").join(SID)).unwrap();
+    start(&s, "agent-a1", "Explore");
+    assert!(std::fs::read_dir(&target).unwrap().next().is_none());
+    std::fs::write(target.join("agent-x"), "Explore").unwrap();
+    assert_eq!(go(&s, SID, &Options::default(), now()), None);
+}
+
+#[test]
+fn junk_does_not_crowd_out_live_agents() {
+    let t = Tmp::new();
+    let s = t.state();
+    let dir = s.join("agents").join(SID);
+    std::fs::create_dir_all(&dir).unwrap();
+    for i in 0..100 {
+        std::fs::write(dir.join(format!(".junk{i}.tmp")), "").unwrap();
+    }
+    start(&s, "agent-a1", "Explore");
+    assert_eq!(
+        plain(&go(&s, SID, &Options::default(), now()).unwrap()),
+        "agents 1"
+    );
+}
+
+#[test]
+fn start_prunes_expired_and_orphan_tmp_files() {
+    let t = Tmp::new();
+    let s = t.state();
+    start(&s, "agent-old", "Explore");
+    let dir = s.join("agents").join(SID);
+    let old = SystemTime::now() - Duration::from_secs(STALE_SECS as u64 + 60);
+    let f = std::fs::File::options()
+        .write(true)
+        .open(dir.join("agent-old"))
+        .unwrap();
+    f.set_modified(old).unwrap();
+    std::fs::write(dir.join(".agent-x.1.tmp"), "").unwrap();
+    let f = std::fs::File::options()
+        .write(true)
+        .open(dir.join(".agent-x.1.tmp"))
+        .unwrap();
+    f.set_modified(old).unwrap();
+    start(&s, "agent-new", "Explore");
+    assert!(!dir.join("agent-old").exists());
+    assert!(!dir.join(".agent-x.1.tmp").exists());
+    assert!(dir.join("agent-new").exists());
+}

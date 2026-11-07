@@ -62,6 +62,30 @@ pub(crate) fn valid_agent_id(s: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
+/// Registry dir for writing: refused when it is a symlink, so a planted
+/// link cannot redirect writes.
+pub(crate) fn is_real_dir(p: &Path) -> bool {
+    std::fs::symlink_metadata(p).is_ok_and(|m| m.is_dir())
+}
+
+/// Removes expired entries and orphan temp files; bounded work.
+fn prune(dir: &Path, now: i64) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in rd.flatten().take(256) {
+        let old = e
+            .metadata()
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok())
+            .is_some_and(|d| now - (d.as_secs() as i64) >= crate::placeholders::agents::STALE_SECS);
+        if old {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+}
+
 fn track_agent(state: &Path, v: &Value, sid: &str) {
     let Some(dir) = agents_dir(state, sid) else {
         return;
@@ -73,6 +97,13 @@ fn track_agent(state: &Path, v: &Value, sid: &str) {
     }
     match s("hook_event_name") {
         "SubagentStart" => {
+            if std::fs::symlink_metadata(&dir).is_ok() && !is_real_dir(&dir) {
+                return;
+            }
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs() as i64);
+            prune(&dir, now);
             let kind: String = s("agent_type")
                 .chars()
                 .filter(|c| !c.is_control())
@@ -96,7 +127,7 @@ pub fn run_hook(state: &Path, input: &str) {
     match v.get("hook_event_name").and_then(Value::as_str) {
         Some("SubagentStart" | "SubagentStop") => return track_agent(state, &v, sid),
         Some("SessionEnd") => {
-            if let Some(d) = agents_dir(state, sid) {
+            if let Some(d) = agents_dir(state, sid).filter(|d| is_real_dir(d)) {
                 let _ = std::fs::remove_dir_all(d);
             }
         }
