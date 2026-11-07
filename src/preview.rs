@@ -72,6 +72,13 @@ fn sample(name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Option<String> 
     match name {
         "repo" => Some(bold(&fg(75, "bar"))),
         "branch" => Some(dim("main")),
+        "dirty" => Some(format!(
+            "{} {} {}",
+            fg(c.good, "+2"),
+            fg(c.warn, "~3"),
+            dim("?1")
+        )),
+        "ahead" => Some(format!("{} {}", fg(c.good, "↑2"), fg(c.warn, "↓1"))),
         "prs" => list(vec![
             fg(c.bad, "#131"),
             fg(c.warn, "#129"),

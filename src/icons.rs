@@ -73,6 +73,9 @@ pub fn builtin(set: Icons, name: &str, opts: &Options) -> Option<&'static str> {
         "ctx" => ("\u{f0e4}", "🧠"),               // nf-fa-tachometer
         "repo" => ("\u{f401}", "📁"),              // nf-oct-repo
         "branch" => ("\u{f418}", "🌿"),            // nf-oct-git_branch
+        "dirty" => ("\u{f040}", "✏️"),             // nf-fa-pencil
+        "ahead" => ("\u{f062}", "⬆️"),             // nf-fa-arrow_up
+        "worktree" => ("\u{f1bb}", "🌳"),          // nf-fa-tree
         "prs" => ("\u{f407}", "🔀"),               // nf-oct-git_pull_request
         "issues" => ("\u{f41b}", "🐛"),            // nf-oct-issue_opened
         "usage" if usage_7d => ("\u{f073}", "📅"), // nf-fa-calendar

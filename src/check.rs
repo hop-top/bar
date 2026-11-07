@@ -6,6 +6,7 @@ use crate::format::{self, Token};
 use crate::icons;
 use crate::options::Options;
 use crate::placeholders::gh::{self, Kind};
+use crate::placeholders::gitst;
 use crate::placeholders::usage::glyphs::{GLYPH_SETS, SHOW_ITEMS};
 use crate::plugin;
 use crate::render::builtin_config;
@@ -123,6 +124,9 @@ fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
             ("width", Int),
             ("click", OneOf(&["toggle", "none"])),
         ],
+        "dirty" => &[("show", List(gitst::SHOW)), ("ttl", Int)],
+        "ahead" => &[("ttl", Int)],
+        "worktree" => &[],
         "prs" => &[
             ("limit", Int),
             ("author", Any),

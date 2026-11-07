@@ -113,6 +113,12 @@ fn open(top: &Path, git_dir: PathBuf) -> Found {
 }
 
 impl Repo {
+    /// A linked worktree: its git dir is not the common dir (a submodule's
+    /// `.git` file also points elsewhere, but has no `commondir`).
+    pub fn linked(&self) -> bool {
+        self.git_dir != self.common_dir
+    }
+
     /// Current branch; `None` when HEAD is detached.
     pub fn branch(&self) -> Result<Option<String>, Unsupported> {
         let head = read(&self.git_dir.join("HEAD"))?.ok_or(Unsupported)?;

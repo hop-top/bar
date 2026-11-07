@@ -67,6 +67,10 @@ Quote values with spaces. `#` starts a comment.
 | | `label` | none | Value logic |
 | | `status` | `open` | `open`, `closed` |
 | | `link` | on | As `prs` |
+| `dirty` | `show` | all | Comma list of `staged`, `modified`, `untracked`, e.g. `show=staged,modified`. Output `+2 ~3 ?1`; each part omitted at 0, hidden when clean. Unmerged paths count as modified; a `+` suffix on a count (`?2000+`) marks a lower bound when git's output was cut at 64 KiB |
+| | `ttl` | `10` | Seconds before the cached `git status` is refreshed in the background (minimum 1) |
+| `ahead` | `ttl` | `10` | As `dirty`. Output `↑2 ↓1`; hidden at 0/0 or without an upstream |
+| `worktree` | none | | Directory name of a linked worktree; hidden in the main worktree |
 | `repo`, `branch` | `link` | on | Link to the repository / branch page |
 | | `max` | none | Truncate to this many characters with `…` |
 | `usage` | `type` | `5h` | `5h`, `7d`; `h`, `d` shorthand |

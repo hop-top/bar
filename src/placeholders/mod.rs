@@ -5,6 +5,7 @@ pub mod cost;
 pub mod ctx;
 pub mod dirs;
 pub mod gh;
+pub mod gitst;
 pub mod misc;
 pub mod model;
 pub mod repo;
@@ -71,6 +72,9 @@ pub fn lookup(name: &str) -> Option<&'static dyn Placeholder> {
         "root" => &dirs::Root,
         "prs" => &gh::Prs,
         "issues" => &gh::Issues,
+        "dirty" => &gitst::Dirty,
+        "ahead" => &gitst::Ahead,
+        "worktree" => &gitst::Worktree,
         _ => return None,
     })
 }
