@@ -99,6 +99,10 @@ pub fn builtin(set: Icons, name: &str, opts: &Options) -> Option<&'static str> {
         "thinking" => ("\u{f0eb}", "💭"),          // nf-fa-lightbulb_o
         "fast" => ("\u{f135}", "🚀"),              // nf-fa-rocket
         "cwd" => ("\u{f07c}", "📂"),               // nf-fa-folder_open
+        "sid" => ("\u{f292}", "🆔"),               // nf-fa-hashtag
+        "compactions" => ("\u{f066}", "🧹"),       // nf-fa-compress
+        "skills" => ("\u{f0d0}", "✨"),            // nf-fa-magic
+        "tmux" => ("\u{f0db}", "🪟"),              // nf-fa-columns
         "root" => ("\u{f015}", "🏠"),              // nf-fa-home
         _ => return None,
     };

@@ -9,10 +9,12 @@ pub mod gh;
 pub mod gitst;
 pub mod misc;
 pub mod model;
+pub mod niche;
 pub mod repo;
 pub mod sessions;
 pub mod spend;
 pub mod spendhist;
+pub mod tmux;
 pub mod tokens;
 pub mod usage;
 
@@ -82,6 +84,10 @@ static REGISTRY: &[(&str, &(dyn Placeholder + Sync))] = &[
     ("dirty", &gitst::Dirty),
     ("ahead", &gitst::Ahead),
     ("worktree", &gitst::Worktree),
+    ("sid", &niche::Sid),
+    ("compactions", &niche::Compactions),
+    ("skills", &niche::Skills),
+    ("tmux", &tmux::Tmux),
 ];
 
 /// Names of all core placeholders, in registry order.

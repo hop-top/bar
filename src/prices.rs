@@ -1,6 +1,10 @@
 //! Per-model token prices, dollars per million tokens kept as integer
 //! micro-dollars: `[input, output, cache write (5 min), cache read]`.
 
+pub mod models;
+mod norm;
+pub mod update;
+
 pub type Rates = [u64; 4];
 
 /// Built-in table. An id matches an entry when it equals the entry or is
@@ -48,8 +52,15 @@ fn matches(model: &str, entry: &str) -> bool {
     })
 }
 
+/// The table entry for `model`, also through the id normaliser (Bedrock,
+/// Vertex and gateway spellings of the same Anthropic model).
 fn builtin(model: &str) -> Option<&'static (&'static str, Rates)> {
-    BUILTIN.iter().find(|(p, _)| matches(model, p))
+    // the table is Anthropic's: only an unprefixed or `anthropic` id
+    // reaches it, so `other/claude-opus-4-5` is not priced as Claude
+    norm::candidates(model)
+        .iter()
+        .filter(|c| c.vendor.as_deref().is_none_or(|v| v == "anthropic"))
+        .find_map(|c| BUILTIN.iter().find(|(p, _)| matches(&c.id, p)))
 }
 
 /// Prompt size above which `model` is priced at the long-context rates.
@@ -103,8 +114,30 @@ impl Price {
 }
 
 /// An override beats the built-in table; among overrides the longest
-/// matching prefix wins, a later line breaking ties.
+/// matching prefix wins, a later line breaking ties. Models the built-in
+/// table lacks fall back to the models.dev snapshot.
 pub fn lookup(model: &str, overrides: &[Price]) -> Option<Rates> {
+    lookup_with(model, None, overrides, || models::active().snapshot)
+}
+
+/// `lookup` against a given snapshot, optionally inside one `provider`.
+pub fn lookup_in(
+    model: &str,
+    provider: Option<&str>,
+    overrides: &[Price],
+    snap: &models::Snapshot,
+) -> Option<Rates> {
+    lookup_with(model, provider, overrides, || snap)
+}
+
+/// The snapshot is only fetched, so parsed, when nothing earlier priced
+/// the model.
+fn lookup_with<'a>(
+    model: &str,
+    provider: Option<&str>,
+    overrides: &[Price],
+    snap: impl FnOnce() -> &'a models::Snapshot,
+) -> Option<Rates> {
     let mut best: Option<&Price> = None;
     for p in overrides.iter().filter(|p| model.starts_with(&p.prefix)) {
         if best.is_none_or(|b| p.prefix.len() >= b.prefix.len()) {
@@ -114,5 +147,8 @@ pub fn lookup(model: &str, overrides: &[Price]) -> Option<Rates> {
     if let Some(p) = best {
         return Some(p.rates);
     }
-    builtin(model).map(|(_, r)| *r)
+    match builtin(model) {
+        Some((_, r)) => Some(*r),
+        None => snap().lookup(model, provider),
+    }
 }

@@ -303,7 +303,19 @@ fn check_flags_bad_usage_style_values() {
     let (code, stdout) = out(&mut fx.bar(&["check"]));
     assert_eq!(code, 0, "{stdout}");
 
-    for bad in ["show=bar,zzz", "alt=time,zzz", "glyphs=zzz", "count=zzz"] {
+    fx.conf(
+        "set left \"#{usage[show=spark,gauge,time,alt=gauge,spark,color=gradient,width=8]}\"\n",
+    );
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_eq!(code, 0, "{stdout}");
+
+    for bad in [
+        "show=bar,zzz",
+        "alt=time,zzz",
+        "glyphs=zzz",
+        "count=zzz",
+        "color=zzz",
+    ] {
         fx.conf(&format!("set left \"#{{usage[{bad}]}}\"\n"));
         let (code, stdout) = out(&mut fx.bar(&["check"]));
         assert_eq!(code, 2, "{bad}: {stdout}");
@@ -391,5 +403,37 @@ fn check_rejects_zero_ttl_and_bad_agents_names() {
         let (code, stdout) = out(&mut fx.bar(&["check"]));
         assert_eq!(code, 2, "{bad}: {stdout}");
         assert!(stdout.contains("invalid value"), "{bad}: {stdout}");
+    }
+}
+
+#[test]
+fn check_validates_niche_options() {
+    let fx = Fx::new();
+    fx.conf("set left \"#{sid[len=4]} #{tmux[max=6]} #{compactions} #{skills}\"\n");
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_eq!(code, 0, "{stdout}");
+    for bad in [
+        "#{sid[len=-1]}",
+        "#{sid[len=x]}",
+        "#{tmux[max=-2]}",
+        "#{skills[n=1]}",
+    ] {
+        fx.conf(&format!("set left \"{bad}\"\n"));
+        let (code, stdout) = out(&mut fx.bar(&["check"]));
+        assert_eq!(code, 2, "{bad}: {stdout}");
+    }
+}
+
+#[test]
+fn preview_samples_niche_placeholders() {
+    let fx = Fx::new();
+    fx.conf("set left \"#{sid} #{tmux} #{compactions} #{skills}\"\n");
+    let mut c = fx.bar(&["preview"]);
+    c.env("COLUMNS", "200");
+    let (code, stdout) = out(&mut c);
+    assert_eq!(code, 0);
+    let plain = hop_bar::style::strip_codes(&stdout);
+    for want in ["a1b2c3d4", "work:1", "compact 2", "skills 3"] {
+        assert!(plain.contains(want), "{want}: {plain}");
     }
 }

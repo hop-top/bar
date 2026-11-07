@@ -1,6 +1,6 @@
 use super::{Ctx, Placeholder};
 use crate::options::Options;
-use crate::style::{bold, fg, sanitize};
+use crate::style::{bold, fg, neutral, sanitize};
 use serde_json::Value;
 use std::path::PathBuf;
 
@@ -43,15 +43,13 @@ fn email() -> Option<String> {
         .map(str::to_owned)
 }
 
-const UNKNOWN_COLOR: u8 = 250;
-
 impl Placeholder for Account {
     fn render(&self, ctx: &Ctx, _opts: &Options) -> Option<String> {
         let Some(email) = email() else {
             let key = std::env::var("ANTHROPIC_API_KEY")
                 .ok()
                 .filter(|k| !k.is_empty());
-            return key.map(|_| bold(&fg(UNKNOWN_COLOR, "api-key")));
+            return key.map(|_| bold(&fg(neutral(), "api-key")));
         };
         let (label, color) = ctx
             .config
@@ -59,7 +57,7 @@ impl Placeholder for Account {
             .iter()
             .find(|r| glob_match(&r.glob, &email))
             .map(|r| (r.label.clone(), r.color))
-            .unwrap_or((email, UNKNOWN_COLOR));
+            .unwrap_or((email, neutral()));
         Some(bold(&fg(color, &sanitize(&label))))
     }
 }

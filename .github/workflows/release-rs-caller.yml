@@ -43,7 +43,7 @@ jobs:
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --generate-notes $flags
 
   # Prebuilt binaries, one native runner per target. Asset:
-  # bar-<version>-<target>.tar.gz holding `bar`, plus a .sha256 file.
+  # bar-<version>-<target>.tar.gz holding `bar` and LICENSE-models.dev, plus a .sha256 file.
   # Linux builds on ubuntu-22.04 (glibc 2.35) so they run on glibc >= 2.35.
   # The arm Linux runner needs a plan/repo that provides it.
   binaries:
@@ -74,7 +74,7 @@ jobs:
         run: |
           set -euo pipefail
           name="bar-${TAG#v}-${TARGET}"
-          tar -C "target/${TARGET}/release" -czf "${name}.tar.gz" bar
+          tar -czf "${name}.tar.gz" -C "target/${TARGET}/release" bar -C "$PWD/data" LICENSE-models.dev
           if command -v sha256sum >/dev/null; then
             sha256sum "${name}.tar.gz" > "${name}.tar.gz.sha256"
           else

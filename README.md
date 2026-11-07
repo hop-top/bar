@@ -1,6 +1,6 @@
 # bar
 
-Fast, configurable and extensible status line for [Claude Code](https://code.claude.com/docs/en/statusline). Licence: [Apache-2.0](LICENSE).
+Fast, configurable and extensible status line for [Claude Code](https://code.claude.com/docs/en/statusline). Licence: [Apache-2.0](LICENSE). The built-in model price data comes from models.dev, MIT: [data/LICENSE-models.dev](data/LICENSE-models.dev).
 
 Rendering never waits on the network (slow data comes from a background cache) and costs 3.2 to 3.7 ms of CPU per render ([measured](docs/technical.md#performance)). The layout is a tmux-style config with options on every placeholder, and any `bar-<name>` executable on `PATH` becomes a placeholder.
 
@@ -73,7 +73,7 @@ bar preview   # layout with sample data; --state early|burning|final
 
 ### Skins and presets
 
-`set skin powerline` or `set skin capsule` puts each segment on a background colour; `set palette nord|gruvbox|dracula|solarized|mono` swaps the colours. Both glyph sets need a Nerd Font; `set skin-glyphs ascii` works with any font. Six presets ship in the binary, `two-line` among them; `set left@2` and friends add lines (up to 4) and `set wrap on` flows a too-long line onto more rows ([Lines and wrapping](docs/config.md#lines-and-wrapping)):
+`set skin powerline` or `set skin capsule` puts each segment on a background colour; `set palette nord|gruvbox|dracula|solarized|mono|terminal` swaps the colours. Both glyph sets need a Nerd Font; `set skin-glyphs ascii` works with any font. Six presets ship in the binary, `two-line` among them; `set left@2` and friends add lines (up to 4) and `set wrap on` flows a too-long line onto more rows ([Lines and wrapping](docs/config.md#lines-and-wrapping)):
 
 ```sh
 bar preview --preset powerline   # try one with sample data

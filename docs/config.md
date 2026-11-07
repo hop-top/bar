@@ -2,11 +2,13 @@
 
 ## usage
 
-`#{usage[type=5h|7d|h|d, show=time,bar, alt=time,pct, count=left|used, glyphs=blocks, width=5, click=toggle|none]}`
+`#{usage[type=5h|7d|h|d, show=time,bar, alt=time,pct, count=left|used, glyphs=blocks, color=solid|gradient, width=5, click=toggle|none]}`
 
-- `show` lists the components in order from `time`, `bar`, `pct`, `eta`, `proj` (`show=bar,pct`, `show=pct,time`); default `time,bar`. `eta` is the projected time until the budget runs out at the average burn so far (`→1h20m` in the bad colour when the projection is over 100%, a muted `→ok` when the budget lasts the window); `proj` is the projected used percent at reset (`p140%`, capped at 999): the bad colour above 100%, otherwise the bar's ramp (thresholds only, no time floors) on the projected remaining, never red. Both ignore `count`. Both hide while nothing is used or under 2% of the window has elapsed. `view` stays as an alias: `bar` is `time,bar`, `pct` is `time,pct`, `time` is `time`; `show` wins when both are set. `count=used` makes the percentage and the bar fill show used instead of remaining; the colour still follows the pace score of what remains. `glyphs`: `blocks` (█░), `shades` (▓░), `dots` (●○), `squares` (■□), `bars` (▰▱), `braille` (⣿⣀), `eighths` (█ with a ▏▎▍▌▋▊▉ last cell); an unknown name draws `blocks` and `bar check` flags it.
+- `show` lists the components in order from `time`, `bar`, `pct`, `eta`, `proj`, `spark`, `gauge` (`show=bar,pct`, `show=pct,time`); default `time,bar`. `eta` is the projected time until the budget runs out at the average burn so far (`→1h20m` in the bad colour when the projection is over 100%, a muted `→ok` when the budget lasts the window); `proj` is the projected used percent at reset (`p140%`, capped at 999): the bad colour above 100%, otherwise the bar's ramp (thresholds only, no time floors) on the projected remaining, never red. Both ignore `count`. Both hide while nothing is used or under 2% of the window has elapsed. `view` stays as an alias: `bar` is `time,bar`, `pct` is `time,pct`, `time` is `time`; `show` wins when both are set. `count=used` makes the percentage and the bar fill show used instead of remaining; the colour still follows the pace score of what remains. `glyphs`: `blocks` (█░), `shades` (▓░), `dots` (●○), `squares` (■□), `bars` (▰▱), `braille` (⣿⣀), `eighths` (█ with a ▏▎▍▌▋▊▉ last cell); an unknown name draws `blocks` and `bar check` flags it.
+- `spark` draws the used percent of the last `width` samples as `▁▂▃▄▅▆▇█` (default 5 cells), one cell per sample, oldest first; `gauge` is one such cell for the current value (per `count`), in the bar's colour and inside the click link like `bar` and `pct`; `spark` is not linked. Both are single-cell glyphs, so widths are unchanged. `spark` hides until two samples exist. `color=gradient` colours each spark cell by its own value on the plain ramp: no time-left or final-stretch input, so old samples are not scored as if it were now; otherwise the spark takes the bar's colour.
+- Sample history: when `spark` is in `show` or `alt`, a render appends `(unix time, used%)` to `hist-5h` / `hist-7d` (mode 0600, written atomically) in the state directory, but only once the step has passed since the last sample: 10 minutes for `5h`, 6 hours for `7d`. At most 64 samples are kept, oldest dropped. A new `resets_at` (the window reset) or a clock that went backwards starts a new series. The step is fixed; `bar preview` writes nothing, so it shows no spark.
 - `bar toggle` (a click on the bar or percentage) flips between `show` and `alt`; `alt` defaults to `show` with `bar` and `pct` swapped. Time, `eta` and `proj` stay outside the link. Expired or missing windows render nothing.
-- The bar is one colour: every filled cell takes the colour of the exact value, the same as `pct`; empty cells are muted. The colour follows the pace score of `rule usage[type=5h]` / `rule usage[type=7d]`; without a rule the built-ins apply (`early warn=20% bad=5%`, final `1h` / `1d` with `bad=30%`).
+- The bar is one colour by default (`color=solid`): every filled cell takes the colour of the exact value, the same as `pct`; empty cells are muted. `color=gradient` colours only the filled cells, along the ramp from its bad end up to the current score: cell `i` of `n` filled cells takes the score of `remaining * (i+1) / n`, so the last filled cell equals the solid colour and the adjacent `pct`; `count=used` mirrors it (the first cell is the good end). Empty cells stay muted. In the final stretch the scores invert, as for the solid colour. The colour follows the pace score of `rule usage[type=5h]` / `rule usage[type=7d]`; without a rule the built-ins apply (`early warn=20% bad=5%`, final `1h` / `1d` with `bad=30%`).
 - Toggle state: `pct-5h` / `pct-7d` files (mode 0600) in the state directory (the kit state dir for `bar`; `BAR_STATE_DIR` overrides it, meant for tests). While a file exists, `bar` and `pct` swap. `bar toggle <5h|7d>` flips it.
 - Link `bar://toggle/<key>` is emitted only when the handler app is installed (marker `click-installed` in the state directory) and `click` is not `none`.
 
@@ -33,7 +35,7 @@ Estimated spend for today and the calendar month: `today $3.12 · mon $84.10` (t
 - A background job does the scanning, at most once per 60 s (a failed run waits 60 s). A render only reads the finished summary, so it renders empty until the first run completes. The first run reads the newest transcripts first and stops at the refresh time limit; later runs continue, so a large history catches up over a few minutes.
 - State: `spendhist/<hash>.json` in the state directory (mode 0600, written atomically): per-transcript byte offsets, tokens per day and model for the last 62 days, and the hashes of counted messages. If the file would pass 16 MiB the marks of the least recently modified transcripts and then the oldest hashes are dropped; totals are kept, but a transcript whose mark was dropped is read again.
 - Cost per message: input, output, cache write and cache read tokens times the model's rates. Cache writes use the 5-minute rate for all cache-creation tokens. A model without a price counts as tokens but adds no dollars, and the amount gets a trailing `~`. Model ids over 128 characters or with unusual characters, and a day's models past the 63rd, are counted as `other`, which never has a price.
-- Prices: built in for the Opus, Sonnet, Haiku, Fable and Mythos families, matched by exact id as below. Source: the Anthropic pricing page (platform.claude.com/docs/en/about-claude/pricing), read 2026-11-07; A model id matches an entry when it equals it or adds `-YYYYMMDD`; an unlisted version (say a newer minor release) has no price and shows `~` until you add a `set price`. Haiku 5.5 requests whose prompt (input plus cache tokens) passes 100,000 tokens are priced at five times the rates, as the page lists; a `set price` rule covers both tiers. Override or add with `set price <model-prefix> <in> <out> <cache_write> <cache_read>`, dollars per million tokens, for example `set price claude-opus-4-5 5 25 6.25 0.5`. An override beats the built-in table whatever its length; among overrides the longest prefix wins, a later line breaking ties.
+- Prices: built in for the Opus, Sonnet, Haiku, Fable and Mythos families, matched by exact id as below. Source: the Anthropic pricing page (platform.claude.com/docs/en/about-claude/pricing), read 2026-11-07; A model id matches an entry when it equals it or adds `-YYYYMMDD`; an unlisted version (say a newer minor release) has no price and shows `~` until you add a `set price`. Haiku 5.5 requests whose prompt (input plus cache tokens) passes 100,000 tokens are priced at five times the rates, as the page lists; a `set price` rule covers both tiers. Override or add with `set price <model-prefix> <in> <out> <cache_write> <cache_read>`, dollars per million tokens, for example `set price claude-opus-4-5 5 25 6.25 0.5`. An override beats the built-in table whatever its length; among overrides the longest prefix wins, a later line breaking ties. Models the built-in table lacks (other vendors, gateways, clouds) are priced from a models.dev snapshot built into bar (`data/models.json`; its date shows in `bar check`). Lookup order: `set price` rule, built-in Anthropic table, snapshot. An id is matched as given, then without a Bedrock region (`us.`, `eu.`, `apac.`, ...) and vendor (`anthropic.`, `openai/`) prefix; then without a Vertex `@...` or Bedrock `-v1:0` suffix, then without a `-YYYYMMDD` date; the first spelling any provider lists decides, and nothing is matched loosely. A vendor prefix other than `anthropic` only matches that provider's own entries and never the built-in Claude table. Free (all-zero) listings are ignored when a priced one exists. When providers list that id at different prices the model is unknown (`~`); add a `set price`. A cache rate the provider does not list is priced as plain input. `bar prices update` fetches a fresh copy from `https://models.dev/api.json` into `$XDG_DATA_HOME/bar/models.json` (mode 0600, replaced atomically); bar uses it when it is dated the same day as the built-in snapshot or later, and not in the future; a file that is invalid or out of range is ignored and `bar check` says why. The download is capped at 64 MiB. It runs `curl` (`-fsS --max-time 60`, https only) and is the only place core bar uses the network (plugins have their own). models.dev data is MIT licensed.
 
 ## Click handler (macOS)
 
@@ -78,7 +80,7 @@ Quote values with spaces. `#` starts a comment.
 - `icon-width`: `1` (default) or `2`; cells a Nerd Font glyph (private-use codepoint) takes in your font. Layout uses it to pad; emoji widths come from Unicode.
 - `skin`: `plain` (default), `powerline` or `capsule`. See [Skins](#skins).
 - `skin-glyphs`: `nerd` (default) or `ascii`.
-- `palette`: `default`, `nord`, `gruvbox`, `dracula`, `solarized` or `mono`. See [Palettes](#palettes).
+- `palette`: `default`, `nord`, `gruvbox`, `dracula`, `solarized`, `mono` or `terminal`. See [Palettes](#palettes).
 
 ## Lines and wrapping
 
@@ -137,11 +139,17 @@ A render prints at most 4 rows, all lines together. Rows past the fourth are dro
 | `version`, `vim`, `agent` | none | | Claude Code version, vim mode, agent name; hidden when absent |
 | `style` | none | | Output style; hidden when `default` |
 | `thinking`, `fast` | none | | `think` / `fast` while enabled; hidden otherwise |
+| `sid` | `len` | `8` | First `len` chars of the session id; hidden when absent or `len=0` |
+| `compactions` | none | | `compact 2`: context compactions in this session's transcript; hidden at 0 |
+| `skills` | none | | `skills 3`: Skill tool calls on the main conversation in the transcript; hidden at 0 |
+| `tmux` | `max` | | `session:window` of the tmux pane bar runs in; hidden outside tmux |
 | `cwd` | `base` | `0` | Session directory with home as `~`; `1` shows the last component only |
 | `root` | `base` | `0` | Git top-level directory of the session directory, read without running `git`; hidden outside a repository |
 | `model`, `effort`, `ctx` | `click` | on | `none` turns the command link off; the link appears only once the handler is installed (`bar click install`) |
 
 `cost`, `burn`, `duration`, `lines`, `version`, `style`, `vim`, `agent`, `thinking` and `fast` read the statusline JSON fields `cost.total_cost_usd`, `cost.total_duration_ms`, `cost.total_lines_added`, `cost.total_lines_removed`, `version`, `output_style.name`, `vim.mode`, `agent.name`, `thinking.enabled` and `fast_mode`. Missing, mistyped, negative or non-finite values hide the placeholder. `cost` is the session's own cost; `spend` is the account spend-limit window. None of these are in the default layout.
+
+`sid` reads `session_id`; a non-numeric `len` renders as 8 and `bar check` rejects it. `compactions` counts `system` transcript entries with subtype `compact_boundary`; `skills` counts `Skill` tool calls in non-sidechain assistant entries (skills a user starts with a slash command are not counted). Both share the transcript scan of `tokens`, so they are empty without a readable `transcript_path`. `tmux` reads `$TMUX` and `$TMUX_PANE`; a background `tmux display-message` resolves the names (cached 30 s, 60 s backoff after a failure), so the first render in a pane is empty. The statusline JSON carries no voice-mode, sandbox or skill field, so there are no placeholders for them.
 
 ## Icons
 
@@ -181,6 +189,10 @@ A render prints at most 4 rows, all lines together. Rows past the fourth are dro
 | `fast` | `nf-fa-rocket` U+F135 | 🚀 |
 | `cwd` | `nf-fa-folder_open` U+F07C | 📂 |
 | `root` | `nf-fa-home` U+F015 | 🏠 |
+| `sid` | `nf-fa-hashtag` U+F292 | 🆔 |
+| `compactions` | `nf-fa-compress` U+F066 | 🧹 |
+| `skills` | `nf-fa-magic` U+F0D0 | ✨ |
+| `tmux` | `nf-fa-columns` U+F0DB | 🪟 |
 
 Plugins: see [plugins](plugins.md).
 
@@ -210,8 +222,11 @@ Colours inside a segment (usage ramp, `ctx` colour, state colours) still apply o
 | `dracula` | 146 | 84 | 228 | 203 | 236 61 238 97 239 |
 | `solarized` | 245 | 106 | 136 | 160 | 23 235 24 30 66 |
 | `mono` | 245 | 252 | 248 | 255 | 236 238 240 242 |
+| `terminal` | 8 | 2 | 3 | 1 | 0 4 |
 
-`default` keeps today's colours, ramp included (`196 … 46`). The other palettes use a three-step ramp from their own colours: bad for scores up to 20, warn up to 60, good above (the ramp is indexed by `(score + 9) / 10`). An explicit `set color.good|warn|bad` or `set ramp` beats the palette wherever it appears in the file. Values are 256-colour codes; no gradients.
+`default` keeps today's colours, ramp included (`196 … 46`). The other palettes use a three-step ramp from their own colours: bad for scores up to 20, warn up to 60, good above (the ramp is indexed by `(score + 9) / 10`). An explicit `set color.good|warn|bad` or `set ramp` beats the palette wherever it appears in the file. Values are 256-colour codes.
+
+`terminal` draws the codes 0-15 as ANSI 16-colour SGR instead of `38;5;n`, so the terminal's own theme picks the colours: foreground `30`-`37` / `90`-`97`, skin backgrounds `40`-`47` / `100`-`107`. Muted is bright black (`90`), good green (`32`), warn yellow (`33`), bad red (`31`), repo names cyan (`36`); the skin backgrounds are black and blue only, the two that keep green, yellow and red text readable in most themes (contrast still depends on the theme; use `bg=` per placeholder to override). Its ramp has three steps (bad, warn, good). Colours you set to 0-15 yourself (`color.*`, `ramp`, `bg=`, account colours) are drawn the same way under this palette; codes from 16 up keep the 256-colour form.
 
 ## Presets
 
@@ -257,7 +272,7 @@ Exit 0 when there are no errors (warnings allowed), 2 on a config error. `--form
 
 ## bar preview
 
-`bar preview [--state early|burning|final] [--preset <name>]` renders your layout (or a [preset](#presets)) with built-in sample data for every core placeholder: a sample session (model, effort, context, usage windows, spend limit, cost, duration, lines, version, style, vim mode, agent, thinking, fast mode) and stand-ins for the rest (repo, branch, git state, worktree, PRs, issues, account label, subagents, open sessions, spend history, transcript tokens and cache, directories). In the `final` state the sample tree is clean, so `dirty` is empty. It reads no session, account, git repository, `gh` or plugin, and writes no state. Plugin placeholders render empty.
+`bar preview [--state early|burning|final] [--preset <name>]` renders your layout (or a [preset](#presets)) with built-in sample data for every core placeholder: a sample session (model, effort, context, usage windows, spend limit, cost, duration, lines, version, style, vim mode, agent, thinking, fast mode, session id, compaction and skill counts) and stand-ins for the rest (repo, branch, git state, worktree, PRs, issues, account label, subagents, open sessions, spend history, transcript tokens and cache, directories). In the `final` state the sample tree is clean, so `dirty` is empty. It reads no session, account, git repository, `gh` or plugin, and writes no state. Plugin placeholders render empty.
 
 - `early`: plenty of budget; bars green.
 - `burning`: spending fast; bars orange to yellow.

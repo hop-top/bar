@@ -250,6 +250,7 @@ fn render_impl(
         plugin_dirs,
     };
     let _muted = style::use_muted(config.muted);
+    let _ansi = style::use_ansi(palette::by_name(config.palette).is_some_and(|p| p.ansi));
     let mut rows: Vec<String> = Vec::new();
     for src in config.lines() {
         let budget = MAX_LINES - rows.len();

@@ -25,6 +25,9 @@ pub enum Job {
     /// `<path>` with `input` on stdin, no shell; stdout when it parses as
     /// plugin output.
     PluginRender { path: String, input: String },
+    /// `tmux display-message -p '#S:#I' -t <pane>`, no shell; `pane` is
+    /// `%` and digits.
+    Tmux { pane: String },
     /// Finish scanning a transcript for token totals; progress is kept in
     /// the transcript state file.
     Transcript { path: String, state: String },
@@ -49,6 +52,7 @@ impl Job {
             Job::PluginRender { path, input } => {
                 json!({"kind": "plugin-render", "path": path, "input": input})
             }
+            Job::Tmux { pane } => json!({"kind": "tmux", "pane": pane}),
             Job::Transcript { path, state } => {
                 json!({"kind": "transcript", "path": path, "state": state})
             }
@@ -83,6 +87,13 @@ impl Job {
                 input: v["input"]
                     .as_str()
                     .ok_or("plugin job without input")?
+                    .into(),
+            }),
+            Some("tmux") => Ok(Job::Tmux {
+                pane: v["pane"]
+                    .as_str()
+                    .filter(|p| crate::placeholders::tmux::valid_pane(p))
+                    .ok_or("tmux job without a valid pane")?
                     .into(),
             }),
             Some("transcript") => Ok(Job::Transcript {
@@ -129,6 +140,12 @@ impl Job {
                 limit.min(plugin::RENDER_TIMEOUT),
             )
             .filter(|o| plugin::parse_output(o).is_some()),
+            Job::Tmux { pane } => {
+                let mut c = Command::new("tmux");
+                c.args(["display-message", "-p", "#S:#I", "-t", pane]);
+                run_child(c, None, limit.min(Duration::from_secs(2)))
+                    .filter(|o| !o.trim().is_empty())
+            }
             Job::Transcript { path, state } => crate::transcript::update(
                 Path::new(state),
                 Path::new(path),
