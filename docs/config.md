@@ -37,7 +37,7 @@ Estimated spend for today and the calendar month: `today $3.12 · mon $84.10` (t
 
 ## Click handler (macOS)
 
-`bar click install` builds `~/Applications/bar-click.app` (`BAR_APP_DIR` overrides the directory) from an AppleScript `on open location` handler, sets `LSUIElement` and the `bar` URL scheme with `plutil`, signs it ad hoc, registers it with `lsregister`, then writes the marker. Elsewhere it prints a message and exits 0. `--dry-run` prints the script and commands and changes nothing.
+`bar click install` builds `~/Applications/bar-click.app` (`BAR_APP_DIR` overrides the directory) from an AppleScript `on open location` handler, sets `LSUIElement` and the `bar` URL scheme with `plutil`, signs it ad hoc, registers it with `lsregister`, then writes the marker. Elsewhere it writes nothing, prints that it needs macOS and exits 2; `--hooks-only` registers just the hooks on any platform. `--dry-run` prints the script and commands and changes nothing.
 
 CI covers the generated script, plist edits, command list and platform guard with fake runners. The install itself is checked by hand:
 
@@ -116,6 +116,7 @@ Quote values with spaces. `#` starts a comment.
 | | `max` | none | Truncate the names with `…` |
 | `spendhist` | `period` | `both` | `today`, `month`; see [spendhist](#spendhist) |
 | | `tz` | `local` | `utc` buckets days by UTC date |
+| `account` | none | | Signed-in account (`oauthAccount.emailAddress` in `.claude.json`): the label and colour of the first matching `account` line, else the email in grey; `api-key` when only `ANTHROPIC_API_KEY` is set; hidden otherwise |
 | `sessions`, `spend` | none | | No options |
 | every placeholder, plugins included | `icon` | set default | A glyph (at most 2 cells), or `none` to hide it. See [Icons](#icons) |
 | | `bg` | palette | Segment background, `0`-`255`, under a `powerline` or `capsule` skin. See [Skins](#skins) |

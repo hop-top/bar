@@ -58,6 +58,7 @@ The result is cached for a day per binary and modification time; renders never r
 ```
 
 - `options`: inline options over `default <name>` lines, `%…%` expanded, validated against the schema and typed. An unknown key or a bad value omits the segment.
+- `show` and `alt` are list options for every placeholder, plugins included: a bare part after one continues its comma list, so `#{name[show=a,b]}` sends `show` as `a,b`, and `#{name[show=a,verbose]}` sends `show` as `a,verbose` rather than a separate `verbose` flag. Avoid those two names for other kinds of option, or expect a comma list; put flags before them.
 - `config`: the plugin's own `plugin <name> k=v` line, as strings, without `ttl`. Nothing else from the config or the environment goes in; secrets stay in the keychain, and config holds only entry names.
 - `columns`: `COLUMNS`, or `null`.
 

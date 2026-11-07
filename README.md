@@ -86,7 +86,7 @@ bar init --preset capsule        # write it as your config; never overwrites
 
 The `powerline` preset without icons and with `set skin-glyphs ascii`, at `COLUMNS=104`, colour stripped. See [Skins](docs/config.md#skins), [Palettes](docs/config.md#palettes) and [Presets](docs/config.md#presets).
 
-Plugins: `bar plugin list` shows the `bar-<name>` executables found on `PATH`; see [docs/plugins.md](docs/plugins.md). Two reference plugins live in `plugins/`.
+Plugins: `bar plugin list` shows the `bar-<name>` executables found on `PATH`; see [docs/plugins.md](docs/plugins.md). Five reference plugins live in `plugins/`: `ci`, `claude-credits`, `health`, `mem` and `tlc`.
 
 ## Docs
 
