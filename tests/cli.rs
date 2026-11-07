@@ -32,10 +32,21 @@ fn version_reports_bar() {
 
 #[test]
 fn render_prints_cwd_basename() {
-    bar()
+    let home = std::env::temp_dir().join(format!("bar-cli-{}", std::process::id()));
+    let dir = home.join("proj");
+    std::fs::create_dir_all(&dir).unwrap();
+    let out = bar()
         .arg("render")
-        .write_stdin(r#"{"workspace":{"current_dir":"/work/proj"}}"#)
+        .env("HOME", &home)
+        .env("XDG_CONFIG_HOME", home.join("xdg"))
+        .env("COLUMNS", "200")
+        .write_stdin(format!(
+            r#"{{"workspace":{{"current_dir":"{}"}}}}"#,
+            dir.display()
+        ))
         .assert()
         .success()
-        .stdout("proj\n");
+        .stdout(predicate::str::contains("proj"));
+    drop(out);
+    let _ = std::fs::remove_dir_all(&home);
 }

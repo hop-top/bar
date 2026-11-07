@@ -1,5 +1,5 @@
 use clap::{Command, CommandFactory, Parser, Subcommand};
-use hop_bar::session;
+use hop_bar::{conf, session};
 use hop_top_kit::output::{register_output_flags, RegisterOutputFlagsOptions};
 
 #[derive(Parser)]
@@ -33,12 +33,11 @@ fn render() {
     // Non-UTF-8 or unreadable stdin degrades to an empty session.
     let _ = std::io::Read::read_to_end(&mut std::io::stdin(), &mut buf);
     let s = session::parse(&String::from_utf8_lossy(&buf));
-    let dir = if s.cwd.is_empty() {
-        std::env::current_dir().unwrap_or_default()
-    } else {
-        s.cwd.into()
-    };
-    if let Some(name) = dir.file_name() {
-        println!("{}", name.to_string_lossy());
+    let columns = std::env::var("COLUMNS")
+        .ok()
+        .and_then(|c| c.trim().parse().ok());
+    let out = hop_bar::render::run(&s, conf::load(), columns);
+    if !out.is_empty() {
+        println!("{out}");
     }
 }

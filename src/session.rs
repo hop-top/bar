@@ -12,6 +12,7 @@ pub struct Window {
 pub struct Session {
     pub cwd: String,
     pub model: String,
+    pub model_id: String,
     pub effort: String,
     pub session_id: String,
     pub context_used: Option<f64>,
@@ -47,6 +48,7 @@ pub fn parse(input: &str) -> Session {
         model: str_at(&v, &["model", "display_name"])
             .or_else(|| str_at(&v, &["model", "id"]))
             .unwrap_or_default(),
+        model_id: str_at(&v, &["model", "id"]).unwrap_or_default(),
         effort: str_at(&v, &["effort", "level"]).unwrap_or_default(),
         session_id: str_at(&v, &["session_id"]).unwrap_or_default(),
         context_used: v
