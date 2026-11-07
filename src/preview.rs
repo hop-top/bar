@@ -3,7 +3,7 @@
 
 use crate::conf::{Config, LoadResult};
 use crate::options::Options;
-use crate::placeholders::{lookup, usage, Ctx};
+use crate::placeholders::{lookup, tokens, usage, Ctx};
 use crate::render::{builtin_config, render_sample};
 use crate::session::{Session, Window};
 use crate::style::{bold, dim, fg};
@@ -50,6 +50,7 @@ fn session(state: &str, now: i64) -> Session {
         model_id: "sample".into(),
         effort: "high".into(),
         session_id: String::new(),
+        transcript_path: String::new(),
         context_used: Some(38.0),
         five_hour: Some(win(p.five)),
         seven_day: Some(win(p.seven)),
@@ -87,6 +88,9 @@ fn sample(name: &str, opts: &Options, ctx: &Ctx) -> Option<String> {
             Some(bold(&fg(color, label)))
         }
         "usage" => usage::render_with(ctx, opts, Path::new("/nonexistent/bar-preview")),
+        "tokens" => tokens::tokens(ctx, opts, &tokens::sample_stats(ctx.now)),
+        "cache" => tokens::cache(ctx, opts, &tokens::sample_stats(ctx.now)),
+        "cachettl" => tokens::cachettl(ctx, opts, &tokens::sample_stats(ctx.now)),
         "model" | "effort" | "ctx" => lookup(name)?.render(ctx, opts),
         _ => None,
     }

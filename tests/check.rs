@@ -265,3 +265,29 @@ fn preview_final_shows_bad_on_unused() {
     assert!(!run("early").contains(ramp_bad), "{}", run("early"));
     fx.bar(&["preview", "--state", "later"]).assert().code(2);
 }
+
+#[test]
+fn check_validates_transcript_placeholder_options() {
+    let fx = Fx::new();
+    fx.conf("set left \"#{tokens[show=total]} #{cache[show=hit]} #{cachettl[ttl=3600]}\"\n");
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_eq!(code, 0, "{stdout}");
+    fx.conf("set left \"#{tokens[show=most]} #{cachettl[ttl=long]}\"\n");
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_eq!(code, 2, "{stdout}");
+    assert!(stdout.contains("invalid value `most`"), "{stdout}");
+    assert!(stdout.contains("invalid value `long`"), "{stdout}");
+}
+
+#[test]
+fn preview_shows_sample_transcript_stats() {
+    let fx = Fx::new();
+    fx.conf("set left \"#{tokens} #{cache} #{cachettl}\"\n");
+    let mut c = fx.bar(&["preview"]);
+    c.env("COLUMNS", "200");
+    let (code, stdout) = out(&mut c);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("12.3k"), "{stdout}");
+    assert!(stdout.contains("1.2M"), "{stdout}");
+    assert!(stdout.contains("4m12s"), "{stdout}");
+}

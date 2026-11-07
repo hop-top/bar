@@ -66,3 +66,10 @@ fn render_exits_zero_on_garbage_stdin() {
             .success();
     }
 }
+
+#[test]
+fn transcript_path_parses() {
+    let s = session::parse(r#"{"transcript_path":"/t/x.jsonl"}"#);
+    assert_eq!(s.transcript_path, "/t/x.jsonl");
+    assert_eq!(session::parse("{}").transcript_path, "");
+}

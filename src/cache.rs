@@ -43,6 +43,9 @@ pub enum Job {
     /// `<path>` with `input` on stdin, no shell; stdout when it parses as
     /// plugin output.
     PluginRender { path: String, input: String },
+    /// Finish scanning a transcript for token totals; progress is kept in
+    /// the transcript state file.
+    Transcript { path: String },
 }
 
 impl Job {
@@ -56,6 +59,7 @@ impl Job {
             Job::PluginRender { path, input } => {
                 json!({"kind": "plugin-render", "path": path, "input": input})
             }
+            Job::Transcript { path } => json!({"kind": "transcript", "path": path}),
         }
     }
 
@@ -82,6 +86,9 @@ impl Job {
                     .as_str()
                     .ok_or("plugin job without input")?
                     .into(),
+            }),
+            Some("transcript") => Ok(Job::Transcript {
+                path: plugin_path(v)?,
             }),
             other => Err(format!("unknown job kind {other:?}")),
         }
@@ -110,6 +117,13 @@ impl Job {
                 limit.min(plugin::RENDER_TIMEOUT),
             )
             .filter(|o| plugin::parse_output(o).is_some()),
+            Job::Transcript { path } => crate::transcript::update(
+                &crate::click::state_dir(),
+                Path::new(path),
+                u64::MAX,
+                Some(Instant::now() + limit),
+            )
+            .map(|_| "ok".to_string()),
         }
     }
 }
@@ -226,6 +240,10 @@ impl Cache {
             dir: state.join("cache"),
             exe,
         }
+    }
+
+    pub fn state_dir(&self) -> &Path {
+        &self.state
     }
 
     pub fn path_for(&self, key: &str) -> PathBuf {

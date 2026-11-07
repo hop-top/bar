@@ -15,3 +15,4 @@ pub mod preview;
 pub mod render;
 pub mod session;
 pub mod style;
+pub mod transcript;
