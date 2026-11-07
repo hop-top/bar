@@ -1,16 +1,18 @@
 //! Wires config, placeholders and layout into the status line text.
 
 use crate::cache::Cache;
-use crate::conf::{Config, LoadResult};
+use crate::conf::{Config, LoadResult, Skin};
 use crate::expand::{CommandRunner, Expander};
 use crate::format::{parse, segments, Token};
 use crate::icons;
-use crate::layout::compose_with;
+use crate::layout::{compose_groups, compose_with};
 use crate::options::Options;
+use crate::palette;
 use crate::placeholders::{lookup, Ctx};
 use crate::plugin;
 use crate::session::Session;
-use crate::style::dim;
+use crate::skin::{self, Seg, Side};
+use crate::style::{self, dim, visible_width_with};
 use std::path::PathBuf;
 
 /// Cold cache: every `%command%` expands to nothing.
@@ -38,15 +40,21 @@ pub fn builtin_config() -> Config {
 /// The flag says whether the text label is drawn (false when an icon is).
 pub type Sample<'a> = &'a dyn Fn(&str, &Options, &Ctx, bool) -> Option<String>;
 
-/// Core names first; anything else is a `bar-<name>` plugin.
+/// Core names first; anything else is a `bar-<name>` plugin. Returns the
+/// value and the `bg` option.
 fn render_placeholder(
     name: &str,
     inline: &Options,
     ctx: &Ctx,
     ex: &Expander,
     sample: Option<Sample>,
-) -> String {
-    let (pick, opts) = icons::split(&expanded(name, inline, ctx, ex));
+) -> (String, Option<u8>) {
+    let (bg, opts) = skin::split_bg(&expanded(name, inline, ctx, ex));
+    (render_value(name, &opts, ctx, sample), bg)
+}
+
+fn render_value(name: &str, opts: &Options, ctx: &Ctx, sample: Option<Sample>) -> String {
+    let (pick, opts) = icons::split(opts);
     let core = lookup(name);
     let glyph = icons::resolve(
         ctx.config,
@@ -91,6 +99,12 @@ fn expanded(name: &str, inline: &Options, ctx: &Ctx, ex: &Expander) -> Options {
     opts
 }
 
+/// A rendered segment and the first `bg` among its placeholders.
+struct Rendered {
+    text: String,
+    bg: Option<u8>,
+}
+
 /// Text tokens survive only beside non-empty placeholders, so `repo:` loses
 /// its colon when the branch is empty.
 fn render_segment(
@@ -98,12 +112,15 @@ fn render_segment(
     ctx: &Ctx,
     ex: &Expander,
     sample: Option<Sample>,
-) -> Option<String> {
+) -> Option<Rendered> {
+    let mut bg = None;
     let values: Vec<Option<String>> = seg
         .iter()
         .map(|t| match t {
             Token::Placeholder { name, options } => {
-                Some(render_placeholder(name, options, ctx, ex, sample))
+                let (v, b) = render_placeholder(name, options, ctx, ex, sample);
+                bg = bg.or(b);
+                Some(v)
             }
             Token::Text(_) => None,
         })
@@ -128,10 +145,10 @@ fn render_segment(
             _ => {}
         }
     }
-    Some(out)
+    Some(Rendered { text: out, bg })
 }
 
-fn render_group(src: &str, ctx: &Ctx, ex: &Expander, sample: Option<Sample>) -> Vec<String> {
+fn render_group(src: &str, ctx: &Ctx, ex: &Expander, sample: Option<Sample>) -> Vec<Rendered> {
     let Ok(tokens) = parse(src) else {
         return Vec::new();
     };
@@ -213,13 +230,46 @@ fn render_impl(
         columns,
         plugin_dirs,
     };
-    compose_with(
-        &render_group(&config.left, &ctx, &ex, sample),
-        &render_group(&config.center, &ctx, &ex, sample),
-        &render_group(&config.right, &ctx, &ex, sample),
+    let _muted = style::use_muted(config.muted);
+    let groups = [&config.left, &config.center, &config.right]
+        .map(|src| render_group(src, &ctx, &ex, sample));
+    if config.skin == Skin::Plain {
+        let [l, c, r] = groups.map(|g| g.into_iter().map(|s| s.text).collect::<Vec<_>>());
+        return compose_with(&l, &c, &r, columns, config.gap, config.icon_width);
+    }
+    paint_line(config, groups, columns)
+}
+
+/// Skinned line: backgrounds cycle through the palette across all groups,
+/// left to right; a segment's `bg` option takes its place.
+fn paint_line(config: &Config, groups: [Vec<Rendered>; 3], columns: Option<usize>) -> String {
+    let mut n = 0;
+    let [l, c, r] = groups.map(|g| {
+        g.into_iter()
+            .map(|s| {
+                let bgs = if config.bgs.is_empty() {
+                    palette::default().bgs
+                } else {
+                    config.bgs
+                };
+                let bg = s.bg.unwrap_or(bgs[n % bgs.len()]);
+                n += 1;
+                Seg {
+                    width: visible_width_with(&s.text, config.icon_width),
+                    text: s.text,
+                    bg,
+                }
+            })
+            .collect::<Vec<_>>()
+    });
+    let p = |segs: &[Seg], side| skin::paint(config.skin, config.skin_glyphs, segs, side);
+    compose_groups(
+        &p(&l, Side::Left),
+        &p(&c, Side::Center),
+        &p(&r, Side::Right),
         columns,
         config.gap,
-        config.icon_width,
+        " ",
     )
 }
 

@@ -10,6 +10,7 @@ use crate::placeholders::gitst;
 use crate::placeholders::usage::glyphs::{GLYPH_SETS, SHOW_ITEMS};
 use crate::plugin;
 use crate::render::builtin_config;
+use crate::skin;
 use serde_json::{json, Value};
 use std::cell::Cell;
 use std::collections::BTreeMap;
@@ -221,6 +222,10 @@ impl Checker<'_> {
                 bad |= self.icon(v, line);
                 continue;
             }
+            if k == "bg" {
+                bad |= self.bg(v, line);
+                continue;
+            }
             match spec.iter().find(|(n, _)| n == k) {
                 None => {
                     bad = true;
@@ -245,6 +250,15 @@ impl Checker<'_> {
                 icons::MAX_CELLS
             );
             self.error(line, msg);
+        }
+        bad
+    }
+
+    /// Reports a bad `bg` value; true when there was one.
+    fn bg(&mut self, v: &str, line: usize) -> bool {
+        let bad = !v.contains('%') && !skin::valid_bg(v);
+        if bad {
+            self.error(line, format!("invalid bg `{v}` (0-255)"));
         }
         bad
     }
@@ -315,6 +329,8 @@ impl Checker<'_> {
         for (k, v) in opts.iter().filter(|(_, v)| !v.contains('%')) {
             if k == "icon" {
                 self.icon(v, line);
+            } else if k == "bg" {
+                self.bg(v, line);
             } else {
                 concrete.set(k, v);
             }

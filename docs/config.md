@@ -37,7 +37,7 @@ No file: built-in layout. A file with an error makes `bar render` print `bar: co
 
 | Directive | Form |
 |-----------|------|
-| `set` | `set <key> <value>`; keys `left center right separator gap wrap refresh icons icon-width color.good color.warn color.bad ramp` |
+| `set` | `set <key> <value>`; keys `left center right separator gap wrap refresh icons icon-width skin skin-glyphs palette color.good color.warn color.bad ramp` |
 | `default` | `default <placeholder> key=value ...` |
 | `account` | `account "<glob>" <label> <color>` |
 | `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%` |
@@ -51,6 +51,9 @@ Quote values with spaces. `#` starts a comment.
 
 - `icons`: `none` (default, output unchanged), `nerdfont` or `emoji`. See [Icons](#icons).
 - `icon-width`: `1` (default) or `2`; cells a Nerd Font glyph (private-use codepoint) takes in your font. Layout uses it to pad; emoji widths come from Unicode.
+- `skin`: `plain` (default), `powerline` or `capsule`. See [Skins](#skins).
+- `skin-glyphs`: `nerd` (default) or `ascii`.
+- `palette`: `default`, `nord`, `gruvbox`, `dracula`, `solarized` or `mono`. See [Palettes](#palettes).
 
 ## Placeholders
 
@@ -85,6 +88,7 @@ Quote values with spaces. `#` starts a comment.
 | | `max` | none | Truncate the names with `…` |
 | `sessions`, `spend` | none | | No options |
 | every placeholder, plugins included | `icon` | set default | A glyph (at most 2 cells), or `none` to hide it. See [Icons](#icons) |
+| | `bg` | palette | Segment background, `0`-`255`, under a `powerline` or `capsule` skin. See [Skins](#skins) |
 | `cost` | `fmt` | `usd` | Session cost, `$1.23`; `<$0.01` under a cent. Hidden when absent |
 | `burn` | none | | Cost per hour, `$4.10/h`; hidden for the first 60 s of the session |
 | `duration` | none | | Session time: `45s`, `12m`, `1h05m` |
@@ -118,6 +122,42 @@ Quote values with spaces. `#` starts a comment.
 | `spend` | `nf-fa-dollar` U+F155 | 💰 |
 
 Plugins: see [plugins](plugins.md).
+
+## Skins
+
+`set skin plain|powerline|capsule` picks how segments are drawn.
+
+- `plain` (default): segments joined by a muted ` │ `; output is unchanged from earlier versions.
+- `powerline`: each segment sits on a background colour with one space of padding each side. Left and centre groups are joined by U+E0B0, the right group by U+E0B2; each arrow takes the background it leaves as its colour and the one it enters as its background, so the shapes flow out of the left and centre groups and into the right one from the edge.
+- `capsule`: each segment is wrapped in U+E0B6 … U+E0B4 on its background, one space between capsules.
+
+Powerline and capsule glyphs need a Nerd Font or a Powerline-patched font. `set skin-glyphs ascii` draws `>` / `<` (powerline) and `(` / `)` (capsule) instead, for any font.
+
+Backgrounds come from the palette's list, in order across the whole line (left, centre, right) and cycled. `bg=<0-255>` on a placeholder sets its segment's background; in a segment holding several placeholders the first `bg` wins. `plain` ignores `bg`. `bg` is reserved on every placeholder, plugins included; plugins never see it. `bar check` rejects a value outside 0-255.
+
+Colours inside a segment (usage ramp, `ctx` colour, state colours) still apply on top of the background. A reset inside a segment value restores the segment background; the background ends (`49`) only where the segment ends. Every skin glyph counts as one cell, whatever `icon-width` says, and layout counts the padding and glyphs when it fits groups to `COLUMNS`. When left and right do not fit beside each other they are joined by one space.
+
+## Palettes
+
+`set palette <name>` sets the muted text colour, the state colours (`color.good`, `color.warn`, `color.bad`), the usage `ramp` and the background list skins use.
+
+| Palette | muted | good | warn | bad | backgrounds |
+|---|---|---|---|---|---|
+| `default` | 250 | 114 | 179 | 203 | 238 24 236 60 23 |
+| `nord` | 248 | 144 | 222 | 167 | 237 24 239 67 60 |
+| `gruvbox` | 246 | 142 | 214 | 167 | 237 239 66 241 95 |
+| `dracula` | 146 | 84 | 228 | 203 | 236 61 238 97 239 |
+| `solarized` | 245 | 106 | 136 | 160 | 23 235 24 30 66 |
+| `mono` | 245 | 252 | 248 | 255 | 236 238 240 242 |
+
+`default` keeps today's colours, ramp included (`196 … 46`). The other palettes use a three-step ramp from their own colours: bad for scores up to 30, warn up to 70, good above. An explicit `set color.good|warn|bad` or `set ramp` beats the palette wherever it appears in the file. Values are 256-colour codes; no gradients.
+
+## Presets
+
+Five example configs ship in the binary and in [`presets/`](../presets): `minimal`, `full`, `powerline`, `capsule`, `compact`.
+
+- `bar preview --preset <name>` renders one with sample data, ignoring your config.
+- `bar init [--preset <name>]` writes one (default `full`) to the first search path: `$XDG_CONFIG_HOME/bar/bar.conf`, else `~/.config/bar/bar.conf`. It refuses when any search path already holds a config, prints the path it found and exits 2. There is no `--force`; remove or move the file yourself.
 
 ## Values
 
@@ -155,7 +195,7 @@ Exit 0 when there are no errors (warnings allowed), 2 on a config error. `--form
 
 ## bar preview
 
-`bar preview [--state early|burning|final]` renders your layout with built-in sample data: model, context, usage windows, repo, branch, PRs, issues and account label. It reads no session, account, git repository, `gh` or plugin, and writes no state. Plugin placeholders render empty.
+`bar preview [--state early|burning|final] [--preset <name>]` renders your layout (or a [preset](#presets)) with built-in sample data: model, context, usage windows, repo, branch, PRs, issues and account label. It reads no session, account, git repository, `gh` or plugin, and writes no state. Plugin placeholders render empty.
 
 - `early`: plenty of budget; bars green.
 - `burning`: spending fast; bars orange to yellow.
