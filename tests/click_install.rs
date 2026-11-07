@@ -143,15 +143,40 @@ fn dry_run_runs_nothing_and_writes_nothing() {
 }
 
 #[test]
-fn non_macos_prints_message_and_exits_ok() {
+fn non_macos_is_unsupported_and_does_nothing() {
     let t = Tmp::new();
     let c = cfg(&t);
     let mut out = Vec::new();
-    run_install(&c, false, false, &mut |_| panic!("ran"), &mut out).unwrap();
-    assert!(String::from_utf8(out).unwrap().contains("macOS"));
+    let e = run_install(&c, false, false, &mut |_| panic!("ran"), &mut out).unwrap_err();
+    assert_eq!(e, hop_bar::click::InstallError::Unsupported);
+    assert!(e.to_string().contains("--hooks-only"));
+    assert!(out.is_empty());
     assert!(!c.state_dir.exists());
 }
 
+#[cfg(not(target_os = "macos"))]
+#[test]
+fn install_cli_unsupported_exits_2() {
+    let t = Tmp::new();
+    let o = Command::cargo_bin("bar")
+        .unwrap()
+        .args(["click", "install"])
+        .env("HOME", t.path())
+        .env("XDG_CONFIG_HOME", t.path().join("cfg"))
+        .env("XDG_STATE_HOME", t.path().join("st"))
+        .env("BAR_STATE_DIR", t.path().join("bst"))
+        .output()
+        .unwrap();
+    assert_eq!(o.status.code(), Some(2));
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert!(
+        err.contains("macOS") && err.contains("--hooks-only"),
+        "{err}"
+    );
+    assert!(!t.path().join("bst").exists());
+}
+
+#[cfg(target_os = "macos")]
 #[test]
 fn install_cli_dry_run_is_safe() {
     let t = Tmp::new();
@@ -220,7 +245,11 @@ fn install(c: &InstallCfg, dry: bool) -> (Result<(), String>, String, usize) {
         },
         &mut out,
     );
-    (r, String::from_utf8(out).unwrap(), ran)
+    (
+        r.map_err(|e| e.to_string()),
+        String::from_utf8(out).unwrap(),
+        ran,
+    )
 }
 
 #[test]
@@ -385,7 +414,6 @@ fn install_backups_are_unique() {
     assert_eq!(backups(c.settings.parent().unwrap()).len(), 3);
 }
 
-#[cfg(unix)]
 #[test]
 fn install_writes_through_settings_symlink() {
     let t = Tmp::new();

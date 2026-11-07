@@ -11,7 +11,7 @@ mod url;
 pub use check::{box_is_empty, check, run, Env, Pane, Refusal};
 pub use install::{
     applescript, exec, info_plist_commands, install_plan, run_hooks_only, run_install, InstallCfg,
-    InstallPlan,
+    InstallError, InstallPlan,
 };
 pub use settings::{hook_command, plan_settings, SettingsPlan, HOOK_EVENTS};
 pub use url::{link, parse, with_cmd_link, ClickUrl, Term, COMMANDS};
@@ -61,7 +61,6 @@ pub(crate) fn write_private(path: &Path, body: &str) -> std::io::Result<()> {
     }
     let mut o = std::fs::OpenOptions::new();
     o.write(true).create(true).truncate(true);
-    #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut o, 0o600);
     o.open(path)?.write_all(body.as_bytes())
 }

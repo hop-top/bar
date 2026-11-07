@@ -153,6 +153,7 @@ fn click_cmd(m: &ArgMatches) {
             let cfg = click::InstallCfg::from_env();
             let r = if i.get_flag("hooks_only") {
                 click::run_hooks_only(&cfg, i.get_flag("dry_run"), &mut std::io::stdout())
+                    .map_err(click::InstallError::Failed)
             } else {
                 click::run_install(
                     &cfg,
@@ -164,7 +165,11 @@ fn click_cmd(m: &ArgMatches) {
             };
             if let Err(e) = r {
                 eprintln!("bar click install: {e}");
-                std::process::exit(1);
+                std::process::exit(if matches!(e, click::InstallError::Unsupported) {
+                    EXIT_USAGE
+                } else {
+                    1
+                });
             }
         }
         Some(("run", r)) => {
