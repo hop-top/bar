@@ -28,19 +28,15 @@ Anything slow is cache-backed: `gh` lists, `%command%` values, plugin `--ext-inf
 
 Target: a cached `bar render` under 50 ms in a release build.
 
-Cost per render of the default layout, in a git repository with a GitHub remote:
+Git state comes from files, not processes (`src/gitfs.rs`). The reader walks up from the working directory to `.git` (directory, or a file with `gitdir:`), follows `commondir` for linked worktrees, reads `HEAD` for the branch and `remote.origin.url` from the common `config`. It reports `Unsupported`, and `src/placeholders/repo.rs` spawns `git --no-optional-locks` instead, for: `GIT_DIR`/`GIT_WORK_TREE` in the environment, a bare repository as the working directory, `include`/`includeIf`/`url.*.insteadOf` sections in the repository or global config, `[remote.x]` headers, line continuations, reftable `HEAD`, or an unreadable file. A plain render spawns no `git`. Everything else is in-process.
 
-- `repo` and `branch` spawn up to 4 uncached `git` processes (remote URL, toplevel, current branch, remote URL again). `prs` and `issues` each ask for the remote URL once more. With a GitHub remote that is 5 processes per render. git results are not cached.
-- Everything else is in-process.
+Measured on macOS 15 with Apple git 2.39.5 (`/usr/bin/git`), release build, temp repo with a GitHub `origin`, fake `gh` on `PATH` returning `[]`, warm cache, 20 runs after warm-up, CPU time (user + system) of the child via `getrusage`:
 
-Measured on macOS 15 with Apple git 2.39.5 (`/usr/bin/git`), release build, temp repo with an `origin` remote, fake `gh` on `PATH` returning `[]`, warm cache, 20 runs after warm-up:
+| Run | CPU median |
+|-----|-----------|
+| `bar render`, default layout, spawning git (5 processes) | 52 to 55 ms (92 ms on a saturated machine) |
+| `bar render`, default layout, git from files | 3.2 to 3.7 ms |
+| `bar --version` | 4.9 ms (saturated machine) |
+| one `git` call (`branch`, `remote get-url`, `rev-parse`) | 14 ms (saturated machine) |
 
-| Run | CPU median | Wall median |
-|-----|-----------|-------------|
-| `bar --version` | 4.9 ms | not usable |
-| `bar render`, default layout | 92 ms | not usable |
-| one `git` call (`branch`, `remote get-url`, `rev-parse`) | 14 ms | not usable |
-
-The machine was saturated (load average 50 to 70) during the run, so wall time was dominated by scheduling (`bar --version` took about 390 ms wall). CPU time of the process and its children is the usable figure. It is above the 50 ms target, and the git processes account for nearly all of it. A quiet-machine wall-clock run is still to do.
-
-Options if the figure holds: memoise the remote URL within one render, then cache the git results per working directory with a short ttl through the existing cache. Neither is done.
+Wall time is not reported: it depends on machine load.

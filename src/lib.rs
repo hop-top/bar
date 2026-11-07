@@ -5,6 +5,7 @@ pub mod conf;
 pub mod expand;
 pub mod expr;
 pub mod format;
+pub mod gitfs;
 pub mod layout;
 pub mod options;
 pub mod pace;

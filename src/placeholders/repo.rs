@@ -1,4 +1,5 @@
 use super::{link_enabled, truncate, Ctx, Placeholder};
+use crate::gitfs::{self, Found};
 use crate::options::Options;
 use crate::style::{bold, dim, fg, link, sanitize};
 use std::path::{Path, PathBuf};
@@ -25,7 +26,14 @@ fn git(dir: &Path, args: &[&str]) -> Option<String> {
 
 /// origin URL (ssh, scp or https form) as `https://host/owner/repo`.
 pub fn remote_url(cwd: &Path) -> Option<String> {
-    let raw = git(cwd, &["remote", "get-url", "origin"])?;
+    let raw = match gitfs::discover(cwd) {
+        Found::NotRepo => return None,
+        Found::Repo(r) => match r.origin_url() {
+            Ok(u) => u?,
+            Err(_) => git(cwd, &["remote", "get-url", "origin"])?,
+        },
+        Found::Unsupported => git(cwd, &["remote", "get-url", "origin"])?,
+    };
     let u = raw.trim();
     let u = u.strip_suffix(".git").unwrap_or(u);
     let u = u.strip_suffix('/').unwrap_or(u);
@@ -69,12 +77,34 @@ fn hop_root(dir: &Path) -> Option<&Path> {
         .find(|d| d.join("hop.json").is_file() && d.join("hops").is_dir())
 }
 
+/// Work tree root, as `git rev-parse --show-toplevel` reports it.
+fn toplevel(dir: &Path) -> Option<PathBuf> {
+    match gitfs::discover(dir) {
+        Found::NotRepo => None,
+        Found::Repo(r) => Some(r.top.canonicalize().unwrap_or(r.top)),
+        Found::Unsupported => git(dir, &["rev-parse", "--show-toplevel"])
+            .filter(|t| !t.is_empty())
+            .map(PathBuf::from),
+    }
+}
+
+/// Current branch name; `None` when detached or not a repository.
+fn current_branch(dir: &Path) -> Option<String> {
+    match gitfs::discover(dir) {
+        Found::NotRepo => None,
+        Found::Repo(r) => match r.branch() {
+            Ok(b) => b,
+            Err(_) => git(dir, &["branch", "--show-current"]),
+        },
+        Found::Unsupported => git(dir, &["branch", "--show-current"]),
+    }
+}
+
 fn project_name(dir: &Path) -> String {
     if let Some(root) = hop_root(dir) {
         return basename(root);
     }
-    if let Some(top) = git(dir, &["rev-parse", "--show-toplevel"]).filter(|t| !t.is_empty()) {
-        let top = PathBuf::from(top);
+    if let Some(top) = toplevel(dir) {
         if top.join(".git").is_file() {
             // linked worktree: nearest ancestor that is a repo (or bare repo)
             let parent = top
@@ -118,7 +148,7 @@ impl Placeholder for Repo {
 impl Placeholder for Branch {
     fn render(&self, ctx: &Ctx, opts: &Options) -> Option<String> {
         let dir = work_dir(ctx);
-        let branch = sanitize(&git(&dir, &["branch", "--show-current"])?);
+        let branch = sanitize(&current_branch(&dir)?);
         if branch.is_empty() {
             return None;
         }
