@@ -144,7 +144,7 @@ fn duration(s: &str) -> Result<u64, String> {
         _ => return Err(bad()),
     };
     let n: u64 = s[..s.len() - 1].parse().map_err(|_| bad())?;
-    Ok(n * mult)
+    n.checked_mul(mult).ok_or_else(bad)
 }
 
 fn amount(s: &str) -> Result<Amount, String> {
@@ -163,7 +163,11 @@ fn amount(s: &str) -> Result<Amount, String> {
     } else {
         format!("{frac:0<2}").parse().map_err(|_| bad())?
     };
-    Ok(Amount::Cents(whole * 100 + frac_c))
+    whole
+        .checked_mul(100)
+        .and_then(|w| w.checked_add(frac_c))
+        .map(Amount::Cents)
+        .ok_or_else(bad)
 }
 
 fn code(s: &str) -> Result<u8, String> {

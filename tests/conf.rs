@@ -152,3 +152,13 @@ fn missing_file_is_missing_not_error() {
     assert!(matches!(r, LoadResult::Missing));
     let _ = fs::remove_dir_all(&t);
 }
+
+#[test]
+fn overflowing_duration_and_amount_report_line_number() {
+    let src = "set refresh 99999999999999999d\nrule credits early pace final=1h bad=$999999999999999999\n";
+    let e = conf::parse(src).unwrap_err();
+    let lines: Vec<_> = e.iter().map(|x| x.line).collect();
+    assert_eq!(lines, [1, 2]);
+    assert!(e[0].message.contains("invalid duration"));
+    assert!(e[1].message.contains("invalid amount"));
+}
