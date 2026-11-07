@@ -6,6 +6,8 @@
 
 /// Upper bound on DNF conjuncts, so `(a|b)&(c|d)&...` cannot explode.
 pub const MAX_CONJUNCTS: usize = 64;
+/// Nesting limit for `(` and `!`, so hostile input cannot overflow the stack.
+const MAX_DEPTH: usize = 128;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
@@ -53,7 +55,7 @@ fn lex(s: &str) -> Result<Vec<Tok>, String> {
                         None => return Err("unterminated quote".into()),
                     }
                 };
-                out.push(Tok::Val(s[start..end].to_string()));
+                out.push(Tok::Val(s[start..end].trim().to_string()));
             }
             _ => {
                 let mut end = i;
@@ -74,6 +76,7 @@ fn lex(s: &str) -> Result<Vec<Tok>, String> {
 struct Parser {
     toks: Vec<Tok>,
     pos: usize,
+    depth: usize,
 }
 
 impl Parser {
@@ -108,6 +111,16 @@ impl Parser {
     }
 
     fn unary(&mut self) -> Result<Expr, String> {
+        if self.depth >= MAX_DEPTH {
+            return Err("expression nested too deeply".into());
+        }
+        self.depth += 1;
+        let r = self.unary_inner();
+        self.depth -= 1;
+        r
+    }
+
+    fn unary_inner(&mut self) -> Result<Expr, String> {
         match self.toks.get(self.pos) {
             Some(Tok::Not) => {
                 self.pos += 1;
@@ -139,6 +152,7 @@ pub fn parse(s: &str) -> Result<Expr, String> {
     let mut p = Parser {
         toks: lex(s)?,
         pos: 0,
+        depth: 0,
     };
     let e = p.or()?;
     match p.peek() {
@@ -274,17 +288,26 @@ pub fn to_queries(key: &str, e: &Expr) -> Vec<String> {
 }
 
 /// Cartesian product of per-key query lists, space-joined, order-stable,
-/// deduplicated. Empty lists (key unset) are skipped.
-pub fn combine(parts: &[Vec<String>]) -> Vec<String> {
+/// deduplicated. Empty lists (key unset) are skipped. Errors when the
+/// product would exceed `MAX_CONJUNCTS`, checked before building.
+pub fn combine(parts: &[Vec<String>]) -> Result<Vec<String>, String> {
     let mut acc: Vec<String> = Vec::new();
     for p in parts.iter().filter(|p| !p.is_empty()) {
-        acc = if acc.is_empty() {
-            p.clone()
+        if acc.is_empty() {
+            acc = p.clone();
         } else {
-            acc.iter()
+            if acc.len().saturating_mul(p.len()) > MAX_CONJUNCTS {
+                return Err(format!("queries expand to more than {MAX_CONJUNCTS}"));
+            }
+            acc = acc
+                .iter()
                 .flat_map(|a| p.iter().map(move |b| format!("{a} {b}")))
-                .collect()
-        };
+                .collect();
+        }
+        if acc.len() > MAX_CONJUNCTS {
+            return Err(format!("queries expand to more than {MAX_CONJUNCTS}"));
+        }
+        acc = dedup(acc);
     }
-    dedup(acc)
+    Ok(acc)
 }

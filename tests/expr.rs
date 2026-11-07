@@ -92,7 +92,7 @@ fn spaces_around_operators() {
 fn cross_key_product() {
     let l = label("a&b|c");
     let a = q("author", "x|y");
-    let got = combine(&[l, a]);
+    let got = combine(&[l, a]).unwrap();
     assert_eq!(
         got,
         [
@@ -106,8 +106,11 @@ fn cross_key_product() {
 
 #[test]
 fn combine_skips_empty_and_dedupes() {
-    assert_eq!(combine(&[vec![], vec!["a".into(), "a".into()]]), ["a"]);
-    assert!(combine(&[]).is_empty());
+    assert_eq!(
+        combine(&[vec![], vec!["a".into(), "a".into()]]).unwrap(),
+        ["a"]
+    );
+    assert!(combine(&[]).unwrap().is_empty());
 }
 
 #[test]
@@ -145,4 +148,48 @@ fn dnf_blowup_errors() {
     assert!(parse(&ok.join("&")).is_ok());
     let bad: Vec<_> = (0..7).map(pair).collect();
     assert!(parse(&bad.join("&")).is_err());
+}
+
+#[test]
+fn combine_blowup_errors() {
+    let part: Vec<String> = (0..64).map(|i| format!("k:{i}")).collect();
+    assert!(combine(std::slice::from_ref(&part)).is_ok());
+    assert!(combine(&[part.clone(), part.clone(), part.clone(), part]).is_err());
+    let two: Vec<String> = vec!["a".into(), "b".into()];
+    // 2^6 = 64 ok, 2^7 = 128 rejected
+    assert!(combine(&vec![two.clone(); 6]).is_ok());
+    assert!(combine(&vec![two; 7]).is_err());
+}
+
+#[test]
+fn deep_nesting_errors() {
+    assert!(parse(&format!("{}a{}", "(".repeat(10_000), ")".repeat(10_000))).is_err());
+    assert!(parse(&format!("{}a", "!".repeat(10_000))).is_err());
+    assert!(parse(&format!("{}a{}", "(".repeat(100), ")".repeat(100))).is_ok());
+}
+
+#[test]
+fn injection_stays_one_value() {
+    assert_eq!(label("x repo:other/repo"), [r#"label:"x repo:other/repo""#]);
+    assert_eq!(
+        label(r#""x repo:other/repo""#),
+        [r#"label:"x repo:other/repo""#]
+    );
+}
+
+#[test]
+fn comma_in_value_quoted() {
+    assert_eq!(label(r#""a,b""#), [r#"label:"a,b""#]);
+    assert_eq!(label(r#""a,b"|c"#), [r#"label:"a,b",c"#]);
+}
+
+#[test]
+fn stray_quote_errors() {
+    assert!(parse(r#"a"b"#).is_err());
+}
+
+#[test]
+fn whitespace_only_quoted_errors() {
+    assert!(parse(r#"" ""#).is_err());
+    assert!(parse(r#"a&"  ""#).is_err());
 }
