@@ -1,0 +1,66 @@
+//! SGR colouring, OSC 8 links, text sanitising and visible-width measuring.
+
+use unicode_width::UnicodeWidthStr;
+
+pub fn fg(code: u8, text: &str) -> String {
+    format!("\x1b[38;5;{code}m{text}\x1b[39m")
+}
+
+pub fn bold(text: &str) -> String {
+    format!("\x1b[1m{text}\x1b[22m")
+}
+
+pub fn dim(text: &str) -> String {
+    format!("\x1b[2m{text}\x1b[22m")
+}
+
+/// OSC 8 hyperlink; no SGR underline, the terminal draws it. A URL holding
+/// control characters could end the sequence early, so it yields plain text.
+pub fn link(url: &str, text: &str) -> String {
+    if url.chars().any(char::is_control) {
+        return text.to_string();
+    }
+    format!("\x1b]8;;{url}\x1b\\{text}\x1b]8;;\x1b\\")
+}
+
+/// Picks `ramp[(score + 9) / 10]` with the score clamped to 0..=100.
+pub fn ramp(score: i32, ramp: &[u8; 11]) -> u8 {
+    ramp[((score.clamp(0, 100) + 9) / 10) as usize]
+}
+
+/// Drops ESC, C0, DEL and C1 controls so external text cannot inject codes.
+pub fn sanitize(text: &str) -> String {
+    text.chars().filter(|c| !c.is_control()).collect()
+}
+
+/// Cells the text occupies once SGR and OSC 8 sequences are removed.
+pub fn visible_width(text: &str) -> usize {
+    let mut plain = String::with_capacity(text.len());
+    let mut it = text.chars().peekable();
+    while let Some(c) = it.next() {
+        if c != '\x1b' {
+            plain.push(c);
+            continue;
+        }
+        match it.peek() {
+            Some('[') => {
+                it.next();
+                for n in it.by_ref() {
+                    if ('\x40'..='\x7e').contains(&n) {
+                        break;
+                    }
+                }
+            }
+            Some(']') => {
+                it.next();
+                while let Some(n) = it.next() {
+                    if n == '\x07' || (n == '\x1b' && it.next_if_eq(&'\\').is_some()) {
+                        break;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    plain.width()
+}

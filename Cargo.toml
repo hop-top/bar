@@ -14,6 +14,7 @@ path = "src/main.rs"
 clap = { version = "4", features = ["derive", "string"] }
 hop-top-kit = { version = "=0.5.0-alpha.6", features = ["cli", "config"] }
 serde_json = "1"
+unicode-width = "=0.2.2"
 
 [dev-dependencies]
 assert_cmd = "2"
