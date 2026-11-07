@@ -1,6 +1,6 @@
 # bar
 
-Fast, configurable and extensible status line for [Claude Code](https://code.claude.com/docs/en/statusline). Licence: [Apache-2.0](LICENSE).
+Fast, configurable and extensible status line for [Claude Code](https://code.claude.com/docs/en/statusline). Licence: [Apache-2.0](LICENSE). The built-in model price data comes from models.dev, MIT: [data/LICENSE-models.dev](data/LICENSE-models.dev).
 
 Rendering never waits on the network (slow data comes from a background cache) and costs 3.2 to 3.7 ms of CPU per render ([measured](docs/technical.md#performance)). The layout is a tmux-style config with options on every placeholder, and any `bar-<name>` executable on `PATH` becomes a placeholder.
 

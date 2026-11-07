@@ -9,6 +9,7 @@ use crate::placeholders::gh::{self, Kind};
 use crate::placeholders::gitst;
 use crate::placeholders::usage::glyphs::{GLYPH_SETS, SHOW_ITEMS};
 use crate::plugin;
+use crate::prices::models;
 use crate::render::builtin_config;
 use crate::skin;
 use serde_json::{json, Value};
@@ -55,8 +56,14 @@ impl Report {
                 })
             })
             .collect();
+        let a = models::active();
         json!({
             "path": self.path.as_ref().map(|p| p.display().to_string()),
+            "prices": {
+                "snapshot": a.snapshot.fetched(),
+                "user_file": a.user_file.as_ref().map(|p| p.display().to_string()),
+                "ignored": a.ignored,
+            },
             "ok": !self.has_errors(),
             "issues": issues,
         })
@@ -67,6 +74,24 @@ impl Report {
             Some(p) => format!("config: {}\n", p.display()),
             None => "config: none found, using the built-in layout\n".to_string(),
         };
+        let a = models::active();
+        out.push_str(&match &a.user_file {
+            Some(p) => format!(
+                "prices: models.dev snapshot {} (user file {})\n",
+                a.snapshot.fetched(),
+                p.display()
+            ),
+            None => format!(
+                "prices: models.dev snapshot {} (built in)\n",
+                a.snapshot.fetched()
+            ),
+        });
+        if let Some(why) = &a.ignored {
+            out.push_str(&format!(
+                "prices: {} ignored, {why}\n",
+                models::user_path().display()
+            ));
+        }
         for i in &self.issues {
             let at = if i.line == 0 {
                 String::new()
