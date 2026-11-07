@@ -89,9 +89,12 @@ fn split_unquoted(s: &str, sep: char) -> Vec<&str> {
     parts
 }
 
-/// Split at every occurrence of `separator` found in Text tokens; text
-/// next to a split loses its edge whitespace, empty pieces are dropped.
+/// Split into segments at every occurrence of the trimmed `separator`
+/// anywhere inside Text tokens. Text pieces beside a split lose their edge
+/// whitespace; empty pieces and empty segments (leading, trailing,
+/// adjacent separators) are dropped.
 pub fn segments(tokens: &[Token], separator: &str) -> Vec<Vec<Token>> {
+    let separator = separator.trim();
     let mut out: Vec<Vec<Token>> = vec![Vec::new()];
     for t in tokens {
         match t {
@@ -117,5 +120,6 @@ pub fn segments(tokens: &[Token], separator: &str) -> Vec<Vec<Token>> {
             other => out.last_mut().unwrap().push(other.clone()),
         }
     }
+    out.retain(|seg| !seg.is_empty());
     out
 }

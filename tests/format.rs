@@ -133,3 +133,32 @@ fn literal_separator_splits_segments() {
     assert_eq!(ph(&s[1][0]).0, "ctx");
     assert_eq!(ph(&s[2][0]).0, "prs");
 }
+
+fn seg(input: &str, sep: &str) -> Vec<Vec<Token>> {
+    segments(&parse(input).unwrap(), sep)
+}
+
+#[test]
+fn text_beside_separator_is_kept_trimmed() {
+    let s = seg("foo │ #{x}", "│");
+    assert_eq!(s.len(), 2);
+    assert_eq!(s[0], vec![Token::Text("foo".into())]);
+    assert_eq!(ph(&s[1][0]).0, "x");
+}
+
+#[test]
+fn empty_segments_are_dropped() {
+    for input in ["│ #{a}", "#{a} │", "#{a} │ │ #{b}", " │ "] {
+        let s = seg(input, "│");
+        assert!(s.iter().all(|v| !v.is_empty()), "{input}: {s:?}");
+    }
+    assert_eq!(seg("│ #{a}", "│").len(), 1);
+    assert_eq!(seg("#{a} │", "│").len(), 1);
+    assert_eq!(seg("#{a} │ │ #{b}", "│").len(), 2);
+}
+
+#[test]
+fn configured_separator_is_trimmed() {
+    let s = seg("#{a}│#{b}", " │ ");
+    assert_eq!(s.len(), 2);
+}
