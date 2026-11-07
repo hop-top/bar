@@ -1,13 +1,12 @@
 //! `prs` and `issues`: `gh` lists cached per query, merged at render time.
 
 use super::repo::remote_url;
-use super::{link_enabled, Ctx, Placeholder};
+use super::{link_enabled, work_dir, Ctx, Placeholder};
 use crate::cache::{Cache, Job};
 use crate::expr;
 use crate::options::Options;
 use crate::style::{dim, fg, link, sanitize};
 use serde_json::Value;
-use std::path::PathBuf;
 
 /// Lists stay fresh for two minutes.
 pub const TTL: u64 = 120;
@@ -168,15 +167,6 @@ fn has_bug_label(issue: &Value) -> bool {
     issue["labels"]
         .as_array()
         .is_some_and(|l| l.iter().any(|x| str_of(x, "name") == "bug"))
-}
-
-fn work_dir(ctx: &Ctx) -> PathBuf {
-    let cwd = PathBuf::from(&ctx.session.cwd);
-    if !ctx.session.cwd.is_empty() && cwd.is_dir() {
-        cwd
-    } else {
-        std::env::current_dir().unwrap_or_default()
-    }
 }
 
 /// Cached results of every query, deduplicated by number, newest first.

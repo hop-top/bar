@@ -1,4 +1,4 @@
-use super::{link_enabled, truncate, Ctx, Placeholder};
+use super::{link_enabled, truncate, work_dir, Ctx, Placeholder};
 use crate::gitfs::{self, Found};
 use crate::options::Options;
 use crate::style::{bold, dim, fg, link, sanitize};
@@ -53,15 +53,6 @@ pub fn remote_url(cwd: &Path) -> Option<String> {
     };
     (!host.is_empty() && !path.is_empty() && !host.contains('/'))
         .then(|| format!("https://{host}/{path}"))
-}
-
-fn work_dir(ctx: &Ctx) -> PathBuf {
-    let cwd = PathBuf::from(&ctx.session.cwd);
-    if !ctx.session.cwd.is_empty() && cwd.is_dir() {
-        cwd
-    } else {
-        std::env::current_dir().unwrap_or_default()
-    }
 }
 
 fn basename(p: &Path) -> String {

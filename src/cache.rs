@@ -179,7 +179,7 @@ fn read_capped(path: &Path) -> Option<String> {
 }
 
 /// Unique per process and call: lock tokens and temp file names.
-fn nonce() -> String {
+pub(crate) fn nonce() -> String {
     static SEQ: AtomicUsize = AtomicUsize::new(0);
     let nanos = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -255,13 +255,7 @@ impl Cache {
 
     fn write_atomic(&self, dest: &Path, body: &str) -> std::io::Result<()> {
         self.ensure_dir()?;
-        let name = dest.file_name().unwrap_or_default().to_string_lossy();
-        let tmp = self.dir.join(format!(".{name}.{}.tmp", nonce()));
-        let r = crate::click::write_private(&tmp, body).and_then(|()| fs::rename(&tmp, dest));
-        if r.is_err() {
-            let _ = fs::remove_file(&tmp);
-        }
-        r
+        crate::click::write_atomic(dest, body)
     }
 
     /// A refresh failed less than the backoff window ago.

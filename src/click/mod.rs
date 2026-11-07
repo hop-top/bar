@@ -68,7 +68,7 @@ pub(crate) fn write_private(path: &Path, body: &str) -> std::io::Result<()> {
 /// Writes a sibling temp file (0600) and renames it over `path`.
 pub(crate) fn write_atomic(path: &Path, body: &str) -> std::io::Result<()> {
     let name = path.file_name().unwrap_or_default().to_string_lossy();
-    let tmp = path.with_file_name(format!(".{name}.tmp-{}", std::process::id()));
+    let tmp = path.with_file_name(format!(".{name}.{}.tmp", crate::cache::nonce()));
     write_private(&tmp, body)?;
     std::fs::rename(&tmp, path).inspect_err(|_| {
         let _ = std::fs::remove_file(&tmp);

@@ -49,6 +49,16 @@ pub fn lookup(name: &str) -> Option<&'static dyn Placeholder> {
     })
 }
 
+/// The session's directory when it exists, else the process's.
+pub(crate) fn work_dir(ctx: &Ctx) -> PathBuf {
+    let cwd = PathBuf::from(&ctx.session.cwd);
+    if !ctx.session.cwd.is_empty() && cwd.is_dir() {
+        cwd
+    } else {
+        std::env::current_dir().unwrap_or_default()
+    }
+}
+
 /// Truncates to `max` chars (option `max`) with an ellipsis.
 pub fn truncate(text: String, opts: &Options) -> String {
     let Some(max) = opts.get("max").and_then(|m| m.parse::<usize>().ok()) else {
