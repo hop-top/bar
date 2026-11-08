@@ -3,6 +3,7 @@
 
 use crate::conf::{Config, Icons};
 use crate::options::Options;
+use crate::placeholders::gh::Checks;
 use crate::style::{dim, sanitize, visible_width_with};
 
 /// Widest icon accepted, in cells.
@@ -110,5 +111,22 @@ pub fn builtin(set: Icons, name: &str, opts: &Options) -> Option<&'static str> {
         Icons::None => None,
         Icons::Nerdfont => Some(nf),
         Icons::Emoji => Some(emoji),
+    }
+}
+
+/// Mark drawn after a PR number for its CI state. Plain text without an
+/// icon set, so marks show under `icons none` too.
+pub fn check_mark(set: Icons, state: Checks) -> &'static str {
+    // (plain, nerdfont, emoji)
+    let (plain, nf, emoji) = match state {
+        Checks::Fail => ("✗", "\u{f467}", "❌"),    // nf-oct-x
+        Checks::Pending => ("•", "\u{f444}", "🟡"), // nf-oct-dot_fill
+        Checks::Pass => ("✓", "\u{f42e}", "✅"),    // nf-oct-check
+        Checks::None => return "",
+    };
+    match set {
+        Icons::None => plain,
+        Icons::Nerdfont => nf,
+        Icons::Emoji => emoji,
     }
 }

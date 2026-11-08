@@ -177,6 +177,19 @@ fn check_flags_invalid_expression() {
 }
 
 #[test]
+fn check_validates_prs_checks_option() {
+    let fx = Fx::new();
+    fx.exe("gh", "#!/bin/sh\n");
+    fx.conf("set left \"#{prs[checks=fail,pending]} #{prs[checks=none]}\"\n");
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_eq!(code, 0, "{stdout}");
+    fx.conf("set left \"#{prs[checks=red]}\"\n");
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_eq!(code, 2, "{stdout}");
+    assert!(stdout.contains("invalid value `red`"), "{stdout}");
+}
+
+#[test]
 fn check_exit_2_on_config_error() {
     let fx = Fx::new();
     fx.conf("set gap many\n");

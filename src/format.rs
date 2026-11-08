@@ -43,7 +43,7 @@ fn find_close(s: &str) -> Option<usize> {
 }
 
 /// Options whose value is a comma list, so a bare part after one extends it.
-const LIST_KEYS: [&str; 2] = ["show", "alt"];
+const LIST_KEYS: [&str; 3] = ["show", "alt", "checks"];
 
 fn parse_placeholder(body: &str) -> Result<Token, String> {
     let (name, opts) = match body.find('[') {
