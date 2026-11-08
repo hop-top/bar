@@ -110,6 +110,14 @@ enum ClickCmd {
 }
 
 fn main() {
+    // `bar render`, run on every status line update, skips building the
+    // clap command; it takes no options, so clap would do the same.
+    let mut args = std::env::args_os().skip(1);
+    if let (Some(a), None) = (args.next(), args.next()) {
+        if a == "render" {
+            return render();
+        }
+    }
     let cli_cmd: Command = Cli::command();
     let (cli_cmd, _ctx) = register_output_flags(cli_cmd, RegisterOutputFlagsOptions::default());
     let matches = cli_cmd.get_matches();
