@@ -5,9 +5,8 @@ A status line for [Claude Code](https://code.claude.com/docs/en/statusline) that
 ![bar with the powerline skin and nord palette: model, context, repo and branch, PRs with CI marks, issues, 5-hour and 7-day usage bars, account.](docs/gallery/skin-powerline.svg)
 
 [![CI](https://github.com/hop-top/bar/actions/workflows/test-rs-caller.yml/badge.svg?branch=next)](https://github.com/hop-top/bar/actions/workflows/test-rs-caller.yml)
-![macOS](https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white)
-![Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black)
-![Windows](https://img.shields.io/badge/Windows-0078D4?logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0wIDMuNCA5LjggMnY5LjRIMHptMTEgLTEuNkwyNCAwdjExLjNIMTF6TTAgMTIuNmg5LjhWMjJMMCAyMC42em0xMSAwaDEzVjI0bC0xMy0xLjh6Ii8+PC9zdmc+)
+
+![macOS](docs/badges/macos.svg) ![Linux](docs/badges/linux.svg) ![Windows](docs/badges/windows.svg)
 
 ## Why bar
 
@@ -16,7 +15,9 @@ A status line for [Claude Code](https://code.claude.com/docs/en/statusline) that
 - **It knows your Claude usage.** 5-hour and 7-day bars coloured by pace, projections, sparklines; cost, burn rate, tokens, spend history.
 - **It knows your repo.** Branch and dirty state from files, PRs and issues from `gh`, failing CI marked.
 
-### With token counters
+### Benchmarks
+
+With token counters:
 
 | Tool | Warm | Cold | Cold CPU, incl. background | Memory |
 |---|---|---|---|---|
@@ -24,7 +25,7 @@ A status line for [Claude Code](https://code.claude.com/docs/en/statusline) that
 | [claude-powerline](https://github.com/Owloops/claude-powerline) | 41.8 ms | 59.1 ms | 74.0 ms | 102 MiB |
 | [ccstatusline](https://github.com/sirmalloc/ccstatusline) | 91.6 ms | 97.4 ms | 122.9 ms | 116 MiB |
 
-### No token counters
+No token counters:
 
 | Tool | Warm | Cold | Cold CPU, incl. background | Memory |
 |---|---|---|---|---|
