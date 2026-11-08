@@ -5,7 +5,10 @@
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
 use std::os::unix::fs::MetadataExt;
+use std::sync::OnceLock;
 use std::time::Instant;
+
+use memchr::memmem::Finder;
 
 /// Longer lines are skipped unparsed.
 pub const MAX_LINE: usize = 512 * 1024;
@@ -92,23 +95,33 @@ impl Mark {
                 Ok(n) => n,
             };
             used += n as u64;
-            for seg in buf[..n].split_inclusive(|b| *b == b'\n') {
+            let chunk = &buf[..n];
+            let mut start = 0;
+            for nl in memchr::memchr_iter(b'\n', chunk) {
+                let seg = &chunk[start..=nl];
+                start = nl + 1;
                 pos += seg.len() as u64;
-                if !skipping {
-                    if line.len() + seg.len() > MAX_LINE {
-                        skipping = true;
-                        line.clear();
+                // a line wholly inside the chunk is handed over uncopied
+                if !skipping && line.len() + seg.len() <= MAX_LINE {
+                    if line.is_empty() {
+                        on_line(seg);
                     } else {
                         line.extend_from_slice(seg);
-                    }
-                }
-                if seg.last() == Some(&b'\n') {
-                    if !skipping {
                         on_line(&line);
                     }
+                }
+                line.clear();
+                skipping = false;
+                self.offset = pos;
+            }
+            let rest = &chunk[start..];
+            pos += rest.len() as u64;
+            if !skipping && !rest.is_empty() {
+                if line.len() + rest.len() > MAX_LINE {
+                    skipping = true;
                     line.clear();
-                    skipping = false;
-                    self.offset = pos;
+                } else {
+                    line.extend_from_slice(rest);
                 }
             }
         };
@@ -123,12 +136,50 @@ impl Mark {
 /// A `"usage"` key: the quoted word followed by optional spaces and a
 /// colon. Inside a string the quotes are escaped, so it cannot match there.
 pub fn has_usage_key(line: &[u8]) -> bool {
-    const MARK: &[u8] = b"\"usage\"";
-    line.windows(MARK.len()).enumerate().any(|(i, w)| {
-        w == MARK
-            && line[i + MARK.len()..]
-                .iter()
-                .find(|b| !b.is_ascii_whitespace())
-                == Some(&b':')
-    })
+    static MARK: Needle = Needle::new(b"\"usage\"");
+    let mut at = 0;
+    // every occurrence, overlapping ones included
+    while let Some(i) = MARK.find(&line[at..]) {
+        let end = at + i + MARK.len();
+        if line[end..].iter().find(|b| !b.is_ascii_whitespace()) == Some(&b':') {
+            return true;
+        }
+        at += i + 1;
+    }
+    false
+}
+
+/// A substring searcher built on first use and kept, so a per-line check
+/// does not rebuild it.
+pub struct Needle {
+    needle: &'static [u8],
+    finder: OnceLock<Finder<'static>>,
+}
+
+impl Needle {
+    pub const fn new(needle: &'static [u8]) -> Needle {
+        Needle {
+            needle,
+            finder: OnceLock::new(),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.needle.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.needle.is_empty()
+    }
+
+    /// Offset of the first occurrence in `hay`.
+    pub fn find(&self, hay: &[u8]) -> Option<usize> {
+        self.finder
+            .get_or_init(|| Finder::new(self.needle))
+            .find(hay)
+    }
+
+    pub fn is_in(&self, hay: &[u8]) -> bool {
+        self.find(hay).is_some()
+    }
 }

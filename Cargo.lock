@@ -202,7 +202,9 @@ dependencies = [
  "clap",
  "hop-top-kit",
  "libc",
+ "memchr",
  "predicates",
+ "serde",
  "serde_json",
  "unicode-width",
 ]
