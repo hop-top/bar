@@ -2,11 +2,22 @@
 
 A status line for [Claude Code](https://code.claude.com/docs/en/statusline) that any script can extend: name it `bar-<name>`, put it on `PATH`, and it becomes a placeholder, cached so the line never waits.
 
-![bar with the powerline skin and nord palette: model, context, repo and branch, PRs with CI marks, issues, 5-hour and 7-day usage bars, account.](docs/gallery/skin-powerline.svg)
+<p align="center">
+  <img src="docs/gallery/skin-powerline.svg" alt="bar with the powerline skin and nord palette: model, context, repo and branch, PRs with CI marks, issues, 5-hour and 7-day usage bars, account.">
+  <br>
+  <img src="docs/gallery/skin-capsule.svg" alt="Capsule skin, dracula palette: each segment in a rounded pill.">
+  <br>
+  <img src="docs/gallery/skin-plain.svg" alt="Plain skin, default palette: segments split by muted bars.">
+  <br>
+  <img src="docs/gallery/two-line.svg" alt="The two-line preset with the nord palette.">
+</p>
+
+---
 
 <p align="center">
   <a href="https://github.com/hop-top/bar/actions/workflows/test-rs-caller.yml"><img alt="CI" src="https://github.com/hop-top/bar/actions/workflows/test-rs-caller.yml/badge.svg?branch=next"></a>
   <a href="bench/README.md#ben-results"><img alt="bench" src="docs/badges/bench.svg"></a>
+  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue.svg"></a>
 </p>
 <p align="center">
   <img alt="macOS" src="docs/badges/macos.svg"> <img alt="Linux" src="docs/badges/linux.svg"> <img alt="Windows" src="docs/badges/windows.svg">
