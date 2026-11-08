@@ -44,6 +44,31 @@ set center "#{usage[type=5h]} │ #{usage[type=7d]}"
 set right "#{account}"
 ```
 
+![Powerline skin with skin-glyphs ascii: > and < instead of Nerd Font arrows, default palette.](gallery/skin-ascii.svg)
+
+`COLUMNS=100 bar preview --state early` with:
+
+```text
+set skin powerline
+set skin-glyphs ascii
+set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch}"
+set center "#{usage[type=5h]} │ #{usage[type=7d]}"
+set right "#{account}"
+```
+
+![Powerline skin with bg=52 on ctx and bg=22 on the 5-hour usage: per-segment backgrounds over the palette's, nord palette.](gallery/skin-bg.svg)
+
+`COLUMNS=100 bar preview --state early` with:
+
+```text
+set skin powerline
+set palette nord
+set icons nerdfont
+set left "#{model}#{effort} │ #{ctx[bg=52]} │ #{repo}:#{branch}"
+set center "#{usage[type=5h,bg=22]} │ #{usage[type=7d]}"
+set right "#{account}"
+```
+
 ## Palettes
 
 `set palette` swaps muted text, state colours, the usage ramp and the skin backgrounds; here on the powerline skin in the `burning` state. `terminal` uses the terminal's own 16 colours, drawn here with the xterm defaults. See [Palettes](config.md#palettes).
@@ -228,6 +253,28 @@ set palette default
 set left "#{usage[type=5h,color=gradient,width=10,show=bar,pct]} │ #{usage[type=7d,color=gradient,width=10,show=bar,pct]}"
 ```
 
+## Projections and count
+
+`eta` projects the time until the budget runs out at the burn so far (`→ok` when it lasts), `proj` the used percent at reset; `count=used` fills the bar and percentage with what is used. `burning` state. See [usage](config.md#usage).
+
+![Usage with show=time,bar,eta,proj, default palette, burning state.](gallery/usage-eta-proj.svg)
+
+`COLUMNS=80 bar preview --state burning` with:
+
+```text
+set palette default
+set left "#{usage[type=5h,show=time,bar,eta,proj]} │ #{usage[type=7d,show=time,bar,eta,proj]}"
+```
+
+![Usage with count=used and show=pct,bar: the bar fills with what is used, default palette, burning state.](gallery/usage-count-used.svg)
+
+`COLUMNS=60 bar preview --state burning` with:
+
+```text
+set palette default
+set left "#{usage[type=5h,count=used,show=pct,bar]} │ #{usage[type=7d,count=used,show=pct,bar]}"
+```
+
 ## Spark and gauge
 
 `spark` draws the used percent of the last samples, `gauge` one cell for the current value. `bar preview` keeps no history, so these come from `bar render` with a sample session (5-hour window 90% used, weekly 60%) and five seeded history samples per window (15, 35, 55, 75, 90 and 10, 20, 30, 45, 60 percent used).
@@ -329,7 +376,7 @@ set right "#{usage[type=5h]} │ #{usage[type=7d]}"
 
 ## Lines
 
-`set left@2` and friends add lines, up to 4. The `two-line` preset puts session and git on line 1 and usage below. See [Lines and wrapping](config.md#lines-and-wrapping).
+`set left@2` and friends add lines, up to 4. The `two-line` preset puts session and git on line 1 and usage below. `set wrap on` flows a line too long for `COLUMNS` onto more rows instead. See [Lines and wrapping](config.md#lines-and-wrapping).
 
 ![The two-line preset with the nord palette.](gallery/two-line.svg)
 
@@ -341,6 +388,19 @@ set right "#{account}"
 set left@2 "#{usage[type=5h]} │ #{usage[type=7d]} │ #{spendhist}"
 set right@2 "#{sessions}"
 set palette nord
+```
+
+![One long line with set wrap on at COLUMNS=60: segments flow onto rows, left-aligned, capsule skin, gruvbox palette.](gallery/wrap.svg)
+
+`COLUMNS=60 bar preview --state early` with:
+
+```text
+set skin capsule
+set palette gruvbox
+set wrap on
+set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch}"
+set center "#{usage[type=5h]} │ #{usage[type=7d]}"
+set right "#{account}"
 ```
 
 ## PR checks

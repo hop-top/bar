@@ -92,6 +92,21 @@ section(
             "Capsule skin, dracula palette: each segment in a rounded pill.",
             "set skin capsule\nset palette dracula\nset icons nerdfont\n" + MID,
         ),
+        sample(
+            "skin-ascii",
+            "Powerline skin with skin-glyphs ascii: > and < instead of Nerd "
+            "Font arrows, default palette.",
+            "set skin powerline\nset skin-glyphs ascii\n" + MID,
+        ),
+        sample(
+            "skin-bg",
+            "Powerline skin with bg=52 on ctx and bg=22 on the 5-hour usage: "
+            "per-segment backgrounds over the palette's, nord palette.",
+            "set skin powerline\nset palette nord\nset icons nerdfont\n"
+            + MID.replace("#{ctx}", "#{ctx[bg=52]}").replace(
+                "#{usage[type=5h]}", "#{usage[type=5h,bg=22]}"
+            ),
+        ),
     ],
 )
 
@@ -153,6 +168,31 @@ section(
             columns=60,
         )
         for c in ["solid", "gradient"]
+    ],
+)
+
+section(
+    "Projections and count",
+    "`eta` projects the time until the budget runs out at the burn so far "
+    "(`→ok` when it lasts), `proj` the used percent at reset; "
+    "`count=used` fills the bar and percentage with what is used. "
+    "`burning` state. See [usage](config.md#usage).",
+    [
+        sample(
+            "usage-eta-proj",
+            "Usage with show=time,bar,eta,proj, default palette, burning state.",
+            "set palette default\n" + usage_pair("show=time,bar,eta,proj"),
+            state="burning",
+            columns=80,
+        ),
+        sample(
+            "usage-count-used",
+            "Usage with count=used and show=pct,bar: the bar fills with what "
+            "is used, default palette, burning state.",
+            "set palette default\n" + usage_pair("count=used,show=pct,bar"),
+            state="burning",
+            columns=60,
+        ),
     ],
 )
 
@@ -223,7 +263,8 @@ section(
 section(
     "Lines",
     "`set left@2` and friends add lines, up to 4. The `two-line` preset puts "
-    "session and git on line 1 and usage below. See "
+    "session and git on line 1 and usage below. `set wrap on` flows a line "
+    "too long for `COLUMNS` onto more rows instead. See "
     "[Lines and wrapping](config.md#lines-and-wrapping).",
     [
         sample(
@@ -231,6 +272,13 @@ section(
             "The two-line preset with the nord palette.",
             (ROOT / "presets" / "two-line.conf").read_text().split("\n", 1)[1]
             + "set palette nord\n",
+        ),
+        sample(
+            "wrap",
+            "One long line with set wrap on at COLUMNS=60: segments flow onto "
+            "rows, left-aligned, capsule skin, gruvbox palette.",
+            "set skin capsule\nset palette gruvbox\nset wrap on\n" + MID,
+            columns=60,
         ),
     ],
 )
