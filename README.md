@@ -6,7 +6,16 @@ A status line for [Claude Code](https://code.claude.com/docs/en/statusline) that
 
 [![CI](https://github.com/hop-top/bar/actions/workflows/test-rs-caller.yml/badge.svg?branch=next)](https://github.com/hop-top/bar/actions/workflows/test-rs-caller.yml)
 
-Written in Rust. Renders in under a millisecond warm and 1 to 2 ms cold, using 3 MiB of memory ([benchmark](bench/README.md#ben-results), against ccline, claude-powerline and ccstatusline). Runs on macOS, Linux and Windows.
+Written in Rust; runs on macOS, Linux and Windows.
+
+| Tool | Warm render | Cold render | CPU, cold incl. background jobs | Memory |
+|---|---|---|---|---|
+| **bar** | **0.77 ms** | **1.65 ms** | 4.5 ms (1.7 without token totals) | **2.9 MiB** |
+| [ccline](https://github.com/Haleclipse/CCometixLine) | 0.92 ms | 6.54 ms | 2.2 ms | 5.3 MiB |
+| [claude-powerline](https://github.com/Owloops/claude-powerline) | 41.8 ms | 59.1 ms | 74.0 ms | 102 MiB |
+| [ccstatusline](https://github.com/sirmalloc/ccstatusline) | 91.6 ms | 97.4 ms | 122.9 ms | 116 MiB |
+
+Medians, Linux arm64 container, same session data and equivalent layouts; render times include about 0.6 ms of harness start-up. ccline shows no token totals, which cost bar one transcript scan per session. Method, configs and raw results: [bench/README.md](bench/README.md#ben-results).
 
 ## Why bar
 
@@ -15,7 +24,6 @@ Written in Rust. Renders in under a millisecond warm and 1 to 2 ms cold, using 3
 - **It knows your Claude usage.** 5-hour and 7-day bars coloured by pace, with projection, sparklines and a flipped scale in a window's last stretch; cost, burn rate, tokens, cache and spend history.
 - **It knows your repo.** Branch and dirty state read from files (no `git` process per render), your PRs and issues from `gh` search, with a mark for failing CI.
 
-Pick something else if you want a TUI editor or the widest widget catalogue: [ccstatusline](https://github.com/sirmalloc/ccstatusline). [CCometixLine](https://github.com/Haleclipse/CCometixLine) is the other Rust option, with a TUI and many themes; [claude-powerline](https://github.com/Owloops/claude-powerline) has Powerline themes and session cost. bar has no TUI, and its clickable commands (switch model or effort from the line) need macOS and tmux.
 
 ## Install
 
