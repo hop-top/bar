@@ -106,7 +106,7 @@ enum ClickCmd {
         /// bar://cmd/<command>?tty=<ttysN>&sid=<session id>
         url: String,
     },
-    /// Claude Code hook: keep the session's waiting marker (stdin JSON).
+    /// Claude Code hook (stdin JSON): waiting marker, subagents, plugin records.
     Hook,
 }
 

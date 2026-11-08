@@ -1,8 +1,7 @@
 # Formula template. VERSION and the four SHA256 values are placeholders;
 # the release fills them (see docs/technical.md, "Releasing").
-# Needs publicly downloadable release assets; not available otherwise.
 class Bar < Formula
-  desc "Fast, configurable and extensible status line for Claude Code"
+  desc "Claude Code status line extensible with any script"
   homepage "https://github.com/hop-top/bar"
   version "VERSION"
   license "Apache-2.0"

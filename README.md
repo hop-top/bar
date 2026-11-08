@@ -1,106 +1,94 @@
 # bar
 
-Fast, configurable and extensible status line for [Claude Code](https://code.claude.com/docs/en/statusline). Licence: [Apache-2.0](LICENSE). The built-in model price data comes from models.dev, MIT: [data/LICENSE-models.dev](data/LICENSE-models.dev).
+[![CI](https://github.com/hop-top/bar/actions/workflows/test-rs-caller.yml/badge.svg?branch=next)](https://github.com/hop-top/bar/actions/workflows/test-rs-caller.yml)
 
-Rendering never waits on the network (slow data comes from a background cache) and costs 3.2 to 3.7 ms of CPU per render ([measured](docs/technical.md#performance)). The layout is a tmux-style config with options on every placeholder, and any `bar-<name>` executable on `PATH` becomes a placeholder.
+A status line for [Claude Code](https://code.claude.com/docs/en/statusline) that any script can extend: name it `bar-<name>`, put it on `PATH`, and it becomes a placeholder, cached so the line never waits.
 
-```text
-Opus 4.7[high] │ ctx 38% │ bar:main │ #131✗ #129 #128 │ !57 !42             4h40m █████ │ 6d ████░              work
-```
+![bar with the powerline skin and nord palette: model, context, repo and branch, PRs with CI marks, issues, 5-hour and 7-day usage bars, account.](docs/gallery/skin-powerline.svg)
 
-Output of `bar preview`, colour stripped. In a terminal the usage bars are one colour, red to green by pace, and repo, branch, PRs and issues are links; `✗` after a PR number marks failing CI. In a window's final stretch (the last hour of the 5-hour window, the last day of the weekly one; `--state final`) the scale flips: red then means budget that will go unused.
-
-```text
-Opus 4.7[high] │ ctx 38% │ bar:main │ #131✗ #129 #128 │ !57 !42             25m ███░░ │ 20h0m ████░             work
-```
+Written in Rust. Renders in under a millisecond warm and 1 to 2 ms cold, using 3 MiB of memory ([benchmark](bench/README.md#ben-results), against ccline, claude-powerline and ccstatusline). Runs on macOS, Linux and Windows. Licence: [Apache-2.0](LICENSE).
 
 ## Why bar
 
-Pick bar to compose the line yourself and extend it: a tmux-style config with options on every placeholder, PR and issue segments driven by `gh` search with label/author logic, and a plugin protocol: any `bar-<name>` executable becomes a placeholder, cached so render never waits. Pick [ccstatusline](https://github.com/sirmalloc/ccstatusline) for the widest widget set and a TUI editor, [claude-powerline](https://github.com/Owloops/claude-powerline) for cost tracking and Powerline themes, [CCometixLine](https://github.com/Haleclipse/CCometixLine) for a themed Rust binary on Windows, Linux and macOS. bar has no TUI editor, and clickable commands need macOS and tmux (inside tmux, start Claude Code with `FORCE_HYPERLINK=1`; see [docs/config.md](docs/config.md#click-handler-macos)).
+- **Plugins are plain programs.** Any executable that prints one JSON object is a placeholder: shell, Python, Go, anything. bar runs it in the background, caches the result and never waits for it at render time ([Plugins](docs/plugins.md)).
+- **The layout is a config file, not a UI.** A tmux-style `bar.conf` with options on every placeholder, linted by `bar check` and previewed with sample data by `bar preview`.
+- **It knows your Claude usage.** 5-hour and 7-day bars coloured by pace, with projection, sparklines and a flipped scale in a window's last stretch; cost, burn rate, tokens, cache and spend history.
+- **It knows your repo.** Branch and dirty state read from files (no `git` process per render), your PRs and issues from `gh` search, with a mark for failing CI.
 
-What it does not do: no TUI editor, and no clickable commands on Windows or Linux.
-
-## Status
-
-- Actively maintained. Bug reports and questions: open an issue.
-- Pre-1.0: config syntax may change. Changes land as Conventional Commits; release PRs write [CHANGELOG.md](CHANGELOG.md) ([docs/technical.md](docs/technical.md#releasing)).
-- Runs on macOS, Linux and Windows (x86_64 and aarch64; Windows MSVC, also builds for `x86_64-pc-windows-gnu`). CI builds and tests on all three ([Platforms](docs/technical.md#platforms)). Clickable commands need macOS and tmux: `bar click install` exits 2 elsewhere, while `bar click install --hooks-only` works on Linux and Windows.
-- Not on crates.io (`publish = false`); install from a release archive or a clone.
+Pick something else if you want a TUI editor or the widest widget catalogue: [ccstatusline](https://github.com/sirmalloc/ccstatusline). [CCometixLine](https://github.com/Haleclipse/CCometixLine) is the other Rust option, with a TUI and many themes; [claude-powerline](https://github.com/Owloops/claude-powerline) has Powerline themes and session cost. bar has no TUI, and its clickable commands (switch model or effort from the line) need macOS and tmux.
 
 ## Install
 
-Prerequisites:
+From a release: download the archive for your platform from [Releases](https://github.com/hop-top/bar/releases), check it against its `.sha256` file and put `bar` (`bar.exe` on Windows) on your `PATH`. Archives exist for x86_64 and aarch64 on macOS, Linux (glibc 2.35 or newer) and Windows.
 
-- Rust toolchain, from [rustup](https://rustup.rs).
-- `git`, to clone.
-- `gh`, optional: needed for the `prs` and `issues` placeholders.
-- `jq`, only for the reference plugins in `plugins/`.
+From source, with a [Rust toolchain](https://rustup.rs):
 
 ```sh
 git clone https://github.com/hop-top/bar.git
 cd bar
 cargo install --path . --locked
+bar --version
 ```
 
-Cargo puts the binary at `~/.cargo/bin/bar` (`$CARGO_HOME/bin` if set); on Windows `%USERPROFILE%\.cargo\bin\bar.exe`. Check with `bar --version`.
-
-Binaries: each GitHub release carries `bar-<version>-<target>.tar.gz` for x86_64 and aarch64, Linux (glibc 2.35 or newer) and macOS, and `bar-<version>-<target>.zip` (holding `bar.exe`) for x86_64 and aarch64 Windows, each with a `.sha256` file. Unpack and put `bar` on `PATH`. A Homebrew formula template is in [packaging/homebrew](packaging/homebrew/bar.rb).
+Optional: `gh` for the `prs` and `issues` placeholders, `jq` for the reference plugins in [`plugins/`](plugins).
 
 ## Use
 
-Point Claude Code at it in `settings.json`:
+Point Claude Code at it in `~/.claude/settings.json`:
 
 ```json
 { "statusLine": { "type": "command", "command": "bar render", "refreshInterval": 5 } }
 ```
 
-Claude Code may not have `~/.cargo/bin` on its `PATH`. If the line stays empty, use the absolute path or set `PATH` in the command:
+If the line stays empty, Claude Code cannot find `bar` on its `PATH`; use the absolute path, such as `/Users/you/.cargo/bin/bar render`. On Windows, write the path with forward slashes: `C:/Users/you/.cargo/bin/bar.exe render`.
 
-```json
-{ "statusLine": { "type": "command", "command": "/Users/you/.cargo/bin/bar render", "refreshInterval": 5 } }
-```
-
-```json
-{ "statusLine": { "type": "command", "command": "env PATH=$HOME/.cargo/bin:$PATH bar render", "refreshInterval": 5 } }
-```
-
-On Windows, Claude Code runs the command through Git Bash, or PowerShell when Git Bash is absent. Write the path with forward slashes (Git Bash drops unquoted backslashes); `~` also expands to the profile dir. An unquoted path without spaces works in both shells:
-
-```json
-{ "statusLine": { "type": "command", "command": "C:/Users/you/.cargo/bin/bar.exe render", "refreshInterval": 5 } }
-```
-
-Without a config file the built-in layout above is used. Write `bar.conf` to change it ([docs/config.md](docs/config.md)), then:
+Without a config file bar shows its built-in layout. To change it, start from a preset and check what you write:
 
 ```sh
-bar check     # lint the config; prints the file it read; exit 2 on error
-bar preview   # layout with sample data; --state early|burning|final
+bar preview --preset             # every preset, with sample data
+bar init --preset powerline      # write one as your config; never overwrites
+bar check                        # lint the config; exit 2 on error
 ```
 
-### Skins and presets
-
-`set skin powerline` or `set skin capsule` puts each segment on a background colour; `set palette nord|gruvbox|dracula|solarized|mono|terminal` swaps the colours. Both glyph sets need a Nerd Font; `set skin-glyphs ascii` works with any font. Six presets ship in the binary, `two-line` among them; `set left@2` and friends add lines (up to 4) and `set wrap on` flows a too-long line onto more rows ([Lines and wrapping](docs/config.md#lines-and-wrapping)):
-
-```sh
-bar preview --preset powerline   # try one with sample data
-bar preview --preset             # all presets, one after another
-bar init --preset capsule        # write it as your config; never overwrites
-```
+The config is plain text ([docs/config.md](docs/config.md)):
 
 ```text
- Opus 4.7[high] > ctx 38% > bar:main >                4h40m █████ > 6d ████░ >               < work
+set skin powerline
+set palette nord
+set left  "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=5]}"
+set right "#{usage[type=5h]} │ #{usage[type=7d]}"
 ```
 
-The `powerline` preset without icons and with `set skin-glyphs ascii`, at `COLUMNS=104`, colour stripped. See [Skins](docs/config.md#skins), [Palettes](docs/config.md#palettes) and [Presets](docs/config.md#presets). Pictures of every skin, palette, bar glyph set, pace state and icon set: [Gallery](docs/gallery.md).
+Three skins, seven palettes (one follows your terminal theme), Nerd Font or emoji icons, and up to four lines: see the [gallery](docs/gallery.md).
 
-Plugins: `bar plugin list` shows the `bar-<name>` executables found on `PATH`; see [docs/plugins.md](docs/plugins.md). Five reference plugins live in `plugins/`: `ci`, `claude-credits`, `health`, `mem` and `tlc`.
+## Write a plugin
+
+Save this as `bar-load` somewhere on `PATH` and make it executable:
+
+```sh
+#!/bin/sh
+# bar-load: 1-minute load average as #{load}
+if [ "$1" = "--ext-info" ]; then
+  echo '{"name":"load","version":"0.1.0","capabilities":["discover","placeholder"],"ttl":"30s"}'
+  exit 0
+fi
+load=$(uptime | sed 's/.*load averages*: *//; s/[, ].*//')
+printf '{"label":"load","text":"%s"}\n' "$load"
+```
+
+Add `#{load}` to a line. `bar plugin list` shows what bar found. Plugins can declare typed options, colour by score, add links and keep per-session state; the protocol and five reference plugins (`ci`, `claude-credits`, `health`, `mem`, `tlc`) are in [docs/plugins.md](docs/plugins.md).
+
+## Status
+
+Pre-1.0 and actively developed: config syntax may still change between minor versions. Changes are listed with each [release](https://github.com/hop-top/bar/releases). Questions and bug reports: [open an issue](https://github.com/hop-top/bar/issues).
 
 ## Docs
 
-| Tier | For | Read |
-|------|-----|------|
-| User | configure, extend | [Configuration](docs/config.md), [Plugins](docs/plugins.md) |
-| Contributor | build, test, send changes | [CONTRIBUTING.md](CONTRIBUTING.md) |
-| Technical | design, caching, performance | [Technical notes](docs/technical.md) |
+| For | Read |
+|-----|------|
+| Configure | [Configuration](docs/config.md), [Gallery](docs/gallery.md) |
+| Extend | [Plugins](docs/plugins.md) |
+| Contribute | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Internals, performance, releases | [Technical notes](docs/technical.md), [Benchmark](bench/README.md) |
 
-Vetting record for third-party crates: [docs/dependencies.md](docs/dependencies.md).
+Model prices come from a [models.dev](https://models.dev) snapshot, MIT: [data/LICENSE-models.dev](data/LICENSE-models.dev).
