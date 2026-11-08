@@ -98,5 +98,3 @@ Bug reports, plugins and pull requests are welcome. Features go to the `next` br
 ## Licence
 
 [Apache-2.0](LICENSE). The built-in model prices come from a [models.dev](https://models.dev) snapshot, MIT licensed: [data/LICENSE-models.dev](data/LICENSE-models.dev).
-
-Last reviewed: 2026-11-08.
