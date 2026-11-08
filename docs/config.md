@@ -282,7 +282,7 @@ Exit 0 when there are no errors (warnings allowed), 2 on a config error. `--form
 
 ## bar preview
 
-`bar preview [--state early|burning|final] [--preset <name>]` renders your layout (or a [preset](#presets)) with built-in sample data for every core placeholder: a sample session (model, effort, context, usage windows, spend limit, cost, duration, lines, version, style, vim mode, agent, thinking, fast mode, session id, compaction and skill counts) and stand-ins for the rest (repo, branch, git state, worktree, PRs, issues, account label, subagents, open sessions, spend history, transcript tokens and cache, directories). In the `final` state the sample tree is clean, so `dirty` is empty. It reads no session, account, git repository, `gh` or plugin, and writes no state. Plugin placeholders render empty.
+`bar preview [--state early|burning|final] [--preset <name>]` renders your layout (or a [preset](#presets)) with built-in sample data for every core placeholder: a sample session (model, effort, context, usage windows, spend limit, cost, duration, lines, version, style, vim mode, agent, thinking, fast mode, session id, compaction and skill counts) and stand-ins for the rest (repo, branch, git state, worktree, PRs (#131 failing CI, #129 pending, #128 passing), issues, account label, subagents, open sessions, spend history, transcript tokens and cache, directories). In the `final` state the sample tree is clean, so `dirty` is empty. It reads no session, account, git repository, `gh` or plugin, and writes no state. Plugin placeholders render empty.
 
 - `early`: plenty of budget; bars green.
 - `burning`: spending fast; bars orange to yellow.

@@ -3,10 +3,11 @@
 
 use crate::conf::{Config, LoadResult};
 use crate::options::Options;
-use crate::placeholders::{dirs, lookup, niche, spendhist, tokens, usage, Ctx};
+use crate::placeholders::{dirs, gh, lookup, niche, spendhist, tokens, usage, Ctx};
 use crate::render::{builtin_config, render_sample};
 use crate::session::{Session, SpendLimit, Window};
 use crate::style::{accent, bold, dim, fg};
+use serde_json::{json, Value};
 use std::path::Path;
 
 pub const STATES: [&str; 3] = ["early", "burning", "final"];
@@ -71,6 +72,30 @@ fn session(state: &str, now: i64) -> Session {
     }
 }
 
+/// `gh pr list` rows: #131 failing CI, #129 checks running, #128 green.
+fn sample_prs() -> [Value; 3] {
+    let pr = |n: u32, rollup: Value| {
+        json!({
+            "number": n,
+            "reviewDecision": "APPROVED",
+            "mergeable": "MERGEABLE",
+            "statusCheckRollup": rollup,
+        })
+    };
+    let run = |status: &str, conclusion: &str| json!({"__typename": "CheckRun", "status": status, "conclusion": conclusion});
+    [
+        pr(
+            131,
+            json!([run("COMPLETED", "SUCCESS"), run("COMPLETED", "FAILURE")]),
+        ),
+        pr(
+            129,
+            json!([run("COMPLETED", "SUCCESS"), run("IN_PROGRESS", "")]),
+        ),
+        pr(128, json!([run("COMPLETED", "SUCCESS")])),
+    ]
+}
+
 fn limit(opts: &Options) -> usize {
     opts.get("limit")
         .and_then(|l| l.trim().parse().ok())
@@ -95,11 +120,15 @@ fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Op
             dim("?1")
         )),
         "ahead" => Some(format!("{} {}", fg(c.good, "↑2"), fg(c.warn, "↓1"))),
-        "prs" => list(vec![
-            fg(c.bad, "#131"),
-            fg(c.warn, "#129"),
-            fg(c.good, "#128"),
-        ]),
+        "prs" => list(
+            sample_prs()
+                .iter()
+                .map(|pr| {
+                    let (text, mark) = gh::pr_parts(ctx, opts, pr);
+                    text + &mark
+                })
+                .collect(),
+        ),
         "issues" => list(vec![fg(c.bad, "!57"), dim("!42")]),
         "account" => {
             let (label, color) = ctx
