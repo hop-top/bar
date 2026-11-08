@@ -38,6 +38,8 @@ pub enum Job {
         state: String,
         utc: bool,
     },
+    /// `bar prices update`: fetch models.dev into the data-dir snapshot.
+    Prices,
 }
 
 impl Job {
@@ -59,6 +61,7 @@ impl Job {
             Job::SpendHist { dir, state, utc } => {
                 json!({"kind": "spendhist", "dir": dir, "state": state, "utc": utc})
             }
+            Job::Prices => json!({"kind": "prices"}),
         }
     }
 
@@ -105,6 +108,7 @@ impl Job {
                 state: abs_path(v, "state")?,
                 utc: v["utc"].as_bool().unwrap_or(false),
             }),
+            Some("prices") => Ok(Job::Prices),
             other => Err(format!("unknown job kind {other:?}")),
         }
     }
@@ -165,6 +169,9 @@ impl Job {
                     Some(Instant::now() + limit),
                 )
             }
+            Job::Prices => crate::prices::update::run_within(None, limit.as_secs())
+                .ok()
+                .map(|(_, n)| n.to_string()),
         }
     }
 }

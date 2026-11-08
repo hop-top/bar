@@ -29,9 +29,9 @@ Vetting record for third-party crates added to `hop-bar`.
 
 ## Data: models.dev price snapshot
 
-- Use: prices for models outside the built-in Anthropic table, embedded as `data/models.json` and refreshed with `scripts/update-prices` (or `bar prices update` for a per-user copy).
+- Use: prices for models outside the built-in Anthropic table. Not in the repo, the binary or release archives: fetched at run time into the user's data dir (`$XDG_DATA_HOME/bar/models.json`) by `bar prices update`, or in the background when `spendhist` meets a model no `set price` rule or built-in price covers (at most daily; see [config](config.md#spendhist)).
 - Source: `https://models.dev/api.json`, project `sst/models.dev`.
-- License: MIT (Copyright (c) 2025 models.dev), checked 2026-11-07; the full notice and permission text is kept in `data/LICENSE-models.dev`, shipped in release archives and the Homebrew formula's docs.
+- License: MIT (Copyright (c) 2025 models.dev), checked 2026-11-07. bar redistributes none of it.
 - Kept per model: provider, id, input/output/cache rates (USD per million tokens). The file header records the source and fetch date.
 - No crate is added; the fetch shells out to `curl` with a fixed argv.
 

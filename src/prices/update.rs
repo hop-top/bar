@@ -1,7 +1,7 @@
-//! `bar prices update`: fetch models.dev, keep only what pricing needs,
-//! write the result atomically. The one place bar touches the network;
-//! it shells out to `curl` with a fixed argv rather than adding an HTTP
-//! client dependency.
+//! `bar prices update`, and the background fetch `spendhist` requests:
+//! fetch models.dev, keep only what pricing needs, write the result
+//! atomically. The one place bar touches the network; it shells out to
+//! `curl` with a fixed argv rather than adding an HTTP client dependency.
 
 use super::models::user_path;
 use serde_json::Value;
@@ -14,19 +14,32 @@ pub const URL: &str = "https://models.dev/api.json";
 /// Larger than the real feed by a wide margin; a runaway body stops here.
 const MAX_BYTES: usize = 64 << 20;
 
+/// Whole-transfer limit for `bar prices update`, seconds.
+const MAX_TIME: u64 = 60;
+
 /// Fetches, trims and writes to `out` (default: the data-dir file).
 /// Returns the path and the number of models kept.
 pub fn run(out: Option<&Path>) -> Result<(PathBuf, usize), String> {
-    let body = fetch()?;
+    run_within(out, MAX_TIME)
+}
+
+/// As `run`, the transfer cut off after `max_time` seconds (at least 1).
+pub fn run_within(out: Option<&Path>, max_time: u64) -> Result<(PathBuf, usize), String> {
+    let body = fetch(max_time.max(1))?;
     let (text, n) = trim(&body, &super::models::today())?;
     let path = out.map_or_else(user_path, Path::to_path_buf);
     write_atomic(&path, &text).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok((path, n))
 }
 
-fn fetch() -> Result<Vec<u8>, String> {
-    let mut child = Command::new("curl")
-        .args(["-fsS", "--max-time", "60", "--proto", "=https"])
+fn fetch(max_time: u64) -> Result<Vec<u8>, String> {
+    let mut c = Command::new(crate::platform::program("curl"));
+    // no console window when run from a background refresh on Windows
+    crate::platform::hide_window(&mut c);
+    let mut child = c
+        .args(["-fsS", "--max-time"])
+        .arg(max_time.to_string())
+        .args(["--proto", "=https"])
         .args(["--proto-redir", "=https", "--max-filesize"])
         .arg(MAX_BYTES.to_string())
         .arg(URL)

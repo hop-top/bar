@@ -187,15 +187,6 @@ fn builtin_table_reads_through_the_normaliser() {
 }
 
 #[test]
-fn embedded_snapshot_parses_and_is_dated() {
-    let s = prices::models::embedded();
-    assert!(s.len() > 500, "{}", s.len());
-    let f = s.fetched();
-    assert!(f.len() == 10 && f.as_bytes()[4] == b'-', "{f}");
-    assert!(s.lookup("gpt-4o", Some("openai")).is_some());
-}
-
-#[test]
 fn bedrock_vendor_other_than_anthropic_stays_in_its_provider() {
     let s = snap();
     assert_eq!(

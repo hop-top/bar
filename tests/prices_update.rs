@@ -21,7 +21,7 @@ fn fx(name: &str, curl_body: &str) -> (PathBuf, PathBuf) {
     std::fs::write(
         &fake,
         format!(
-            "#!/bin/sh\necho \"$@\" > \"{}/argv\"\n{curl_body}\n",
+            "#!/bin/sh\necho \"$@\" >> \"{}/argv\"\n{curl_body}\n",
             root.display()
         ),
     )
@@ -116,7 +116,7 @@ fn update_out_writes_given_file_sorted_and_stable() {
 }
 
 #[test]
-fn check_reports_embedded_then_user_file() {
+fn check_reports_not_fetched_then_user_file() {
     let (root, bin) = fx(
         "chk",
         &format!("cat \"{}/api.json\"", "$(dirname \"$0\")/.."),
@@ -124,26 +124,35 @@ fn check_reports_embedded_then_user_file() {
     let out = bar(&root, &bin).arg("check").output().unwrap();
     let t = String::from_utf8_lossy(&out.stdout).into_owned();
     assert!(
-        t.contains("prices: models.dev snapshot 20") && t.contains("built in"),
+        t.contains("prices: models.dev not fetched") && t.contains("models.json"),
         "{t}"
     );
+    let j = bar(&root, &bin)
+        .args(["check", "--format", "json"])
+        .output()
+        .unwrap();
+    let v: serde_json::Value = serde_json::from_slice(&j.stdout).unwrap();
+    assert!(v["prices"]["fetched"].is_null());
+    assert!(v["prices"]["path"]
+        .as_str()
+        .unwrap()
+        .ends_with("models.json"));
     bar(&root, &bin)
         .args(["prices", "update"])
         .assert()
         .success();
     let out = bar(&root, &bin).arg("check").output().unwrap();
     let t = String::from_utf8_lossy(&out.stdout).into_owned();
-    assert!(t.contains("models.json") && t.contains("user file"), "{t}");
+    assert!(
+        t.contains("prices: models.dev snapshot 20") && t.contains("models.json"),
+        "{t}"
+    );
     let j = bar(&root, &bin)
         .args(["check", "--format", "json"])
         .output()
         .unwrap();
     let v: serde_json::Value = serde_json::from_slice(&j.stdout).unwrap();
-    assert!(v["prices"]["user_file"]
-        .as_str()
-        .unwrap()
-        .ends_with("models.json"));
-    assert!(v["prices"]["snapshot"].as_str().unwrap().starts_with("20"));
+    assert!(v["prices"]["fetched"].as_str().unwrap().starts_with("20"));
 }
 
 fn user_file(root: &Path, fetched: &str, valid: bool) {
@@ -161,7 +170,6 @@ fn user_file(root: &Path, fetched: &str, valid: bool) {
 fn check_ignores_bad_user_files_and_says_why() {
     for (fetched, valid, why) in [
         ("2099-01-01", true, "future"),
-        ("2001-01-01", true, "older"),
         ("zzz", true, "not a valid price file"),
         ("", false, "not a valid price file"),
     ] {
@@ -170,7 +178,7 @@ fn check_ignores_bad_user_files_and_says_why() {
         let t = String::from_utf8_lossy(&bar(&root, &bin).arg("check").output().unwrap().stdout)
             .into_owned();
         assert!(
-            t.contains("built in") && t.contains("ignored") && t.contains(why),
+            t.contains("ignored") && t.contains(why) && !t.contains("snapshot"),
             "{t}"
         );
         let j = bar(&root, &bin)
@@ -178,7 +186,173 @@ fn check_ignores_bad_user_files_and_says_why() {
             .output()
             .unwrap();
         let v: serde_json::Value = serde_json::from_slice(&j.stdout).unwrap();
-        assert!(v["prices"]["user_file"].is_null());
+        assert!(v["prices"]["fetched"].is_null());
         assert!(v["prices"]["ignored"].as_str().unwrap().contains(why));
     }
+}
+
+#[test]
+fn check_uses_an_old_user_file() {
+    let (root, bin) = fx("old", "true");
+    user_file(&root, "2001-01-01", true);
+    let t = String::from_utf8_lossy(&bar(&root, &bin).arg("check").output().unwrap().stdout)
+        .into_owned();
+    assert!(t.contains("models.dev snapshot 2001-01-01"), "{t}");
+}
+
+const DAY: u64 = 86_400;
+
+/// A transcript of one request today by `model`, a config showing
+/// today's spend, and a `bar render` in that environment.
+fn spend_fx<'a>(root: &'a Path, model: &str) -> impl Fn() -> String + 'a {
+    let claude = root.join("claude");
+    std::fs::create_dir_all(claude.join("projects/p")).unwrap();
+    let ts = format!("{}T00:00:01Z", hop_bar::prices::models::today());
+    std::fs::write(
+        claude.join("projects/p/a.jsonl"),
+        format!(
+            "{{\"timestamp\":\"{ts}\",\"message\":{{\"id\":\"m\",\"model\":\"{model}\",\"usage\":{{\"input_tokens\":1000000,\"output_tokens\":0}}}}}}\n"
+        ),
+    )
+    .unwrap();
+    let cfg = root.join("cfg/bar");
+    std::fs::create_dir_all(&cfg).unwrap();
+    std::fs::write(
+        cfg.join("bar.conf"),
+        format!(
+            "set claude-dir \"{}\"\nset left \"#{{spendhist[tz=utc,period=today]}}\"\n",
+            claude.display()
+        ),
+    )
+    .unwrap();
+    let bin = root.join("bin");
+    move || {
+        let o = bar(root, &bin)
+            .arg("render")
+            .write_stdin("{}")
+            .output()
+            .unwrap();
+        hop_bar::style::strip_codes(&String::from_utf8_lossy(&o.stdout))
+            .trim()
+            .to_string()
+    }
+}
+
+/// A render asked for the background models.dev fetch: the request's
+/// lock, result or failure marker is in the cache. Render creates the
+/// lock itself, so no waiting on the job is needed to see it.
+fn prices_requested(root: &Path) -> bool {
+    let c = hop_bar::cache::Cache::with_exe(&root.join("state/bar"), "bar".into());
+    let key = hop_bar::placeholders::spendhist::PRICES_KEY;
+    [c.path_for(key), c.lock_path(key), c.fail_path(key)]
+        .iter()
+        .any(|p| p.exists())
+}
+
+/// Renders until `want(output)`, or panics after 20 s.
+fn render_until(render: &dyn Fn() -> String, want: impl Fn(&str) -> bool) -> String {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    loop {
+        let out = render();
+        if want(&out) {
+            return out;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "never got there: {out:?}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+#[test]
+fn render_fetches_prices_for_an_unpriced_model_then_uses_them() {
+    let (root, _) = fx(
+        "jit",
+        &format!("cat \"{}/api.json\"", "$(dirname \"$0\")/.."),
+    );
+    let render = spend_fx(&root, "gpt-x");
+    // unknown until the background fetch lands, then priced from it
+    let first = render_until(&render, |o| !o.is_empty());
+    assert_eq!(first, "$0.00~");
+    assert!(prices_requested(&root));
+    assert_eq!(render_until(&render, |o| o == "$1.50"), "$1.50");
+    let path = root.join("data/bar/models.json");
+    assert_eq!(
+        std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    // fresh copy: further renders fetch nothing
+    let calls = std::fs::read_to_string(root.join("argv")).unwrap();
+    assert_eq!(calls.lines().count(), 1, "{calls}");
+    assert!(calls.contains("https://models.dev/api.json"));
+    for _ in 0..3 {
+        assert_eq!(render(), "$1.50");
+    }
+    assert_eq!(
+        std::fs::read_to_string(root.join("argv"))
+            .unwrap()
+            .lines()
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn render_never_fetches_when_every_model_is_priced() {
+    let (root, _) = fx(
+        "priced",
+        &format!("cat \"{}/api.json\"", "$(dirname \"$0\")/.."),
+    );
+    let render = spend_fx(&root, "claude-opus-4-5-20251101");
+    assert_eq!(render_until(&render, |o| !o.is_empty()), "$5.00");
+    for _ in 0..3 {
+        render();
+    }
+    assert!(!prices_requested(&root));
+    assert!(!root.join("argv").exists(), "curl ran");
+    assert!(!root.join("data/bar/models.json").exists());
+}
+
+#[test]
+fn render_refetches_a_stale_or_unusable_copy() {
+    for (name, stale, valid) in [("stale", true, true), ("junk", false, false)] {
+        let (root, _) = fx(
+            name,
+            &format!("cat \"{}/api.json\"", "$(dirname \"$0\")/.."),
+        );
+        user_file(&root, "2001-01-01", valid);
+        let path = root.join("data/bar/models.json");
+        if stale {
+            let old = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * DAY);
+            std::fs::File::options()
+                .write(true)
+                .open(&path)
+                .unwrap()
+                .set_modified(old)
+                .unwrap();
+        }
+        let render = spend_fx(&root, "gpt-x");
+        render_until(&render, |o| o == "$1.50");
+        assert!(
+            prices_requested(&root) && root.join("argv").exists(),
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn render_keeps_a_fresh_copy() {
+    let (root, _) = fx(
+        "fresh",
+        &format!("cat \"{}/api.json\"", "$(dirname \"$0\")/.."),
+    );
+    user_file(&root, "2001-01-01", true);
+    let render = spend_fx(&root, "gpt-x");
+    assert_eq!(render_until(&render, |o| !o.is_empty()), "$0.00~");
+    for _ in 0..3 {
+        render();
+    }
+    assert!(!prices_requested(&root));
+    assert!(!root.join("argv").exists(), "curl ran");
 }

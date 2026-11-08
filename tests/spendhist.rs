@@ -498,3 +498,19 @@ fn worst_case_summary_fits_the_cache_value_cap() {
     let s = Summary::parse(&out).unwrap();
     assert!(s.spend("2026-11", &[]).unknown);
 }
+
+#[test]
+fn needs_snapshot_only_for_models_without_rule_or_builtin_price() {
+    let s = hop_bar::spendhist::Summary::parse(
+        r#"{"v":1,"days":{"2026-11-07":{"claude-opus-4-5":[1,0,0,0],"claude-haiku-5-5#long":[1,0,0,0],"other":[9,0,0,0],"gpt-x":[0,0,0,0]},"2026-10-31":{"gpt-y":[1,0,0,0]}}}"#,
+    )
+    .unwrap();
+    // built-in, long tier, overflow bucket and zero-token ids never need it
+    assert!(!s.needs_snapshot("2026-11", &[]));
+    // a model with tokens in the period and no price does
+    assert!(s.needs_snapshot("2026-10", &[]));
+    assert!(s.needs_snapshot("2026", &[]));
+    // a `set price` rule covers it
+    let rule = [Price::parse("gpt-", "1", "1", "1", "1").unwrap()];
+    assert!(!s.needs_snapshot("2026", &rule));
+}

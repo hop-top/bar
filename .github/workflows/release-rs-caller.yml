@@ -43,7 +43,7 @@ jobs:
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --generate-notes $flags
 
   # Prebuilt binaries, one native runner per target. Asset:
-  # bar-<version>-<target>.tar.gz holding `bar` and LICENSE-models.dev, plus a .sha256 file;
+  # bar-<version>-<target>.tar.gz holding `bar`, plus a .sha256 file;
   # .zip holding `bar.exe` for Windows (arm64 cross-built on the x64 runner with MSVC).
   # Linux builds on ubuntu-22.04 (glibc 2.35) so they run on glibc >= 2.35.
   # The arm Linux runner needs a plan/repo that provides it.
@@ -83,11 +83,11 @@ jobs:
           case "$TARGET" in
             *-windows-*)
               asset="${name}.zip"
-              7z a -tzip "$asset" "./target/${TARGET}/release/bar.exe" ./data/LICENSE-models.dev
+              7z a -tzip "$asset" "./target/${TARGET}/release/bar.exe"
               ;;
             *)
               asset="${name}.tar.gz"
-              tar -czf "$asset" -C "target/${TARGET}/release" bar -C "$PWD/data" LICENSE-models.dev
+              tar -czf "$asset" -C "target/${TARGET}/release" bar
               ;;
           esac
           if command -v sha256sum >/dev/null; then
