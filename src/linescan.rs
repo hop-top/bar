@@ -4,7 +4,6 @@
 
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
-use std::os::unix::fs::MetadataExt;
 use std::sync::OnceLock;
 use std::time::Instant;
 
@@ -26,9 +25,7 @@ pub struct Mark {
 }
 
 pub fn mtime_ns(meta: &fs::Metadata) -> i64 {
-    meta.mtime()
-        .saturating_mul(1_000_000_000)
-        .saturating_add(meta.mtime_nsec())
+    crate::platform::mtime_ns(meta)
 }
 
 impl Mark {
@@ -36,7 +33,7 @@ impl Mark {
     /// size growing means the file was replaced: scan from the start.
     pub fn replaced_by(&self, meta: &fs::Metadata) -> bool {
         let (size, ns) = (meta.len(), mtime_ns(meta));
-        self.ino != meta.ino()
+        self.ino != crate::platform::file_id(meta)
             || size < self.size
             || ns < self.mtime_ns
             || (size == self.size && ns != self.mtime_ns)
@@ -44,7 +41,7 @@ impl Mark {
 
     pub fn fresh(meta: &fs::Metadata) -> Mark {
         Mark {
-            ino: meta.ino(),
+            ino: crate::platform::file_id(meta),
             ..Mark::default()
         }
     }

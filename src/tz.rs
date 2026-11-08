@@ -23,20 +23,11 @@ impl Tz {
     }
 }
 
-/// The process's zone (`TZ`, else the system's) at `ts`, in seconds east
-/// of UTC; 0 when the C library cannot convert it.
+/// The local zone at `ts`, in seconds east of UTC: `TZ`, else the
+/// system's, on Unix; the system zone on Windows. 0 when it cannot be
+/// converted.
 pub fn local_offset(ts: i64) -> i64 {
-    let t: libc::time_t = ts;
-    // SAFETY: `tm` is plain data for which all-zero is valid, and
-    // `localtime_r` writes only into the buffer it is given.
-    unsafe {
-        let mut tm: libc::tm = std::mem::zeroed();
-        if libc::localtime_r(&t, &mut tm).is_null() {
-            0
-        } else {
-            tm.tm_gmtoff
-        }
-    }
+    crate::platform::local_offset(ts)
 }
 
 /// Days since 1970-01-01 to `(year, month, day)` (Hinnant).

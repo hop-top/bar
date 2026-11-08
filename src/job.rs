@@ -14,7 +14,7 @@ use crate::tz::Tz;
 /// arguments, so it carries only kinds and options, never secrets.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Job {
-    /// `sh -c cmd`; stdout on success. `timeout` in seconds.
+    /// `sh -c cmd` (`cmd /C` on Windows); stdout on success. `timeout` in seconds.
     Command { cmd: String, timeout: u64 },
     /// `gh <args>` run directly, no shell; stdout on success.
     Gh { args: Vec<String> },
@@ -116,12 +116,12 @@ impl Job {
                 run_command(cmd, limit.min(Duration::from_secs(*timeout)))
             }
             Job::Gh { args } => {
-                let mut c = Command::new("gh");
+                let mut c = Command::new(crate::platform::program("gh"));
                 c.args(args);
                 run_child(c, None, limit)
             }
             Job::GitStatus { dir } => {
-                let mut c = Command::new("git");
+                let mut c = Command::new(crate::platform::program("git"));
                 c.args(["-c", "core.fsmonitor=false"])
                     .args(["status", "--porcelain=v2", "--branch"])
                     .current_dir(dir)
@@ -141,7 +141,7 @@ impl Job {
             )
             .filter(|o| plugin::parse_output(o).is_some()),
             Job::Tmux { pane } => {
-                let mut c = Command::new("tmux");
+                let mut c = Command::new(crate::platform::program("tmux"));
                 c.args(["display-message", "-p", "#S:#I", "-t", pane]);
                 run_child(c, None, limit.min(Duration::from_secs(2)))
                     .filter(|o| !o.trim().is_empty())

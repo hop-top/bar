@@ -10,15 +10,27 @@ pub struct Cwd;
 /// hidden outside a repository.
 pub struct Root;
 
-/// `path` with a leading `home` replaced by `~` (whole components only).
+/// Path separators: `/`, and `\` on Windows.
+fn is_sep(c: char) -> bool {
+    c == '/' || (cfg!(windows) && c == '\\')
+}
+
+/// `path` with a leading `home` replaced by `~` (whole components only;
+/// ASCII case ignored on Windows, as its file names do).
 pub fn abbrev_home(path: &str, home: &str) -> String {
-    let home = home.trim_end_matches('/');
+    let home = home.trim_end_matches(is_sep);
     if home.is_empty() {
         return path.to_owned();
     }
-    match path.strip_prefix(home) {
-        Some("") => "~".into(),
-        Some(rest) if rest.starts_with('/') => format!("~{rest}"),
+    let rest = match path.get(..home.len()) {
+        Some(head) if head == home || (cfg!(windows) && head.eq_ignore_ascii_case(home)) => {
+            &path[home.len()..]
+        }
+        _ => return path.to_owned(),
+    };
+    match rest.chars().next() {
+        None => "~".into(),
+        Some(c) if is_sep(c) => format!("~{rest}"),
         _ => path.to_owned(),
     }
 }
@@ -34,8 +46,8 @@ pub fn shown(path: &str, opts: &Options, home: &str) -> Option<String> {
         match full.as_str() {
             "~" | "/" => full,
             _ => full
-                .trim_end_matches('/')
-                .rsplit('/')
+                .trim_end_matches(is_sep)
+                .rsplit(is_sep)
                 .next()
                 .unwrap_or_default()
                 .to_owned(),
@@ -48,7 +60,9 @@ pub fn shown(path: &str, opts: &Options, home: &str) -> Option<String> {
 }
 
 fn home() -> String {
-    std::env::var("HOME").unwrap_or_default()
+    crate::platform::home()
+        .and_then(|h| h.into_os_string().into_string().ok())
+        .unwrap_or_default()
 }
 
 impl Placeholder for Cwd {

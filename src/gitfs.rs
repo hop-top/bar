@@ -150,16 +150,52 @@ impl Repo {
 
 fn global_configs() -> Vec<PathBuf> {
     let env = |k| std::env::var_os(k).filter(|v| !v.is_empty());
+    let mut v = system_configs();
     if let Some(g) = env("GIT_CONFIG_GLOBAL") {
-        return vec![g.into(), "/etc/gitconfig".into()];
+        v.push(g.into());
+        return v;
     }
-    let home = env("HOME").map(PathBuf::from);
+    // git for Windows falls back to the profile dir without `HOME`
+    let home = env("HOME")
+        .or_else(|| env("USERPROFILE").filter(|_| cfg!(windows)))
+        .map(PathBuf::from);
     let xdg = env("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .or_else(|| home.as_ref().map(|h| h.join(".config")));
-    let mut v = vec![PathBuf::from("/etc/gitconfig")];
     v.extend(home.map(|h| h.join(".gitconfig")));
     v.extend(xdg.map(|x| x.join("git/config")));
+    v
+}
+
+/// System-level config files git may read.
+#[cfg(not(windows))]
+fn system_configs() -> Vec<PathBuf> {
+    vec![PathBuf::from("/etc/gitconfig")]
+}
+
+/// Git for Windows: `%PROGRAMDATA%\Git\config`, then `etc\gitconfig`
+/// (and the older `mingw64\etc\gitconfig`) of each install whose
+/// `git.exe` is on `PATH`.
+#[cfg(windows)]
+fn system_configs() -> Vec<PathBuf> {
+    let mut v: Vec<PathBuf> = std::env::var_os("PROGRAMDATA")
+        .filter(|p| !p.is_empty())
+        .map(|p| PathBuf::from(p).join("Git").join("config"))
+        .into_iter()
+        .collect();
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    for dir in std::env::split_paths(&path).filter(|d| d.join("git.exe").is_file()) {
+        if let Some(root) = dir.parent() {
+            for c in [
+                root.join("etc/gitconfig"),
+                root.join("mingw64/etc/gitconfig"),
+            ] {
+                if !v.contains(&c) {
+                    v.push(c);
+                }
+            }
+        }
+    }
     v
 }
 

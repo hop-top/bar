@@ -1,5 +1,5 @@
-#[cfg(not(unix))]
-compile_error!("bar supports Unix only (macOS, Linux); Windows is not supported");
+#[cfg(not(any(unix, windows)))]
+compile_error!("bar supports Unix (macOS, Linux) and Windows only");
 
 pub mod cache;
 pub mod check;
@@ -18,6 +18,7 @@ pub mod options;
 pub mod pace;
 pub mod palette;
 pub mod placeholders;
+pub mod platform;
 pub mod plugin;
 pub mod presets;
 pub mod preview;

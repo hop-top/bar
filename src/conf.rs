@@ -438,11 +438,9 @@ pub fn load_from(env: &dyn Fn(&str) -> Option<String>, home: &Path, kit_dir: &Pa
     }
 }
 
-/// Process environment, `HOME` and the kit config dir for `bar`.
+/// Process environment, the home dir and the kit config dir for `bar`.
 pub fn find_path_default() -> Option<PathBuf> {
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_default();
+    let home = crate::platform::home().unwrap_or_default();
     find_path(
         &|k| std::env::var(k).ok(),
         &home,
@@ -451,9 +449,7 @@ pub fn find_path_default() -> Option<PathBuf> {
 }
 
 pub fn load() -> LoadResult {
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_default();
+    let home = crate::platform::home().unwrap_or_default();
     load_from(
         &|k| std::env::var(k).ok(),
         &home,

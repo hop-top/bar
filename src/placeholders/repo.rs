@@ -9,7 +9,8 @@ pub struct Repo;
 pub struct Branch;
 
 fn git(dir: &Path, args: &[&str]) -> Option<String> {
-    let out = Command::new("git")
+    let mut c = Command::new(crate::platform::program("git"));
+    let out = crate::platform::hide_window(&mut c)
         .arg("--no-optional-locks")
         .arg("-C")
         .arg(dir)
@@ -19,7 +20,7 @@ fn git(dir: &Path, args: &[&str]) -> Option<String> {
         .ok()?;
     out.status.success().then(|| {
         String::from_utf8_lossy(&out.stdout)
-            .trim_end_matches('\n')
+            .trim_end_matches(['\r', '\n'])
             .to_string()
     })
 }

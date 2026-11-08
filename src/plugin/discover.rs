@@ -1,11 +1,13 @@
-//! `bar-<name>` executables on a `PATH`-style list of directories.
+//! `bar-<name>` executables on a `PATH`-style list of directories; on
+//! Windows `bar-<name>` plus a runnable `PATHEXT` extension (`.exe`,
+//! `.cmd`, ...).
 
 use std::ffi::OsStr;
-use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use super::PREFIX;
 use crate::placeholders::lookup;
+use crate::platform;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Found {
@@ -33,48 +35,58 @@ fn valid_name(name: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
-fn is_executable(p: &Path) -> bool {
-    std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-}
-
 /// Every plugin in `dirs`, sorted by name; per name the first executable
-/// in `dirs` order wins. Core names and non-executables are skipped.
+/// in `dirs` order wins, and within one dir the earliest `PATHEXT`
+/// extension (Windows). Core names and non-executables are skipped.
 pub fn discover(dirs: &[PathBuf]) -> Vec<Found> {
     let mut out: Vec<Found> = Vec::new();
     for dir in dirs {
         let Ok(entries) = std::fs::read_dir(dir) else {
             continue;
         };
+        let mut here: Vec<(usize, Found)> = Vec::new();
         for e in entries.flatten() {
             let file = e.file_name();
-            let Some(name) = file.to_str().and_then(|f| f.strip_prefix(PREFIX)) else {
+            let Some((stem, rank)) = file.to_str().and_then(platform::command_stem) else {
+                continue;
+            };
+            let Some(name) = stem.strip_prefix(PREFIX) else {
                 continue;
             };
             let path = dir.join(&file);
-            if valid_name(name)
-                && path.to_str().is_some()
-                && !out.iter().any(|f| f.name == name)
-                && is_executable(&path)
+            if !valid_name(name)
+                || path.to_str().is_none()
+                || out.iter().any(|f| f.name == name)
+                || !platform::is_executable(&path)
             {
-                out.push(Found {
-                    name: name.to_string(),
-                    path,
-                });
+                continue;
+            }
+            let found = Found {
+                name: name.to_string(),
+                path,
+            };
+            match here.iter_mut().find(|(_, f)| f.name == name) {
+                Some(slot) if slot.0 > rank => *slot = (rank, found),
+                Some(_) => {}
+                None => here.push((rank, found)),
             }
         }
+        out.extend(here.into_iter().map(|(_, f)| f));
     }
     out.sort_by(|a, b| a.name.cmp(&b.name));
     out
 }
 
-/// The plugin `discover` would pick for `name`, with one stat per dir.
+/// The plugin `discover` would pick for `name`, with one stat per dir
+/// (per `PATHEXT` extension on Windows).
 pub fn find(dirs: &[PathBuf], name: &str) -> Option<Found> {
     if !valid_name(name) {
         return None;
     }
+    let file = format!("{PREFIX}{name}");
     dirs.iter()
-        .map(|d| d.join(format!("{PREFIX}{name}")))
-        .find(|p| p.to_str().is_some() && is_executable(p))
+        .filter_map(|d| platform::executable_in(d, &file))
+        .find(|p| p.to_str().is_some())
         .map(|path| Found {
             name: name.to_string(),
             path,

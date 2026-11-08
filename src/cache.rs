@@ -5,8 +5,6 @@
 
 use std::fs;
 use std::io::{ErrorKind, Read, Write};
-use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -152,11 +150,7 @@ impl Cache {
     }
 
     fn ensure_dir(&self) -> std::io::Result<()> {
-        fs::DirBuilder::new()
-            .recursive(true)
-            .mode(0o700)
-            .create(&self.dir)?;
-        fs::set_permissions(&self.dir, fs::Permissions::from_mode(0o700))
+        crate::platform::private_dir(&self.dir)
     }
 
     /// Atomic: a private temp file in the cache dir, renamed into place.
@@ -206,8 +200,7 @@ impl Cache {
         let lock = self.lock_path(key);
         for _ in 0..2 {
             let mut o = fs::OpenOptions::new();
-            o.write(true).create_new(true);
-            std::os::unix::fs::OpenOptionsExt::mode(&mut o, 0o600);
+            crate::platform::private_file(o.write(true).create_new(true));
             match o.open(&lock) {
                 Ok(mut f) => {
                     let token = nonce();
@@ -250,16 +243,14 @@ impl Cache {
 
     /// Detached: own process group, no stdio, not waited on.
     fn spawn(&self, req: &Request) -> std::io::Result<()> {
-        Command::new(&self.exe)
-            .arg("refresh")
+        let mut c = Command::new(&self.exe);
+        c.arg("refresh")
             .arg(req.to_json())
             .env("BAR_STATE_DIR", &self.state)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .process_group(0)
-            .spawn()
-            .map(drop)
+            .stderr(Stdio::null());
+        crate::platform::spawn_detached(c)
     }
 
     /// Body of `bar refresh`: run, store on success, release the lock.
@@ -284,32 +275,22 @@ fn age(t: SystemTime) -> Duration {
     SystemTime::now().duration_since(t).unwrap_or_default()
 }
 
-/// Kills the whole group so grandchildren holding stdout die too.
-fn kill_group(pid: u32) {
-    let _ = Command::new("kill")
-        .args(["-KILL", "--", &format!("-{pid}")])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-}
-
-/// `sh -c cmd` stdout when it exits 0 within `limit`.
+/// Shell command stdout (`sh -c` on Unix, `cmd /C` on Windows) when it
+/// exits 0 within `limit`.
 pub(crate) fn run_command(cmd: &str, limit: Duration) -> Option<String> {
-    let mut c = Command::new("sh");
-    c.args(["-c", cmd]);
-    run_child(c, None, limit)
+    run_child(crate::platform::shell(cmd), None, limit)
 }
 
-/// Stdout of `cmd` when it exits 0 within `limit`; killed with its group
-/// otherwise. `input`, if any, is written to its stdin, else stdin is closed.
+/// Stdout of `cmd` when it exits 0 within `limit`; otherwise killed with
+/// its process group (its process tree on Windows). `input`, if any, is
+/// written to its stdin, else stdin is closed.
 pub(crate) fn run_child(
     mut cmd: Command,
     input: Option<Vec<u8>>,
     limit: Duration,
 ) -> Option<String> {
     let deadline = Instant::now() + limit;
-    let mut child = cmd
+    let mut child = crate::platform::own_group(&mut cmd)
         .stdin(if input.is_some() {
             Stdio::piped()
         } else {
@@ -317,10 +298,8 @@ pub(crate) fn run_child(
         })
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .process_group(0)
         .spawn()
         .ok()?;
-    let pid = child.id();
     if let (Some(bytes), Some(mut stdin)) = (input, child.stdin.take()) {
         // a plugin that never reads must not block us; EPIPE is ignored
         std::thread::spawn(move || {
@@ -350,7 +329,7 @@ pub(crate) fn run_child(
             .ok()
     });
     if status.is_none() || out.is_none() {
-        kill_group(pid);
+        crate::platform::kill_tree(&mut child);
         let _ = child.wait();
         return None;
     }

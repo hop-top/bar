@@ -7,7 +7,6 @@ use super::models::user_path;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -117,11 +116,9 @@ fn write_atomic(path: &Path, text: &str) -> std::io::Result<()> {
     let tmp = dir.join(format!(".models.json.{}.tmp", std::process::id()));
     let _ = std::fs::remove_file(&tmp);
     let res = (|| {
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&tmp)?;
+        let mut f =
+            crate::platform::private_file(std::fs::OpenOptions::new().write(true).create_new(true))
+                .open(&tmp)?;
         f.write_all(text.as_bytes())?;
         f.sync_all()?;
         std::fs::rename(&tmp, path)

@@ -27,9 +27,12 @@ pub fn get(name: &str) -> Option<&'static str> {
     })
 }
 
+/// The variable the home directory comes from, for messages.
+const HOME_VAR: &str = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+
 /// Writes preset `name` to the first config search path; refuses when any
 /// search path already holds a config, or when the path would be relative
-/// (`HOME` unset or relative). Returns the written path.
+/// (home unset or relative). Returns the written path.
 pub fn init(
     name: &str,
     env: &dyn Fn(&str) -> Option<String>,
@@ -39,7 +42,9 @@ pub fn init(
     let body = get(name).ok_or_else(|| format!("unknown preset `{name}`"))?;
     let path = crate::conf::search_paths(env, home, kit_dir).remove(0);
     if !path.is_absolute() {
-        return Err("HOME is unset or relative; set it or XDG_CONFIG_HOME".into());
+        return Err(format!(
+            "{HOME_VAR} is unset or relative; set it or XDG_CONFIG_HOME"
+        ));
     }
     if let Some(p) = crate::conf::find_path(env, home, kit_dir) {
         return Err(format!("{} exists; not overwritten", p.display()));
