@@ -19,7 +19,7 @@ Pick something else if you want a TUI editor or the widest widget catalogue: [cc
 
 ## Install
 
-From a release: download the archive for your platform from [Releases](https://github.com/hop-top/bar/releases), check it against its `.sha256` file and put `bar` (`bar.exe` on Windows) on your `PATH`. Archives exist for x86_64 and aarch64 on macOS, Linux (glibc 2.35 or newer) and Windows.
+From a release: download the archive for your platform from [Releases](https://github.com/hop-top/bar/releases), check it against its `.sha256` file and put `bar` (`bar.exe` on Windows) on your `PATH`. Archives exist for x86_64 and aarch64 on macOS, Linux (glibc 2.35 or newer; on older systems build from source) and Windows.
 
 From source, with a [Rust toolchain](https://rustup.rs):
 
