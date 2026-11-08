@@ -4,11 +4,17 @@
 use super::{Ctx, Placeholder};
 use crate::cache::Job;
 use crate::options::Options;
+use crate::prices::models;
 use crate::spendhist::{cache_key, claude_dir, date_of, Summary, Tz};
 use crate::style::dim;
+use std::time::Duration;
 
 /// The aggregate is rebuilt at most this often, seconds.
 const TTL: u64 = 60;
+/// Cache key of the background models.dev fetch.
+pub const PRICES_KEY: &str = "prices:models.dev";
+/// The models.dev snapshot is fetched at most this often, seconds.
+pub const PRICES_TTL: u64 = 86_400;
 
 pub struct SpendHist;
 
@@ -48,6 +54,12 @@ impl Placeholder for SpendHist {
             sum.spend(&day, &ctx.config.prices),
             sum.spend(&day[..7], &ctx.config.prices),
         );
+        if sum.needs_snapshot(&day[..7], &ctx.config.prices)
+            && models::stale(Duration::from_secs(PRICES_TTL))
+        {
+            // the price shows as unknown until a later render reads it
+            cache.read_or_refresh(PRICES_KEY, PRICES_TTL, &Job::Prices);
+        }
         let period = opts.get("period").unwrap_or("both");
         Some(fmt(period, t.usd, t.unknown, m.usd, m.unknown))
     }

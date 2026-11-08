@@ -237,7 +237,7 @@ Prices:
 - A model id matches an entry when it equals it or adds `-YYYYMMDD`; an unlisted version (say a newer minor release) has no price and shows `~` until you add a `set price`.
 - Haiku 5.5 requests whose prompt (input plus cache tokens) passes 100,000 tokens are priced at five times the rates, as the page lists; a `set price` rule covers both tiers.
 - Override or add with `set price <model-prefix> <in> <out> <cache_write> <cache_read>`, dollars per million tokens, for example `set price claude-opus-4-5 5 25 6.25 0.5`. An override beats the built-in table whatever its length; among overrides the longest prefix wins, a later line breaking ties.
-- Models the built-in table lacks (other vendors, gateways, clouds) are priced from a models.dev snapshot built into bar (`data/models.json`; its date shows in `bar check`). models.dev data is MIT licensed.
+- Models the built-in table lacks (other vendors, gateways, clouds) are priced from a models.dev snapshot in bar's data dir, fetched on demand (see [snapshot fetch](#spendhist) below); until it is there they show `~`. bar ships no models.dev data. models.dev data is MIT licensed.
 - Lookup order: `set price` rule, built-in Anthropic table, snapshot.
 
 Snapshot matching:
@@ -248,11 +248,14 @@ Snapshot matching:
 - When providers list that id at different prices the model is unknown (`~`); add a `set price`.
 - A cache rate the provider does not list is priced as plain input.
 
-Snapshot update:
+Snapshot fetch:
 
-- `bar prices update` fetches a fresh copy from `https://models.dev/api.json` into `$XDG_DATA_HOME/bar/models.json` (mode 0600, replaced atomically).
-- bar uses it when it is dated the same day as the built-in snapshot or later, and not in the future; a file that is invalid or out of range is ignored and `bar check` says why.
-- The download is capped at 64 MiB. It runs `curl` (`-fsS --max-time 60`, https only) and is the only place core bar uses the network (plugins have their own).
+- File: `$XDG_DATA_HOME/bar/models.json` (mode 0600, replaced atomically), fetched from `https://models.dev/api.json`. Its date and path show in `bar check`.
+- When: a render of `spendhist` sees tokens this month for a model that neither a `set price` rule nor the built-in table prices, and the file is missing, unusable or last written over a day ago. The render then starts a background fetch (cache key `prices:models.dev`, at most once a day, retried no sooner than 60 s after a failure) and shows the amount with `~`; a later render uses the new file. A render never waits on the network.
+- Never fetched when `spendhist` is not in the layout or every model in it is priced by a rule or the built-in table. To avoid the fetch, add a `set price` rule for each such model.
+- `bar prices update` fetches the same file on request.
+- A file that is invalid or dated in the future is ignored (`bar check` says why) and fetched again.
+- The download is capped at 64 MiB. It runs `curl` (`-fsS`, https only; `--max-time 60` for `bar prices update`, the refresh time limit in the background) and is the only place core bar uses the network (plugins have their own).
 
 ### Git and directories
 
@@ -504,7 +507,7 @@ A render prints at most 4 rows, all lines together. Rows past the fourth are dro
 | `bar click hook` | Claude Code hook ([hooks](#hooks)) | always 0 |
 | `bar plugin list` | Plugins on `PATH`: name, version, description, path ([plugins](plugins.md#discovery)) | 0 |
 | `bar plugin info <name>` | One plugin's `--ext-info` result and path | 0, 1 when no such plugin |
-| `bar prices update [--out <file>]` | Fetches models.dev prices ([snapshot update](#spendhist)); `--out` writes that file instead of the data dir's `models.json` | 0, 2 on failure |
+| `bar prices update [--out <file>]` | Fetches models.dev prices ([snapshot fetch](#spendhist)); `--out` writes that file instead of the data dir's `models.json` | 0, 2 on failure |
 | `bar --version`, `bar --help`, `bar <command> --help` | Version, help | 0 |
 
 `--format csv|json|table|text|yaml` is accepted by every command and changes the output of `bar check`, `bar plugin list` and `bar plugin info` (default `table`). A usage error (unknown command or flag) exits 2. `bar refresh <request>` is internal: render spawns it to fill the cache in the background.
@@ -520,9 +523,9 @@ A render prints at most 4 rows, all lines together. Rows past the fourth are dro
 - Warnings: `gh` not on `PATH` while `prs` or `issues` is used; a `default` line for a plugin that is not on `PATH` (a layout using it is an error); an expression that expands to more than 8 queries (only the first 8 run).
 - Options holding `%command%` or `%$VAR%` are skipped; they resolve at render time.
 
-- It also prints the price data in use: the built-in models.dev snapshot date, or the `bar prices update` copy, and why a copy was ignored.
+- It also prints the models.dev snapshot state: its date and path, `not fetched`, or why the file was ignored.
 
-Exit 0 when there are no errors (warnings allowed), 2 on a config error. `--format json` prints `{path, prices: {snapshot, user_file, ignored}, ok, issues: [{level, line, message}]}`; `path` and `user_file` are `null` when not in use, and `line` is 0 when an issue has no line. `--format yaml`, `csv` and `text` give the same data in that format; the default, `table`, is the plain report.
+Exit 0 when there are no errors (warnings allowed), 2 on a config error. `--format json` prints `{path, prices: {path, fetched, ignored}, ok, issues: [{level, line, message}]}`; `path` (top level) is `null` when no config file is in use, `prices.fetched` is the snapshot date or `null` when there is no usable file, and `line` is 0 when an issue has no line. `--format yaml`, `csv` and `text` give the same data in that format; the default, `table`, is the plain report.
 
 ### bar preview
 
@@ -670,7 +673,7 @@ Check clickable commands, in a Claude Code session inside tmux after `bar click 
 |---|---|---|
 | Config | see [Config file](#config-file) | `XDG_CONFIG_HOME` (absolute) |
 | State and cache | macOS `~/Library/Application Support/bar`; Linux `~/.local/state/bar`; Windows `%LOCALAPPDATA%\bar` | `BAR_STATE_DIR`, else `XDG_STATE_HOME/bar` (absolute; a leading `~` expands) |
-| Data (`bar prices update`) | macOS `~/Library/Application Support/bar`; Linux `~/.local/share/bar`; Windows `%LOCALAPPDATA%\bar` | `XDG_DATA_HOME/bar` (absolute; a leading `~` expands) |
+| Data (models.dev snapshot, `models.json`) | macOS `~/Library/Application Support/bar`; Linux `~/.local/share/bar`; Windows `%LOCALAPPDATA%\bar` | `XDG_DATA_HOME/bar` (absolute; a leading `~` expands) |
 | Claude Code | `~/.claude` | `CLAUDE_CONFIG_DIR` (absolute); `set claude-dir` for `spendhist` only |
 
 On Unix bar creates its files with mode 0600 and its dirs with 0700; on Windows they inherit the ACL of the per-user dir. Writes go to a temp file renamed into place.

@@ -1,5 +1,5 @@
-//! The models.dev price snapshot: embedded at build time, optionally
-//! replaced by a newer copy in bar's data dir (`bar prices update`).
+//! The models.dev price snapshot: a copy in bar's data dir, written by
+//! `bar prices update` or the background fetch `spendhist` requests.
 //!
 //! File shape: `{"source", "fetched": "YYYY-MM-DD", "providers":
 //! {provider: {model: [input, output, cache_write, cache_read]}}}`;
@@ -14,14 +14,13 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::OnceLock;
 
-const EMBEDDED: &str = include_str!("../../data/models.json");
+static LOADS: AtomicUsize = AtomicUsize::new(0);
 
-static PARSES: AtomicUsize = AtomicUsize::new(0);
-
-/// How many snapshots this process has parsed; lets tests check that
-/// lookups served by overrides or the built-in table never load one.
-pub fn parses() -> usize {
-    PARSES.load(Ordering::Relaxed)
+/// How many times this process has loaded the data-dir snapshot; lets
+/// tests check that lookups served by overrides or the built-in table
+/// never load it.
+pub fn loads() -> usize {
+    LOADS.load(Ordering::Relaxed)
 }
 
 /// `YYYY-MM-DD` with a plausible month and day.
@@ -48,7 +47,6 @@ pub struct Snapshot {
 
 impl Snapshot {
     pub fn parse(text: &str) -> Option<Snapshot> {
-        PARSES.fetch_add(1, Ordering::Relaxed);
         let v: Value = serde_json::from_str(text).ok()?;
         let fetched = v
             .get("fetched")?
@@ -144,16 +142,12 @@ fn rates(e: &Value) -> Option<Rates> {
     ])
 }
 
-/// The snapshot built into the binary.
-pub fn embedded() -> &'static Snapshot {
-    static S: OnceLock<Snapshot> = OnceLock::new();
-    S.get_or_init(|| {
-        Snapshot::parse(EMBEDDED).unwrap_or(Snapshot {
-            fetched: String::new(),
-            by_id: HashMap::new(),
-            len: 0,
-        })
-    })
+fn empty() -> Snapshot {
+    Snapshot {
+        fetched: String::new(),
+        by_id: HashMap::new(),
+        len: 0,
+    }
 }
 
 /// `models.json` in bar's data dir (`XDG_DATA_HOME/bar`).
@@ -178,12 +172,12 @@ pub fn today() -> String {
     )
 }
 
-/// The snapshot prices come from: the data-dir copy when it is valid,
-/// not dated in the future, and dated the same day as the embedded one
-/// or later; else the embedded one.
+/// The snapshot prices come from: the data-dir copy when it is valid and
+/// not dated in the future; else an empty one, which prices nothing.
 pub fn active() -> &'static Active {
     static A: OnceLock<Active> = OnceLock::new();
     A.get_or_init(|| {
+        LOADS.fetch_add(1, Ordering::Relaxed);
         let path = user_path();
         let mut ignored = None;
         if let Ok(text) = std::fs::read_to_string(&path) {
@@ -191,9 +185,6 @@ pub fn active() -> &'static Active {
                 None => ignored = Some("not a valid price file".to_string()),
                 Some(s) if s.fetched() > today().as_str() => {
                     ignored = Some(format!("dated {} (in the future)", s.fetched()))
-                }
-                Some(s) if s.fetched() < embedded().fetched() => {
-                    ignored = Some(format!("dated {} (older than built in)", s.fetched()))
                 }
                 Some(s) => {
                     return Active {
@@ -205,9 +196,20 @@ pub fn active() -> &'static Active {
             }
         }
         Active {
-            snapshot: embedded(),
+            snapshot: Box::leak(Box::new(empty())),
             user_file: None,
             ignored,
         }
     })
+}
+
+/// The data-dir copy is older than `max_age` (by modification time), or
+/// missing, unreadable or not in use: a background fetch is due.
+pub fn stale(max_age: std::time::Duration) -> bool {
+    active().user_file.is_none()
+        || std::fs::metadata(user_path())
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_none_or(|a| a >= max_age)
 }

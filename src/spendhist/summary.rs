@@ -77,6 +77,21 @@ impl Summary {
         }
         Spend { usd, unknown }
     }
+
+    /// Some model with tokens on the days starting with `prefix` has
+    /// neither a `set price` rule nor a built-in price, so only the
+    /// models.dev snapshot can price it.
+    pub fn needs_snapshot(&self, prefix: &str, overrides: &[Price]) -> bool {
+        self.days
+            .iter()
+            .filter(|(d, _)| d.starts_with(prefix))
+            .flat_map(|(_, models)| models)
+            .filter(|(key, t)| key.as_str() != OTHER && t.iter().any(|n| *n > 0))
+            .any(|(key, _)| {
+                let model = key.split_once(LONG_MARK).map_or(key.as_str(), |(m, _)| m);
+                prices::needs_snapshot(model, overrides)
+            })
+    }
 }
 
 pub(super) fn days_from_json(v: &Value) -> Option<BTreeMap<String, BTreeMap<String, Tokens>>> {

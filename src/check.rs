@@ -59,8 +59,8 @@ impl Report {
         json!({
             "path": self.path.as_ref().map(|p| p.display().to_string()),
             "prices": {
-                "snapshot": a.snapshot.fetched(),
-                "user_file": a.user_file.as_ref().map(|p| p.display().to_string()),
+                "path": models::user_path().display().to_string(),
+                "fetched": a.user_file.as_ref().map(|_| a.snapshot.fetched()),
                 "ignored": a.ignored,
             },
             "ok": !self.has_errors(),
@@ -74,23 +74,16 @@ impl Report {
             None => "config: none found, using the built-in layout\n".to_string(),
         };
         let a = models::active();
-        out.push_str(&match &a.user_file {
-            Some(p) => format!(
-                "prices: models.dev snapshot {} (user file {})\n",
+        let path = models::user_path();
+        out.push_str(&match (&a.user_file, &a.ignored) {
+            (Some(_), _) => format!(
+                "prices: models.dev snapshot {} ({})\n",
                 a.snapshot.fetched(),
-                p.display()
+                path.display()
             ),
-            None => format!(
-                "prices: models.dev snapshot {} (built in)\n",
-                a.snapshot.fetched()
-            ),
+            (None, Some(why)) => format!("prices: {} ignored, {why}\n", path.display()),
+            (None, None) => format!("prices: models.dev not fetched ({})\n", path.display()),
         });
-        if let Some(why) = &a.ignored {
-            out.push_str(&format!(
-                "prices: {} ignored, {why}\n",
-                models::user_path().display()
-            ));
-        }
         for i in &self.issues {
             let at = if i.line == 0 {
                 String::new()

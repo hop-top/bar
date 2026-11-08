@@ -115,9 +115,15 @@ impl Price {
 
 /// An override beats the built-in table; among overrides the longest
 /// matching prefix wins, a later line breaking ties. Models the built-in
-/// table lacks fall back to the models.dev snapshot.
+/// table lacks fall back to the fetched models.dev snapshot, if any.
 pub fn lookup(model: &str, overrides: &[Price]) -> Option<Rates> {
     lookup_with(model, None, overrides, || models::active().snapshot)
+}
+
+/// Neither a `set price` rule nor the built-in table prices `model`: only
+/// the models.dev snapshot can.
+pub fn needs_snapshot(model: &str, overrides: &[Price]) -> bool {
+    !overrides.iter().any(|p| model.starts_with(&p.prefix)) && builtin(model).is_none()
 }
 
 /// `lookup` against a given snapshot, optionally inside one `provider`.

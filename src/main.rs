@@ -71,7 +71,7 @@ enum SubCmd {
 
 #[derive(Subcommand)]
 enum PricesCmd {
-    /// Fetch models.dev prices into bar's data dir; the only network use.
+    /// Fetch models.dev prices into bar's data dir (spendhist also does, daily, for models without a built-in price).
     Update {
         /// Write this file instead of the data dir's models.json.
         #[arg(long, value_name = "FILE")]
