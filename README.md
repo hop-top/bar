@@ -1,12 +1,12 @@
 # bar
 
-[![CI](https://github.com/hop-top/bar/actions/workflows/test-rs-caller.yml/badge.svg?branch=next)](https://github.com/hop-top/bar/actions/workflows/test-rs-caller.yml)
-
 A status line for [Claude Code](https://code.claude.com/docs/en/statusline) that any script can extend: name it `bar-<name>`, put it on `PATH`, and it becomes a placeholder, cached so the line never waits.
 
 ![bar with the powerline skin and nord palette: model, context, repo and branch, PRs with CI marks, issues, 5-hour and 7-day usage bars, account.](docs/gallery/skin-powerline.svg)
 
-Written in Rust. Renders in under a millisecond warm and 1 to 2 ms cold, using 3 MiB of memory ([benchmark](bench/README.md#ben-results), against ccline, claude-powerline and ccstatusline). Runs on macOS, Linux and Windows. Licence: [Apache-2.0](LICENSE).
+[![CI](https://github.com/hop-top/bar/actions/workflows/test-rs-caller.yml/badge.svg?branch=next)](https://github.com/hop-top/bar/actions/workflows/test-rs-caller.yml)
+
+Written in Rust. Renders in under a millisecond warm and 1 to 2 ms cold, using 3 MiB of memory ([benchmark](bench/README.md#ben-results), against ccline, claude-powerline and ccstatusline). Runs on macOS, Linux and Windows.
 
 ## Why bar
 
@@ -91,4 +91,12 @@ Pre-1.0 and actively developed: config syntax may still change between minor ver
 | Contribute | [CONTRIBUTING.md](CONTRIBUTING.md) |
 | Internals, performance, releases | [Technical notes](docs/technical.md), [Benchmark](bench/README.md) |
 
-Model prices come from a [models.dev](https://models.dev) snapshot, MIT: [data/LICENSE-models.dev](data/LICENSE-models.dev).
+## Contributing
+
+Bug reports, plugins and pull requests are welcome. Features go to the `next` branch, fixes for the current release to `main` ([Branches](CONTRIBUTING.md#branches)); build, test and commit conventions are in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Licence
+
+[Apache-2.0](LICENSE). The built-in model prices come from a [models.dev](https://models.dev) snapshot, MIT licensed: [data/LICENSE-models.dev](data/LICENSE-models.dev).
+
+Last reviewed: 2026-11-08.
