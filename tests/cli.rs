@@ -64,3 +64,16 @@ fn render_shows_cwd_dirname() {
     .stdout(predicate::str::contains("proj"));
     let _ = std::fs::remove_dir_all(&home);
 }
+
+#[test]
+fn render_and_refresh_flags_still_reach_clap() {
+    for args in [
+        &["render", "--help"][..],
+        &["refresh", "--help"],
+        &["refresh"],
+    ] {
+        let out = bar().args(args).output().unwrap();
+        let text = String::from_utf8_lossy(&out.stdout) + String::from_utf8_lossy(&out.stderr);
+        assert!(text.contains("Usage: bar"), "{args:?}: {text}");
+    }
+}

@@ -110,13 +110,18 @@ enum ClickCmd {
 }
 
 fn main() {
-    // `bar render`, run on every status line update, skips building the
-    // clap command; it takes no options, so clap would do the same.
-    let mut args = std::env::args_os().skip(1);
-    if let (Some(a), None) = (args.next(), args.next()) {
-        if a == "render" {
-            return render();
+    // `bar render` (every status line update) and `bar refresh <json>`
+    // (its background jobs) skip building the clap command; for these
+    // argument lists clap would dispatch the same way.
+    let args: Vec<_> = std::env::args_os().skip(1).take(3).collect();
+    match args.as_slice() {
+        [a] if a == "render" => return render(),
+        [a, req] if a == "refresh" => {
+            if let Some(req) = req.to_str().filter(|r| !r.starts_with('-')) {
+                return refresh(req);
+            }
         }
+        _ => {}
     }
     let cli_cmd: Command = Cli::command();
     let (cli_cmd, _ctx) = register_output_flags(cli_cmd, RegisterOutputFlagsOptions::default());
@@ -140,13 +145,16 @@ fn main() {
         Some(("plugin", m)) => plugin_cmd(m),
         Some(("prices", m)) => prices_cmd(m),
         Some(("refresh", m)) => {
-            let raw = m.get_one::<String>("request").map_or("", String::as_str);
-            if let Ok(req) = Request::from_json(raw) {
-                let limit = refresh_timeout(std::env::var("BAR_REFRESH_TIMEOUT").ok().as_deref());
-                Cache::new(&click::state_dir()).refresh(&req, limit);
-            }
+            refresh(m.get_one::<String>("request").map_or("", String::as_str));
         }
         _ => {}
+    }
+}
+
+fn refresh(raw: &str) {
+    if let Ok(req) = Request::from_json(raw) {
+        let limit = refresh_timeout(std::env::var("BAR_REFRESH_TIMEOUT").ok().as_deref());
+        Cache::new(&click::state_dir()).refresh(&req, limit);
     }
 }
 
