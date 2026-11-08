@@ -160,3 +160,20 @@ fn line_as_array_is_not_an_entry() {
     ]);
     assert_eq!(s.input, 100);
 }
+
+#[test]
+fn lines_across_read_chunks_are_joined() {
+    // a usage line starting 20 bytes before each 64 KiB multiple up to
+    // 1 MiB, so lines straddle the reader's chunk boundaries
+    let mut lines: Vec<Vec<u8>> = Vec::new();
+    let mut len = 0;
+    for k in 1..=16 {
+        let pad = k * 65_536 - 20 - len - 1 - 8;
+        lines.push(format!("{{\"x\":\"{}\"}}", "f".repeat(pad)).into_bytes());
+        let u = format!("{{\"message\":{{\"id\":\"m{k}\",\"usage\":{{\"input_tokens\":1}}}}}}");
+        len = k * 65_536 - 20 + u.len() + 1;
+        lines.push(u.into_bytes());
+    }
+    let refs: Vec<&[u8]> = lines.iter().map(Vec::as_slice).collect();
+    assert_eq!(read(&refs).input, 16);
+}

@@ -18,7 +18,7 @@ use serde::{Deserialize, Deserializer};
 use serde_json::{json, Value};
 
 use crate::cache::{hash_hex, Cache, Job};
-use crate::linescan::{contains, has_usage_key, Mark};
+use crate::linescan::{has_usage_key, Mark, Needle};
 
 /// Most bytes one render reads.
 pub const INLINE_CAP: u64 = 1024 * 1024;
@@ -305,7 +305,8 @@ fn facts_tree(text: &str, boundary: bool, skill: bool) -> Option<Facts<'static>>
 fn facts(line: &[u8], usage: bool, boundary: bool, skill: bool) -> Option<Facts<'_>> {
     // invalid UTF-8 anywhere fails the tree too
     let text = std::str::from_utf8(line).ok()?;
-    let surrogate = contains(line, b"\\ud") || contains(line, b"\\uD");
+    let surrogate = memchr::memmem::find_iter(line, b"\\u")
+        .any(|i| matches!(line.get(i + 2), Some(b'd' | b'D')));
     let typed = match (surrogate, skill) {
         (true, _) => None,
         (false, true) => facts_typed(text, boundary, skill_blocks),
@@ -319,9 +320,11 @@ fn facts(line: &[u8], usage: bool, boundary: bool, skill: bool) -> Option<Facts<
 /// Folds one transcript line into the totals; anything unexpected is
 /// skipped. Cheap byte checks keep most lines from being parsed.
 fn apply(st: &mut State, line: &[u8]) {
+    static BOUNDARY: Needle = Needle::new(b"compact_boundary");
+    static SKILL: Needle = Needle::new(b"Skill");
     let usage = has_usage_key(line);
-    let boundary = contains(line, b"compact_boundary");
-    let skill = contains(line, b"Skill");
+    let boundary = BOUNDARY.is_in(line);
+    let skill = SKILL.is_in(line);
     if !(usage || boundary || skill) {
         return;
     }
