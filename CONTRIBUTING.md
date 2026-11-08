@@ -8,7 +8,10 @@ Rust edition 2021, stable toolchain. `hop-top-kit` is pinned exactly.
 make setup   # cargo fetch
 make build   # release build
 make check   # fmt-check + clippy -D warnings + tests
+make gallery # redraw docs/gallery.md and docs/gallery/*.svg
 ```
+
+`make gallery` needs `python3`, fontTools and Hack Nerd Font Mono ([docs/dependencies.md](docs/dependencies.md#gallery-tooling-not-built-into-bar)).
 
 `make check` must pass before a change goes up.
 

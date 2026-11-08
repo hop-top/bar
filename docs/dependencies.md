@@ -25,3 +25,22 @@ Vetting record for third-party crates added to `hop-bar`.
 - License: MIT (Copyright (c) 2025 models.dev), checked 2026-11-07; the full notice and permission text is kept in `data/LICENSE-models.dev`, shipped in release archives and the Homebrew formula's docs.
 - Kept per model: provider, id, input/output/cache rates (USD per million tokens). The file header records the source and fetch date.
 - No crate is added; the fetch shells out to `curl` with a fixed argv.
+
+## Gallery tooling (not built into bar)
+
+`scripts/gallery` draws [docs/gallery.md](gallery.md) images. It is a development script; nothing here ships in the binary or release archives.
+
+### fontTools ==4.60.2 (Python)
+
+- Use: glyph outlines from the font, written as SVG paths so the images need no font in the viewer. Only `make gallery` needs it; `make gallery-check` and `make check` run on the Python 3 standard library.
+- Install: `python3 -m pip install --user fonttools==4.60.2`.
+- Source: `fonttools/fonttools`; PyPI release 2025-12-09, over 14 days old.
+- License: MIT.
+- `rsx analyze`: PASS, score 6.7/10, policy balanced.
+- Advisories: OSV query for PyPI `fonttools` 4.60.2 returns none (4.60.1 and earlier: GHSA-768j-98cg-p3fv, in `fontTools.varLib`, which the script does not use).
+
+### Font: Hack Nerd Font Mono
+
+- Use: Regular and Bold faces, `HackNerdFontMono-Regular.ttf` and `HackNerdFontMono-Bold.ttf`, looked up in `~/Library/Fonts`, `/Library/Fonts`, `~/.local/share/fonts`, `/usr/share/fonts` or `GALLERY_FONT_DIR`. Not committed; the images hold only the outlines of the glyphs they show.
+- Source: Nerd Fonts (`ryanoasis/nerd-fonts`), patched Hack. Licences: Hack MIT plus the Bitstream Vera licence; the added glyph sets keep their own (Powerline symbols MIT, Font Awesome SIL OFL 1.1, Octicons MIT).
+- `✗` and `✓` are missing from the font; the script draws them as simple strokes.

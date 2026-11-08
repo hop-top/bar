@@ -1,4 +1,4 @@
-.PHONY: build test lint format check setup
+.PHONY: build test lint format check setup gallery
 
 check: lint test
 
@@ -17,3 +17,7 @@ format:
 
 setup:
 	cargo fetch
+
+# docs/gallery.md and docs/gallery/*.svg from real bar output
+gallery:
+	scripts/gallery
