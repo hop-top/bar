@@ -85,7 +85,7 @@ bar init --preset capsule        # write it as your config; never overwrites
  Opus 4.7[high] > ctx 38% > bar:main >                4h40m █████ > 6d ████░ >               < work
 ```
 
-The `powerline` preset without icons and with `set skin-glyphs ascii`, at `COLUMNS=104`, colour stripped. See [Skins](docs/config.md#skins), [Palettes](docs/config.md#palettes) and [Presets](docs/config.md#presets).
+The `powerline` preset without icons and with `set skin-glyphs ascii`, at `COLUMNS=104`, colour stripped. See [Skins](docs/config.md#skins), [Palettes](docs/config.md#palettes) and [Presets](docs/config.md#presets). Pictures of every skin, palette, bar glyph set, pace state and icon set: [Gallery](docs/gallery.md).
 
 Plugins: `bar plugin list` shows the `bar-<name>` executables found on `PATH`; see [docs/plugins.md](docs/plugins.md). Five reference plugins live in `plugins/`: `ci`, `claude-credits`, `health`, `mem` and `tlc`.
 

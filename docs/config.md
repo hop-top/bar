@@ -1,5 +1,7 @@
 # Configuration notes
 
+Pictures of skins, palettes, bar glyphs, pace states, icons and PR checks: [Gallery](gallery.md).
+
 ## usage
 
 `#{usage[type=5h|7d|h|d, show=time,bar, alt=time,pct, count=left|used, glyphs=blocks, color=solid|gradient, width=5, click=toggle|none]}`
