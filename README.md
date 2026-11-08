@@ -8,14 +8,22 @@ A status line for [Claude Code](https://code.claude.com/docs/en/statusline) that
 
 Written in Rust; runs on macOS, Linux and Windows.
 
+With token totals, against the tools that also show them:
+
 | Tool | Warm render | Cold render | CPU, cold incl. background jobs | Memory |
 |---|---|---|---|---|
-| **bar** | **0.77 ms** | **1.65 ms** | 4.5 ms (1.7 without token totals) | **2.9 MiB** |
-| [ccline](https://github.com/Haleclipse/CCometixLine) | 0.92 ms | 6.54 ms | 2.2 ms | 5.3 MiB |
+| **bar** | **0.77 ms** | **1.65 ms** | **4.5 ms** | **2.9 MiB** |
 | [claude-powerline](https://github.com/Owloops/claude-powerline) | 41.8 ms | 59.1 ms | 74.0 ms | 102 MiB |
 | [ccstatusline](https://github.com/sirmalloc/ccstatusline) | 91.6 ms | 97.4 ms | 122.9 ms | 116 MiB |
 
-Medians, Linux arm64 container, same session data and equivalent layouts; render times include about 0.6 ms of harness start-up. ccline shows no token totals, which cost bar one transcript scan per session. Method, configs and raw results: [bench/README.md](bench/README.md#ben-results).
+Without token totals, against a tool that has none:
+
+| Tool | Warm render | Cold render | CPU, cold incl. background jobs | Memory |
+|---|---|---|---|---|
+| **bar** | **0.75 ms** | **0.95 ms** | **1.7 ms** | **2.8 MiB** |
+| [ccline](https://github.com/Haleclipse/CCometixLine) | 0.92 ms | 6.54 ms | 2.2 ms | 5.3 MiB |
+
+Medians, Linux arm64 container, same session data and equivalent layouts; render times include about 0.6 ms of harness start-up. Method, configs and raw results: [bench/README.md](bench/README.md#ben-results).
 
 ## Why bar
 
