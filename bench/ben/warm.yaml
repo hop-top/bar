@@ -1,0 +1,54 @@
+name: statusline-warm
+description: "Status-line tools, warm caches (100 runs after 10 warm-up runs)"
+version: 1
+
+task:
+  prompt: "Render one Claude Code status line from the stdin fixture"
+  input:
+    slb: /opt/slbench
+
+runs: 100
+warmup: 10
+aggregate: median
+
+# ben has no per-candidate env: /usr/bin/env sets HOME (per-tool isolation) and COLUMNS,
+# then execs the tool, so rusage still covers the tool process itself (env never waits).
+candidates:
+  - name: bar
+    adapter: cli
+    cmd: /usr/bin/env
+    args: ["HOME={{input.slb}}/home/bar", "COLUMNS=200", "{{input.slb}}/bar/target/release/bar", "render"]
+    input_file: "{{input.slb}}/work/session.json"
+  - name: ccstatusline
+    adapter: cli
+    cmd: /usr/bin/env
+    args: ["HOME={{input.slb}}/home/ccstatusline", "COLUMNS=200", "ccstatusline"]
+    input_file: "{{input.slb}}/work/session.json"
+  - name: claude-powerline
+    adapter: cli
+    cmd: /usr/bin/env
+    args: ["HOME={{input.slb}}/home/claude-powerline", "COLUMNS=200", "claude-powerline"]
+    input_file: "{{input.slb}}/work/session.json"
+  - name: ccline
+    adapter: cli
+    cmd: /usr/bin/env
+    args: ["HOME={{input.slb}}/home/ccline", "COLUMNS=200", "{{input.slb}}/home/ccline/.claude/ccline/ccline"]
+    input_file: "{{input.slb}}/work/session.json"
+  - name: bar-notokens
+    adapter: cli
+    cmd: /usr/bin/env
+    args: ["HOME={{input.slb}}/home/bar-notokens", "COLUMNS=200", "{{input.slb}}/bar/target/release/bar", "render"]
+    input_file: "{{input.slb}}/work/session.json"
+
+metrics:
+  - latency_ms
+  - cpu_ms
+  - cpu_user_ms
+  - cpu_sys_ms
+  - max_rss_kb
+
+scorer:
+  strategy: single:latency_ms
+
+registry:
+  push: false

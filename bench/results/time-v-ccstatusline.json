@@ -1,0 +1,9 @@
+{
+ "runs": 20,
+ "user_ms_mean": 101.5,
+ "sys_ms_mean": 5.5,
+ "cpu_ms_mean": 107.0,
+ "maxrss_kb_mean": 118670.0,
+ "maxrss_kb_max": 120524,
+ "note": "GNU time prints CPU seconds with 2 decimals (10 ms steps); see rusage-*.json for \u00b5s resolution"
+}

@@ -1,0 +1,299 @@
+{
+ "command": [
+  "/usr/sbin/ccstatusline"
+ ],
+ "runs": 20,
+ "prepare": null,
+ "summary": {
+  "wall_ms": {
+   "mean": 92.80610121786594,
+   "median": 92.61592058464885,
+   "min": 89.8969650734216,
+   "max": 99.44357816129923
+  },
+  "cpu_ms": {
+   "mean": 118.8723,
+   "median": 118.28999999999999,
+   "min": 116.047,
+   "max": 128.486
+  },
+  "user_ms": {
+   "mean": 108.7373,
+   "median": 107.6805,
+   "min": 103.738,
+   "max": 116.294
+  },
+  "sys_ms": {
+   "mean": 10.135,
+   "median": 10.8455,
+   "min": 5.151999999999999,
+   "max": 13.092999999999998
+  },
+  "maxrss_kb": {
+   "mean": 118826.8,
+   "median": 118910.0,
+   "min": 116792,
+   "max": 120136
+  },
+  "bg_procs": {
+   "mean": 0.0,
+   "median": 0.0,
+   "min": 0,
+   "max": 0
+  },
+  "bg_cpu_ms": {
+   "mean": 0.0,
+   "median": 0.0,
+   "min": 0.0,
+   "max": 0.0
+  },
+  "bg_maxrss_kb": {
+   "mean": 0.0,
+   "median": 0.0,
+   "min": 0,
+   "max": 0
+  }
+ },
+ "per_run": [
+  {
+   "wall_ms": 92.83829503692687,
+   "cpu_ms": 117.594,
+   "user_ms": 106.539,
+   "sys_ms": 11.055,
+   "maxrss_kb": 118904,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 92.84892003051937
+  },
+  {
+   "wall_ms": 93.37379387579858,
+   "cpu_ms": 119.909,
+   "user_ms": 111.982,
+   "sys_ms": 7.927,
+   "maxrss_kb": 119368,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 93.39104406535625
+  },
+  {
+   "wall_ms": 92.35779591836035,
+   "cpu_ms": 118.087,
+   "user_ms": 105.765,
+   "sys_ms": 12.322,
+   "maxrss_kb": 116792,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 92.37233689054847
+  },
+  {
+   "wall_ms": 93.02567015402019,
+   "cpu_ms": 119.453,
+   "user_ms": 106.768,
+   "sys_ms": 12.685,
+   "maxrss_kb": 118952,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 93.04183605127037
+  },
+  {
+   "wall_ms": 91.08908916823566,
+   "cpu_ms": 116.047,
+   "user_ms": 107.625,
+   "sys_ms": 8.421999999999999,
+   "maxrss_kb": 117308,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 91.10371419228613
+  },
+  {
+   "wall_ms": 91.69763000681996,
+   "cpu_ms": 118.05399999999999,
+   "user_ms": 107.04899999999999,
+   "sys_ms": 11.004999999999999,
+   "maxrss_kb": 118624,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 91.71167202293873
+  },
+  {
+   "wall_ms": 93.85141893289983,
+   "cpu_ms": 120.881,
+   "user_ms": 112.178,
+   "sys_ms": 8.703,
+   "maxrss_kb": 118456,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 93.87058485299349
+  },
+  {
+   "wall_ms": 91.09617210924625,
+   "cpu_ms": 116.83099999999999,
+   "user_ms": 103.738,
+   "sys_ms": 13.092999999999998,
+   "maxrss_kb": 119436,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 91.11004695296288
+  },
+  {
+   "wall_ms": 93.7923351302743,
+   "cpu_ms": 119.545,
+   "user_ms": 114.393,
+   "sys_ms": 5.151999999999999,
+   "maxrss_kb": 119968,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 93.80675200372934
+  },
+  {
+   "wall_ms": 93.22166885249317,
+   "cpu_ms": 120.438,
+   "user_ms": 107.391,
+   "sys_ms": 13.046999999999999,
+   "maxrss_kb": 118892,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 93.23658584617078
+  },
+  {
+   "wall_ms": 89.8969650734216,
+   "cpu_ms": 116.482,
+   "user_ms": 105.796,
+   "sys_ms": 10.686,
+   "maxrss_kb": 118916,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 89.91134003736079
+  },
+  {
+   "wall_ms": 94.04296008870006,
+   "cpu_ms": 120.144,
+   "user_ms": 110.758,
+   "sys_ms": 9.386000000000001,
+   "maxrss_kb": 118540,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 94.05712597072124
+  },
+  {
+   "wall_ms": 95.65962385386229,
+   "cpu_ms": 116.958,
+   "user_ms": 109.901,
+   "sys_ms": 7.0569999999999995,
+   "maxrss_kb": 117136,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 95.67458205856383
+  },
+  {
+   "wall_ms": 99.44357816129923,
+   "cpu_ms": 128.486,
+   "user_ms": 116.294,
+   "sys_ms": 12.192,
+   "maxrss_kb": 120060,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 99.45745300501585
+  },
+  {
+   "wall_ms": 93.19550194777548,
+   "cpu_ms": 118.532,
+   "user_ms": 110.28699999999999,
+   "sys_ms": 8.245,
+   "maxrss_kb": 118072,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 93.2094189338386
+  },
+  {
+   "wall_ms": 91.24150592833757,
+   "cpu_ms": 118.082,
+   "user_ms": 110.957,
+   "sys_ms": 7.124999999999999,
+   "maxrss_kb": 118472,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 91.25692187808454
+  },
+  {
+   "wall_ms": 90.62563092447817,
+   "cpu_ms": 116.994,
+   "user_ms": 104.892,
+   "sys_ms": 12.102,
+   "maxrss_kb": 119344,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 90.64054791815579
+  },
+  {
+   "wall_ms": 91.22067200951278,
+   "cpu_ms": 117.625,
+   "user_ms": 109.148,
+   "sys_ms": 8.477,
+   "maxrss_kb": 119216,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 91.23454708606005
+  },
+  {
+   "wall_ms": 92.0581710524857,
+   "cpu_ms": 118.811,
+   "user_ms": 107.736,
+   "sys_ms": 11.075,
+   "maxrss_kb": 120136,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 92.07142097875476
+  },
+  {
+   "wall_ms": 92.39354613237083,
+   "cpu_ms": 118.49299999999998,
+   "user_ms": 105.54899999999999,
+   "sys_ms": 12.943999999999999,
+   "maxrss_kb": 119944,
+   "exit": 0,
+   "bg_procs": 0,
+   "bg_cpu_ms": 0.0,
+   "bg_maxrss_kb": 0,
+   "bg_done_ms": 92.40775392390788
+  }
+ ]
+}

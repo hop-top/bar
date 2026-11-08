@@ -1,0 +1,4 @@
+~/.config/bar/bar.conf
+~/.local/state/bar/cache/bf78b267b2f8111fac57aa7503e80bc9
+~/.local/state/bar/cache/f875833ef24ba61b42b2c9820f71798b
+~/.local/state/bar/transcript/47d5fb44afa2373abb2afd218853a8e9.json
