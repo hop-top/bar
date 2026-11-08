@@ -18,13 +18,14 @@ Opus 4.7[high] │ ctx 38% │ bar:main │ #131 #129 #128 │ !57 !42          
 
 Pick bar to compose the line yourself and extend it: a tmux-style config with options on every placeholder, PR and issue segments driven by `gh` search with label/author logic, and a plugin protocol: any `bar-<name>` executable becomes a placeholder, cached so render never waits. Pick [ccstatusline](https://github.com/sirmalloc/ccstatusline) for the widest widget set and a TUI editor, [claude-powerline](https://github.com/Owloops/claude-powerline) for cost tracking and Powerline themes, [CCometixLine](https://github.com/Haleclipse/CCometixLine) for a themed Rust binary on Windows, Linux and macOS. bar has no TUI editor, and clickable commands need macOS and tmux (inside tmux, start Claude Code with `FORCE_HYPERLINK=1`; see [docs/config.md](docs/config.md#click-handler-macos)).
 
-What it does not do: no TUI editor, no Windows (it uses Unix APIs).
+What it does not do: no TUI editor, and no clickable commands on Windows or Linux.
 
 ## Status
 
 - Actively maintained. Bug reports and questions: open an issue.
 - Pre-1.0: version 0.0.0, no tagged release yet; config syntax may change. Changes land as Conventional Commits, so `git log` is the changelog until the first release.
-- Built and tested on macOS. On Linux (Debian bookworm, x86_64 container) it builds and the test suite passes. Clickable commands need macOS and tmux: `bar click install` exits 2 elsewhere, while `bar click install --hooks-only` works on Linux. Windows is not supported.
+- Built and tested on macOS. On Linux (Debian bookworm, x86_64 container) it builds and the test suite passes. Clickable commands need macOS and tmux: `bar click install` exits 2 elsewhere, while `bar click install --hooks-only` works on Linux and Windows.
+- Windows (x86_64 and aarch64, MSVC; also builds for `x86_64-pc-windows-gnu`): cross-compiled from macOS, `cargo clippy --all-targets -D warnings` clean for all three targets. The `windows` CI job builds, lints and runs the test suite on `windows-2022`; tests that rely on shell-script fixtures or POSIX paths are Unix-only, and `tests/windows.rs` covers the Windows paths (`.cmd` plugins, `cmd /C` values, detached refreshes, process-tree kill, profile dir, zone offset). It has not been run by hand on a Windows machine.
 - Not on crates.io (`publish = false`); install from a clone.
 
 ## Install
@@ -42,9 +43,9 @@ cd bar
 cargo install --path . --locked
 ```
 
-Cargo puts the binary at `~/.cargo/bin/bar` (`$CARGO_HOME/bin` if set). Check with `bar --version`.
+Cargo puts the binary at `~/.cargo/bin/bar` (`$CARGO_HOME/bin` if set); on Windows `%USERPROFILE%\.cargo\bin\bar.exe`. Check with `bar --version`.
 
-Binaries: once released. The release workflow attaches `bar-<version>-<target>.tar.gz` for x86_64 and aarch64, Linux (glibc 2.35 or newer) and macOS, to the GitHub release; no release exists yet. A Homebrew formula template is in [packaging/homebrew](packaging/homebrew/bar.rb); there is no tap yet, and the formula only works if the release assets are publicly downloadable.
+Binaries: once released. The release workflow attaches `bar-<version>-<target>.tar.gz` for x86_64 and aarch64, Linux (glibc 2.35 or newer) and macOS, and `bar-<version>-<target>.zip` (holding `bar.exe`) for x86_64 and aarch64 Windows, to the GitHub release; no release exists yet. A Homebrew formula template is in [packaging/homebrew](packaging/homebrew/bar.rb); there is no tap yet, and the formula only works if the release assets are publicly downloadable.
 
 ## Use
 
@@ -62,6 +63,12 @@ Claude Code may not have `~/.cargo/bin` on its `PATH`. If the line stays empty, 
 
 ```json
 { "statusLine": { "type": "command", "command": "env PATH=$HOME/.cargo/bin:$PATH bar render", "refreshInterval": 5 } }
+```
+
+On Windows, Claude Code runs the command through Git Bash, or PowerShell when Git Bash is absent. Write the path with forward slashes (Git Bash drops unquoted backslashes); `~` also expands to the profile dir. An unquoted path without spaces works in both shells:
+
+```json
+{ "statusLine": { "type": "command", "command": "C:/Users/you/.cargo/bin/bar.exe render", "refreshInterval": 5 } }
 ```
 
 Without a config file the built-in layout above is used. Write `bar.conf` to change it ([docs/config.md](docs/config.md)), then:
