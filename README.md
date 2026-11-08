@@ -4,9 +4,12 @@ A status line for [Claude Code](https://code.claude.com/docs/en/statusline) that
 
 ![bar with the powerline skin and nord palette: model, context, repo and branch, PRs with CI marks, issues, 5-hour and 7-day usage bars, account.](docs/gallery/skin-powerline.svg)
 
-[![CI](https://github.com/hop-top/bar/actions/workflows/test-rs-caller.yml/badge.svg?branch=next)](https://github.com/hop-top/bar/actions/workflows/test-rs-caller.yml)
-
-![macOS](docs/badges/macos.svg) ![Linux](docs/badges/linux.svg) ![Windows](docs/badges/windows.svg)
+<p align="center">
+  <a href="https://github.com/hop-top/bar/actions/workflows/test-rs-caller.yml"><img alt="CI" src="https://github.com/hop-top/bar/actions/workflows/test-rs-caller.yml/badge.svg?branch=next"></a>
+</p>
+<p align="center">
+  <img alt="macOS" src="docs/badges/macos.svg"> <img alt="Linux" src="docs/badges/linux.svg"> <img alt="Windows" src="docs/badges/windows.svg">
+</p>
 
 ## Why bar
 
