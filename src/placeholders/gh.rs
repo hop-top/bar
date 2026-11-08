@@ -4,6 +4,7 @@ use super::repo::remote_url;
 use super::{link_enabled, work_dir, Ctx, Placeholder};
 use crate::cache::{Cache, Job};
 use crate::expr;
+use crate::icons;
 use crate::options::Options;
 use crate::style::{dim, fg, link, sanitize};
 use serde_json::Value;
@@ -130,37 +131,93 @@ fn str_of<'a>(v: &'a Value, k: &str) -> &'a str {
     v[k].as_str().unwrap_or_default()
 }
 
-/// Port of the reference classification: red, amber, else green.
-fn pr_color(ctx: &Ctx, pr: &Value) -> u8 {
-    let checks = pr["statusCheckRollup"].as_array().map_or(&[][..], |a| a);
+/// Combined CI state of a PR's last commit, from `statusCheckRollup`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Checks {
+    Pass,
+    Fail,
+    Pending,
+    /// No checks reported, or no check data (older cache entries).
+    None,
+}
+
+impl Checks {
+    /// Name used by the `checks` option.
+    pub fn name(self) -> &'static str {
+        match self {
+            Checks::Pass => "pass",
+            Checks::Fail => "fail",
+            Checks::Pending => "pending",
+            Checks::None => "none",
+        }
+    }
+}
+
+/// Values of the `checks` option; `fail` is the default.
+pub const CHECK_MARKS: &[&str] = &["fail", "pending", "pass", "none"];
+
+/// Any failed check fails; else any unfinished one is pending; else pass.
+/// Check runs carry `status`/`conclusion`, status contexts `state`.
+pub fn checks(pr: &Value) -> Checks {
+    let Some(list) = pr["statusCheckRollup"].as_array().filter(|a| !a.is_empty()) else {
+        return Checks::None;
+    };
     let outcome = |c: &Value| {
         c["conclusion"]
             .as_str()
+            .filter(|s| !s.is_empty())
             .or_else(|| c["state"].as_str())
             .unwrap_or_default()
             .to_string()
     };
-    let failed = checks.iter().any(|c| {
+    let failed = list.iter().any(|c| {
         matches!(
             outcome(c).as_str(),
             "FAILURE" | "TIMED_OUT" | "CANCELLED" | "ACTION_REQUIRED" | "STARTUP_FAILURE" | "ERROR"
         )
     });
-    let pending = checks.iter().any(|c| {
+    let pending = list.iter().any(|c| {
         c["status"].as_str().is_some_and(|s| s != "COMPLETED")
             || matches!(str_of(c, "state"), "PENDING" | "EXPECTED")
     });
+    if failed {
+        Checks::Fail
+    } else if pending {
+        Checks::Pending
+    } else {
+        Checks::Pass
+    }
+}
+
+/// Port of the reference classification: red, amber, else green.
+fn pr_color(ctx: &Ctx, pr: &Value, state: Checks) -> u8 {
     let colors = &ctx.config.colors;
-    if failed
+    if state == Checks::Fail
         || str_of(pr, "reviewDecision") == "CHANGES_REQUESTED"
         || str_of(pr, "mergeable") == "CONFLICTING"
     {
         colors.bad
-    } else if pending || str_of(pr, "reviewDecision") == "REVIEW_REQUIRED" {
+    } else if state == Checks::Pending || str_of(pr, "reviewDecision") == "REVIEW_REQUIRED" {
         colors.warn
     } else {
         colors.good
     }
+}
+
+/// Mark after a PR number for check states listed in option `checks`
+/// (default `fail`); empty for unlisted states and `none`.
+fn check_mark(ctx: &Ctx, opts: &Options, state: Checks) -> String {
+    let wanted = opts.get("checks").unwrap_or("fail");
+    if state == Checks::None || !wanted.split(',').any(|w| w.trim() == state.name()) {
+        return String::new();
+    }
+    let colors = &ctx.config.colors;
+    let color = match state {
+        Checks::Fail => colors.bad,
+        Checks::Pending => colors.warn,
+        _ => colors.good,
+    };
+    fg(color, icons::check_mark(ctx.config.icons, state))
 }
 
 fn has_bug_label(issue: &Value) -> bool {
@@ -203,17 +260,23 @@ fn render_kind(kind: Kind, ctx: &Ctx, opts: &Options) -> Option<String> {
         .iter()
         .map(|item| {
             let n = item["number"].as_u64().unwrap_or_default();
+            let state = checks(item);
             let text = match kind {
-                Kind::Pr => fg(pr_color(ctx, item), &format!("#{n}")),
+                Kind::Pr => fg(pr_color(ctx, item, state), &format!("#{n}")),
                 Kind::Issue if has_bug_label(item) => fg(ctx.config.colors.bad, &format!("!{n}")),
                 Kind::Issue => dim(&format!("!{n}")),
             };
             let url = sanitize(str_of(item, "url"));
-            if links && url.starts_with("https://") {
+            let mark = match kind {
+                Kind::Pr => check_mark(ctx, opts, state),
+                Kind::Issue => String::new(),
+            };
+            let shown = if links && url.starts_with("https://") {
                 link(&url, &text)
             } else {
                 text
-            }
+            };
+            shown + &mark
         })
         .collect();
     (!parts.is_empty()).then(|| parts.join(" "))

@@ -191,4 +191,8 @@ fn list_continuation_follows_the_last_key_set() {
     let (_, o) = ph(&t[0]);
     assert_eq!(o.get("alt"), Some("pct,time"));
     assert_eq!(o.get("show"), Some("bar,pct"));
+    let t = parse("#{prs[checks=fail,pending,limit=3]}").unwrap();
+    let (_, o) = ph(&t[0]);
+    assert_eq!(o.get("checks"), Some("fail,pending"));
+    assert_eq!(o.get("limit"), Some("3"));
 }

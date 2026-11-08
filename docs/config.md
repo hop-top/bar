@@ -104,6 +104,7 @@ A render prints at most 4 rows, all lines together. Rows past the fourth are dro
 | | `author` | none | [Value logic](#label-logic), e.g. `@me` |
 | | `status` | `open` | `open`, `closed`, `merged` |
 | | `link` | on | `false`, `no`, `off`, `0` give plain text |
+| | `checks` | `fail` | Comma list of CI states marked after the number: `fail` (`✗`), `pending` (`•`), `pass` (`✓`); `none` marks nothing. See [PR checks](#pr-checks) |
 | `issues` | `limit` | `5` | As `prs` |
 | | `assignee`, `author` | none | Value logic |
 | | `label` | none | Value logic |
@@ -198,6 +199,13 @@ A render prints at most 4 rows, all lines together. Rows past the fourth are dro
 
 Plugins: see [plugins](plugins.md).
 
+### PR checks
+
+`prs` colours each number red (failed check, changes requested or merge conflict), amber (pending check or review required) or green, and adds a mark after the number for the check states named in `checks` (default `fail`): `#{prs[checks=fail,pending]}` gives `#131✗ #129• #128`. The mark sits outside the number's link and takes the palette's bad, warn or good colour.
+
+- State: from `statusCheckRollup` of the PR's last commit, fetched by the same `gh pr list` call as the list (no extra process, same 120 s TTL and failure backoff). Any check run concluding `FAILURE`, `TIMED_OUT`, `CANCELLED`, `ACTION_REQUIRED` or `STARTUP_FAILURE`, or status context `FAILURE` / `ERROR`, fails; else any unfinished run or `PENDING` / `EXPECTED` context is pending; else pass. No checks, or a cached list without check data, gets no mark.
+- Glyphs follow `icons`: `none` uses `✗` `•` `✓`; `nerdfont` `nf-oct-x` U+F467, `nf-oct-dot_fill` U+F444, `nf-oct-check` U+F42E; `emoji` ❌ 🟡 ✅.
+
 ## Skins
 
 `set skin plain|powerline|capsule` picks how segments are drawn.
@@ -266,7 +274,7 @@ Values holding spaces, commas or colons are quoted in the query (`area:core` bec
 - Parse errors with line numbers. An unreadable file is one error without a line.
 - Line numbers in `left@N`, `center@N`, `right@N` (1-4; anything else is an error).
 - Layout placeholders (`left`, `center`, `right`, and their `@N` forms) and `default` lines: unknown placeholder, unknown option, bad option value. Plugin placeholders are checked against their `--ext-info` schema.
-- `prs` / `issues`: invalid `limit`, invalid `author` / `assignee` / `label` expression.
+- `prs` / `issues`: invalid `limit`, invalid `checks` item, invalid `author` / `assignee` / `label` expression.
 - Warnings: `gh` not on `PATH` while `prs` or `issues` is used; a `default` line for a plugin that is not on `PATH` (a layout using it is an error); an expression that expands to more than 8 queries (only the first 8 run).
 - Options holding `%command%` or `%$VAR%` are skipped; they resolve at render time.
 

@@ -171,6 +171,7 @@ fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
             ("author", Any),
             ("status", OneOf(STATUS_PR)),
             ("link", Any),
+            ("checks", List(gh::CHECK_MARKS)),
         ],
         "issues" => &[
             ("limit", Int),
