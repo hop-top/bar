@@ -16,3 +16,20 @@ permissions:
 jobs:
   test:
     uses: hop-top/.github/.github/workflows/ci.yml@v0
+
+  # The reusable workflow runs on Linux; Windows is checked here.
+  windows:
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Toolchain
+        run: rustup toolchain install stable --profile minimal --component clippy && rustup default stable
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Test
+        run: cargo test --locked

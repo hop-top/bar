@@ -43,7 +43,8 @@ jobs:
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --generate-notes $flags
 
   # Prebuilt binaries, one native runner per target. Asset:
-  # bar-<version>-<target>.tar.gz holding `bar` and LICENSE-models.dev, plus a .sha256 file.
+  # bar-<version>-<target>.tar.gz holding `bar` and LICENSE-models.dev, plus a .sha256 file;
+  # .zip holding `bar.exe` for Windows (arm64 cross-built on the x64 runner with MSVC).
   # Linux builds on ubuntu-22.04 (glibc 2.35) so they run on glibc >= 2.35.
   # The arm Linux runner needs a plan/repo that provides it.
   binaries:
@@ -58,7 +59,12 @@ jobs:
           - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04-arm }
           - { target: x86_64-apple-darwin, os: macos-15-intel }
           - { target: aarch64-apple-darwin, os: macos-latest }
+          - { target: x86_64-pc-windows-msvc, os: windows-2022 }
+          - { target: aarch64-pc-windows-msvc, os: windows-2022 }
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     env:
       TARGET: ${{ matrix.target }}
       TAG: ${{ github.ref_name }}
@@ -74,13 +80,23 @@ jobs:
         run: |
           set -euo pipefail
           name="bar-${TAG#v}-${TARGET}"
-          tar -czf "${name}.tar.gz" -C "target/${TARGET}/release" bar -C "$PWD/data" LICENSE-models.dev
+          case "$TARGET" in
+            *-windows-*)
+              asset="${name}.zip"
+              7z a -tzip "$asset" "./target/${TARGET}/release/bar.exe" ./data/LICENSE-models.dev
+              ;;
+            *)
+              asset="${name}.tar.gz"
+              tar -czf "$asset" -C "target/${TARGET}/release" bar -C "$PWD/data" LICENSE-models.dev
+              ;;
+          esac
           if command -v sha256sum >/dev/null; then
-            sha256sum "${name}.tar.gz" > "${name}.tar.gz.sha256"
+            sha256sum "$asset" > "${asset}.sha256"
           else
-            shasum -a 256 "${name}.tar.gz" > "${name}.tar.gz.sha256"
+            shasum -a 256 "$asset" > "${asset}.sha256"
           fi
+          echo "ASSET=$asset" >> "$GITHUB_ENV"
       - name: Upload to release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$TAG" bar-*.tar.gz bar-*.tar.gz.sha256 --clobber
+        run: gh release upload "$TAG" "$ASSET" "${ASSET}.sha256" --clobber
