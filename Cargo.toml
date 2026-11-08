@@ -23,3 +23,7 @@ unicode-width = "=0.2.2"
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
