@@ -117,6 +117,45 @@ Configs, exactly as used: [configs/](configs/). Each tool reads its config from 
 - In this container PID 1 does not reap orphans, so the detached jobs of runs under hyperfine and GNU time stay as zombie entries until the container restarts; this does not affect timings.
 - bar is pre-1.0 and unreleased; the others are their latest releases at the time of the run.
 
+## ben rerun
+
+The same benchmark run a second time through [ben](https://github.com/hop-top/ben), a Go benchmark runner, with suites in [ben/](ben/). Same container, fixture, configs and per-tool `HOME`s as above; only the harness and the bar build differ.
+
+- bar: commit `14a1001` (newer than the `09432ae` used above). Others unchanged: ccstatusline 2.2.34, claude-powerline 1.32.8, ccline 2.0.1.
+- ben: commit `2b24904` (reports itself as 0.1.0), cross-compiled for linux/arm64 with `CGO_ENABLED=0`.
+- Suites: `warm.yaml` (100 runs after 10 warm-up runs), `cold.yaml` (30 runs, `prepare: run.sh _reset <tool>` before each, the same reset the hyperfine cold runs used), `floor.yaml` (the harness floor, see below). Each candidate uses `args:` (no shell) and `input_file:` for stdin. ben has no per-candidate environment, so `cmd` is `/usr/bin/env` with `HOME=… COLUMNS=200 <tool> …`; `env` execs the tool, so the measured process is the tool, but env's own start-up is included (part of the floor below). Metrics `latency_ms`, `cpu_ms`, `cpu_user_ms`, `cpu_sys_ms`, `max_rss_kb`; scorer `single:latency_ms`, median.
+- Load average 1.2 to 2.0 during the run ([results/ben-load-*.txt](results/)). The `metadata.host` field in the JSON was replaced with `container`.
+
+Results, ms ([results/ben-summary.md](results/ben-summary.md), raw samples in `results/ben-{warm,cold,floor}.json`):
+
+| Tool | Warm latency median ± sd | Warm p95 | Warm CPU median | Cold latency median ± sd | Cold p95 | Cold CPU median |
+|---|---|---|---|---|---|---|
+| bar | **0.84** ± 0.10 | 1.04 | **0.78** | **3.60** ± 0.15 | 3.88 | 3.44 |
+| ccline | 0.94 ± 0.03 | 0.99 | 0.88 | 6.65 ± 0.83 | 7.17 | **2.75** |
+| claude-powerline | 41.88 ± 3.99 | 45.99 | 48.56 | 57.43 ± 1.85 | 60.55 | 71.73 |
+| ccstatusline | 91.91 ± 5.28 | 101.49 | 117.45 | 99.27 ± 8.47 | 110.01 | 124.46 |
+| floor: `env` → `/usr/bin/true` | 0.61 ± 0.05 | 0.70 | 0.56 | | | |
+
+Max RSS (median, MiB): bar 16.5, ccline 18.4, claude-powerline 102.1, ccstatusline 115.8; the floor reads 16.6. ben starts children with Go's `os/exec`, which on Linux uses a vfork-style clone, and `ru_maxrss` keeps the parent's high-water mark across `exec`. So every value includes ben's own RSS (about 16.5 MiB), and the Rust tools' real footprint (3.5 and 5.3 MiB under GNU time above) cannot be read from these numbers. The Node tools' values match GNU time to within 1 MiB.
+
+Cross-check against the hyperfine and wait4 runs above:
+
+- Node tools: warm and cold latency agree within 1 to 2 ms (41.9 vs 41.3, 91.9 vs 92.0 warm; 57.4 vs 58.7, 99.3 vs 96.9 cold). CPU agrees within 1 ms warm.
+- Rust tools: each value carries the floor (ben spawn plus `env` exec: 0.61 ms latency, 0.56 ms CPU). Minus the floor, warm latency is about 0.23 ms for bar and 0.33 ms for ccline, against 0.3 and 0.4 under hyperfine; the order and the gap are the same. Subtracting is approximate: the floor is a separate process, not part of each run.
+- bar cold: 3.60 ms here, about 3.0 ms after the floor, against 2.5 ms under hyperfine; its foreground CPU is about 2.9 ms after the floor against 2.4 ms. ccline's cold numbers did not move (6.65 vs 6.3 ms; 2.75 vs 2.7 ms CPU). The difference is likely the newer bar build (load was similar, 1.9 to 2.0 here); it was not investigated further.
+- Where bar loses: on a cold state its foreground CPU (3.4 ms) is now above ccline's (2.75 ms), before counting bar's detached jobs, which ben does not measure (it counts only waited processes; the first run's tables have them: 8.7 ms on a cold state). ccline's cold latency is higher (6.65 vs 3.60 ms) because it waits on `git`, not because it uses more CPU.
+
+Rerun with ben (inside the container, after the toolchain and tools from [Rerun](#rerun)):
+
+```sh
+# ben for linux/arm64, built from its checkout on any machine with Go
+GOWORK=off CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o ben ./cmd/ben
+# copy it to /opt/slbench/bin/ben, then:
+/opt/slbench/bench/run.sh ben       # setup, render, floor + warm + cold suites, summary, removes the transcript
+```
+
+`run.sh ben` runs ben with `HOME=/opt/slbench/benhome`, so ben's run store stays out of the tools' `HOME`s. The suites take the work root from `task.input.slb` (`/opt/slbench`).
+
 ## Rerun
 
 Inside a Linux container (root), with Node/npm, git, jq and Python 3:
@@ -136,12 +175,14 @@ cd $SLB/bar && PATH=$SLB/cargo/bin:$PATH RUSTUP_HOME=$SLB/rustup CARGO_HOME=$SLB
 $SLB/bar/bench/run.sh all
 ```
 
-`run.sh` subcommands: `setup`, `render`, `bench [tool…]`, `stale [tool…]`, `runners`, `bgjob`, `all`. `WARM_RUNS`, `COLD_RUNS`, `CPU_RUNS` and `OUT` override the defaults. Paths assume `SLB=/opt/slbench`; the fixture's paths are rewritten by `setup` but the generator's default `cwd` and the `PROJ` value in `run.sh` follow that root. A full run takes about 10 minutes.
+`run.sh` subcommands: `setup`, `render`, `bench [tool…]`, `stale [tool…]`, `runners`, `bgjob`, `all`, and `ben` (see [ben rerun](#ben-rerun)). `WARM_RUNS`, `COLD_RUNS`, `CPU_RUNS` and `OUT` override the defaults. Paths assume `SLB=/opt/slbench`; the fixture's paths are rewritten by `setup` but the generator's default `cwd` and the `PROJ` value in `run.sh` follow that root. A full run takes about 10 minutes.
 
 ## Files
 
 - `run.sh`: the runner.
 - `configs/<tool>/`: configs used.
 - `fixtures/session.json`, `fixtures/gen-transcript.mjs`: input and transcript generator (the 5 MiB transcript itself is not committed).
+- `ben/`: ben suites (`warm.yaml`, `cold.yaml`, `floor.yaml`) for the ben rerun.
 - `lib/rusage.py`: CPU, memory and detached-job accounting; `lib/procs.py`: finds a tool's leftover jobs; `lib/summarize.py`: tables.
+- `results/ben-*`: ben run JSON, load records, rendered lines and summary from the ben rerun.
 - `results/`: hyperfine exports (`hyperfine-*.json`), rusage runs (`rusage-{warm,cold,stale}-*.json`), GNU time output and averages (`time-v-*`), rendered lines (`output-*`), load records (`load-*`), `summary.md`.

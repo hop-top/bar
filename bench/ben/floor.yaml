@@ -1,0 +1,32 @@
+name: statusline-floor
+description: "Measurement floor: ben spawning /usr/bin/env, which execs /usr/bin/true"
+version: 1
+
+task:
+  prompt: "Spawn overhead of the harness and the env wrapper"
+  input:
+    slb: /opt/slbench
+
+runs: 100
+warmup: 10
+aggregate: median
+
+candidates:
+  - name: env-true
+    adapter: cli
+    cmd: /usr/bin/env
+    args: ["HOME={{input.slb}}/home/bar", "COLUMNS=200", "/usr/bin/true"]
+    input_file: "{{input.slb}}/work/session.json"
+
+metrics:
+  - latency_ms
+  - cpu_ms
+  - cpu_user_ms
+  - cpu_sys_ms
+  - max_rss_kb
+
+scorer:
+  strategy: single:latency_ms
+
+registry:
+  push: false

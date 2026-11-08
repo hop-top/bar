@@ -3,6 +3,7 @@
 
   summarize.py time-v FILE     GNU `time -v` appended runs -> JSON averages
   summarize.py table DIR       markdown results table from hyperfine/rusage/time-v JSON
+  summarize.py ben DIR         markdown tables from ben-*.json
 """
 import glob, json, os, re, statistics, sys
 
@@ -79,8 +80,33 @@ def table(d):
     return '\n'.join(out)
 
 
+def ben(d):
+    """Tables from ben run JSON (ben-floor/warm/cold.json)."""
+    out = []
+    for suite in ('warm', 'cold', 'floor'):
+        p = f'{d}/ben-{suite}.json'
+        if not os.path.exists(p):
+            continue
+        r = json.load(open(p))
+        out += [f"### {suite} (runs {r.get('runs', 1)}, warmup {r.get('warmup', 0)}, ranked on {r.get('aggregate', 'median')} latency_ms)", '',
+                '| candidate | latency median ± sd | latency p95 | latency min | cpu median | cpu user / sys median | max RSS median (MiB) |',
+                '|---|---|---|---|---|---|---|']
+        for c in r['candidates']:
+            a = c.get('aggregates') or {}
+            if c.get('error') or 'latency_ms' not in a:
+                out.append(f"| {c['name']} | error: {c.get('error')} | | | | | |")
+                continue
+            l, cpu, u, sy, rss = (a[k] for k in ('latency_ms', 'cpu_ms', 'cpu_user_ms', 'cpu_sys_ms', 'max_rss_kb'))
+            out.append(f"| {c['name']} | {l['median']:.2f} ± {l['stddev']:.2f} | {l['p95']:.2f} | {l['min']:.2f} | {cpu['median']:.2f} "
+                       f"| {u['median']:.2f} / {sy['median']:.2f} | {rss['median']/1024:.1f} |")
+        out.append('')
+    return '\n'.join(out)
+
+
 if __name__ == '__main__':
     if sys.argv[1] == 'time-v':
         print(json.dumps(time_v(sys.argv[2]), indent=1))
+    elif sys.argv[1] == 'ben':
+        print(ben(sys.argv[2]))
     elif sys.argv[1] == 'table':
         print(table(sys.argv[2]))
