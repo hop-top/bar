@@ -1,0 +1,120 @@
+{
+ "command": [
+  "/opt/slbench/bar/target/release/bar",
+  "render"
+ ],
+ "runs": 5,
+ "prepare": "sleep 11",
+ "summary": {
+  "wall_ms": {
+   "mean": 4.60860263556242,
+   "median": 4.208828089758754,
+   "min": 1.6837059520184994,
+   "max": 9.177155094221234
+  },
+  "cpu_ms": {
+   "mean": 3.9368000000000003,
+   "median": 3.418,
+   "min": 1.338,
+   "max": 8.193
+  },
+  "user_ms": {
+   "mean": 0.9550000000000001,
+   "median": 0.91,
+   "min": 0.0,
+   "max": 2.156
+  },
+  "sys_ms": {
+   "mean": 2.9818,
+   "median": 2.156,
+   "min": 1.338,
+   "max": 7.2829999999999995
+  },
+  "maxrss_kb": {
+   "mean": 19072.0,
+   "median": 19072,
+   "min": 19072,
+   "max": 19072
+  },
+  "bg_procs": {
+   "mean": 1.0,
+   "median": 1,
+   "min": 1,
+   "max": 1
+  },
+  "bg_cpu_ms": {
+   "mean": 7.829599999999999,
+   "median": 8.264,
+   "min": 2.4859999999999998,
+   "max": 10.644999999999998
+  },
+  "bg_maxrss_kb": {
+   "mean": 5950.4,
+   "median": 6140,
+   "min": 5648,
+   "max": 6160
+  }
+ },
+ "per_run": [
+  {
+   "wall_ms": 1.6837059520184994,
+   "cpu_ms": 1.338,
+   "user_ms": 0.0,
+   "sys_ms": 1.338,
+   "maxrss_kb": 19072,
+   "exit": 0,
+   "bg_procs": 1,
+   "bg_cpu_ms": 2.4859999999999998,
+   "bg_maxrss_kb": 6156,
+   "bg_done_ms": 18.361893948167562
+  },
+  {
+   "wall_ms": 4.966951906681061,
+   "cpu_ms": 4.312,
+   "user_ms": 2.156,
+   "sys_ms": 2.156,
+   "maxrss_kb": 19072,
+   "exit": 0,
+   "bg_procs": 1,
+   "bg_cpu_ms": 10.644999999999998,
+   "bg_maxrss_kb": 6140,
+   "bg_done_ms": 21.81180496700108
+  },
+  {
+   "wall_ms": 4.208828089758754,
+   "cpu_ms": 3.418,
+   "user_ms": 1.709,
+   "sys_ms": 1.709,
+   "maxrss_kb": 19072,
+   "exit": 0,
+   "bg_procs": 1,
+   "bg_cpu_ms": 7.637999999999999,
+   "bg_maxrss_kb": 6160,
+   "bg_done_ms": 16.75831200554967
+  },
+  {
+   "wall_ms": 3.006372135132551,
+   "cpu_ms": 2.4229999999999996,
+   "user_ms": 0.0,
+   "sys_ms": 2.4229999999999996,
+   "maxrss_kb": 19072,
+   "exit": 0,
+   "bg_procs": 1,
+   "bg_cpu_ms": 8.264,
+   "bg_maxrss_kb": 5648,
+   "bg_done_ms": 21.286681992933154
+  },
+  {
+   "wall_ms": 9.177155094221234,
+   "cpu_ms": 8.193,
+   "user_ms": 0.91,
+   "sys_ms": 7.2829999999999995,
+   "maxrss_kb": 19072,
+   "exit": 0,
+   "bg_procs": 1,
+   "bg_cpu_ms": 10.115,
+   "bg_maxrss_kb": 5648,
+   "bg_done_ms": 25.995509000495076
+  }
+ ]
+}

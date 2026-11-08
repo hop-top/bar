@@ -1,0 +1,57 @@
+{
+  "hook_event_name": "Status",
+  "cwd": "/opt/slbench/work/repo",
+  "session_id": "5b0c9a4e-2d1f-4c3a-9e8b-7f6a5d4c3b2a",
+  "transcript_path": "/opt/slbench/work/claude/projects/-opt-slbench-work-repo/5b0c9a4e-2d1f-4c3a-9e8b-7f6a5d4c3b2a.jsonl",
+  "model": {
+    "id": "claude-opus-5-5",
+    "display_name": "Opus 5.5"
+  },
+  "workspace": {
+    "current_dir": "/opt/slbench/work/repo",
+    "project_dir": "/opt/slbench/work/repo",
+    "added_dirs": []
+  },
+  "version": "2.1.319",
+  "output_style": {
+    "name": "default"
+  },
+  "cost": {
+    "total_cost_usd": 4.2731,
+    "total_duration_ms": 3734000,
+    "total_api_duration_ms": 1021500,
+    "total_lines_added": 412,
+    "total_lines_removed": 87
+  },
+  "context_window": {
+    "total_input_tokens": 84210,
+    "total_output_tokens": 1180,
+    "context_window_size": 200000,
+    "used_percentage": 42,
+    "remaining_percentage": 58,
+    "current_usage": {
+      "input_tokens": 6,
+      "output_tokens": 1180,
+      "cache_creation_input_tokens": 1420,
+      "cache_read_input_tokens": 82784
+    }
+  },
+  "exceeds_200k_tokens": false,
+  "fast_mode": false,
+  "effort": {
+    "level": "high"
+  },
+  "thinking": {
+    "enabled": true
+  },
+  "rate_limits": {
+    "five_hour": {
+      "used_percentage": 37.5,
+      "resets_at": 0
+    },
+    "seven_day": {
+      "used_percentage": 61.2,
+      "resets_at": 0
+    }
+  }
+}

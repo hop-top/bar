@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: bar.render.status-line
+title: Render the status line from the session JSON
+binary: bar
+intent: |
+  Claude Code runs the status line command on every update and pipes the
+  session JSON to its standard input. The user points the statusLine
+  setting at bar render and reads at most two lines back. The command
+  always exits 0, even when the config is broken or the cache is cold.
+preconditions:
+  - bar binary is on PATH
+steps:
+  - id: render
+    intent: |
+      Render the configured layout for the current terminal width taken
+      from the COLUMNS variable.
+    invoke: ["bar", "render"]
+    capture: [exit_code, stdout]

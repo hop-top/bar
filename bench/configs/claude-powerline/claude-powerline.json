@@ -1,0 +1,26 @@
+{
+  "theme": "dark",
+  "display": {
+    "style": "minimal",
+    "charset": "text",
+    "padding": 1,
+    "autoWrap": false,
+    "lines": [
+      {
+        "segments": {
+          "model": { "enabled": true },
+          "context": { "enabled": true, "showPercentageOnly": true, "displayStyle": "text", "percentageMode": "used", "autocompactBuffer": 0 },
+          "git": { "enabled": true, "showSha": false, "showWorkingTree": true, "showOperation": false, "showTag": false, "showTimeSinceCommit": false, "showStashCount": false, "showAheadBehind": false, "showUpstream": false, "showRepoName": false },
+          "session": { "enabled": true, "type": "both", "costSource": "official" },
+          "block": { "enabled": true, "displayStyle": "text" },
+          "weekly": { "enabled": true, "displayStyle": "text" },
+          "metrics": { "enabled": true, "showResponseTime": false, "showLastResponseTime": false, "showDuration": true, "showMessageCount": false, "showLinesAdded": false, "showLinesRemoved": false },
+          "directory": { "enabled": false },
+          "today": { "enabled": false },
+          "version": { "enabled": false },
+          "tmux": { "enabled": false }
+        }
+      }
+    ]
+  }
+}

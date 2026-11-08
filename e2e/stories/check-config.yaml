@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: bar.check.lint-config
+title: Lint the config file and read the result as JSON
+binary: bar
+intent: |
+  A user edited their bar.conf and wants to know whether it is valid and
+  which file bar actually reads. They run bar check, read the line-numbered
+  findings, then ask for the same report as JSON for a script. A config
+  error makes the command exit with status 2.
+preconditions:
+  - bar binary is on PATH
+steps:
+  - id: check_text
+    intent: |
+      Print the resolved config path and every finding with its line
+      number, so the user can fix them one by one.
+    invoke: ["bar", "check"]
+    capture: [exit_code, stdout]
+  - id: check_json
+    intent: |
+      Print the same report as JSON so a script can gate on the ok field
+      and list the issues.
+    invoke: ["bar", "check", "--format", "json"]
+    capture: [exit_code, stdout]

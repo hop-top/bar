@@ -1,0 +1,5 @@
+# release-please rewrites CHANGELOG.md on every release PR, so code-owner
+# review here holds each release PR until the release team approves it.
+# The release-please config and manifest are not owned: channel promotions
+# are config edits, and the manifest is written by release PRs.
+/CHANGELOG.md @hop-top/release

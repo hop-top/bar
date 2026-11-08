@@ -1,0 +1,153 @@
+#!/bin/sh
+# bar-tlc: closed/total tasks of this session's track (scope=track, the
+# default): the track of the task the session last claimed, set in progress,
+# completed or created, as recorded by `bar click hook` and sent in
+# session.record; with no record, a record for another project or a task
+# without track, the whole project. scope=all always counts the whole
+# project. The core's toggle `scope` (a click on the mark, sent as
+# toggles.scope) inverts the scope: track to all, all to track (staying all
+# without a session track). The label/icon mark the effective scope: track
+# or all; options label-track, label-all, icon-track, icon-all override
+# them. Option status filters the counted set; show/alt pick count or
+# track (the track slug, `all` for the project) for text and alt text. Needs
+# sh, jq and tlc. No project in scope, or no tasks, emits empty text
+# (segment hidden). Any failed tlc call emits nothing, so a different kind of
+# count never replaces the cached value.
+if [ "$1" = "--ext-info" ]; then
+  printf '%s\n' '{"name":"tlc","version":"0.3.0","description":"Closed tasks of the session track","capabilities":["discover","placeholder"],"options":{"scope":{"type":"enum","enum":["track","all"],"default":"track"},"status":{"type":"string"},"show":{"type":"enum","enum":["count","track"],"default":"count"},"alt":{"type":"enum","enum":["count","track"]},"label-track":{"type":"string","default":"◉"},"label-all":{"type":"string","default":"☰"},"icon-track":{"type":"string","default":"\uf45d"},"icon-all":{"type":"string","default":"\uf45e"}},"cache":"session","ttl":"60s"}'
+  exit 0
+fi
+
+command -v jq >/dev/null 2>&1 && command -v tlc >/dev/null 2>&1 || exit 1
+
+input=$(cat)
+opt() { printf '%s' "$input" | jq -r "$1" 2>/dev/null; }
+cwd=$(opt '.session.cwd // empty')
+scope=$(opt '.options.scope // "track"') || exit 1
+status=$(opt '.options.status // empty') || exit 1
+show=$(opt '.options.show // "count"') || exit 1
+alt=$(opt '.options.alt // empty') || exit 1
+flip=$(opt '.toggles.scope // false | if . == true then "1" else "" end')
+task=$(opt '.session.record.task // empty | strings')
+rcwd=$(opt '.session.record.cwd // empty | strings')
+scope=${scope:-track}
+case $scope in track|all) ;; *) exit 1 ;; esac
+# the scope toggle inverts the wanted scope; a wanted track still falls back
+# to the whole project when the session has none
+if [ -n "$flip" ]; then
+  [ "$scope" = track ] && scope=all || scope=track
+fi
+case $status in -*|*[!A-Za-z0-9_,-]*) exit 1 ;; esac
+case $show in count|track) ;; *) exit 1 ;; esac
+case $alt in count|track) ;; '') [ "$show" = count ] && alt=track || alt=count ;; *) exit 1 ;; esac
+case $task in ''|-*|*[!A-Za-z0-9_-]*) task= ;; esac
+case $rcwd in /*) ;; *) rcwd= ;; esac
+case $cwd in /*) [ -d "$cwd" ] || cwd=$PWD ;; *) cwd=$PWD ;; esac
+case $cwd in /*) ;; *) exit 1 ;; esac
+
+# tlc creates an empty .tlc wherever it runs, so run it at the project root,
+# found by its config file; a stray empty .tlc does not count. The search
+# stops after the git work-tree root (a dir holding .git; a linked worktree
+# also reaches its repo root), so an enclosing project never leaks in;
+# outside a repo only the start dir is checked. find_root prints the root,
+# or nothing.
+find_root() {
+  # b: git boundary (first dir with .git). A linked worktree's .git file
+  # maps to its repo root r (bare repo dir, else the main worktree), where
+  # the search continues, never above.
+  b=
+  d=$1
+  while :; do
+    [ ! -e "$d/.git" ] || { b=$d; break; }
+    [ "$d" != / ] || break
+    d=$(dirname -- "$d")
+  done
+  r=
+  if [ -n "$b" ] && [ -f "$b/.git" ]; then
+    gd=$(sed -n 's/^gitdir: *//p' "$b/.git" 2>/dev/null | head -n 1)
+    case $gd in /*) ;; *) gd=$b/$gd ;; esac
+    common=
+    if [ -f "$gd/commondir" ]; then
+      rel=$(head -n 1 "$gd/commondir")
+      case $rel in /*) common=$rel ;; *) common=$gd/$rel ;; esac
+    else
+      case $gd in */worktrees/*) common=${gd%/worktrees/*} ;; esac
+    fi
+    if [ -n "$common" ] && [ -d "$common" ]; then
+      common=$(cd -- "$common" 2>/dev/null && pwd -P) || common=
+    fi
+    if [ -n "$common" ]; then
+      case $common in
+        */.git) r=$(dirname -- "$common") ;;
+        *) r=$common ;;
+      esac
+    fi
+  fi
+  root=$1
+  while [ ! -f "$root/.tlc/config.yaml" ]; do
+    if [ -z "$b" ] || [ "$root" = "$b" ] || [ "$root" = / ]; then
+      # past the worktree: also try the repo root, once
+      if [ -n "$r" ] && [ -f "$r/.tlc/config.yaml" ]; then root=$r; break; fi
+      return 0
+    fi
+    root=$(dirname -- "$root")
+  done
+  printf '%s\n' "$root"
+}
+
+root=$(find_root "$cwd")
+if [ -z "$root" ]; then
+  printf '%s\n' '{"text":""}'
+  exit 0
+fi
+cd -- "$root" || exit 1
+here=$(pwd -P)
+
+# No per-call timeout: the host kills the whole process group after 3 s.
+run() { tlc "$@" 2>/dev/null; }
+
+# The session's task counts only when tlc ran for this same project.
+pick=
+name=all
+if [ "$scope" = track ] && [ -n "$task" ] && [ -n "$rcwd" ]; then
+  rroot=$(find_root "$rcwd")
+  if [ -n "$rroot" ] && [ "$(cd -- "$rroot" 2>/dev/null && pwd -P)" = "$here" ]; then
+    # exit 3: the task is gone, so the project counts
+    shown=$(run task show "$task" --format json); rc=$?
+    case $rc in 0) ;; 3) shown= ;; *) exit 1 ;; esac
+    if [ -n "$shown" ]; then
+      pick=$(printf '%s' "$shown" | jq -r '.task.track_id // empty | strings' 2>/dev/null) || exit 1
+    fi
+    case $pick in -*|*[!A-Za-z0-9_-]*) pick= ;; esac
+    if [ -n "$pick" ]; then
+      track=$(run track show "$pick" --format json) || exit 1
+      name=$(printf '%s' "$track" | jq -r '.slug // .track.slug // .id // empty | strings' 2>/dev/null) || exit 1
+      name=${name:-$pick}
+    fi
+  fi
+fi
+
+# $status is empty (no filter) or a validated word list, never an option.
+if [ -n "$pick" ]; then
+  all=$(run task list --track "$pick" --archived --limit 100000 ${status:+--status "$status"} --format json) || exit 1
+else
+  all=$(run task list --archived --limit 100000 ${status:+--status "$status"} --format json) || exit 1
+fi
+
+# mark: effective scope (track when a session track was picked, else all)
+if [ -n "$pick" ]; then
+  label=$(opt '.options["label-track"] // "◉"') || exit 1
+  icon=$(opt '.options["icon-track"] // "\uf45d"') || exit 1
+else
+  label=$(opt '.options["label-all"] // "☰"') || exit 1
+  icon=$(opt '.options["icon-all"] // "\uf45e"') || exit 1
+fi
+
+printf '%s' "$all" | jq -ce --arg name "$name" --arg show "$show" --arg alt "$alt" --arg label "$label" --arg icon "$icon" '
+  (if type == "array" then . else (.tasks // .items // .data // []) end) as $t
+  | ($t | length) as $n
+  | if $n == 0 then {text: ""} else
+    ([$t[] | select(.status != "TODO" and .status != "IN_PROGRESS")] | length) as $c
+  | {count: "\($c)∕\($n)", track: $name} as $v
+  | {label: $label, icon: $icon, label_toggle: "scope",
+     text: $v[$show], alt: $v[$alt], score: ($c * 100 / $n | floor)} end' 2>/dev/null || exit 1

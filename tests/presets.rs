@@ -1,0 +1,277 @@
+// Unix fixtures (shell scripts, modes, POSIX paths); Windows coverage: tests/windows.rs
+#![cfg(unix)]
+
+mod common;
+#[path = "common/render_fx.rs"]
+mod render_fx;
+
+use assert_cmd::Command;
+use hop_bar::presets;
+use render_fx::Tmp;
+use serde_json::Value;
+
+/// `bar <args>` with every config, state and PATH location under `t`.
+fn bar(t: &Tmp, args: &[&str]) -> Command {
+    let (iso, cwd) = common::isolation(t.path());
+    let mut c = Command::cargo_bin("bar").unwrap();
+    c.envs(iso)
+        .current_dir(cwd)
+        .env("COLUMNS", "120")
+        .args(args);
+    c
+}
+
+#[test]
+fn preset_names() {
+    assert_eq!(
+        presets::NAMES,
+        [
+            "minimal",
+            "full",
+            "powerline",
+            "capsule",
+            "compact",
+            "two-line"
+        ]
+    );
+    for n in presets::NAMES {
+        let on_disk =
+            std::fs::read_to_string(format!("{}/presets/{n}.conf", env!("CARGO_MANIFEST_DIR")))
+                .unwrap();
+        assert_eq!(presets::get(n), Some(on_disk.as_str()), "{n}");
+    }
+    assert_eq!(presets::get("nope"), None);
+}
+
+#[test]
+fn every_preset_checks_clean() {
+    for n in presets::NAMES {
+        let t = Tmp::new();
+        t.write("xdg/bar/bar.conf", presets::get(n).unwrap());
+        let o = bar(&t, &["check", "--format", "json"]).assert().success();
+        let v: Value = serde_json::from_slice(&o.get_output().stdout).unwrap();
+        assert_eq!(v["issues"], Value::Array(vec![]), "{n}: {v}");
+    }
+}
+
+#[test]
+fn preview_renders_a_preset() {
+    let t = Tmp::new();
+    let o = bar(&t, &["preview", "--preset", "powerline"])
+        .assert()
+        .success();
+    let out = String::from_utf8(o.get_output().stdout.clone()).unwrap();
+    assert!(
+        out.contains('\u{e0b0}') && out.contains("\x1b[48;5;"),
+        "{out:?}"
+    );
+    let o = bar(&t, &["preview", "--preset", "capsule"])
+        .assert()
+        .success();
+    let out = String::from_utf8(o.get_output().stdout.clone()).unwrap();
+    assert!(
+        out.contains('\u{e0b6}') && out.contains('\u{e0b4}'),
+        "{out:?}"
+    );
+    bar(&t, &["preview", "--preset", "nope"]).assert().code(2);
+}
+
+fn stdout(t: &Tmp, args: &[&str]) -> String {
+    let o = bar(t, args).assert().success();
+    String::from_utf8(o.get_output().stdout.clone()).unwrap()
+}
+
+#[test]
+fn bare_preset_previews_every_preset_in_order() {
+    let t = Tmp::new();
+    t.write("xdg/bar/bar.conf", "set left \"#{model}\"\n");
+    for state in ["early", "final"] {
+        let all = stdout(&t, &["preview", "--state", state, "--preset"]);
+        let want: String = presets::NAMES
+            .iter()
+            .map(|n| {
+                let one = stdout(&t, &["preview", "--state", state, "--preset", n]);
+                format!("\x1b[38;5;250m── {n} ──\x1b[39m\n{one}")
+            })
+            .collect();
+        assert_eq!(all, want, "{state}");
+    }
+    // flag last or first, same output
+    let first = stdout(&t, &["preview", "--preset", "--state", "early"]);
+    assert_eq!(
+        first,
+        stdout(&t, &["preview", "--state", "early", "--preset"])
+    );
+}
+
+#[test]
+fn named_preset_has_no_header() {
+    let t = Tmp::new();
+    let out = stdout(&t, &["preview", "--preset", "minimal"]);
+    assert!(!out.contains("──"), "{out:?}");
+    assert_eq!(out.lines().count(), 1, "{out:?}");
+}
+
+#[test]
+fn preview_preset_ignores_user_config() {
+    let t = Tmp::new();
+    t.write(
+        "xdg/bar/bar.conf",
+        "set left \"#{model}\"\nset skin capsule\n",
+    );
+    let o = bar(&t, &["preview", "--preset", "minimal"])
+        .assert()
+        .success();
+    let out = String::from_utf8(o.get_output().stdout.clone()).unwrap();
+    assert!(!out.contains('\u{e0b6}'), "{out:?}");
+    assert!(render_fx::strip(&out).contains("ctx 38%"), "{out:?}");
+}
+
+#[test]
+fn init_writes_default_preset_when_absent() {
+    let t = Tmp::new();
+    let o = bar(&t, &["init"]).assert().success();
+    let path = t.path().join("xdg/bar/bar.conf");
+    let out = String::from_utf8(o.get_output().stdout.clone()).unwrap();
+    assert!(out.contains(&path.display().to_string()), "{out}");
+    let body = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(body, presets::get("full").unwrap());
+}
+
+#[test]
+fn init_named_preset_under_home_config() {
+    let t = Tmp::new();
+    bar(&t, &["init", "--preset", "capsule"])
+        .env_remove("XDG_CONFIG_HOME")
+        .assert()
+        .success();
+    let body = std::fs::read_to_string(t.path().join(".config/bar/bar.conf")).unwrap();
+    assert_eq!(body, presets::get("capsule").unwrap());
+}
+
+#[test]
+fn init_refuses_to_overwrite() {
+    let t = Tmp::new();
+    t.write("xdg/bar/bar.conf", "set left \"#{model}\"\n");
+    let o = bar(&t, &["init", "--preset", "minimal"]).assert().code(2);
+    let err = String::from_utf8(o.get_output().stderr.clone()).unwrap();
+    assert!(err.contains("exists"), "{err}");
+    let body = std::fs::read_to_string(t.path().join("xdg/bar/bar.conf")).unwrap();
+    assert_eq!(body, "set left \"#{model}\"\n");
+}
+
+#[test]
+fn init_refuses_when_another_search_path_has_a_config() {
+    let t = Tmp::new();
+    t.write(".config/bar/bar.conf", "set left \"#{model}\"\n");
+    bar(&t, &["init"]).assert().code(2);
+    assert!(!t.path().join("xdg/bar/bar.conf").exists());
+}
+
+#[test]
+fn init_has_no_force() {
+    let t = Tmp::new();
+    bar(&t, &["init", "--force"]).assert().code(2);
+    bar(&t, &["init", "--preset", "nope"]).assert().code(2);
+    assert!(!t.path().join("xdg/bar/bar.conf").exists());
+}
+
+#[test]
+fn check_validates_bg_option() {
+    let t = Tmp::new();
+    t.write(
+        "xdg/bar/bar.conf",
+        "set left \"#{ctx[bg=200]} │ #{model[bg=%$X%]}\"\n",
+    );
+    bar(&t, &["check"]).assert().success();
+    t.write("xdg/bar/bar.conf", "set left \"#{ctx[bg=300]}\"\n");
+    let o = bar(&t, &["check"]).assert().code(2);
+    let out = String::from_utf8(o.get_output().stdout.clone()).unwrap();
+    assert!(out.contains("invalid bg `300`"), "{out}");
+}
+
+#[test]
+fn init_refuses_without_absolute_home() {
+    for home in [None, Some("relative/home")] {
+        let t = Tmp::new();
+        let mut c = bar(&t, &["init"]);
+        c.env_remove("XDG_CONFIG_HOME");
+        match home {
+            Some(h) => c.env("HOME", h),
+            None => c.env_remove("HOME"),
+        };
+        let o = c.assert().code(2);
+        let err = String::from_utf8(o.get_output().stderr.clone()).unwrap();
+        assert!(err.contains("HOME"), "{home:?}: {err}");
+        let cwd = t.path().join("neutral-cwd");
+        assert!(!cwd.join(".config").exists() && !cwd.join("relative").exists());
+    }
+}
+
+#[test]
+fn init_ignores_relative_xdg_config_home() {
+    let t = Tmp::new();
+    bar(&t, &["init"])
+        .env("XDG_CONFIG_HOME", "relative")
+        .assert()
+        .success();
+    assert!(t.path().join(".config/bar/bar.conf").is_file());
+    assert!(!t.path().join("neutral-cwd/relative").exists());
+    // no temp file left beside it
+    let names: Vec<_> = std::fs::read_dir(t.path().join(".config/bar"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert_eq!(names, ["bar.conf"]);
+}
+
+#[test]
+fn init_does_not_follow_a_racing_file() {
+    // the final name appearing between check and link is never clobbered
+    let t = Tmp::new();
+    let dir = t.path().join("xdg/bar");
+    std::fs::create_dir_all(&dir).unwrap();
+    let r = hop_bar::presets::write_new(&dir.join("bar.conf"), "a");
+    assert!(r.is_ok());
+    let r = hop_bar::presets::write_new(&dir.join("bar.conf"), "b");
+    assert!(r.unwrap_err().contains("exists"));
+    assert_eq!(std::fs::read_to_string(dir.join("bar.conf")).unwrap(), "a");
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+}
+
+#[test]
+fn preview_final_state_has_a_clean_tree() {
+    // dirty is empty in `final`; the space before ahead must survive
+    let t = Tmp::new();
+    let o = bar(&t, &["preview", "--preset", "full", "--state", "final"])
+        .assert()
+        .success();
+    let out = render_fx::strip(&String::from_utf8(o.get_output().stdout.clone()).unwrap());
+    assert!(out.contains("bar:main ↑2 ↓1"), "{out:?}");
+    let o = bar(&t, &["preview", "--preset", "full", "--state", "early"])
+        .assert()
+        .success();
+    let out = render_fx::strip(&String::from_utf8(o.get_output().stdout.clone()).unwrap());
+    assert!(out.contains("bar:main +2 ~3 ?1 ↑2 ↓1"), "{out:?}");
+}
+
+#[test]
+fn preview_samples_every_core_placeholder() {
+    for n in hop_bar::placeholders::names() {
+        let conf = format!("set left \"#{{{n}}}\"\n");
+        let c = hop_bar::conf::parse(&conf).unwrap();
+        let out = hop_bar::preview::render(
+            "early",
+            hop_bar::conf::LoadResult::Ok(c),
+            Some(120),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64,
+        );
+        assert!(
+            !render_fx::strip(&out).trim().is_empty(),
+            "{n} renders empty"
+        );
+    }
+}

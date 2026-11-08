@@ -1,0 +1,183 @@
+//! Work a background refresh performs.
+
+use std::path::Path;
+use std::process::Command;
+use std::time::{Duration, Instant};
+
+use serde_json::{json, Value};
+
+use crate::cache::{run_child, run_command, COMMAND_TIMEOUT};
+use crate::plugin;
+use crate::tz::Tz;
+
+/// Work a refresh performs. Serialised into the refresh process's
+/// arguments, so it carries only kinds and options, never secrets.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Job {
+    /// `sh -c cmd` (`cmd /C` on Windows); stdout on success. `timeout` in seconds.
+    Command { cmd: String, timeout: u64 },
+    /// `gh <args>` run directly, no shell; stdout on success.
+    Gh { args: Vec<String> },
+    /// `git status --porcelain=v2 --branch` in `dir` (absolute), no shell.
+    GitStatus { dir: String },
+    /// `<path> --ext-info`, no shell; stdout when it parses as plugin info.
+    PluginInfo { path: String },
+    /// `<path>` with `input` on stdin, no shell; stdout when it parses as
+    /// plugin output.
+    PluginRender { path: String, input: String },
+    /// `tmux display-message -p '#S:#I' -t <pane>`, no shell; `pane` is
+    /// `%` and digits.
+    Tmux { pane: String },
+    /// Finish scanning a transcript for token totals; progress is kept in
+    /// the transcript state file.
+    Transcript { path: String, state: String },
+    /// Scan all transcripts under `dir` for daily spend totals; `utc`
+    /// buckets by UTC date, else local.
+    SpendHist {
+        dir: String,
+        state: String,
+        utc: bool,
+    },
+}
+
+impl Job {
+    pub(crate) fn to_value(&self) -> Value {
+        match self {
+            Job::Command { cmd, timeout } => {
+                json!({"kind": "command", "cmd": cmd, "timeout": timeout})
+            }
+            Job::Gh { args } => json!({"kind": "gh", "args": args}),
+            Job::GitStatus { dir } => json!({"kind": "git-status", "dir": dir}),
+            Job::PluginInfo { path } => json!({"kind": "plugin-info", "path": path}),
+            Job::PluginRender { path, input } => {
+                json!({"kind": "plugin-render", "path": path, "input": input})
+            }
+            Job::Tmux { pane } => json!({"kind": "tmux", "pane": pane}),
+            Job::Transcript { path, state } => {
+                json!({"kind": "transcript", "path": path, "state": state})
+            }
+            Job::SpendHist { dir, state, utc } => {
+                json!({"kind": "spendhist", "dir": dir, "state": state, "utc": utc})
+            }
+        }
+    }
+
+    pub(crate) fn from_value(v: &Value) -> Result<Job, String> {
+        match v["kind"].as_str() {
+            Some("command") => Ok(Job::Command {
+                cmd: v["cmd"].as_str().ok_or("command job without cmd")?.into(),
+                timeout: v["timeout"].as_u64().unwrap_or(COMMAND_TIMEOUT),
+            }),
+            Some("gh") => Ok(Job::Gh {
+                args: v["args"]
+                    .as_array()
+                    .ok_or("gh job without args")?
+                    .iter()
+                    .map(|a| a.as_str().map(String::from).ok_or("gh arg not a string"))
+                    .collect::<Result<_, _>>()?,
+            }),
+            Some("git-status") => Ok(Job::GitStatus {
+                dir: abs_path(v, "dir")?,
+            }),
+            Some("plugin-info") => Ok(Job::PluginInfo {
+                path: abs_path(v, "path")?,
+            }),
+            Some("plugin-render") => Ok(Job::PluginRender {
+                path: abs_path(v, "path")?,
+                input: v["input"]
+                    .as_str()
+                    .ok_or("plugin job without input")?
+                    .into(),
+            }),
+            Some("tmux") => Ok(Job::Tmux {
+                pane: v["pane"]
+                    .as_str()
+                    .filter(|p| crate::placeholders::tmux::valid_pane(p))
+                    .ok_or("tmux job without a valid pane")?
+                    .into(),
+            }),
+            Some("transcript") => Ok(Job::Transcript {
+                path: abs_path(v, "path")?,
+                state: abs_path(v, "state")?,
+            }),
+            Some("spendhist") => Ok(Job::SpendHist {
+                dir: abs_path(v, "dir")?,
+                state: abs_path(v, "state")?,
+                utc: v["utc"].as_bool().unwrap_or(false),
+            }),
+            other => Err(format!("unknown job kind {other:?}")),
+        }
+    }
+
+    /// `None` on failure or timeout; `limit` caps the job's own timeout.
+    pub fn execute(&self, limit: Duration) -> Option<String> {
+        match self {
+            Job::Command { cmd, timeout } => {
+                run_command(cmd, limit.min(Duration::from_secs(*timeout)))
+            }
+            Job::Gh { args } => {
+                let mut c = Command::new(crate::platform::program("gh"));
+                c.args(args);
+                run_child(c, None, limit)
+            }
+            Job::GitStatus { dir } => {
+                let mut c = Command::new(crate::platform::program("git"));
+                c.args(["-c", "core.fsmonitor=false"])
+                    .args(["status", "--porcelain=v2", "--branch"])
+                    .current_dir(dir)
+                    .env("GIT_OPTIONAL_LOCKS", "0");
+                run_child(c, None, limit)
+            }
+            Job::PluginInfo { path } => {
+                let mut c = Command::new(path);
+                c.arg("--ext-info");
+                run_child(c, None, limit.min(plugin::INFO_TIMEOUT))
+                    .filter(|o| plugin::parse_info(o).is_some())
+            }
+            Job::PluginRender { path, input } => run_child(
+                Command::new(path),
+                Some(input.clone().into_bytes()),
+                limit.min(plugin::RENDER_TIMEOUT),
+            )
+            .filter(|o| plugin::parse_output(o).is_some()),
+            Job::Tmux { pane } => {
+                let mut c = Command::new(crate::platform::program("tmux"));
+                c.args(["display-message", "-p", "#S:#I", "-t", pane]);
+                run_child(c, None, limit.min(Duration::from_secs(2)))
+                    .filter(|o| !o.trim().is_empty())
+            }
+            Job::Transcript { path, state } => crate::transcript::update(
+                Path::new(state),
+                Path::new(path),
+                u64::MAX,
+                Some(Instant::now() + limit),
+            )
+            .map(|_| "ok".to_string()),
+            Job::SpendHist { dir, state, utc } => {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| d.as_secs() as i64);
+                crate::spendhist::update(
+                    Path::new(state),
+                    Path::new(dir),
+                    if *utc { Tz::Utc } else { Tz::Local },
+                    now,
+                    Some(Instant::now() + limit),
+                )
+            }
+        }
+    }
+}
+
+/// Plugins run by absolute path only, never looked up on PATH.
+/// Field `key` of job `v`, required to be an absolute path.
+fn abs_path(v: &Value, key: &str) -> Result<String, String> {
+    v[key]
+        .as_str()
+        .filter(|p| Path::new(p).is_absolute())
+        .map(String::from)
+        .ok_or_else(|| {
+            let kind = v["kind"].as_str().unwrap_or("job");
+            format!("{kind} job without absolute {key}")
+        })
+}

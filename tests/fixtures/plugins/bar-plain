@@ -1,0 +1,7 @@
+#!/bin/sh
+# A bar- tool without the placeholder capability.
+if [ "$1" = "--ext-info" ]; then
+  echo '{"name":"plain","version":"0.2.0","capabilities":["discover"]}'
+  exit 0
+fi
+echo '{"text":"should not render"}'

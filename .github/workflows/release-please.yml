@@ -1,0 +1,63 @@
+name: release-please
+
+# The branch decides the version (target versioning, see docs/technical.md#releasing):
+#   next         → prereleases (*-alpha.N, *-beta.N, *-rc.N)
+#   main         → stable: an rc cut to its target, then patches only
+#   release/x.y  → LTS: patches only
+# One committed config on every branch; nothing is patched per branch, so
+# next → main merges stay conflict-free.
+#
+# googleapis/release-please-action does not know `versioning: "target"`: the
+# shared workflow runs release-please with hop-top/.github's extension, the
+# per-branch concurrency guard and the release-bot App token (release PRs by
+# the bot trigger downstream workflows, and the tags it creates trigger
+# release-rs-caller.yml). Labels come from the config.
+#
+# Pin: the full commit SHA of a hop-top/.github release carrying the
+# target-versioning extension, version in a trailing comment; `tooling-ref`
+# names the same commit, and release-please-preflight.yml carries the same
+# pin. Move all three together.
+
+on:
+  push:
+    # release/<major>.<minor> only: the extension's maintenance role
+    # (^release/\d+\.\d+$). Filter globs: `+` repeats the preceding
+    # character class, `.` is literal.
+    branches: [main, next, 'release/[0-9]+.[0-9]+']
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  # workflow_dispatch runs on whatever branch it is started from, and a branch
+  # without a role falls back to prereleases: release only from main, next or
+  # release/<major>.<minor>.
+  branch-role:
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.role.outputs.release }}
+    steps:
+      - id: role
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [[ "$REF" =~ ^refs/heads/(main|next|release/[0-9]+\.[0-9]+)$ ]]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::$REF has no release role (main, next, release/<major>.<minor>): not releasing"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  release-please:
+    needs: branch-role
+    if: needs.branch-role.outputs.release == 'true'
+    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@4200be92484ff51e32add852f2261336f04cfb14 # v0.18.0
+    secrets:
+      RELEASE_BOT_APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
+      RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+    with:
+      config-file: .github/release-please-config.json
+      manifest-file: .github/.release-please-manifest.json
+      versioning-extension: true
+      tooling-ref: 4200be92484ff51e32add852f2261336f04cfb14 # v0.18.0

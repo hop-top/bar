@@ -1,0 +1,21 @@
+# Benchmark layout: plain skin, no icons, " │ " separator.
+palette = "terminal"
+skin = "plain"
+glyphs = "ascii"
+separator = " │ "
+
+[[line]]
+left = [
+  { metric = "model", icon = "" },
+  { metric = "context", widget = "text", icon = "", format = "{pct}%" },
+  { metric = "git", icon = "" },
+  { metric = "cost", icon = "" },
+  { metric = "quota.5h", widget = "text", icon = "" },
+  { metric = "quota.7d", widget = "text", icon = "" },
+  { metric = "duration", icon = "" },
+]
+right = []
+
+# No network: the background npm/GitHub version check is off.
+[update]
+check = false

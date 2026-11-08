@@ -1,0 +1,9 @@
+#!/bin/sh
+# Answers --ext-info at once; a render records its pid and hangs.
+if [ "$1" = "--ext-info" ]; then
+  echo '{"name":"slow","version":"0.1.0","capabilities":["placeholder"]}'
+  exit 0
+fi
+echo $$ > "$(dirname "$0")/pid"
+sleep 30
+echo '{"text":"late"}'

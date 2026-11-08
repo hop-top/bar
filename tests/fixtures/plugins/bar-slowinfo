@@ -1,0 +1,4 @@
+#!/bin/sh
+# Hangs on --ext-info.
+sleep 30
+echo '{"name":"slowinfo","version":"9.9.9","capabilities":["placeholder"]}'

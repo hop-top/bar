@@ -1,0 +1,66 @@
+#!/bin/sh
+# bar-claude-credits: prepaid Console credit balance, as text "$149.07" plus label "14d".
+# Needs sh, jq, curl and macOS `security`. It reads the Console browser session
+# cookie from the keychain entry named by option `account`, else by
+# `plugin claude-credits keychain=...`, and calls an undocumented Console
+# endpoint for organisation `org=...`.
+# The cookie reaches curl only on stdin, never in argv or the environment.
+if [ "$1" = "--ext-info" ]; then
+  printf '%s\n' '{"name":"claude-credits","version":"0.1.0","description":"Claude Console prepaid credit balance","capabilities":["discover","placeholder"],"options":{"account":{"type":"string"}},"ttl":"5m"}'
+  exit 0
+fi
+
+# An exported variable of this name must not reach curl's environment.
+unset cookie
+for t in jq curl security; do command -v "$t" >/dev/null 2>&1 || exit 1; done
+
+conf=$(jq -r '[.config.org // "", (.options.account | select(. != null and . != "")) // .config.keychain // ""] | join("\u001f")' 2>/dev/null) || exit 1
+org=${conf%%"$(printf '\037')"*}
+entry=${conf#*"$(printf '\037')"}
+case "$org" in ''|*[!A-Za-z0-9-]*) exit 1 ;; esac
+case "$entry" in ''|-*|*[!A-Za-z0-9._-]*) exit 1 ;; esac
+
+cookie=$(security find-generic-password -a "${USER:-$(id -un)}" -s "$entry" -w 2>/dev/null)
+case "$cookie" in ''|*[!A-Za-z0-9._~%+=/-]*) exit 1 ;; esac
+
+# printf is a shell builtin: the cookie stays out of every child's argv.
+resp=$(printf 'header = "Cookie: sessionKey=%s"\n' "$cookie" | curl -s -m 2 -K - \
+  -w '\n%{http_code}' -H 'Accept: application/json' -H 'User-Agent: Mozilla/5.0' \
+  "https://platform.claude.com/api/organizations/$org/prepaid/credits" 2>/dev/null) || exit 1
+unset cookie
+code=${resp##*"
+"}
+body=${resp%"
+"*}
+
+case "$code" in
+  401|403) printf '%s\n' '{"text":"?","style":"bad"}'; exit 0 ;;
+  200) ;;
+  *) exit 1 ;;
+esac
+
+# Promo tranches plus unscoped credits match the billing page; the top-level
+# amount is off by a cent.
+printf '%s' "$body" | jq -ce '
+  def ep: if . then (sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z") | fromdate) else null end;
+  def left($s):
+    if $s <= 0 then ""
+    elif $s >= 86400 then "\($s / 86400 | floor)d"
+    elif $s >= 3600 then "\($s / 3600 | floor)h\($s % 3600 / 60 | floor)m"
+    else "\($s / 60 | floor)m" end;
+  (.promo_tranches // []) as $t
+  | (if ($t | length) > 0
+     then ($t | map(.remaining_amount_minor_units // 0) | add) + (.amount_without_scoped_credits // 0)
+     else .amount end) as $c
+  | select($c | type == "number")
+  | ($t | sort_by(.expires_at) | first // {}) as $f
+  | ($f.expires_at | ep) as $exp
+  | ($f.granted_at | ep) as $gat
+  | ($f.granted_amount_minor_units) as $gr
+  | (if $exp then left($exp - now | floor) else "" end) as $l
+  | {text: "$\($c / 100 | floor).\($c % 100 | tostring | if length < 2 then "0" + . else . end)"}
+    + (if $l != "" then {label: $l} else {} end)
+    + (if $exp and ($gr | type == "number") then
+         {metric: ({remaining: $c, granted: $gr, expires_at: $exp}
+                   + (if $gat then {granted_at: $gat} else {} end))}
+       else {} end)' 2>/dev/null || exit 1

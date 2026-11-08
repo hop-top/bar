@@ -1,0 +1,3 @@
+#!/bin/sh
+# Shadows a core placeholder name; must never be used.
+echo '{"name":"account","version":"0.0.1","capabilities":["placeholder"]}'

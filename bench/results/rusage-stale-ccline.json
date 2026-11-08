@@ -1,0 +1,119 @@
+{
+ "command": [
+  "/opt/slbench/home/ccline/.claude/ccline/ccline"
+ ],
+ "runs": 5,
+ "prepare": "sleep 11",
+ "summary": {
+  "wall_ms": {
+   "mean": 4.939360031858087,
+   "median": 5.758784012869,
+   "min": 0.9694569744169712,
+   "max": 7.336281938478351
+  },
+  "cpu_ms": {
+   "mean": 4.2164,
+   "median": 4.465,
+   "min": 0.836,
+   "max": 6.952
+  },
+  "user_ms": {
+   "mean": 1.3234,
+   "median": 1.018,
+   "min": 0.0,
+   "max": 2.679
+  },
+  "sys_ms": {
+   "mean": 2.893,
+   "median": 2.803,
+   "min": 0.836,
+   "max": 4.966
+  },
+  "maxrss_kb": {
+   "mean": 20224.0,
+   "median": 20224,
+   "min": 20224,
+   "max": 20224
+  },
+  "bg_procs": {
+   "mean": 1.0,
+   "median": 1,
+   "min": 1,
+   "max": 1
+  },
+  "bg_cpu_ms": {
+   "mean": 6.9348,
+   "median": 8.193999999999999,
+   "min": 1.6469999999999998,
+   "max": 9.079
+  },
+  "bg_maxrss_kb": {
+   "mean": 6508.0,
+   "median": 6140,
+   "min": 5676,
+   "max": 7636
+  }
+ },
+ "per_run": [
+  {
+   "wall_ms": 6.23528310097754,
+   "cpu_ms": 4.465,
+   "user_ms": 2.679,
+   "sys_ms": 1.7859999999999998,
+   "maxrss_kb": 20224,
+   "exit": 0,
+   "bg_procs": 1,
+   "bg_cpu_ms": 8.193999999999999,
+   "bg_maxrss_kb": 7396,
+   "bg_done_ms": 16.823311103507876
+  },
+  {
+   "wall_ms": 7.336281938478351,
+   "cpu_ms": 6.952,
+   "user_ms": 1.986,
+   "sys_ms": 4.966,
+   "maxrss_kb": 20224,
+   "exit": 0,
+   "bg_procs": 1,
+   "bg_cpu_ms": 8.584999999999999,
+   "bg_maxrss_kb": 7636,
+   "bg_done_ms": 17.548560863360763
+  },
+  {
+   "wall_ms": 5.758784012869,
+   "cpu_ms": 5.092,
+   "user_ms": 1.018,
+   "sys_ms": 4.074,
+   "maxrss_kb": 20224,
+   "exit": 0,
+   "bg_procs": 1,
+   "bg_cpu_ms": 9.079,
+   "bg_maxrss_kb": 6140,
+   "bg_done_ms": 14.446438988670707
+  },
+  {
+   "wall_ms": 0.9694569744169712,
+   "cpu_ms": 0.836,
+   "user_ms": 0.0,
+   "sys_ms": 0.836,
+   "maxrss_kb": 20224,
+   "exit": 0,
+   "bg_procs": 1,
+   "bg_cpu_ms": 1.6469999999999998,
+   "bg_maxrss_kb": 5676,
+   "bg_done_ms": 9.538904065266252
+  },
+  {
+   "wall_ms": 4.396994132548571,
+   "cpu_ms": 3.7369999999999997,
+   "user_ms": 0.9339999999999999,
+   "sys_ms": 2.803,
+   "maxrss_kb": 20224,
+   "exit": 0,
+   "bg_procs": 1,
+   "bg_cpu_ms": 7.169,
+   "bg_maxrss_kb": 5692,
+   "bg_done_ms": 16.800228040665388
+  }
+ ]
+}

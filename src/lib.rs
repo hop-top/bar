@@ -1,0 +1,32 @@
+#[cfg(not(any(unix, windows)))]
+compile_error!("bar supports Unix (macOS, Linux) and Windows only");
+
+pub mod cache;
+pub mod check;
+pub mod click;
+pub mod conf;
+pub mod expand;
+pub mod expr;
+pub mod format;
+pub mod gitfs;
+pub mod history;
+pub mod icons;
+pub mod job;
+pub mod layout;
+pub mod linescan;
+pub mod options;
+pub mod pace;
+pub mod palette;
+pub mod placeholders;
+pub mod platform;
+pub mod plugin;
+pub mod presets;
+pub mod preview;
+pub mod prices;
+pub mod render;
+pub mod session;
+pub mod skin;
+pub mod spendhist;
+pub mod style;
+pub mod transcript;
+pub mod tz;

@@ -1,0 +1,476 @@
+//! `bar check`: lints the config file without rendering anything.
+
+use crate::conf::{layout_key, parse, parse_options, tokenize};
+use crate::expr;
+use crate::format::{self, Token};
+use crate::icons;
+use crate::options::Options;
+use crate::placeholders::gh::{self, Kind};
+use crate::placeholders::gitst;
+use crate::placeholders::usage::glyphs::{GLYPH_SETS, SHOW_ITEMS};
+use crate::plugin;
+use crate::prices::models;
+use crate::render::builtin_config;
+use crate::skin;
+use serde_json::{json, Value};
+use std::cell::Cell;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Level {
+    Error,
+    Warning,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Issue {
+    pub level: Level,
+    /// 1-based; 0 when the problem has no line (I/O, built-in layout).
+    pub line: usize,
+    pub message: String,
+}
+
+#[derive(Debug)]
+pub struct Report {
+    /// The config file in use; `None` means the built-in layout.
+    pub path: Option<PathBuf>,
+    pub issues: Vec<Issue>,
+}
+
+impl Report {
+    pub fn has_errors(&self) -> bool {
+        self.issues.iter().any(|i| i.level == Level::Error)
+    }
+
+    pub fn to_json(&self) -> Value {
+        let issues: Vec<Value> = self
+            .issues
+            .iter()
+            .map(|i| {
+                json!({
+                    "level": level_name(i.level),
+                    "line": i.line,
+                    "message": i.message,
+                })
+            })
+            .collect();
+        let a = models::active();
+        json!({
+            "path": self.path.as_ref().map(|p| p.display().to_string()),
+            "prices": {
+                "snapshot": a.snapshot.fetched(),
+                "user_file": a.user_file.as_ref().map(|p| p.display().to_string()),
+                "ignored": a.ignored,
+            },
+            "ok": !self.has_errors(),
+            "issues": issues,
+        })
+    }
+
+    pub fn to_text(&self) -> String {
+        let mut out = match &self.path {
+            Some(p) => format!("config: {}\n", p.display()),
+            None => "config: none found, using the built-in layout\n".to_string(),
+        };
+        let a = models::active();
+        out.push_str(&match &a.user_file {
+            Some(p) => format!(
+                "prices: models.dev snapshot {} (user file {})\n",
+                a.snapshot.fetched(),
+                p.display()
+            ),
+            None => format!(
+                "prices: models.dev snapshot {} (built in)\n",
+                a.snapshot.fetched()
+            ),
+        });
+        if let Some(why) = &a.ignored {
+            out.push_str(&format!(
+                "prices: {} ignored, {why}\n",
+                models::user_path().display()
+            ));
+        }
+        for i in &self.issues {
+            let at = if i.line == 0 {
+                String::new()
+            } else {
+                format!("line {}: ", i.line)
+            };
+            out.push_str(&format!("{at}{}: {}\n", level_name(i.level), i.message));
+        }
+        let count = |l| self.issues.iter().filter(|i| i.level == l).count();
+        let (e, w) = (count(Level::Error), count(Level::Warning));
+        out.push_str(&if e + w == 0 {
+            "ok\n".to_string()
+        } else {
+            format!("{e} error(s), {w} warning(s)\n")
+        });
+        out
+    }
+}
+
+fn level_name(l: Level) -> &'static str {
+    match l {
+        Level::Error => "error",
+        Level::Warning => "warning",
+    }
+}
+
+/// How an option value is checked.
+#[derive(Clone, Copy)]
+enum Val {
+    Any,
+    Int,
+    /// Integer of at least 1.
+    Pos,
+    OneOf(&'static [&'static str]),
+    /// Comma list whose items all come from the set.
+    List(&'static [&'static str]),
+}
+
+const STATUS_PR: &[&str] = &["open", "closed", "merged"];
+const STATUS_ISSUE: &[&str] = &["open", "closed"];
+
+fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
+    use Val::*;
+    Some(match name {
+        "account" | "sessions" | "spend" | "burn" | "duration" | "lines" | "version" | "style"
+        | "vim" | "agent" | "thinking" | "fast" => &[],
+        "cost" => &[("fmt", OneOf(&["usd"]))],
+        "cwd" | "root" => &[("base", OneOf(&["0", "1"]))],
+        "spendhist" => &[
+            ("period", OneOf(&["today", "month", "both"])),
+            ("tz", OneOf(&["local", "utc"])),
+        ],
+        "tokens" => &[("show", OneOf(&["in", "out", "total", "both"]))],
+        "cache" => &[("show", OneOf(&["read", "write", "hit", "both"]))],
+        "cachettl" => &[("ttl", Pos)],
+        "agents" => &[("names", OneOf(&["0", "1"])), ("max", Int)],
+        "model" | "effort" | "ctx" => &[("click", Any)],
+        "repo" | "branch" => &[("max", Int), ("link", Any)],
+        "usage" => &[
+            ("type", OneOf(&["5h", "7d", "h", "d"])),
+            ("view", OneOf(&["bar", "pct", "time"])),
+            ("show", List(&SHOW_ITEMS)),
+            ("alt", List(&SHOW_ITEMS)),
+            ("count", OneOf(&["left", "used"])),
+            ("glyphs", OneOf(&GLYPH_SETS)),
+            ("color", OneOf(&["solid", "gradient"])),
+            ("width", Int),
+            ("click", OneOf(&["toggle", "none"])),
+        ],
+        "dirty" => &[("show", List(gitst::SHOW)), ("ttl", Pos)],
+        "ahead" => &[("ttl", Pos)],
+        "worktree" | "compactions" | "skills" => &[],
+        "sid" => &[("len", Int)],
+        "tmux" => &[("max", Int)],
+        "prs" => &[
+            ("limit", Int),
+            ("author", Any),
+            ("status", OneOf(STATUS_PR)),
+            ("link", Any),
+            ("checks", List(gh::CHECK_MARKS)),
+        ],
+        "issues" => &[
+            ("limit", Int),
+            ("assignee", Any),
+            ("author", Any),
+            ("label", Any),
+            ("status", OneOf(STATUS_ISSUE)),
+            ("link", Any),
+        ],
+        _ => return None,
+    })
+}
+
+fn val_ok(v: Val, raw: &str) -> bool {
+    match v {
+        Val::Any => true,
+        Val::Int => raw.trim().parse::<usize>().is_ok(),
+        Val::Pos => raw.trim().parse::<usize>().is_ok_and(|n| n >= 1),
+        Val::OneOf(set) => set.contains(&raw),
+        Val::List(set) => raw.split(',').all(|i| set.contains(&i.trim())),
+    }
+}
+
+struct Checker<'a> {
+    dirs: &'a [PathBuf],
+    icon_width: usize,
+    defaults: BTreeMap<String, Options>,
+    gh_missing: bool,
+    gh_warned: Cell<bool>,
+    issues: Vec<Issue>,
+}
+
+impl Checker<'_> {
+    fn add(&mut self, level: Level, line: usize, message: String) {
+        self.issues.push(Issue {
+            level,
+            line,
+            message,
+        });
+    }
+
+    fn error(&mut self, line: usize, message: String) {
+        self.add(Level::Error, line, message);
+    }
+
+    fn layout(&mut self, src: &str, line: usize) {
+        match format::parse(src) {
+            Err(e) => self.error(line, format!("invalid layout: {e}")),
+            Ok(tokens) => {
+                for t in tokens {
+                    if let Token::Placeholder { name, options } = t {
+                        self.placeholder(&name, &options, line, true);
+                    }
+                }
+            }
+        }
+    }
+
+    /// `used` is false for a `default` line: it only checks names and values.
+    fn placeholder(&mut self, name: &str, opts: &Options, line: usize, used: bool) {
+        match core_options(name) {
+            Some(spec) => {
+                let bad = self.core_values(name, spec, opts, line);
+                if matches!(name, "prs" | "issues") {
+                    self.gh_checks(name, opts, line, used, bad);
+                }
+            }
+            None => self.plugin(name, opts, line, used),
+        }
+    }
+
+    /// Reports bad options; true when there was any.
+    fn core_values(
+        &mut self,
+        name: &str,
+        spec: &[(&str, Val)],
+        opts: &Options,
+        line: usize,
+    ) -> bool {
+        let mut bad = false;
+        for (k, v) in opts.iter() {
+            if k == "icon" {
+                bad |= self.icon(v, line);
+                continue;
+            }
+            if k == "bg" {
+                bad |= self.bg(v, line);
+                continue;
+            }
+            match spec.iter().find(|(n, _)| n == k) {
+                None => {
+                    bad = true;
+                    self.error(line, format!("unknown option `{k}` for `{name}`"));
+                }
+                Some((_, kind)) if !v.contains('%') && !val_ok(*kind, v) => {
+                    bad = true;
+                    self.error(line, format!("invalid value `{v}` for `{k}`"));
+                }
+                _ => {}
+            }
+        }
+        bad
+    }
+
+    /// Reports a bad `icon` value; true when there was one.
+    fn icon(&mut self, v: &str, line: usize) -> bool {
+        let bad = !v.contains('%') && !icons::valid(v, self.icon_width);
+        if bad {
+            let msg = format!(
+                "invalid icon `{v}` (`none` or at most {} cells)",
+                icons::MAX_CELLS
+            );
+            self.error(line, msg);
+        }
+        bad
+    }
+
+    /// Reports a bad `bg` value; true when there was one.
+    fn bg(&mut self, v: &str, line: usize) -> bool {
+        let bad = !v.contains('%') && !skin::valid_bg(v);
+        if bad {
+            self.error(line, format!("invalid bg `{v}` (0-255)"));
+        }
+        bad
+    }
+
+    fn gh_checks(&mut self, name: &str, opts: &Options, line: usize, used: bool, bad: bool) {
+        if !used {
+            return;
+        }
+        if self.gh_missing && !self.gh_warned.replace(true) {
+            self.add(
+                Level::Warning,
+                line,
+                format!("`gh` not on PATH: `{name}` renders nothing"),
+            );
+        }
+        let kind = if name == "prs" { Kind::Pr } else { Kind::Issue };
+        let merged = match self.defaults.get(name) {
+            Some(d) => opts.merged_over(d),
+            None => opts.clone(),
+        };
+        let dynamic = merged.iter().any(|(_, v)| v.contains('%'));
+        let mut expr_bad = false;
+        for key in ["author", "assignee", "label"] {
+            if let Some(v) = opts.get(key).filter(|v| !v.contains('%')) {
+                if let Err(e) = expr::parse(v) {
+                    expr_bad = true;
+                    self.error(line, format!("invalid expression for `{key}`: {e}"));
+                }
+            }
+        }
+        if bad || expr_bad || dynamic {
+            return;
+        }
+        match gh::plan(kind, "https://github.com/o/r", &merged) {
+            Some(plan) => {
+                if let Some(w) = plan.warning {
+                    self.add(Level::Warning, line, w);
+                }
+            }
+            None => self.error(line, format!("`{name}` options do not compile to queries")),
+        }
+    }
+
+    fn plugin(&mut self, name: &str, opts: &Options, line: usize, used: bool) {
+        let Some(found) = plugin::find(self.dirs, name) else {
+            if used {
+                self.error(line, format!("unknown placeholder `{name}`"));
+            } else {
+                // a `default` line may be shared by machines without the plugin
+                let msg = format!("plugin `{name}` not on PATH");
+                self.add(Level::Warning, line, msg);
+            }
+            return;
+        };
+        let info = plugin::info(&found);
+        if !info.is_placeholder() {
+            self.error(
+                line,
+                format!("plugin `{name}` does not declare the placeholder capability"),
+            );
+            return;
+        }
+        for (declared, opt) in [
+            (info.declares_icon_option, "icon"),
+            (info.declares_bg_option, "bg"),
+            (info.declares_click_option, "click"),
+        ] {
+            if declared {
+                let msg = format!("plugin `{name}` declares the reserved option `{opt}`; ignored");
+                self.add(Level::Warning, line, msg);
+            }
+        }
+        let mut concrete = Options::default();
+        for (k, v) in opts.iter().filter(|(_, v)| !v.contains('%')) {
+            if k == "icon" {
+                self.icon(v, line);
+            } else if k == "bg" {
+                self.bg(v, line);
+            } else if k == "click" {
+                if !val_ok(Val::OneOf(&["toggle", "none"]), v) {
+                    self.error(line, format!("invalid value `{v}` for `click`"));
+                }
+            } else {
+                concrete.set(k, v);
+            }
+        }
+        if let Err(e) = plugin::validate(&info.options, &concrete) {
+            self.error(line, format!("{e} for `{name}`"));
+        }
+    }
+}
+
+/// Lints `text`, a config file's contents.
+pub fn check_text(text: &str, path: Option<PathBuf>, dirs: &[PathBuf]) -> Report {
+    let parsed = parse(text);
+    let mut c = Checker {
+        dirs,
+        icon_width: parsed.as_ref().map_or(1, |cfg| cfg.icon_width),
+        defaults: parsed
+            .as_ref()
+            .map(|cfg| cfg.defaults.clone())
+            .unwrap_or_default(),
+        gh_missing: !dirs
+            .iter()
+            .any(|d| crate::platform::executable_in(d, "gh").is_some()),
+        gh_warned: Cell::new(false),
+        issues: Vec::new(),
+    };
+    if let Err(errs) = &parsed {
+        for e in errs {
+            c.error(e.line, e.message.clone());
+        }
+    }
+    for (i, raw) in text.lines().enumerate() {
+        let Ok(t) = tokenize(raw) else { continue };
+        match t.first().map(String::as_str) {
+            // a bad line number is already a parse error
+            Some("set") if t.len() == 3 && matches!(layout_key(&t[1]), Some(Ok(_))) => {
+                c.layout(&t[2], i + 1);
+            }
+            Some("set") if t.len() == 3 && t[1] == "claude-dir" => {
+                if !Path::new(&t[2]).is_absolute() && !t[2].starts_with("~/") {
+                    c.add(
+                        Level::Warning,
+                        i + 1,
+                        "claude-dir must be an absolute path (or start with ~/); it is ignored"
+                            .into(),
+                    );
+                }
+            }
+            Some("default") if t.len() >= 2 => {
+                if let Ok(o) = parse_options(&t[2..]) {
+                    c.placeholder(&t[1], &o, i + 1, false);
+                }
+            }
+            _ => {}
+        }
+    }
+    c.issues.sort_by_key(|i| i.line);
+    Report {
+        path,
+        issues: c.issues,
+    }
+}
+
+/// Lints the built-in layout, used when no config file exists.
+pub fn check_builtin(dirs: &[PathBuf]) -> Report {
+    let cfg = builtin_config();
+    let mut c = Checker {
+        dirs,
+        icon_width: 1,
+        defaults: BTreeMap::new(),
+        gh_missing: !dirs
+            .iter()
+            .any(|d| crate::platform::executable_in(d, "gh").is_some()),
+        gh_warned: Cell::new(false),
+        issues: Vec::new(),
+    };
+    for src in [&cfg.left, &cfg.center, &cfg.right] {
+        c.layout(src, 0);
+    }
+    Report {
+        path: None,
+        issues: c.issues,
+    }
+}
+
+/// Lints the file at `path`; an unreadable file is one error without a line.
+pub fn check_file(path: &Path, dirs: &[PathBuf]) -> Report {
+    match std::fs::read_to_string(path) {
+        Ok(text) => check_text(&text, Some(path.to_path_buf()), dirs),
+        Err(e) => Report {
+            path: Some(path.to_path_buf()),
+            issues: vec![Issue {
+                level: Level::Error,
+                line: 0,
+                message: format!("{}: {e}", path.display()),
+            }],
+        },
+    }
+}
