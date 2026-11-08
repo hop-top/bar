@@ -121,29 +121,29 @@ Configs, exactly as used: [configs/](configs/). Each tool reads its config from 
 
 The same benchmark run a second time through [ben](https://github.com/hop-top/ben), a Go benchmark runner, with suites in [ben/](ben/). Same container, fixture, configs and per-tool `HOME`s as above; only the harness and the bar build differ.
 
-- bar: commit `14a1001` (newer than the `09432ae` used above). Others unchanged: ccstatusline 2.2.34, claude-powerline 1.32.8, ccline 2.0.1.
+- bar: commit `4de5985` (newer than the `09432ae` used above; a first ben run of `14a1001` is summarised under Cross-check). Others unchanged: ccstatusline 2.2.34, claude-powerline 1.32.8, ccline 2.0.1.
 - ben: commit `2b24904` (reports itself as 0.1.0), cross-compiled for linux/arm64 with `CGO_ENABLED=0`.
 - Suites: `warm.yaml` (100 runs after 10 warm-up runs), `cold.yaml` (30 runs, `prepare: run.sh _reset <tool>` before each, the same reset the hyperfine cold runs used), `floor.yaml` (the harness floor, see below). Each candidate uses `args:` (no shell) and `input_file:` for stdin. ben has no per-candidate environment, so `cmd` is `/usr/bin/env` with `HOME=… COLUMNS=200 <tool> …`; `env` execs the tool, so the measured process is the tool, but env's own start-up is included (part of the floor below). Metrics `latency_ms`, `cpu_ms`, `cpu_user_ms`, `cpu_sys_ms`, `max_rss_kb`; scorer `single:latency_ms`, median.
-- Load average 1.2 to 2.0 during the run ([results/ben-load-*.txt](results/)). The `metadata.host` field in the JSON was replaced with `container`.
+- Load average 1.3 to 2.0 during the run ([results/ben-load-*.txt](results/)). The `metadata.host` field in the JSON was replaced with `container`.
 
 Results, ms ([results/ben-summary.md](results/ben-summary.md), raw samples in `results/ben-{warm,cold,floor}.json`):
 
 | Tool | Warm latency median ± sd | Warm p95 | Warm CPU median | Cold latency median ± sd | Cold p95 | Cold CPU median |
 |---|---|---|---|---|---|---|
-| bar | **0.84** ± 0.10 | 1.04 | **0.78** | **3.60** ± 0.15 | 3.88 | 3.44 |
-| ccline | 0.94 ± 0.03 | 0.99 | 0.88 | 6.65 ± 0.83 | 7.17 | **2.75** |
-| claude-powerline | 41.88 ± 3.99 | 45.99 | 48.56 | 57.43 ± 1.85 | 60.55 | 71.73 |
-| ccstatusline | 91.91 ± 5.28 | 101.49 | 117.45 | 99.27 ± 8.47 | 110.01 | 124.46 |
-| floor: `env` → `/usr/bin/true` | 0.61 ± 0.05 | 0.70 | 0.56 | | | |
+| bar | **0.80** ± 0.11 | 0.95 | **0.73** | **1.62** ± 0.12 | 1.94 | **1.46** |
+| ccline | 0.93 ± 0.05 | 1.01 | 0.87 | 6.61 ± 0.49 | 7.14 | 2.61 |
+| claude-powerline | 42.15 ± 1.40 | 44.92 | 48.90 | 58.89 ± 9.69 | 88.50 | 76.47 |
+| ccstatusline | 92.12 ± 11.46 | 100.40 | 117.61 | 98.13 ± 4.91 | 110.69 | 124.10 |
+| floor: `env` → `/usr/bin/true` | 0.67 ± 0.09 | 0.84 | 0.61 | | | |
 
-Max RSS (median, MiB): bar 16.5, ccline 18.4, claude-powerline 102.1, ccstatusline 115.8; the floor reads 16.6. ben starts children with Go's `os/exec`, which on Linux uses a vfork-style clone, and `ru_maxrss` keeps the parent's high-water mark across `exec`. So every value includes ben's own RSS (about 16.5 MiB), and the Rust tools' real footprint (3.5 and 5.3 MiB under GNU time above) cannot be read from these numbers. The Node tools' values match GNU time to within 1 MiB.
+Max RSS (median, MiB): bar 16.7, ccline 18.3 warm (17.0 cold), claude-powerline 102.1, ccstatusline 115.6; the floor reads 16.5. ben starts children with Go's `os/exec`, which on Linux uses a vfork-style clone, and `ru_maxrss` keeps the parent's high-water mark across `exec`. So every value includes ben's own RSS (about 16.5 MiB), and the Rust tools' real footprint (3.5 and 5.3 MiB under GNU time above) cannot be read from these numbers. The Node tools' values match GNU time to within 1 MiB.
 
 Cross-check against the hyperfine and wait4 runs above:
 
-- Node tools: warm and cold latency agree within 1 to 2 ms (41.9 vs 41.3, 91.9 vs 92.0 warm; 57.4 vs 58.7, 99.3 vs 96.9 cold). CPU agrees within 1 ms warm.
-- Rust tools: each value carries the floor (ben spawn plus `env` exec: 0.61 ms latency, 0.56 ms CPU). Minus the floor, warm latency is about 0.23 ms for bar and 0.33 ms for ccline, against 0.3 and 0.4 under hyperfine; the order and the gap are the same. Subtracting is approximate: the floor is a separate process, not part of each run.
-- bar cold: 3.60 ms here, about 3.0 ms after the floor, against 2.5 ms under hyperfine; its foreground CPU is about 2.9 ms after the floor against 2.4 ms. ccline's cold numbers did not move (6.65 vs 6.3 ms; 2.75 vs 2.7 ms CPU). The difference is likely the newer bar build (load was similar, 1.9 to 2.0 here); it was not investigated further.
-- Where bar loses: on a cold state its foreground CPU (3.4 ms) is now above ccline's (2.75 ms), before counting bar's detached jobs, which ben does not measure (it counts only waited processes; the first run's tables have them: 8.7 ms on a cold state). ccline's cold latency is higher (6.65 vs 3.60 ms) because it waits on `git`, not because it uses more CPU.
+- Node tools: warm and cold latency agree within 1 to 2 ms (42.2 vs 41.3, 92.1 vs 92.0 warm; 58.9 vs 58.7, 98.1 vs 96.9 cold). CPU agrees within 1 ms warm.
+- Rust tools: each value carries the floor (ben spawn plus `env` exec: 0.67 ms latency, 0.61 ms CPU in this run). Minus the floor, warm latency is about 0.13 ms for bar and 0.26 ms for ccline, against 0.3 and 0.4 under hyperfine for the older bar. Subtracting is approximate: the floor is a separate process, not part of each run.
+- bar `14a1001`, the first ben run: cold 3.60 ms latency, 3.44 ms CPU (3.06 user), above ccline's 2.75 ms CPU. Nearly all of it was the inline transcript read (1 MiB parsed line by line into JSON trees, plus three byte-window substring scans per line). `4de5985` reads only the fields it needs with typed serde, skips the rest unparsed, finds substrings with `memchr`, and builds with fat LTO; the same suites, re-run back to back with `14a1001`, give 1.65 vs 3.61 ms cold latency and 1.46 vs 3.43 ms cold CPU, with identical output.
+- Detached jobs are not in ben's numbers (it counts only waited processes). Total cold CPU per render, foreground plus detached jobs, from `rusage.py` with 30 runs each (`results/ben-total-cold-<tool>.json`, medians): bar 4.5 ms (1.0 foreground, 3.5 in 2 jobs: `git status` and the rest of the transcript scan), ccline 2.1, claude-powerline 73.3, ccstatusline 122.8; bar `14a1001` was 14.2 (2.9 + 11.2). bar's remaining excess over ccline is the token total, a full scan of the 5 MiB transcript that ccline does not offer; without the transcript bar's cold total is about 1.6 ms (0.4 foreground, 1.2 for the `git status` job). After the first render only appended bytes are read.
 
 Rerun with ben (inside the container, after the toolchain and tools from [Rerun](#rerun)):
 
@@ -184,5 +184,5 @@ $SLB/bar/bench/run.sh all
 - `fixtures/session.json`, `fixtures/gen-transcript.mjs`: input and transcript generator (the 5 MiB transcript itself is not committed).
 - `ben/`: ben suites (`warm.yaml`, `cold.yaml`, `floor.yaml`) for the ben rerun.
 - `lib/rusage.py`: CPU, memory and detached-job accounting; `lib/procs.py`: finds a tool's leftover jobs; `lib/summarize.py`: tables.
-- `results/ben-*`: ben run JSON, load records, rendered lines and summary from the ben rerun.
+- `results/ben-*`: ben run JSON, load records, rendered lines and summary from the ben rerun; `ben-total-cold-<tool>.json`: cold foreground plus detached-job CPU (`rusage.py`).
 - `results/`: hyperfine exports (`hyperfine-*.json`), rusage runs (`rusage-{warm,cold,stale}-*.json`), GNU time output and averages (`time-v-*`), rendered lines (`output-*`), load records (`load-*`), `summary.md`.
