@@ -6,6 +6,12 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
+/// Status-line JSON whose `workspace.current_dir` is `dir`, escaped so
+/// Windows paths survive.
+pub fn workspace_json(dir: &Path) -> String {
+    serde_json::json!({"workspace": {"current_dir": dir}}).to_string()
+}
+
 /// Where the fake `gh` logs each call.
 pub fn gh_log(root: &Path) -> PathBuf {
     root.join("fake-gh.log")

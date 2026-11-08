@@ -108,8 +108,7 @@ impl<'a> Run<'a> {
         self
     }
     pub fn cwd(self, d: &Path) -> Self {
-        let s = format!(r#"{{"workspace":{{"current_dir":"{}"}}}}"#, d.display());
-        self.stdin(&s)
+        self.stdin(&common::workspace_json(d))
     }
     pub fn go(self) -> Out {
         let h = self.home.path();

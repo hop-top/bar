@@ -55,13 +55,10 @@ fn render_shows_cwd_dirname() {
     let (mut c, home) = isolated_render();
     let dir = home.join("proj");
     std::fs::create_dir_all(&dir).unwrap();
-    c.write_stdin(format!(
-        r#"{{"workspace":{{"current_dir":"{}"}}}}"#,
-        dir.display()
-    ))
-    .assert()
-    .success()
-    .stdout(predicate::str::contains("proj"));
+    c.write_stdin(common::workspace_json(&dir))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("proj"));
     let _ = std::fs::remove_dir_all(&home);
 }
 

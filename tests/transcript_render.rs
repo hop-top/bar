@@ -15,10 +15,7 @@ fn line(id: usize, ts: &str) -> String {
 }
 
 fn stdin(t: &Tmp) -> String {
-    format!(
-        "{{\"transcript_path\":\"{}\"}}",
-        t.path().join("t.jsonl").display()
-    )
+    serde_json::json!({"transcript_path": t.path().join("t.jsonl")}).to_string()
 }
 
 #[test]

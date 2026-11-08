@@ -194,7 +194,12 @@ fn check_warns_on_relative_claude_dir() {
         "{:?}",
         r.issues
     );
-    for ok in ["set claude-dir /abs/dir\n", "set claude-dir ~/x\n"] {
+    // absolute in the platform's own sense
+    #[cfg(unix)]
+    let abs = "set claude-dir /abs/dir\n";
+    #[cfg(windows)]
+    let abs = "set claude-dir C:/abs/dir\n";
+    for ok in [abs, "set claude-dir ~/x\n"] {
         let r = hop_bar::check::check_text(ok, None, &[]);
         assert!(r.issues.is_empty(), "{ok}: {:?}", r.issues);
     }

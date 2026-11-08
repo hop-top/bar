@@ -131,10 +131,14 @@ fn missing_config_uses_builtin_default() {
     let d = repo(&t, "proj");
     let o = run(&t)
         .cwd(&d)
-        .stdin(&format!(
-            r#"{{"workspace":{{"current_dir":"{}"}},"model":{{"display_name":"Claude Opus"}},"context_window":{{"used_percentage":38}}}}"#,
-            d.display()
-        ))
+        .stdin(
+            &serde_json::json!({
+                "workspace": {"current_dir": d},
+                "model": {"display_name": "Claude Opus"},
+                "context_window": {"used_percentage": 38}
+            })
+            .to_string(),
+        )
         .go();
     assert!(o.plain.contains("Opus"), "{:?}", o.plain);
     assert!(o.plain.contains("ctx 38%"));
@@ -210,7 +214,10 @@ fn default_layout_in_github_repo_stays_in_temp_state() {
     // the fake gh the process resolved first is the one that logged the call
     let first = std::env::split_paths(&out.path).next().unwrap();
     assert_eq!(first, t.path().join("fake-bin"));
+    #[cfg(unix)]
     assert!(first.join("gh").is_file());
+    #[cfg(windows)]
+    assert!(first.join("gh.cmd").is_file());
     // everything the run created lives in what the harness and test made:
     // state, fake-bin, neutral cwd, the repo, the fake gh log
     let allowed = ["state", "fake-bin", "neutral-cwd", "proj", "fake-gh.log"];
