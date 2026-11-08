@@ -1,3 +1,6 @@
+// Unix fixtures (shell scripts, modes, POSIX paths); Windows coverage: tests/windows.rs
+#![cfg(unix)]
+
 mod common;
 #[path = "common/render_fx.rs"]
 mod render_fx;

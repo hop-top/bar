@@ -16,7 +16,10 @@ Module map: `conf` (parser, search path), `format` (placeholder syntax), `render
 
 Anything slow is cache-backed: `git status` (`dirty`, `ahead`; key `gitst:<repo root>`, run with `GIT_OPTIONAL_LOCKS=0` in the repo root, no shell), `gh` lists, `%command%` values, plugin `--ext-info` and plugin render output. A reader never waits. It returns the stored value, or nothing on a cold cache, and the lock winner spawns a detached `bar refresh <request>`.
 
-- State dir: `BAR_STATE_DIR`, else kit `raw_state_dir("bar")`. Files mode 0600.
+- State dir: `BAR_STATE_DIR`, else kit `raw_state_dir("bar")` (Windows: `%LOCALAPPDATA%\bar`). Files mode 0600, dirs 0700 on Unix; on Windows they inherit the ACL of the per-user state dir.
+- Detached refresh: on Unix the child gets its own process group (`process_group(0)`), stdio `/dev/null`, and is not waited on. On Windows it is created with `DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP`, plus `CREATE_BREAKAWAY_FROM_JOB` when the caller's job object allows it (retried without otherwise), stdio null; before the spawn the render clears the inherit flag on its own standard handles, so the child holds no copy of the pipe Claude Code reads and the render's output ends when the render exits.
+- Job children (`git`, `gh`, `tmux`, plugins, `%command%`) run in their own process group (Unix) or with `CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP` (Windows, so no console window flashes); on timeout the group is killed with `kill -KILL -<pgid>`, on Windows the tree with `taskkill /T /F` and the child directly. On Windows `git`, `gh` and `tmux` are looked up on `PATH` with `PATHEXT` (so a `gh.cmd` shim works); `Command` alone only tries `.exe`.
+- Store: write a sibling temp file, rename over the target (Windows `MoveFileEx` with replace).
 - Refresh job carries kinds and options only; secrets stay in the keychain, read by plugins.
 - A failed refresh backs off 60 s, whatever the ttl. Locks expire after 30 s. Stored values cap at 64 KiB.
 
@@ -39,7 +42,7 @@ Measured on macOS 15, release build, 20 MB synthetic transcript (a third of the 
 
 `src/spendhist.rs` backs `#{spendhist}`. `bar refresh` runs `Job::SpendHist` (cache key `spendhist:<claude dir>:<tz>`, ttl 60 s, failure backoff 60 s): it lists `projects/*/*.jsonl` newest first (skipping files untouched for over 63 days), scans each from its stored `Mark`, and folds assistant `usage` into `{local date: {model: [in, out, cache write, cache read]}}`. A message is counted once: a 48-bit hash of `message.id` plus `requestId` is kept per day in the state file and checked across all files. The result is one state file per claude dir and zone under `<state>/spendhist/` (0600, atomic rename; per-file marks, 62 days of totals, dedupe hashes; the hashes are trimmed oldest-first past 16 MiB). The job returns only the last 35 days, which is what the cache stores and a render reads; dollars are computed at render from the tokens, so a `set price` change applies at once. A render never opens a transcript. Model ids longer than 128 characters or with characters outside `A-Z a-z 0-9 - . _ : / @ +`, and a day's models past the 63rd, are counted under `other`, which is never priced (the total gets its `~`); a summary that would pass the cache value cap keeps each day's largest models and folds the rest into `other`.
 
-The offset, inode, size and mtime logic (`linescan::Mark`) is shared with `transcript`. Local dates use `libc::localtime_r` in `src/tz.rs`, memoised per half hour; there is no date-time dependency.
+The offset, inode, size and mtime logic (`linescan::Mark`) is shared with `transcript`. Local dates use `libc::localtime_r` on Unix and `GetDynamicTimeZoneInformation` + `SystemTimeToTzSpecificLocalTimeEx` on Windows (`src/platform/`), memoised per half hour; there is no date-time dependency.
 
 ## Check and preview
 
@@ -66,7 +69,35 @@ Wall time is not reported: it depends on machine load.
 
 ## Platforms
 
-Unix only: the crate fails to compile off `cfg(unix)`. macOS and Linux build and pass `make check`. FFI goes through the `libc` crate in two `unsafe` sites: `localtime_r` in `src/tz.rs` and `kill(pid, 0)` in `src/placeholders/sessions.rs` (POSIX; `pid_t` is `i32` on both). Clickable commands (`src/click/`, the `bar://` app bundle, `osascript`) are macOS-only: on other systems `bar click install` writes nothing, prints that it needs macOS (and points at `--hooks-only`) and exits 2. `bar click install --hooks-only` registers only the Claude Code hooks and works on Linux. Plugin tests and the reference plugins need `jq`.
+Unix (macOS, Linux) and Windows; the crate fails to compile elsewhere. Every OS difference lives in `src/platform/` (`unix.rs`, `windows.rs`, same function set): home dir, private dirs and files, file identity and mtime, executables and `PATHEXT`, the shell for `%command%`, child process groups and tree kill, detached spawn, process liveness, local zone offset. macOS and Linux build and pass `make check`.
+
+FFI: on Unix the `libc` crate, two `unsafe` sites (`localtime_r`, `kill(pid, 0)`); on Windows `windows-sys` (kernel32: `GetStdHandle`/`SetHandleInformation`, `OpenProcess`/`GetExitCodeProcess`, the time-zone conversions).
+
+| Unix | Windows |
+|---|---|
+| `HOME` | `USERPROFILE`, else `HOME` |
+| modes 0700 / 0600 | inherited ACL |
+| inode | creation time |
+| execute bit | `PATHEXT` extension (`.com .exe .bat .cmd`) |
+| `sh -c` | `cmd /D /S /C` |
+| `process_group(0)` | `CREATE_NEW_PROCESS_GROUP` (+ `DETACHED_PROCESS` or `CREATE_NO_WINDOW`) |
+| `kill -KILL -<pgid>` | `taskkill /T /F` + `Child::kill` |
+| `kill(pid, 0)` | `OpenProcess` + `GetExitCodeProcess` |
+| `localtime_r` (`TZ` honoured) | `SystemTimeToTzSpecificLocalTimeEx` (system zone) |
+| `/etc/gitconfig` | `%PROGRAMDATA%\Git\config`, `<git install>\etc\gitconfig` |
+
+Clickable commands (`src/click/`, the `bar://` app bundle, `osascript`) are macOS-only: on other systems `bar click install` writes nothing, prints that it needs macOS (and points at `--hooks-only`) and exits 2; on Windows `bar click run` exits 2 at once. `bar click install --hooks-only` registers only the Claude Code hooks and works on Linux and Windows. Plugin tests and the reference plugins need `jq`.
+
+Windows check from macOS (no Windows machine needed for the build and lint; nothing is executed):
+
+```sh
+rustup target add x86_64-pc-windows-msvc aarch64-pc-windows-msvc x86_64-pc-windows-gnu
+for t in x86_64-pc-windows-msvc aarch64-pc-windows-msvc x86_64-pc-windows-gnu; do
+  cargo clippy --locked --target "$t" --all-targets -- -D warnings
+done
+```
+
+Tests run on Windows in the `windows` job of `.github/workflows/test-rs-caller.yml` (`windows-2022`). Test files built on shell-script fixtures, POSIX modes or POSIX paths carry `#![cfg(unix)]`; `tests/windows.rs` is Windows-only.
 
 Linux check, from a clean copy so the host `target/` stays untouched:
 
@@ -78,6 +109,6 @@ docker run --rm -v /tmp/lr-src:/src -v /tmp/lr-target:/tgt -e CARGO_TARGET_DIR=/
 
 ## Releasing
 
-Pushing a `v*` tag runs `.github/workflows/release-rs-caller.yml`. Its `create-release` job checks that the tag version equals the `Cargo.toml` version and creates the release once (`--prerelease` when the tag contains `-`). The `binaries` jobs then build `--release --locked` natively for `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin` and `aarch64-apple-darwin`, and uploads `bar-<version>-<target>.tar.gz` (containing `bar`) plus a `.sha256` file to that release. Linux binaries are built on `ubuntu-22.04` (glibc 2.35) and need glibc 2.35 or newer; the aarch64 Linux job needs a repo or plan with `ubuntu-22.04-arm` runners available. The crate is not published to crates.io (`publish = false`); the workflow has no publish job.
+Pushing a `v*` tag runs `.github/workflows/release-rs-caller.yml`. Its `create-release` job checks that the tag version equals the `Cargo.toml` version and creates the release once (`--prerelease` when the tag contains `-`). The `binaries` jobs then build `--release --locked` natively for `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin` and `aarch64-apple-darwin`, and on `windows-2022` for `x86_64-pc-windows-msvc` and (cross-built) `aarch64-pc-windows-msvc`, and upload `bar-<version>-<target>.tar.gz` (containing `bar`), or `.zip` (containing `bar.exe`) for Windows, plus a `.sha256` file to that release. Linux binaries are built on `ubuntu-22.04` (glibc 2.35) and need glibc 2.35 or newer; the aarch64 Linux job needs a repo or plan with `ubuntu-22.04-arm` runners available. The crate is not published to crates.io (`publish = false`); the workflow has no publish job.
 
 Homebrew: `packaging/homebrew/bar.rb` is a template. After the release, set `version` (no leading `v`) and replace each `SHA256_<TARGET>` with the hex digest from the matching `.sha256` file, then copy the file into a tap's `Formula/`. No tap exists yet. The release assets must be publicly downloadable for the formula to work.

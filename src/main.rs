@@ -215,9 +215,7 @@ fn init(m: &ArgMatches) {
     let name = m
         .get_one::<String>("preset")
         .map_or(hop_bar::presets::DEFAULT, String::as_str);
-    let home = std::env::var_os("HOME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_default();
+    let home = hop_bar::platform::home().unwrap_or_default();
     let r = hop_bar::presets::init(
         name,
         &|k| std::env::var(k).ok(),
@@ -240,7 +238,8 @@ fn click_cmd(m: &ArgMatches) {
                 eprintln!("bar click install: {e}");
                 std::process::exit(EXIT_USAGE);
             });
-            if !i.get_flag("hooks_only") && !cfg.app.is_absolute() {
+            let macos = cfg!(target_os = "macos");
+            if !i.get_flag("hooks_only") && macos && !cfg.app.is_absolute() {
                 eprintln!("bar click install: HOME (or BAR_APP_DIR) must be an absolute path");
                 std::process::exit(EXIT_USAGE);
             }
@@ -250,7 +249,7 @@ fn click_cmd(m: &ArgMatches) {
             } else {
                 click::run_install(
                     &cfg,
-                    cfg!(target_os = "macos"),
+                    macos,
                     i.get_flag("dry_run"),
                     &mut click::exec,
                     &mut std::io::stdout(),
@@ -266,6 +265,12 @@ fn click_cmd(m: &ArgMatches) {
             }
         }
         Some(("run", r)) => {
+            if cfg!(windows) {
+                eprintln!(
+                    "bar click run: bar:// links need macOS and tmux (not supported on Windows)"
+                );
+                std::process::exit(EXIT_USAGE);
+            }
             let url = r.get_one::<String>("url").map_or("", String::as_str);
             if let Err(e) = click::run(&click::sys::System::from_env(), url) {
                 eprintln!("bar click run: refused: {e}");

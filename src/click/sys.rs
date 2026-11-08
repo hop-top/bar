@@ -39,7 +39,7 @@ fn tty_of(pid: u32) -> Option<String> {
 
 /// Controlling terminal of the parent process (Claude Code).
 pub(crate) fn parent_tty() -> Option<String> {
-    tty_of(std::os::unix::process::parent_id())
+    tty_of(crate::platform::parent_pid()?)
 }
 
 pub struct System {
@@ -103,8 +103,7 @@ impl Env for System {
     fn log(&self, line: &str) {
         let _ = std::fs::create_dir_all(&self.state);
         let mut o = std::fs::OpenOptions::new();
-        o.create(true).append(true);
-        std::os::unix::fs::OpenOptionsExt::mode(&mut o, 0o600);
+        crate::platform::private_file(o.create(true).append(true));
         if let Ok(mut f) = o.open(self.state.join("click.log")) {
             let _ = writeln!(f, "{line}");
         }

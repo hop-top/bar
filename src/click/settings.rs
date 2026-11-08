@@ -23,8 +23,26 @@ pub const HOOK_EVENTS: [&str; 12] = [
 
 /// Shell command Claude Code runs: `'<bar>' click hook`.
 pub fn hook_command(bar: &Path) -> String {
-    let p = bar.display().to_string().replace('\'', r"'\''");
-    format!("'{p}' click hook")
+    hook_command_for(&bar.display().to_string(), cfg!(windows))
+}
+
+/// As `hook_command`, for either platform. Claude Code on Windows runs
+/// status line commands through Git Bash, or PowerShell without it; hook
+/// commands are written for both: backslashes become forward slashes (Git
+/// Bash drops unquoted ones), and a path of plain characters stays
+/// unquoted, which both shells run as is. Other paths are single-quoted,
+/// which only Git Bash accepts.
+pub fn hook_command_for(bar: &str, windows: bool) -> String {
+    let p = if windows {
+        bar.replace('\\', "/")
+    } else {
+        bar.to_string()
+    };
+    let plain = |c: char| c.is_ascii_alphanumeric() || "_-./:".contains(c);
+    if windows && p.chars().all(plain) {
+        return format!("{p} click hook");
+    }
+    format!("'{}' click hook", p.replace('\'', r"'\''"))
 }
 
 pub struct SettingsPlan {
@@ -144,4 +162,33 @@ pub(crate) fn apply_settings(plan: &SettingsPlan) -> std::io::Result<Option<Path
         std::fs::set_permissions(&plan.path, m)?;
     }
     Ok(backup)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::hook_command_for;
+
+    #[test]
+    fn unix_paths_are_single_quoted() {
+        assert_eq!(
+            hook_command_for("/opt/my bar/bar", false),
+            "'/opt/my bar/bar' click hook"
+        );
+        assert_eq!(
+            hook_command_for("/o/it's/bar", false),
+            r"'/o/it'\''s/bar' click hook"
+        );
+    }
+
+    #[test]
+    fn windows_paths_use_forward_slashes_and_stay_plain() {
+        assert_eq!(
+            hook_command_for(r"C:\Users\me\bin\bar.exe", true),
+            "C:/Users/me/bin/bar.exe click hook"
+        );
+        assert_eq!(
+            hook_command_for(r"C:\Users\Jane Doe\bar.exe", true),
+            "'C:/Users/Jane Doe/bar.exe' click hook"
+        );
+    }
 }

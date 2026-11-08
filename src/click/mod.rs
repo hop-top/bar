@@ -13,7 +13,7 @@ pub use install::{
     applescript, exec, info_plist_commands, install_plan, run_hooks_only, run_install, InstallCfg,
     InstallError, InstallPlan,
 };
-pub use settings::{hook_command, plan_settings, SettingsPlan, HOOK_EVENTS};
+pub use settings::{hook_command, hook_command_for, plan_settings, SettingsPlan, HOOK_EVENTS};
 pub use url::{link, parse, with_cmd_link, ClickUrl, Term, COMMANDS};
 
 use std::io::Write;
@@ -33,13 +33,13 @@ pub fn state_dir() -> PathBuf {
 }
 
 /// Claude Code's config dir: `CLAUDE_CONFIG_DIR`, else `~/.claude`.
-/// Absolute only: a relative `CLAUDE_CONFIG_DIR` or `HOME` (or none)
+/// Absolute only: a relative `CLAUDE_CONFIG_DIR` or home (or none)
 /// yields `None`, never a path under the working directory.
 pub fn claude_dir() -> Option<PathBuf> {
     let abs = |p: PathBuf| p.is_absolute().then_some(p);
     match std::env::var_os("CLAUDE_CONFIG_DIR").filter(|v| !v.is_empty()) {
         Some(d) => abs(PathBuf::from(d)),
-        None => Some(abs(PathBuf::from(std::env::var_os("HOME")?))?.join(".claude")),
+        None => Some(abs(crate::platform::home()?)?.join(".claude")),
     }
 }
 
@@ -63,12 +63,12 @@ pub(crate) fn write_private(path: &Path, body: &str) -> std::io::Result<()> {
         std::fs::create_dir_all(parent)?;
     }
     let mut o = std::fs::OpenOptions::new();
-    o.write(true).create(true).truncate(true);
-    std::os::unix::fs::OpenOptionsExt::mode(&mut o, 0o600);
+    crate::platform::private_file(o.write(true).create(true).truncate(true));
     o.open(path)?.write_all(body.as_bytes())
 }
 
-/// Writes a sibling temp file (0600) and renames it over `path`.
+/// Writes a sibling temp file (0600) and renames it over `path`
+/// (`MoveFileEx` with replace on Windows, also atomic on one volume).
 pub(crate) fn write_atomic(path: &Path, body: &str) -> std::io::Result<()> {
     let name = path.file_name().unwrap_or_default().to_string_lossy();
     let tmp = path.with_file_name(format!(".{name}.{}.tmp", crate::cache::nonce()));

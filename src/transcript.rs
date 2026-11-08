@@ -8,7 +8,6 @@ use std::borrow::Cow;
 use std::fs;
 use std::io::Read;
 use std::marker::PhantomData;
-use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
 use std::path::Path;
 use std::time::Instant;
 
@@ -376,12 +375,7 @@ fn read_state(file: &Path) -> Option<State> {
 
 fn save(state_dir: &Path, file: &Path, st: &State) {
     let dir = state_dir.join("transcript");
-    let ok = fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(&dir)
-        .and_then(|()| fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)))
-        .is_ok();
+    let ok = crate::platform::private_dir(&dir).is_ok();
     if ok {
         let _ = crate::click::write_atomic(file, &st.to_json());
     }
@@ -421,7 +415,7 @@ pub fn update(
         save(state_dir, &sfile, &st);
     }
     let mut stats = st.stats;
-    stats.mtime = meta.mtime();
+    stats.mtime = crate::platform::mtime(&meta);
     stats.partial = !complete;
     Some(Progress { stats, complete })
 }

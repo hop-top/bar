@@ -15,7 +15,6 @@ use crate::skin;
 use serde_json::{json, Value};
 use std::cell::Cell;
 use std::collections::BTreeMap;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -193,10 +192,6 @@ fn val_ok(v: Val, raw: &str) -> bool {
         Val::OneOf(set) => set.contains(&raw),
         Val::List(set) => raw.split(',').all(|i| set.contains(&i.trim())),
     }
-}
-
-fn is_executable(p: &Path) -> bool {
-    std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
 }
 
 struct Checker<'a> {
@@ -395,7 +390,9 @@ pub fn check_text(text: &str, path: Option<PathBuf>, dirs: &[PathBuf]) -> Report
             .as_ref()
             .map(|cfg| cfg.defaults.clone())
             .unwrap_or_default(),
-        gh_missing: !dirs.iter().any(|d| is_executable(&d.join("gh"))),
+        gh_missing: !dirs
+            .iter()
+            .any(|d| crate::platform::executable_in(d, "gh").is_some()),
         gh_warned: Cell::new(false),
         issues: Vec::new(),
     };
@@ -412,7 +409,7 @@ pub fn check_text(text: &str, path: Option<PathBuf>, dirs: &[PathBuf]) -> Report
                 c.layout(&t[2], i + 1);
             }
             Some("set") if t.len() == 3 && t[1] == "claude-dir" => {
-                if !t[2].starts_with('/') && !t[2].starts_with("~/") {
+                if !Path::new(&t[2]).is_absolute() && !t[2].starts_with("~/") {
                     c.add(
                         Level::Warning,
                         i + 1,
@@ -443,7 +440,9 @@ pub fn check_builtin(dirs: &[PathBuf]) -> Report {
         dirs,
         icon_width: 1,
         defaults: BTreeMap::new(),
-        gh_missing: !dirs.iter().any(|d| is_executable(&d.join("gh"))),
+        gh_missing: !dirs
+            .iter()
+            .any(|d| crate::platform::executable_in(d, "gh").is_some()),
         gh_warned: Cell::new(false),
         issues: Vec::new(),
     };

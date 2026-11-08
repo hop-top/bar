@@ -258,8 +258,11 @@ fn state_file_is_private_and_capped() {
     let f = find_state(&fx.state());
     let meta = fs::metadata(&f).unwrap();
     assert!(meta.len() <= cap as u64, "{}", meta.len());
-    use std::os::unix::fs::PermissionsExt;
-    assert_eq!(meta.permissions().mode() & 0o777, 0o600);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(meta.permissions().mode() & 0o777, 0o600);
+    }
 }
 
 fn find_state(state: &Path) -> PathBuf {

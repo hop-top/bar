@@ -32,7 +32,7 @@ pub fn glob_match(pattern: &str, text: &str) -> bool {
 fn email() -> Option<String> {
     let dir = match std::env::var_os("CLAUDE_CONFIG_DIR").filter(|v| !v.is_empty()) {
         Some(d) => PathBuf::from(d),
-        None => PathBuf::from(std::env::var_os("HOME")?),
+        None => crate::platform::home()?,
     };
     let v: Value =
         serde_json::from_str(&std::fs::read_to_string(dir.join(".claude.json")).ok()?).ok()?;

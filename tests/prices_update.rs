@@ -1,3 +1,6 @@
+// Unix fixtures (shell scripts, modes, POSIX paths); Windows coverage: tests/windows.rs
+#![cfg(unix)]
+
 use assert_cmd::Command;
 use hop_bar::prices::models::Snapshot;
 use std::os::unix::fs::PermissionsExt;

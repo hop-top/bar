@@ -8,7 +8,6 @@
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::io::Read;
-use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -128,12 +127,7 @@ fn read_state(file: &Path, max: usize) -> Option<State> {
 
 fn save(file: &Path, body: &str) {
     let Some(dir) = file.parent() else { return };
-    let ok = fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(dir)
-        .and_then(|()| fs::set_permissions(dir, fs::Permissions::from_mode(0o700)))
-        .is_ok();
+    let ok = crate::platform::private_dir(dir).is_ok();
     if ok {
         let _ = crate::click::write_atomic(file, body);
     }
@@ -152,7 +146,7 @@ pub fn date_of(ts: i64, tz: Tz) -> String {
 /// `~/` and `$CLAUDE_CONFIG_DIR` aware location of Claude Code's data:
 /// the configured dir, else the environment's, else `~/.claude`.
 pub fn claude_dir(configured: Option<&str>) -> Option<PathBuf> {
-    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let home = crate::platform::home();
     let env = std::env::var("CLAUDE_CONFIG_DIR")
         .ok()
         .filter(|d| !d.is_empty());
@@ -287,13 +281,13 @@ fn transcripts(dir: &Path, oldest_mtime: i64) -> Option<Vec<(String, fs::Metadat
                 continue;
             }
             if let Some(m) = fs::metadata(&p).ok().filter(|m| m.is_file()) {
-                if m.mtime() >= oldest_mtime {
+                if crate::platform::mtime(&m) >= oldest_mtime {
                     out.push((p.to_string_lossy().into_owned(), m));
                 }
             }
         }
     }
-    out.sort_by_key(|(_, m)| std::cmp::Reverse(m.mtime()));
+    out.sort_by_key(|(_, m)| std::cmp::Reverse(crate::platform::mtime(m)));
     Some(out)
 }
 

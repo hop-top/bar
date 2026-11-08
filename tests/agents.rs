@@ -128,9 +128,12 @@ fn start_is_idempotent_and_files_are_private() {
         plain(&go(&s, SID, &Options::default(), now()).unwrap()),
         "agents 1"
     );
-    use std::os::unix::fs::PermissionsExt;
-    let f = s.join("agents").join(SID).join("agent-a1");
-    assert_eq!(f.metadata().unwrap().permissions().mode() & 0o777, 0o600);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let f = s.join("agents").join(SID).join("agent-a1");
+        assert_eq!(f.metadata().unwrap().permissions().mode() & 0o777, 0o600);
+    }
 }
 
 #[test]
@@ -267,6 +270,7 @@ fn session_end_leaves_other_sessions_alone() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn long_ids_and_symlinked_agents_dir_are_rejected() {
     let t = Tmp::new();

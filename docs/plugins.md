@@ -1,11 +1,12 @@
 # Plugins
 
-Any executable named `bar-<name>` on `PATH` becomes the placeholder `#{name}`. The protocol follows the kit `ext-discover` contract (`--ext-info`) and extends it with a `placeholder` capability, an `options` schema, a `ttl`, and a render call with JSON on stdin.
+Any executable named `bar-<name>` on `PATH` (on Windows `bar-<name>.exe`, `.cmd`, `.bat` or `.com`) becomes the placeholder `#{name}`. The protocol follows the kit `ext-discover` contract (`--ext-info`) and extends it with a `placeholder` capability, an `options` schema, a `ttl`, and a render call with JSON on stdin.
 
 ## Discovery
 
 - `PATH` entries are scanned in order; relative entries are ignored.
 - Per name, the first executable regular file wins; non-executables are skipped.
+- Windows: a file is executable when its extension is one of `.com`, `.exe`, `.bat`, `.cmd` listed in `PATHEXT` (default `.COM;.EXE;.BAT;.CMD`); the name is the file name without `bar-` and the extension, case ignored in the extension. In one dir the extension listed first in `PATHEXT` wins. Extension-less files (shebang scripts) and `.ps1` are skipped, since Windows cannot start them directly; wrap a PowerShell script in a `.cmd`, e.g. `bar-hello.cmd` holding `@powershell -NoProfile -File "%~dp0bar-hello.ps1" %*`. `.bat`/`.cmd` plugins run through `cmd.exe`, so `echo` output ends in CRLF; bar trims it.
 - Names are `[A-Za-z0-9_-]+`. Core names (`account`, `repo`, `branch`, `model`, `effort`, `ctx`, `usage`, `prs`, `issues`) always win: `bar-account` is never used.
 - `bar plugin list` shows every plugin found; `bar plugin info <name>` shows one plugin's interrogation result. Both accept `--format json`.
 
@@ -97,11 +98,11 @@ who=$(jq -r '.options.who')
 printf '{"text":"hi %s","style":"good"}\n' "$who"
 ```
 
-Save as `bar-hello`, `chmod +x`, put it on `PATH`, then `set left "#{hello[who=bar]}"`.
+Save as `bar-hello`, `chmod +x`, put it on `PATH`, then `set left "#{hello[who=bar]}"`. On Windows the plugin needs a `PATHEXT` extension (see Discovery): a compiled `bar-hello.exe`, or a `bar-hello.cmd`.
 
 ## Reference plugins
 
-Five POSIX shell scripts ship in `plugins/`. They need `sh`, `jq` and the tool they wrap; put them on `PATH` (copy or symlink) to enable `#{tlc}`, `#{claude-credits}`, `#{ci}`, `#{mem}` and `#{health}`. Colour comes from core: `bar-tlc` emits `score`, `bar-claude-credits` emits `metric`. The only `style` either sets is `bad` on the credits `?`.
+Five POSIX shell scripts ship in `plugins/`. They need `sh`, `jq` and the tool they wrap, and are Unix plugins (extension-less, so Windows discovery skips them); put them on `PATH` (copy or symlink) to enable `#{tlc}`, `#{claude-credits}`, `#{ci}`, `#{mem}` and `#{health}`. Colour comes from core: `bar-tlc` emits `score`, `bar-claude-credits` emits `metric`. The only `style` either sets is `bad` on the credits `?`.
 
 ### `bar-tlc`
 
