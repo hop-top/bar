@@ -210,7 +210,7 @@ Plugins: see [plugins](plugins.md).
 
 `set skin plain|powerline|capsule` picks how segments are drawn.
 
-- `plain` (default): segments joined by a muted ` │ `; output is unchanged from earlier versions.
+- `plain` (default): segments joined by a muted ` │ `.
 - `powerline`: each segment sits on a background colour with one space of padding each side. Left and centre groups are joined by U+E0B0, the right group by U+E0B2; each arrow takes the background it leaves as its colour and the one it enters as its background, so the shapes flow out of the left and centre groups and into the right one from the edge. Neighbours that share a background are split by a thin muted U+E0B1 (left, centre) or U+E0B3 (right) instead.
 - `capsule`: each segment is wrapped in U+E0B6 … U+E0B4 on its background, one space between capsules.
 

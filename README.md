@@ -24,7 +24,7 @@ What it does not do: no TUI editor, no Windows (it uses Unix APIs).
 
 - Actively maintained. Bug reports and questions: open an issue.
 - Pre-1.0: version 0.0.0, no tagged release yet; config syntax may change. Changes land as Conventional Commits, so `git log` is the changelog until the first release.
-- Built and tested on macOS. On Linux (Debian bookworm, x86_64 container) it builds and the test suite passes; not run on a Linux desktop, on aarch64 or with a real Claude Code. Clickable commands need macOS and tmux: `bar click install` exits 2 elsewhere, while `bar click install --hooks-only` works on Linux. Windows is not supported.
+- Built and tested on macOS. On Linux (Debian bookworm, x86_64 container) it builds and the test suite passes. Clickable commands need macOS and tmux: `bar click install` exits 2 elsewhere, while `bar click install --hooks-only` works on Linux. Windows is not supported.
 - Not on crates.io (`publish = false`); install from a clone.
 
 ## Install

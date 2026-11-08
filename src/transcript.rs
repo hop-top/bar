@@ -313,7 +313,7 @@ fn facts(line: &[u8], usage: bool, boundary: bool, skill: bool) -> Option<Facts<
         (false, false) => facts_typed(text, boundary, |_: &IgnoredAny| 0),
     };
     let f = typed.or_else(|| facts_tree(text, boundary, skill))?;
-    // the usage-key check gates usage, as before
+    // the usage-key check gates usage
     Some(if usage { f } else { Facts { usage: None, ..f } })
 }
 
