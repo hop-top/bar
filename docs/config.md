@@ -1,12 +1,13 @@
 # Configuration
 
-How to write `bar.conf`: where it lives, the directives, every placeholder and its options, styling, layout and the commands around the config. Pictures of skins, palettes, bar glyphs, pace states, icons and PR checks: [Gallery](gallery.md).
+How to write `bar.conf`: where it lives, the directives, every placeholder and its options, styling, layout and the commands around the config. Pictures of skins, skin glyphs, segment backgrounds, palettes, bar glyphs, usage components, pace states, icons, lines and wrapping, and PR checks: [Gallery](gallery.md).
 
-- [Overview](#overview): [config file](#config-file), [directives](#directives), [minimal example](#minimal-example)
+- [Overview](#overview): [config file](#config-file), [directives](#directives), [rules](#rules), [minimal example](#minimal-example)
 - [Placeholders](#placeholders): [session](#session), [usage](#usage), [tokens, cache, cachettl](#tokens-cache-cachettl), [spendhist](#spendhist), [git and directories](#git-and-directories), [prs and issues](#prs-and-issues), [account, agents, sessions, tmux](#account-agents-sessions-tmux), [every placeholder](#options-on-every-placeholder), [values](#values)
 - [Styling](#styling): [skins](#skins), [palettes](#palettes), [icons](#icons), [glyphs](#glyphs), [colours](#colours)
 - [Layout](#layout): [lines and wrapping](#lines-and-wrapping)
-- [Commands](#commands): [bar check](#bar-check), [bar preview](#bar-preview), [presets and bar init](#presets), [click handler](#click-handler-macos), [clickable commands](#clickable-commands)
+- [Commands](#commands): [bar check](#bar-check), [bar preview](#bar-preview), [presets and bar init](#presets), [click handler](#click-handler-macos), [clickable commands](#clickable-commands), [hooks](#hooks)
+- [Files and environment](#files-and-environment)
 
 ## Overview
 
@@ -16,11 +17,21 @@ Search order, first existing wins:
 
 1. `$XDG_CONFIG_HOME/bar/bar.conf` (ignored when relative)
 2. `~/.config/bar/bar.conf`
-3. kit config dir for `bar` (macOS: `~/Library/Application Support/bar/bar.conf`; Windows: `%LOCALAPPDATA%\bar\bar.conf`)
+3. platform config dir for `bar` (macOS: `~/Library/Application Support/bar/bar.conf`; Linux: `~/.config/bar/bar.conf`, the same as 2; Windows: `%LOCALAPPDATA%\bar\bar.conf`)
 
-`~` is the home dir: `HOME`; on Windows `USERPROFILE`, else `HOME`.
+`~` is the home dir: `HOME`; on Windows `USERPROFILE`, else `HOME`. Other files bar reads and writes: [Files and environment](#files-and-environment).
 
-No file: built-in layout. A file with an error makes `bar render` print `bar: config error, run bar check`.
+No file: the built-in layout, which is
+
+```text
+set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3,author=@me]} │ #{issues[limit=3,assignee=@me]}"
+set center "#{usage[type=5h]} │ #{usage[type=7d]}"
+set right "#{account}"
+```
+
+A config file replaces it whole: every group starts empty, so a file that sets no `left`, `center` or `right` renders nothing. Start from a [preset](#presets) (`bar init`) to keep the built-in groups.
+
+A file with an error makes `bar render` print `bar: config error, run bar check`.
 
 ### Directives
 
@@ -29,25 +40,45 @@ No file: built-in layout. A file with an error makes `bar render` print `bar: co
 | `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-4) `separator gap wrap refresh icons icon-width skin skin-glyphs palette claude-dir color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
 | `default` | `default <placeholder> key=value ...` |
 | `account` | `account "<glob>" <label> <color>` |
-| `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%` |
-| `plugin` | `plugin <name> key=value ...` |
+| `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%`; see [Rules](#rules) |
+| `plugin` | `plugin <name> key=value ...`; see [plugins](plugins.md#render) |
 
-Quote values with spaces. `#` starts a comment.
+Quote values with spaces (double quotes; a value is one token). `#` outside quotes starts a comment. A later `default` line for the same placeholder merges over an earlier one; a later `plugin` line for the same name replaces it; a later `set` wins.
 
 | `set` key | Values |
 |---|---|
 | `left`, `center`, `right` | Layout of line 1; `left@N`, `center@N`, `right@N` for lines 2-4. See [Lines and wrapping](#lines-and-wrapping) |
 | `separator` | Changes only where segments split (the text a layout is cut at). Output between segments stays ` │ `. Default `│` |
+| `gap` | Fewest spaces between the left and right groups (and around a centred group) on one row, default `3`; with less room the groups are joined by ` │ ` or the centre group moves to its own row. See [Lines and wrapping](#lines-and-wrapping) |
 | `wrap` | `off` (default) or `on`; see [Lines and wrapping](#lines-and-wrapping). `auto` is read as `off` |
-| `refresh` | Default ttl floor for plugins, default `5s`. `gh` lists use 120 s and `%cmd%` values 1 h, whatever this says |
+| `refresh` | Default ttl floor for plugins, default `5s`. A number with a unit: `s`, `m`, `h` or `d` (`30s`, `2m`). `gh` lists use 120 s and `%cmd%` values 1 h, whatever this says |
 | `icons` | `none` (default, output unchanged), `nerdfont` or `emoji`. See [Icons](#icons) |
 | `icon-width` | `1` (default) or `2`; cells a Nerd Font glyph (private-use codepoint) takes in your font. Layout uses it to pad; emoji widths come from Unicode |
 | `skin` | `plain` (default), `powerline` or `capsule`. See [Skins](#skins) |
 | `skin-glyphs` | `nerd` (default) or `ascii`. See [Glyphs](#glyphs) |
 | `palette` | `default`, `nord`, `gruvbox`, `dracula`, `solarized`, `mono` or `terminal`. See [Palettes](#palettes) |
 | `claude-dir` | Claude Code config dir read by [spendhist](#spendhist) |
-| `color.good`, `color.warn`, `color.bad`, `ramp` | State colours and usage ramp. See [Colours](#colours) |
+| `color.good`, `color.warn`, `color.bad`, `ramp` | State colours (one code `0`-`255`) and usage ramp (exactly 11 codes, quoted, worst score first). See [Colours](#colours) |
 | `price` | Model price override for [spendhist](#spendhist) |
+
+`set` takes one value; quote it when it holds spaces. An unknown key or a bad value is a config error.
+
+### Rules
+
+`rule <target> early warn=<amount> bad=<amount> final=<duration> bad=<amount>`, or `early pace` in place of the two early thresholds. A rule sets how a value left in a window is scored 0 (bad end of the ramp) to 100 (good end).
+
+| Part | Meaning |
+|---|---|
+| `<target>` | `usage[type=5h]` or `usage[type=7d]` (spelled exactly so), or a plugin placeholder name that emits `metric` ([plugins](plugins.md#render)) |
+| `early warn=X bad=Y` | Before the final stretch: score 0 at or below `bad` left, 50 at `warn`, 100 once what is left reaches the share of the window still to run. Both floors rise with the time left: `warn` to at least half and `bad` to at least a fifth of that share, so spending ahead of time turns amber, then red |
+| `early pace` | Same as `early warn=20% bad=5%` |
+| `final=<duration>` | Length of the final stretch before the reset or expiry: `s`, `m`, `h` or `d` |
+| `bad=<amount>` (after `final`) | In the final stretch the score is `100 - left * 100 / (bad + 1)`: much left over is red, since it will go unused |
+| amounts | Percent (`20%`) or dollars (`$50`, `$12.50`). Usage windows take percent only (a dollar amount reads as `0%`, or `30%` for the final `bad`). Plugin metrics take both: early dollar thresholds are read as shares of the grant, a final dollar `bad` compares cents left |
+
+Plugin metrics without `granted_at` have no pace period, so the early floors do not rise with time.
+
+Without a rule, `usage` uses `early warn=20% bad=5% final=1h bad=30%` for `5h` and `final=1d` for `7d`. A rule's target matches literally: `rule usage[type=h]` matches nothing.
 
 ### Minimal example
 
@@ -62,6 +93,12 @@ set right "#{usage[type=5h]}"
 
 `#{name[key=value,key=value]}`. Inline options override the matching `default` line. Defaults below are what the code applies when an option is unset. Plugins: see [plugins](plugins.md).
 
+- The `separator` (default `│`) splits a group into segments; a segment whose placeholders all render empty is dropped with its text.
+- Other text is drawn muted, and only beside a non-empty placeholder: `#{repo}:#{branch}` loses the colon when the branch is empty, and `#{branch} #{dirty} #{ahead}` on a clean tree reads `main ↑2` (one space kept between two values).
+- Double quotes protect `,`, `]` and `}` inside a value: `#{issues[label="a,b"]}`.
+- A bare word is an option with an empty value. After `show`, `alt` or `checks` it continues that comma list instead: `#{usage[show=time,pct,width=8]}` sets `show` to `time,pct`.
+- An unknown core placeholder name is looked up as a plugin; `bar check` reports names that are neither.
+
 ### Session
 
 Fields of the session: model, effort, context, cost and the rest of the statusline JSON.
@@ -69,18 +106,21 @@ Fields of the session: model, effort, context, cost and the rest of the statusli
 | Placeholder | Option | Default | Meaning |
 |---|---|---|---|
 | `model`, `effort`, `ctx` | `click` | on | `none` turns the command link off; the link appears only once the handler is installed (`bar click install`). See [Clickable commands](#clickable-commands) |
-| `cost` | `fmt` | `usd` | Session cost, `$1.23`; `<$0.01` under a cent. Hidden when absent |
+| `cost` | `fmt` | `usd` | Session cost, `$1.23`; `<$0.01` under a cent. Hidden when absent. `usd` is the only value |
 | `burn` | none | | Cost per hour, `$4.10/h`; hidden for the first 60 s of the session |
 | `duration` | none | | Session time: `45s`, `12m`, `1h05m` |
 | `lines` | none | | `+120 -14`; hidden when both are 0 |
 | `version`, `vim`, `agent` | none | | Claude Code version, vim mode, agent name; hidden when absent |
 | `style` | none | | Output style; hidden when `default` |
 | `thinking`, `fast` | none | | `think` / `fast` while enabled; hidden otherwise |
-| `spend` | none | | No options |
+| `spend` | none | | Time left on a monthly spend limit (`rate_limits.spend_limit` with `period` `monthly`), muted, e.g. `3d4h`; hidden otherwise |
 | `sid` | `len` | `8` | First `len` chars of the session id; hidden when absent or `len=0` |
 | `compactions` | none | | `compact 2`: context compactions in this session's transcript; hidden at 0 |
 | `skills` | none | | `skills 3`: Skill tool calls on the main conversation in the transcript; hidden at 0 |
 
+- `model`: `model.display_name` (else `model.id`) without a leading `Claude `, muted, e.g. `Opus 4.7`.
+- `effort`: `effort.level` as `[high]`, muted. When the session JSON has none, it reads `effortLevel` from `<claude dir>/settings.json` (`modelSettings.<model id>.effortLevel` first); hidden when neither is set.
+- `ctx`: `context_window.used_percentage` as `ctx 38%`, coloured on the ramp from green at 0% to red from 91%.
 - `cost`, `burn`, `duration`, `lines`, `version`, `style`, `vim`, `agent`, `thinking` and `fast` read the statusline JSON fields `cost.total_cost_usd`, `cost.total_duration_ms`, `cost.total_lines_added`, `cost.total_lines_removed`, `version`, `output_style.name`, `vim.mode`, `agent.name`, `thinking.enabled` and `fast_mode`. Missing, mistyped, negative or non-finite values hide the placeholder. None of these are in the default layout.
 - `cost` is the session's own cost; `spend` is the account spend-limit window.
 - `sid` reads `session_id`; a non-numeric `len` renders as 8 and `bar check` rejects it.
@@ -135,8 +175,8 @@ Colour:
 Toggle:
 
 - `bar toggle` (a click on the bar or percentage) flips between `show` and `alt`; `alt` defaults to `show` with `bar` and `pct` swapped. Time, `eta` and `proj` stay outside the link.
-- Toggle state: `pct-5h` / `pct-7d` files (mode 0600) in the state directory (the kit state dir for `bar`; `BAR_STATE_DIR` overrides it, meant for tests; on Windows `%LOCALAPPDATA%\bar`). While a file exists, `bar` and `pct` swap. `bar toggle <5h|7d>` flips it.
-- Plugins toggle the same way: `bar toggle <plugin name>` flips `toggle-<name>`, and a plugin output with `alt` shows `alt` instead of `text` while it is on (see [plugins](plugins.md#render)). The CLI works without the handler app.
+- Toggle state: `pct-5h` / `pct-7d` files (mode 0600) in the [state directory](#files-and-environment). While a file exists, `bar` and `pct` swap. `bar toggle <5h|7d>` flips it and prints the view now shown (`5h: pct`, `7d: bar`); an unknown key exits 2.
+- Plugins toggle the same way: `bar toggle <plugin name>` flips `toggle-<name>` (printing `<name>: alt` or `<name>: show`), and a plugin output with `alt` shows `alt` instead of `text` while it is on (see [plugins](plugins.md#render)). The CLI works without the handler app.
 - A plugin output with `label_toggle` names a second, independent toggle on its label or icon: `bar toggle <plugin>.<toggle>` flips `toggle-<plugin>.<toggle>`, linked as `bar://toggle/<plugin>.<toggle>` (see [plugins](plugins.md#render)). The plugin reads it from `toggles` on its stdin.
 - Link `bar://toggle/<key>` is emitted only when the handler app is installed (marker `click-installed` in the state directory) and `click` is not `none`.
 
@@ -148,8 +188,8 @@ Token counts, prompt-cache use and the time the prompt cache has left, from the 
 
 | Placeholder | Option | Default | Meaning |
 |---|---|---|---|
-| `tokens` | `show` | both | `in`, `out`, `total`; default `12.3k↑ 4.1k↓` |
-| `cache` | `show` | `read` and `write` | `read`, `write`, `hit`; default `r 1.2M w 80k`, `hit` is `hit 93%` |
+| `tokens` | `show` | `both` | `in`, `out`, `total`, `both`; `both` is `12.3k↑ 4.1k↓` |
+| `cache` | `show` | `both` | `read`, `write`, `hit`, `both`; `both` is `r 1.2M w 80k`, `hit` is `hit 93%` |
 | `cachettl` | `ttl` | `300` | Seconds the prompt cache lives (minimum 1); `3600` for the 1 h cache |
 
 Read from the `transcript_path` in the session JSON (assistant messages' `usage`). Nothing renders without a readable transcript.
@@ -281,10 +321,12 @@ Who is signed in, running subagents, other open sessions and the tmux window.
 | `account` | none | | Signed-in account (`oauthAccount.emailAddress` in `.claude.json`): the label and colour of the first matching `account` line, else the email in grey; `api-key` when only `ANTHROPIC_API_KEY` is set; hidden otherwise |
 | `agents` | `names` | `0` | `1` appends the running subagents' types |
 | | `max` | none | Truncate the names with `…` |
-| `sessions` | none | | No options |
-| `tmux` | `max` | | `session:window` of the tmux pane bar runs in; hidden outside tmux |
+| `sessions` | none | | Live Claude Code sessions as `>2 ?1 v3`: working (warn colour), waiting on you (bad colour, bold), finished a turn (good colour); each part omitted at 0, hidden when all are 0 |
+| `tmux` | `max` | none | `session:window` of the tmux pane bar runs in, muted; truncated to `max` characters; hidden outside tmux |
 
-- `agents` counts subagents tracked by the `bar click hook`; see "Running subagents" under [Clickable commands](#clickable-commands).
+- `account`: `account "<glob>" <label> <color>` lines are tried in file order; `*` in the glob matches any run of characters. `.claude.json` is read from `CLAUDE_CONFIG_DIR`, else the home dir.
+- `agents` renders `agents 2` (`2` alone when an icon replaces the label), with `names=1` `agents 2 Explore Plan`. It counts subagents tracked by the `bar click hook`; see [Hooks](#hooks).
+- `sessions` reads `<claude dir>/sessions/*.json` (Claude Code's own session files: process id, session id, `busy` status) and keeps those whose process is alive, the current session included. Waiting and finished come from the markers `bar click hook` writes ([Hooks](#hooks)); without the hooks only working sessions count.
 - `tmux` reads `$TMUX` and `$TMUX_PANE`; a background `tmux display-message` resolves the names (cached 30 s, 60 s backoff after a failure), so the first render in a pane is empty.
 
 ### Options on every placeholder
@@ -294,15 +336,15 @@ Who is signed in, running subagents, other open sessions and the tmux window.
 | `icon` | set default | A glyph (at most 2 cells), or `none` to hide it. See [Icons](#icons) |
 | `bg` | palette | Segment background, `0`-`255`, under a `powerline` or `capsule` skin. See [Skins](#skins) |
 
-Plugins included.
+Plugins included: both are handled by bar and never sent to a plugin. `click` is reserved the same way on `usage`, `model`, `effort`, `ctx` and every plugin (`toggle` or `none` on `usage` and plugins; `none` turns links off). `show` and `alt` are comma lists wherever they appear (see above).
 
 ### Values
 
-Option values expand before use.
+Placeholder option values (inline and from `default` lines) expand before use; `plugin` lines, `set` values and layout text do not. A lone `%` or an empty `%%` stays literal.
 
 - `@me`: passed to `gh` as the search value; GitHub resolves it to the logged-in user. It is the default for "mine" in the built-in layout.
 - `%$VAR%`: environment variable; unset gives an empty value.
-- `%cmd%`: run through `sh -c` (on Windows `cmd /D /S /C`, the text passed as typed at a `cmd` prompt) with a 3 s limit; on timeout the command and everything it started are killed. The output is cached for 1 h, keyed by the command text only, so it is shared by every session and directory. It is stored in a 0600 cache file: do not print secrets. A cold cache renders empty and refreshes in the background.
+- `%cmd%`: run through `sh -c` (on Windows `cmd /D /S /C`, the text passed as typed at a `cmd` prompt) with a 3 s limit; on timeout the command and everything it started are killed. Stdout is trimmed; a command that fails or times out keeps the last cached value (empty when there is none) and is retried after 60 s. The output is cached for 1 h, keyed by the command text only, so it is shared by every session and directory. It is stored in a 0600 cache file: do not print secrets. A cold cache renders empty and refreshes in the background.
 
 ## Styling
 
@@ -434,7 +476,11 @@ Skin separators, `set skin-glyphs`: `nerd` (default) uses the Nerd Font / Powerl
 
 `left`, `center` and `right` make line 1. `set left@N`, `center@N` and `right@N`, N from 2 to 4, make line N; `left@1` is `left`. A line whose groups all render empty is left out, so a line of git state disappears outside a repository.
 
-Each line is laid out on its own, with the same `COLUMNS`, margin, gap and skin: groups padded apart on one row when they fit; otherwise left and right joined on one row and `center` on the next.
+Each line is laid out on its own, with the same `COLUMNS`, margin, gap and skin, in a width of `COLUMNS` minus 4 cells:
+
+- Left at the start, right flush at the end, `center` centred in the width (or midway between left and right when centring leaves less than `gap` on one side), when every gap is at least `set gap` spaces.
+- Otherwise left and right on one row, joined by ` │ ` when they do not fit apart (one space under a skin), and `center` on the next row.
+- Without `COLUMNS` nothing is measured: left and right are joined on one row and `center` goes to the next (`bar preview` uses 120 when `COLUMNS` is unset).
 
 `set wrap on` changes the second case:
 
@@ -445,6 +491,23 @@ Each line is laid out on its own, with the same `COLUMNS`, margin, gap and skin:
 A render prints at most 4 rows, all lines together. Rows past the fourth are dropped. With `wrap on`, the fourth row is filled like any other, whole segments while they fit, and the segments after it are dropped; segments are never cut.
 
 ## Commands
+
+| Command | Does | Exit |
+|---|---|---|
+| `bar render` | Reads the session JSON on stdin, prints the status line ([technical notes](technical.md#flow)) | always 0 |
+| `bar check` | Lints the config ([bar check](#bar-check)) | 0, 2 on a config error |
+| `bar preview [--state early\|burning\|final] [--preset [<name>]]` | Layout with sample data ([bar preview](#bar-preview)) | 0 |
+| `bar init [--preset <name>]` | Writes a preset as your config ([presets](#presets)) | 0, 2 when a config exists or the path is unusable |
+| `bar toggle <key>` | Flips `5h`, `7d`, `<plugin>` or `<plugin>.<toggle>` ([usage](#usage)) | 0, 2 on an unknown key |
+| `bar click install [--dry-run] [--hooks-only]` | URL handler app and hooks ([click handler](#click-handler-macos)) | 0, 2 unsupported or bad home, 1 on failure |
+| `bar click run <url>` | Types an allow-listed slash command ([clickable commands](#clickable-commands)) | 0, 1 refused, 2 on Windows |
+| `bar click hook` | Claude Code hook ([hooks](#hooks)) | always 0 |
+| `bar plugin list` | Plugins on `PATH`: name, version, description, path ([plugins](plugins.md#discovery)) | 0 |
+| `bar plugin info <name>` | One plugin's `--ext-info` result and path | 0, 1 when no such plugin |
+| `bar prices update [--out <file>]` | Fetches models.dev prices ([snapshot update](#spendhist)); `--out` writes that file instead of the data dir's `models.json` | 0, 2 on failure |
+| `bar --version`, `bar --help`, `bar <command> --help` | Version, help | 0 |
+
+`--format csv|json|table|text|yaml` is accepted by every command and changes the output of `bar check`, `bar plugin list` and `bar plugin info` (default `table`). A usage error (unknown command or flag) exits 2. `bar refresh <request>` is internal: render spawns it to fill the cache in the background.
 
 ### bar check
 
@@ -457,7 +520,9 @@ A render prints at most 4 rows, all lines together. Rows past the fourth are dro
 - Warnings: `gh` not on `PATH` while `prs` or `issues` is used; a `default` line for a plugin that is not on `PATH` (a layout using it is an error); an expression that expands to more than 8 queries (only the first 8 run).
 - Options holding `%command%` or `%$VAR%` are skipped; they resolve at render time.
 
-Exit 0 when there are no errors (warnings allowed), 2 on a config error. `--format json` prints `{path, ok, issues: [{level, line, message}]}`; `line` is 0 when an issue has no line.
+- It also prints the price data in use: the built-in models.dev snapshot date, or the `bar prices update` copy, and why a copy was ignored.
+
+Exit 0 when there are no errors (warnings allowed), 2 on a config error. `--format json` prints `{path, prices: {snapshot, user_file, ignored}, ok, issues: [{level, line, message}]}`; `path` and `user_file` are `null` when not in use, and `line` is 0 when an issue has no line. `--format yaml`, `csv` and `text` give the same data in that format; the default, `table`, is the plain report.
 
 ### bar preview
 
@@ -491,12 +556,14 @@ Six example configs ship in the binary and in [`presets/`](../presets): `minimal
 
 ### Click handler (macOS)
 
-`bar click install` builds `~/Applications/bar-click.app` (`BAR_APP_DIR` overrides the directory) from an AppleScript `on open location` handler, sets `LSUIElement` and the `bar` URL scheme with `plutil`, signs it ad hoc, registers it with `lsregister`, then writes the marker.
+`bar click install` builds `~/Applications/bar-click.app` (`BAR_APP_DIR` overrides the directory) from an AppleScript `on open location` handler (source kept as `click-handler.applescript` in the state directory), sets `LSUIElement`, the bundle id `top.hop.bar-click` and the `bar` URL scheme with `plutil`, signs it ad hoc, registers it with `lsregister`, adds the [hooks](#hooks) to Claude Code's `settings.json`, then writes the marker `click-installed` (content `cmd`) in the state directory.
 
-- Elsewhere it writes nothing, prints that it needs macOS and exits 2; `--hooks-only` registers just the hooks on any platform.
-- `--dry-run` prints the script and commands and changes nothing.
+- The handler passes `bar://toggle/<key>` to `bar toggle <key>` and `bar://cmd/...` to `bar click run`, using the absolute path of the `bar` that ran the install; reinstall after moving the binary.
+- Elsewhere it writes nothing, prints that it needs macOS and exits 2; `--hooks-only` registers just the hooks on any platform and writes no marker.
+- `--dry-run` prints the script, commands and hook additions and changes nothing; with `--hooks-only`, the hook additions only.
+- Exit codes: 0 done; 2 unsupported platform, or the home dir (`HOME`, or `BAR_APP_DIR`) or `CLAUDE_CONFIG_DIR` is not absolute; 1 when a step fails (a command, an unparsable `settings.json`, a write).
 
-CI covers the generated script, plist edits, command list and platform guard with fake runners. The install itself is checked by hand:
+Check an install:
 
 1. `bar click install --dry-run`: read the script and commands.
 2. `bar click install`.
@@ -513,7 +580,7 @@ Links need Claude Code to render them. It shows status-line links only in a term
 
 ### Clickable commands
 
-`model`, `effort` and `ctx` link to a slash command typed into the session they belong to: `/model`, `/effort`, `/compact`. On by default; off with `click=none` or while the handler cannot route them: the `click-installed` marker must read `cmd` (written by `bar click install`); a marker from a toggle-only install keeps usage toggles and no command links, until `bar click install` is run again.
+`model`, `effort` and `ctx` link to a slash command typed into the session they belong to: `/model`, `/effort`, `/compact`. On by default; off with `click=none` or while the handler cannot route them: the `click-installed` marker must read `cmd`, as `bar click install` writes it; a marker with any other content enables toggle links only.
 
 Link and allowlist:
 
@@ -548,35 +615,96 @@ Empty box:
 - The real box always opens that way, so a draft that types a fake box adds a second opening, and ambiguity refuses: there must be exactly one opening on screen and no `❯` line below its marker.
 - The very next line must be the bottom border (same width, and the last such line on screen), so any draft of more than one line refuses.
 - After the marker only dim placeholder text may follow (outside dim spans only whitespace and SGR codes; reverse video refuses; `\e[0m`, `\e[00m` and `\e[m` all reset).
-- The parser reads screen output: `tests/fixtures/sessions/synthetic/` holds hand-made panes (`empty*.ansi` must parse as empty, every other file must refuse); real captures go in a dir named after the Claude Code version (`claude --version`), and the test checks every dir there.
+### Hooks
 
-Hooks:
+`bar click hook` is a Claude Code hook command: it reads the hook JSON on stdin, updates files in the state directory and prints nothing. Bad input does nothing; it never fails the session. `bar click install` (macOS) and `bar click install --hooks-only` (any platform) register it.
 
-- Waiting state: `bar click hook` reads Claude Code hook JSON on stdin and keeps `sessions/<session id>` (mode 0600) in the state directory: set on a permission request, permission or elicitation notification, `AskUserQuestion` or a failed stop; cleared on prompt submit, session end, and the main agent's stop or tool result.
-- Running subagents: the same hook keeps `agents/<session id>/<agent id>` (mode 0600, content the agent type) on `SubagentStart`, removes it on `SubagentStop`, and drops the session's directory on `SessionEnd`.
-- tlc task: on `PostToolUse` of the `Bash` tool, the same hook keeps `records/tlc/<session id>` (mode 0600, written atomically), JSON `{"task", "cwd", "at"}`, for the [`tlc` plugin](plugins.md#bar-tlc).
-  - It records the last `tlc task claim <id>`, `tlc task update <id> … --status IN_PROGRESS`, `tlc task complete <id>` or `tlc task create …` in the command, anywhere in a chain (`&&`, `||`, `;`, `|`, newlines). A `create` takes its id from the `Created task <id>` line of the tool output. Ids are 1 to 64 characters from `A-Z a-z 0-9 - _`; patterns and URIs are skipped.
-  - `cwd` is the hook's `cwd`, moved by an earlier `cd <dir>` in the chain and by `tlc -C <dir>` / `--chdir`; after a `cd` it cannot follow (`cd`, `cd -`, `~`, `$VAR`) nothing more is recorded from that command. The plugin finds the project from `cwd` when it renders, the same way it finds the project of `session.cwd`.
-  - A subagent's tool call carries the main session's id, so it records for that session. The latest touched task wins; commands without a task action keep the record, and touching the recorded task again from the same directory leaves the file unchanged (so the plugin's cache entry stays warm). A failed command (`PostToolUseFailure`) records nothing.
-  - `SessionEnd` drops the session's records; records untouched for 30 days are pruned on the next write.
-  - `#{agents}` counts entries younger than 6 hours, so a subagent that died without a stop event ages out; the flip side is that a live agent running longer than 6 hours drops out of the count.
-  - Expired entries and orphan temp files are pruned on the next `SubagentStart`.
-  - Only agent ids of 1 to 64 characters from `A-Z a-z 0-9 - _` are tracked; others are ignored.
-  - Claude Code's statusline JSON has no subagent field and its transcript has no cheap running signal, so `#{agents}` needs the hooks registered: `bar click install` (macOS) or `bar click install --hooks-only` (any platform, hooks only, no app).
-  - Both write `<claude dir>/settings.json`, the dir being `CLAUDE_CONFIG_DIR` or `~/.claude`; they refuse (exit 2) when the home dir (`HOME`; on Windows `USERPROFILE`, else `HOME`) is unset or relative, or `CLAUDE_CONFIG_DIR` is relative.
-  - On Windows the hook command is the path to `bar.exe` with forward slashes, unquoted (`C:/Users/you/.cargo/bin/bar.exe click hook`), which Git Bash and PowerShell both run; a path with spaces or other shell characters is single-quoted, which only Git Bash accepts.
-  - Internal agents (prompt suggestions, side questions) also fire these events and count while they run.
+| Event | Effect |
+|---|---|
+| `PermissionRequest`, `StopFailure` | waiting marker set |
+| `Notification` (`permission_prompt`, `elicitation_dialog`, `elicitation_url_dialog`) | waiting marker set |
+| `PreToolUse` of `AskUserQuestion` | waiting marker set |
+| `PostToolUse`, `PostToolUseFailure`, `PermissionDenied` (main agent) | waiting marker cleared; `PostToolUse` of `Bash` also updates the tlc record |
+| `Stop` (main agent) | marker set to `done` |
+| `UserPromptSubmit` | marker cleared |
+| `SessionEnd` | marker cleared; the session's subagent entries and plugin records dropped |
+| `SubagentStart`, `SubagentStop` | subagent entry added, removed |
 
-`bar click install` also wires the hook:
+Waiting marker: `sessions/<session id>` (mode 0600), content `waiting` or `done`. [`sessions`](#account-agents-sessions-tmux) counts waiting and finished sessions from it, and `bar click run` refuses a waiting session. `Stop`, `PostToolUse`, `PostToolUseFailure` and `PermissionDenied` from a subagent (they carry an `agent_id`) leave it alone.
 
-- It adds a `'<bar>' click hook` command entry under `hooks` in Claude Code's `settings.json` (`CLAUDE_CONFIG_DIR`, else `~/.claude`) for each event above that lacks one, and prints every addition before writing.
-- It re-reads the file right before writing (after the app is built) so a concurrent edit is kept, copies it to a unique `settings.json.bak-<time>-<pid>`, and writes atomically, keeping the file's mode.
+Running subagents:
+
+- `agents/<session id>/<agent id>` (mode 0600, content the agent type), added on `SubagentStart`, removed on `SubagentStop`.
+- `#{agents}` counts entries younger than 6 hours, so a subagent that died without a stop event ages out; the flip side is that a live agent running longer than 6 hours drops out of the count.
+- Expired entries and orphan temp files are pruned on the next `SubagentStart`.
+- Only agent ids of 1 to 64 characters from `A-Z a-z 0-9 - _` are tracked; others are ignored.
+- Claude Code's statusline JSON has no subagent field and its transcript has no cheap running signal, so `#{agents}` needs the hooks registered.
+- Internal agents (prompt suggestions, side questions) also fire these events and count while they run.
+
+tlc task record: on `PostToolUse` of the `Bash` tool the hook keeps `records/tlc/<session id>` (mode 0600, written atomically), JSON `{"task", "cwd", "at"}`, for the [`tlc` plugin](plugins.md#bar-tlc).
+
+- It records the last `tlc task claim <id>`, `tlc task update <id> … --status IN_PROGRESS`, `tlc task complete <id>` or `tlc task create …` in the command, anywhere in a chain (`&&`, `||`, `;`, `|`, newlines). A `create` takes its id from the `Created task <id>` line of the tool output. Ids are 1 to 64 characters from `A-Z a-z 0-9 - _`; patterns and URIs are skipped.
+- `cwd` is the hook's `cwd` (absolute, else nothing is recorded), moved by an earlier `cd <dir>` in the chain and by `tlc -C <dir>` / `--chdir`; after a `cd` it cannot follow (`cd`, `cd -`, `~`, `$VAR`) nothing more is recorded from that command. The plugin finds the project from `cwd` when it renders, the same way it finds the project of `session.cwd`.
+- A subagent's tool call carries the main session's id, so it records for that session. The latest touched task wins; commands without a task action keep the record, and touching the recorded task again from the same directory leaves the file unchanged (so the plugin's cache entry stays warm). A failed command (`PostToolUseFailure`) records nothing.
+- `SessionEnd` drops the session's records; records untouched for 30 days are pruned on the next write.
+
+Registering the hooks:
+
+- `bar click install` and `bar click install --hooks-only` add a `'<bar>' click hook` command entry under `hooks` in `<claude dir>/settings.json` (`CLAUDE_CONFIG_DIR`, else `~/.claude`) for each of the 12 events above that lacks one, and print every addition before writing. `<bar>` is the absolute path of the running binary.
+- They refuse (exit 2) when the home dir (`HOME`; on Windows `USERPROFILE`, else `HOME`) is unset or relative, or `CLAUDE_CONFIG_DIR` is relative.
+- The file is re-read right before writing (after the app is built) so a concurrent edit is kept, copied to a unique `settings.json.bak-<time>-<pid>`, and written atomically, keeping its mode.
 - A symlinked `settings.json` is written through to its target; a link to a missing file is refused.
-- A file it cannot parse as Claude Code settings is left untouched and the install stops.
+- A file that does not parse as Claude Code settings is left untouched and the install stops (exit 1).
 - `--dry-run` prints the additions and writes nothing.
+- On Windows the hook command is the path to `bar.exe` with forward slashes, unquoted (`C:/Users/you/.cargo/bin/bar.exe click hook`), which Git Bash and PowerShell both run; a path with spaces or other shell characters is single-quoted, which only Git Bash accepts.
 
-CI covers links, parsing, every refusal, pane choice, the double check and the keys sent with a fake environment; nothing in the tests runs tmux, `osascript` or `ps`. Checked by hand, in a Claude Code session inside tmux after `bar click install`. During each check, save the pane with `tmux capture-pane -p -e -t <pane> > tests/fixtures/sessions/<version>/<name>.ansi` (`empty.ansi`, `draft.ansi`, `menu.ansi`, ...) and commit it, so the parser is tested against the real screen of that version:
+Check clickable commands, in a Claude Code session inside tmux after `bar click install`:
 
 1. Click `model`, `effort` and `ctx` with an empty input box: `/model`, `/effort` and `/compact` are typed and run.
 2. Type a draft without sending it, then click `model`: a "not sent" notification appears, the draft is untouched, and `click.log` reads `the input box is not empty`.
 3. Trigger a permission prompt (a tool call needing approval), then click `model`: a "not sent" notification appears, the prompt is untouched, and `click.log` reads `session is waiting for you`.
+
+## Files and environment
+
+| Dir | Default | Override |
+|---|---|---|
+| Config | see [Config file](#config-file) | `XDG_CONFIG_HOME` (absolute) |
+| State and cache | macOS `~/Library/Application Support/bar`; Linux `~/.local/state/bar`; Windows `%LOCALAPPDATA%\bar` | `BAR_STATE_DIR`, else `XDG_STATE_HOME/bar` (absolute; a leading `~` expands) |
+| Data (`bar prices update`) | macOS `~/Library/Application Support/bar`; Linux `~/.local/share/bar`; Windows `%LOCALAPPDATA%\bar` | `XDG_DATA_HOME/bar` (absolute; a leading `~` expands) |
+| Claude Code | `~/.claude` | `CLAUDE_CONFIG_DIR` (absolute); `set claude-dir` for `spendhist` only |
+
+On Unix bar creates its files with mode 0600 and its dirs with 0700; on Windows they inherit the ACL of the per-user dir. Writes go to a temp file renamed into place.
+
+In the state directory:
+
+| Path | Written by | Holds |
+|---|---|---|
+| `cache/` | render, `bar refresh` | cached `gh`, `git status`, `tmux`, `%cmd%` and plugin results, locks and failure markers |
+| `transcript/<hash>.json` | render, `bar refresh` | per-transcript offsets and token totals ([tokens](#tokens-cache-cachettl)) |
+| `spendhist/<hash>.json` | `bar refresh` | spend history scan ([spendhist](#spendhist)) |
+| `hist-5h`, `hist-7d` | render | usage samples for `spark` |
+| `pct-5h`, `pct-7d`, `toggle-<plugin>`, `toggle-<plugin>.<toggle>` | `bar toggle` | toggle state: present means on |
+| `click-installed`, `click-handler.applescript` | `bar click install` | handler marker, handler source |
+| `click.log` | `bar click run` | refusals |
+| `sessions/`, `agents/`, `records/` | `bar click hook` | [Hooks](#hooks) |
+
+Removing the state directory resets toggles, history and caches; nothing in it is configuration.
+
+Environment variables bar reads:
+
+| Variable | Use |
+|---|---|
+| `COLUMNS` | Terminal width for layout and wrapping; passed to plugins |
+| `HOME` (Windows: `USERPROFILE`, else `HOME`) | Home dir |
+| `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, `XDG_DATA_HOME` | Base dirs, above |
+| `BAR_STATE_DIR` | State directory |
+| `BAR_APP_DIR` | Where `bar click install` puts `bar-click.app` (default `~/Applications`) |
+| `BAR_REFRESH_TIMEOUT` | Seconds a background `bar refresh` may run, default 20, clamped to 1-29 |
+| `CLAUDE_CONFIG_DIR` | Claude Code config dir: `settings.json`, `.claude.json`, `sessions/`, `projects/` |
+| `ANTHROPIC_API_KEY` | Only tested for presence, by `account` |
+| `TMUX`, `TMUX_PANE` | `tmux` placeholder |
+| `TZ` | Local zone for `spendhist` (Unix) |
+| `PATH`, `PATHEXT` (Windows) | Plugins, `gh`, `git`, `tmux` |
+| `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, `GIT_CONFIG_COUNT`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_SYSTEM`, `GIT_CONFIG_NOSYSTEM` | When any is set, `repo` and `branch` run `git` instead of reading the repository files, and `dirty`, `ahead`, `worktree` render empty ([Performance](technical.md#performance)) |
+
+`FORCE_HYPERLINK` is read by Claude Code, not bar; see [Click handler](#click-handler-macos).

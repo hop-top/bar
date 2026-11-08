@@ -42,6 +42,12 @@ Vet before adding; see [docs/dependencies.md](docs/dependencies.md) for the reco
 
 Protocol in [docs/plugins.md](docs/plugins.md). Reference plugins live in `plugins/`.
 
+## Click handler tests
+
+Tests cover the generated AppleScript, plist edits, install command list and platform guard with fake runners, and links, pane parsing, every refusal, pane choice, the double check and the keys sent with a fake environment; nothing in the tests runs tmux, `osascript` or `ps`. After a change there, run the checks under [Click handler](docs/config.md#click-handler-macos) and [Hooks](docs/config.md#hooks) in a Claude Code session inside tmux.
+
+The input-box parser reads screen output. `tests/fixtures/sessions/synthetic/` holds hand-made panes: `empty*.ansi` must parse as empty, every other file must refuse. Real captures go in a dir named after the Claude Code version (`claude --version`), and the test checks every dir there. Save one with `tmux capture-pane -p -e -t <pane> > tests/fixtures/sessions/<version>/<name>.ansi` (`empty.ansi`, `draft.ansi`, `menu.ansi`, ...) while running those checks.
+
 ## Conformance
 
 Stories under `e2e/stories/` describe the CLI for the 12-factor conformance gate. After changing a command, update its story and run:

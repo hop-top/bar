@@ -23,10 +23,9 @@ What it does not do: no TUI editor, and no clickable commands on Windows or Linu
 ## Status
 
 - Actively maintained. Bug reports and questions: open an issue.
-- Pre-1.0: no tagged release yet; the first, release candidate `0.1.0-rc.0`, is proposed on the `next` branch. Builds from source report version 0.0.0 until then. Config syntax may change. Changes land as Conventional Commits; release PRs write [CHANGELOG.md](CHANGELOG.md) ([docs/technical.md](docs/technical.md#releasing)).
-- Built and tested on macOS. On Linux (Debian bookworm, x86_64 container) it builds and the test suite passes. Clickable commands need macOS and tmux: `bar click install` exits 2 elsewhere, while `bar click install --hooks-only` works on Linux and Windows.
-- Windows (x86_64 and aarch64, MSVC; also builds for `x86_64-pc-windows-gnu`): cross-compiled from macOS, `cargo clippy --all-targets -D warnings` clean for all three targets. The `windows` CI job builds, lints and runs the test suite on `windows-2022`; tests that rely on shell-script fixtures or POSIX paths are Unix-only, and `tests/windows.rs` covers the Windows paths (`.cmd` plugins, `cmd /C` values, detached refreshes, process-tree kill, profile dir, zone offset). It has not been run by hand on a Windows machine.
-- Not on crates.io (`publish = false`); install from a clone.
+- Pre-1.0: config syntax may change. Changes land as Conventional Commits; release PRs write [CHANGELOG.md](CHANGELOG.md) ([docs/technical.md](docs/technical.md#releasing)).
+- Runs on macOS, Linux and Windows (x86_64 and aarch64; Windows MSVC, also builds for `x86_64-pc-windows-gnu`). CI builds and tests on all three ([Platforms](docs/technical.md#platforms)). Clickable commands need macOS and tmux: `bar click install` exits 2 elsewhere, while `bar click install --hooks-only` works on Linux and Windows.
+- Not on crates.io (`publish = false`); install from a release archive or a clone.
 
 ## Install
 
@@ -45,7 +44,7 @@ cargo install --path . --locked
 
 Cargo puts the binary at `~/.cargo/bin/bar` (`$CARGO_HOME/bin` if set); on Windows `%USERPROFILE%\.cargo\bin\bar.exe`. Check with `bar --version`.
 
-Binaries: once released. The release workflow attaches `bar-<version>-<target>.tar.gz` for x86_64 and aarch64, Linux (glibc 2.35 or newer) and macOS, and `bar-<version>-<target>.zip` (holding `bar.exe`) for x86_64 and aarch64 Windows, to the GitHub release; no release exists yet. A Homebrew formula template is in [packaging/homebrew](packaging/homebrew/bar.rb); there is no tap yet, and the formula only works if the release assets are publicly downloadable.
+Binaries: each GitHub release carries `bar-<version>-<target>.tar.gz` for x86_64 and aarch64, Linux (glibc 2.35 or newer) and macOS, and `bar-<version>-<target>.zip` (holding `bar.exe`) for x86_64 and aarch64 Windows, each with a `.sha256` file. Unpack and put `bar` on `PATH`. A Homebrew formula template is in [packaging/homebrew](packaging/homebrew/bar.rb).
 
 ## Use
 

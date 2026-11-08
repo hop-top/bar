@@ -7,8 +7,8 @@ Any executable named `bar-<name>` on `PATH` (on Windows `bar-<name>.exe`, `.cmd`
 - `PATH` entries are scanned in order; relative entries are ignored.
 - Per name, the first executable regular file wins; non-executables are skipped.
 - Windows: a file is executable when its extension is one of `.com`, `.exe`, `.bat`, `.cmd` listed in `PATHEXT` (default `.COM;.EXE;.BAT;.CMD`); the name is the file name without `bar-` and the extension, case ignored in the extension. In one dir the extension listed first in `PATHEXT` wins. Extension-less files (shebang scripts) and `.ps1` are skipped, since Windows cannot start them directly; wrap a PowerShell script in a `.cmd`, e.g. `bar-hello.cmd` holding `@powershell -NoProfile -File "%~dp0bar-hello.ps1" %*`. `.bat`/`.cmd` plugins run through `cmd.exe`, so `echo` output ends in CRLF; bar trims it.
-- Names are `[A-Za-z0-9_-]+`. Core names (`account`, `repo`, `branch`, `model`, `effort`, `ctx`, `usage`, `prs`, `issues`) always win: `bar-account` is never used.
-- `bar plugin list` shows every plugin found; `bar plugin info <name>` shows one plugin's interrogation result. Both accept `--format json`.
+- Names are `[A-Za-z0-9_-]+`. Core placeholder names (every name in [config](config.md#placeholders): `account`, `repo`, `model`, `usage`, `tokens`, `cwd` and the rest) always win: `bar-account` is never used.
+- `bar plugin list` shows every plugin found (name, version, description, path); `bar plugin info <name>` runs `--ext-info` now and shows the parsed result plus the path, or exits 1 when no such plugin is on `PATH`. Both accept `--format json` (also `yaml`, `csv`, `text`).
 
 ## `--ext-info`
 
@@ -35,12 +35,13 @@ Any executable named `bar-<name>` on `PATH` (on Windows `bar-<name>.exe`, `.cmd`
 |---|---|
 | `name`, `version` | Required strings. Without them, or on timeout or non-zero exit, `bar` falls back to the file name, an empty version and no capabilities. |
 | `capabilities` | Must include `placeholder`, or `bar` never renders the plugin. |
-| `options` | Allowed options; keys, choices and string defaults are sanitised like `text`. Types: `int`, `string`, `bool`, `enum` (with `enum` choices). `default` fills a missing option when it fits the type. Options of unknown type are dropped. |
+| `description` | Optional string, shown by `bar plugin list`. |
+| `options` | Allowed options; keys, choices and string defaults are sanitised like `text`. Types: `int` (sent as a JSON integer), `string`, `bool` (written `true`/`yes`/`on`/`1` or `false`/`no`/`off`/`0`, sent as JSON `true`/`false`), `enum` (with `enum` choices, sent as the string). `default` fills a missing option when it fits the type. Options of unknown type are dropped. `icon`, `bg` and `click` are reserved: declared, they are dropped and `bar check` warns. |
 | `icon` | Optional default segment icon, used when `set icons` is not `none`. Sanitised; at most 2 cells. |
-| `ttl` | How long a render result stays fresh: seconds (`300`) or a duration (`90s`, `5m`, `1h`). Default 60 s. |
+| `ttl` | How long a render result stays fresh: seconds (`300`) or a duration (`90s`, `5m`, `1h`, `1d`). Default 60 s; zero or unparsable means the default. |
 | `cache` | Optional. `"session"`: the output depends on the Claude Code session, so results are cached per session id and the render input carries `session.record`. Any other value or none: shared across sessions. |
 
-The result is cached for a day per binary and modification time; renders never run `--ext-info` themselves. A cold cache renders nothing and asks in the background.
+The result is cached for a day per binary path and modification time, so a changed binary is asked again at once; renders never run `--ext-info` themselves. A cold cache renders nothing and asks in the background. Output that does not parse, a non-zero exit or a timeout counts as a failed refresh (kept value, 60 s backoff); `bar plugin info` and `bar check`, which run it directly, fall back to the file name, an empty version and no capabilities.
 
 ## Render
 
@@ -62,12 +63,13 @@ The result is cached for a day per binary and modification time; renders never r
 }
 ```
 
-- `options`: inline options over `default <name>` lines, `%…%` expanded, validated against the schema and typed. An unknown key or a bad value omits the segment.
-- `show` and `alt` are list options for every placeholder, plugins included: a bare part after one continues its comma list, so `#{name[show=a,b]}` sends `show` as `a,b`, and `#{name[show=a,verbose]}` sends `show` as `a,verbose` rather than a separate `verbose` flag. Avoid those two names for other kinds of option, or expect a comma list; put flags before them.
+- `options`: inline options over `default <name>` lines, `%…%` expanded, validated against the schema and typed, schema defaults filled in. An unknown key or a bad value omits the segment.
+- `session`: fields of the statusline JSON. `cwd` is `workspace.current_dir`, else `cwd`; `model` is `model.display_name`, else `model.id`; `model_id` is `model.id`; `effort` is `effort.level`; `context_used` is `context_window.used_percentage` (`null` when absent); `five_hour` / `seven_day` are `rate_limits.five_hour` / `rate_limits.seven_day` (`null` when absent). Missing strings are `""`.
+- `show`, `alt` and `checks` are list options for every placeholder, plugins included: a bare part after one continues its comma list, so `#{name[show=a,b]}` sends `show` as `a,b`, and `#{name[show=a,verbose]}` sends `show` as `a,verbose` rather than a separate `verbose` flag. Avoid those names for other kinds of option, or expect a comma list; put flags before them.
 - `config`: the plugin's own `plugin <name> k=v` line, as strings, without `ttl`. Nothing else from the config or the environment goes in; secrets stay in the keychain, and config holds only entry names.
 - `columns`: `COLUMNS`, or `null`.
 - `toggles`: the plugin's named toggles that are on, from `bar toggle <name>.<toggle>` (see `label_toggle` below); an off toggle is absent, and only this plugin's keys are sent. They are part of the cache key, so a flip is a new entry: it shows at the next render once the plugin has run for it (the first render after a flip is empty until then, a flip back is immediate while the old entry is cached).
-- `session.record`: only for plugins declaring `"cache": "session"`, and only when the state directory holds `records/<name>/<session id>` (a JSON object, at most 4 KiB), written by `bar click hook`. Today the hook writes one for `tlc` only (see [Hooks](config.md#clickable-commands)). Absent otherwise.
+- `session.record`: only for plugins declaring `"cache": "session"`, and only when the state directory holds `records/<name>/<session id>` (a JSON object, at most 4 KiB), written by `bar click hook`. Today the hook writes one for `tlc` only (see [Hooks](config.md#hooks)). Absent otherwise.
 
 Stdout is one JSON object:
 
@@ -76,7 +78,7 @@ Stdout is one JSON object:
   "metric": { "remaining": 14907, "granted": 20000, "expires_at": 1800000000, "granted_at": 1797400000 } }
 ```
 
-- `text` (required) is stripped of escape and control characters, line and paragraph separators (U+2028, U+2029) and bidi overrides; wide characters (CJK, emoji) count as 2 cells. Nothing visible left omits the segment.
+- `text` (required, a string) is stripped of escape and control characters, line and paragraph separators (U+2028, U+2029) and bidi overrides; wide characters (CJK, emoji) count as 2 cells. Nothing visible left omits the segment.
 - `alt` (optional) is shown instead of `text` while the plugin's toggle is on: `bar toggle <name>` flips `toggle-<name>` in the state directory, and a click on the text opens `bar://toggle/<name>` once the handler is installed (`bar click install`), unless the output has its own `link` or the placeholder sets `click=none`. Sanitised like `text`; colour, label and icon stay the same. Without `alt` there is no toggle. Both texts come from one render, so a toggle shows at once, without a refresh.
 - `click` is a reserved option name: `toggle` (default) or `none`, never sent to the plugin; a `click` entry in `options` is ignored, and `bar check` warns about it.
 - `label` (optional) is sanitised like `text` and drawn dim, plus a space, before `text`. It takes no colour and sits outside the link. Empty or absent: `text` alone.
@@ -111,13 +113,13 @@ Save as `bar-hello`, `chmod +x`, put it on `PATH`, then `set left "#{hello[who=b
 
 ## Reference plugins
 
-Five POSIX shell scripts ship in `plugins/`. They need `sh`, `jq` and the tool they wrap, and are Unix plugins (extension-less, so Windows discovery skips them); put them on `PATH` (copy or symlink) to enable `#{tlc}`, `#{claude-credits}`, `#{ci}`, `#{mem}` and `#{health}`. Colour comes from core: `bar-tlc` emits `score`, `bar-claude-credits` emits `metric`. The only `style` either sets is `bad` on the credits `?`.
+Five POSIX shell scripts ship in `plugins/`. They need `sh` and the tool they wrap, and all but `bar-mem` need `jq`; and are Unix plugins (extension-less, so Windows discovery skips them); put them on `PATH` (copy or symlink) to enable `#{tlc}`, `#{claude-credits}`, `#{ci}`, `#{mem}` and `#{health}`. Colour comes from core: `bar-tlc` emits `score`, `bar-claude-credits` emits `metric`. The only `style` either sets is `bad` on the credits `?`.
 
 ### `bar-tlc`
 
-`#{tlc}` shows `closed∕total` tasks (`DONE` and `SKIPPED` count as closed) of this session's track, else of the whole project. Needs `tlc`. It runs `tlc` from the nearest ancestor of `session.cwd` holding `.tlc/config.yaml` (a stray empty `.tlc/` is skipped; a relative `cwd` falls back to the working directory) and never creates one. The search stops at the git work-tree root (the first directory holding `.git`), so a project enclosing the repository is never counted; a linked worktree also checks its repository root (the bare repo directory, else the main worktree); outside a repository only `cwd` itself is checked. With no project in scope, or a project with no tasks, it emits empty text and the segment hides. If any `tlc` call fails, it exits non-zero with no output, so the last good value stays. Emits `score` (closed share, 0..100), so none closed is red and all closed is green.
+`#{tlc}` shows `closed∕total` tasks of this session's track, else of the whole project; archived tasks included, and every status but `TODO` and `IN_PROGRESS` (so `DONE`, `SKIPPED`) counts as closed. Needs `tlc`; `ttl` 60 s. It runs `tlc` from the nearest ancestor of `session.cwd` holding `.tlc/config.yaml` (a stray empty `.tlc/` is skipped; a relative `cwd` falls back to the working directory) and never creates one. The search stops at the git work-tree root (the first directory holding `.git`), so a project enclosing the repository is never counted; a linked worktree also checks its repository root (the bare repo directory, else the main worktree); outside a repository only `cwd` itself is checked. With no project in scope, or a project with no tasks, it emits empty text and the segment hides. If any `tlc` call fails, it exits non-zero with no output, so the last good value stays. Emits `score` (closed share, 0..100), so none closed is red and all closed is green.
 
-The session's track comes from `session.record`, which `bar click hook` keeps per session (see [Hooks](config.md#clickable-commands); register them with `bar click install` or `bar click install --hooks-only`): the task the session last claimed, set `IN_PROGRESS`, completed or created. When the record's `cwd` resolves to the same project as `session.cwd`, the plugin reads the task's `track_id` (`tlc task show <id>`) and counts that track; it keeps doing so after the task is done, until the session touches another task. No record, a record for another project, a task without track, or a task that no longer exists (`tlc task show` exit 3) counts the whole project. Declares `"cache": "session"`, so two sessions in one directory each keep their own value.
+The session's track comes from `session.record`, which `bar click hook` keeps per session (see [Hooks](config.md#hooks); register them with `bar click install` or `bar click install --hooks-only`): the task the session last claimed, set `IN_PROGRESS`, completed or created. When the record's `cwd` resolves to the same project as `session.cwd`, the plugin reads the task's `track_id` (`tlc task show <id>`) and counts that track; it keeps doing so after the task is done, until the session touches another task. No record, a record for another project, a task without track, or a task that no longer exists (`tlc task show` exit 3) counts the whole project. Declares `"cache": "session"`, so two sessions in one directory each keep their own value.
 
 `text` and `alt` are the count (`71∕91`) and the scope name: the track slug (`tlc track show <id>`), or `all` for the whole project. The default shows the count; `bar toggle tlc` (or a click, with the handler installed) shows the scope name, and the count is hidden meanwhile.
 
@@ -158,7 +160,8 @@ set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3,a
 - Store the Console `sessionKey` cookie in a keychain entry, then name it and the organisation id in config: `plugin claude-credits org=<org-id> keychain=<entry-name>`.
 - Option `account` (string) names the keychain entry too and wins over `keychain=`: `#{claude-credits[account=<entry-name>]}`, for a second Console account next to the configured one. Same character rules as `keychain=`.
 - The cookie is passed to `curl` on stdin only, never in arguments or environment.
-- Network errors and 5xx exit non-zero without output, keeping the cached value. A missing keychain entry or `org` omits the segment.
+- Requests time out after 2 s. HTTP 401 or 403 shows `?`; network errors and any other status exit non-zero without output, keeping the cached value. A missing tool, keychain entry or `org` also exits non-zero (segment omitted while nothing is cached).
+- `ttl` 5 m.
 - Emits `label`, `metric` (and `style: bad` for the `?`); colour it with a rule such as `rule claude-credits early pace final=3d bad=$50`.
 
 ```
@@ -172,9 +175,9 @@ set center "#{usage[type=5h]} │ #{usage[type=7d]} │ #{claude-credits}"
 
 | Placeholder | Shows | Needs | Colour | `ttl` |
 |---|---|---|---|---|
-| `#{ci}` | `✓`, `✗` or `…` for the latest workflow run of the current branch, linked to the run | `git`, `gh` | `score` 100, 0, 50 | 60s |
-| `#{mem}` | `mem 63%` used memory | macOS `memory_pressure` or `vm_stat`; Linux `/proc/meminfo` | `score` is the free share | 30s |
-| `#{health}` | `✓` or `✗` for a HEAD request, linked to the URL | `curl` | `style` good or bad | 30s |
+| `#{ci}` | `✓` (success, neutral or skipped), `✗` (any other conclusion) or `…` (not completed) for the latest workflow run of the current branch, linked to the run | `jq`, `git`, `gh` | `score` 100, 0, 50 | 60s |
+| `#{mem}` | `mem 63%` used memory | `awk`; macOS `memory_pressure` or `vm_stat`; Linux `/proc/meminfo` (`MemAvailable`) | `score` is the free share | 30s |
+| `#{health}` | `✓` or `✗` for a HEAD request, linked to the URL | `jq`, `curl` | `style` good or bad | 30s |
 
 - `ci`: option `name=1` appends the workflow name (`#{ci[name=1]}`). It runs `gh run list --branch <branch> --limit 1` in `session.cwd`. Empty text hides the segment without `gh`, outside a repo, with no git remote, on a detached HEAD or with no runs; a failed `gh` call (network, auth) exits non-zero and keeps the last value. The cache key has no branch, so after a branch switch an outage can show the previous branch's state until `gh` answers.
 - `mem`: no options. An unreadable source exits non-zero without output.
