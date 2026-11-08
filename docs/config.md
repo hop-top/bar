@@ -242,7 +242,7 @@ Colours inside a segment (usage ramp, `ctx` colour, state colours) still apply o
 
 Six example configs ship in the binary and in [`presets/`](../presets): `minimal`, `full`, `powerline`, `capsule`, `compact`, `two-line` (git and PRs on line 1, usage and spend on line 2).
 
-- `bar preview --preset <name>` renders one with sample data, ignoring your config.
+- `bar preview --preset <name>` renders one with sample data, ignoring your config; `bar preview --preset` with no name renders all six, each under a muted `── <name> ──` header line.
 - `bar init [--preset <name>]` writes one (default `full`) to the first search path: `$XDG_CONFIG_HOME/bar/bar.conf`, else `~/.config/bar/bar.conf`. It refuses when any search path already holds a config, prints the path it found and exits 2. It also refuses when that path would be relative (`HOME` unset or relative); a relative `XDG_CONFIG_HOME` is ignored, as the XDG spec says, here and in the search order. The file is written to a temp file beside it and linked into place, so it is never partial and never replaces a file that appeared meanwhile. There is no `--force`; remove or move the file yourself.
 
 ## Values
@@ -282,7 +282,7 @@ Exit 0 when there are no errors (warnings allowed), 2 on a config error. `--form
 
 ## bar preview
 
-`bar preview [--state early|burning|final] [--preset <name>]` renders your layout (or a [preset](#presets)) with built-in sample data for every core placeholder: a sample session (model, effort, context, usage windows, spend limit, cost, duration, lines, version, style, vim mode, agent, thinking, fast mode, session id, compaction and skill counts) and stand-ins for the rest (repo, branch, git state, worktree, PRs (#131 failing CI, #129 pending, #128 passing), issues, account label, subagents, open sessions, spend history, transcript tokens and cache, directories). In the `final` state the sample tree is clean, so `dirty` is empty. It reads no session, account, git repository, `gh` or plugin, and writes no state. Plugin placeholders render empty.
+`bar preview [--state early|burning|final] [--preset [<name>]]` renders your layout (or a [preset](#presets); a bare `--preset` renders every preset in turn, each under a muted `── <name> ──` header) with built-in sample data for every core placeholder: a sample session (model, effort, context, usage windows, spend limit, cost, duration, lines, version, style, vim mode, agent, thinking, fast mode, session id, compaction and skill counts) and stand-ins for the rest (repo, branch, git state, worktree, PRs (#131 failing CI, #129 pending, #128 passing), issues, account label, subagents, open sessions, spend history, transcript tokens and cache, directories). In the `final` state the sample tree is clean, so `dirty` is empty. It reads no session, account, git repository, `gh` or plugin, and writes no state. Plugin placeholders render empty.
 
 - `early`: plenty of budget; bars green.
 - `burning`: spending fast; bars orange to yellow.

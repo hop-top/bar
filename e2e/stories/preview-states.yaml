@@ -23,3 +23,9 @@ steps:
       turn red to say the allowance is going to waste.
     invoke: ["bar", "preview", "--state", "final"]
     capture: [exit_code, stdout]
+  - id: all_presets
+    intent: |
+      Compare every shipped preset at once before picking one to write as
+      a config: each preset's sample line under a header with its name.
+    invoke: ["bar", "preview", "--preset"]
+    capture: [exit_code, stdout]

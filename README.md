@@ -77,6 +77,7 @@ bar preview   # layout with sample data; --state early|burning|final
 
 ```sh
 bar preview --preset powerline   # try one with sample data
+bar preview --preset             # all presets, one after another
 bar init --preset capsule        # write it as your config; never overwrites
 ```
 
