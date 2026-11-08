@@ -86,25 +86,41 @@ fn valid_pane(id: &str) -> bool {
         .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
 }
 
-/// `sid=<sid>` not followed by another id character, so a longer id that
-/// shares the prefix does not match.
-fn shows_sid(screen: &str, sid: &str) -> bool {
-    let needle = format!("sid={sid}");
-    screen.match_indices(&needle).any(|(i, _)| {
-        !screen[i + needle.len()..]
-            .bytes()
-            .next()
-            .is_some_and(|b| b.is_ascii_hexdigit() || b == b'-')
+/// Target of every OSC 8 link that opens on `line`; closing links (empty
+/// target) and unterminated ones are skipped.
+fn link_targets(line: &str) -> impl Iterator<Item = &str> {
+    line.split("\x1b]8;").skip(1).filter_map(|rest| {
+        let (_, rest) = rest.split_once(';')?;
+        let end = rest.find(['\x1b', '\x07'])?;
+        Some(&rest[..end]).filter(|t| !t.is_empty())
     })
+}
+
+/// The session's own status line is on screen: below the last box border,
+/// a link that parses as a `bar://cmd/` link for exactly this `tty` and
+/// `sid`. Text above the box (a transcript quoting a link, or the id in
+/// plain text) never counts.
+fn shows_session(screen: &str, sid: &str, tty: &str) -> bool {
+    let lines: Vec<&str> = screen.lines().collect();
+    let Some(bottom) = lines.iter().rposition(|l| border_width(l) >= MIN_BORDER) else {
+        return false;
+    };
+    lines[bottom + 1..]
+        .iter()
+        .flat_map(|l| link_targets(l))
+        .any(|t| parse(t).is_ok_and(|u| u.sid == sid && u.tty == tty))
 }
 
 fn capture(env: &dyn Env, pane: &str) -> Option<String> {
     env.tmux(&["capture-pane", "-p", "-e", "-t", pane])
 }
 
-/// The session's own pane, else the pane whose status line carries its id:
-/// a background session is shown through another client. `true` when found
-/// by id, so the id is checked again on every pass.
+/// The session's own pane, else a pane showing its status line: a
+/// background session has a terminal of its own and is shown through a
+/// client (`claude attach`, the agents view) in another pane. Every such
+/// client forwards keys to the one session, so any of them will do; the
+/// first in tmux order is taken. `true` when found by status line, so it
+/// is checked again on every pass.
 fn find_pane(env: &dyn Env, sid: &str, tty: &str) -> Option<(Pane, bool)> {
     let list = env.tmux(&["list-panes", "-a", "-F", "#{pane_tty} #{pane_id}"])?;
     let panes: Vec<(&str, &str)> = list
@@ -118,7 +134,7 @@ fn find_pane(env: &dyn Env, sid: &str, tty: &str) -> Option<(Pane, bool)> {
     }
     panes
         .iter()
-        .find(|(_, id)| capture(env, id).is_some_and(|s| shows_sid(&s, sid)))
+        .find(|(_, id)| capture(env, id).is_some_and(|s| shows_session(&s, sid, tty)))
         .map(|(_, id)| (Pane(id.to_string()), true))
 }
 
@@ -222,7 +238,13 @@ pub fn box_is_empty(screen: &str) -> bool {
     bottom == Some(i + 1) && only_dim_text(rest)
 }
 
-fn idle_and_empty(env: &dyn Env, sid: &str, pane: &Pane, by_sid: bool) -> Result<(), Refusal> {
+fn idle_and_empty(
+    env: &dyn Env,
+    sid: &str,
+    tty: &str,
+    pane: &Pane,
+    by_sid: bool,
+) -> Result<(), Refusal> {
     let (_, status) = session(env, sid).ok_or(Refusal::Missing)?;
     if status != "idle" {
         return Err(Refusal::Busy);
@@ -231,7 +253,7 @@ fn idle_and_empty(env: &dyn Env, sid: &str, pane: &Pane, by_sid: bool) -> Result
         return Err(Refusal::Waiting);
     }
     let screen = capture(env, &pane.0).ok_or(Refusal::NotEmpty)?;
-    if by_sid && !shows_sid(&screen, sid) {
+    if by_sid && !shows_session(&screen, sid, tty) {
         return Err(Refusal::NoPane);
     }
     if box_is_empty(&screen) {
@@ -252,9 +274,9 @@ pub fn check(env: &dyn Env, sid: &str, tty: &str) -> Result<Pane, Refusal> {
         return Err(Refusal::OtherTty);
     }
     let (pane, by_sid) = find_pane(env, sid, tty).ok_or(Refusal::NoPane)?;
-    idle_and_empty(env, sid, &pane, by_sid)?;
+    idle_and_empty(env, sid, tty, &pane, by_sid)?;
     env.sleep(Duration::from_secs(1));
-    idle_and_empty(env, sid, &pane, by_sid)?;
+    idle_and_empty(env, sid, tty, &pane, by_sid)?;
     Ok(pane)
 }
 

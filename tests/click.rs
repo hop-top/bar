@@ -396,6 +396,90 @@ fn background_session_found_by_sid() {
     assert!(f.sent().iter().all(|c| c[2] == "%3"));
 }
 
+/// A screen with `above` over an empty box, and `below` as its status line.
+fn viewer(above: &str, below: &str) -> String {
+    let rule = format!("\x1b[38;5;244m{}\x1b[39m", "─".repeat(60));
+    format!("{above}\n{rule}\n❯\u{a0}\n{rule}\n  {below}\n")
+}
+
+fn osc8(target: &str) -> String {
+    format!("\x1b]8;id=k1;{target}\x1b\\\x1b[2mctx\x1b[22m 12%\x1b]8;;\x1b\\")
+}
+
+#[test]
+fn background_viewer_needs_own_status_line_link() {
+    let other = "0000aaaa-0b4d-4e6f-8a7b-1c2d3e4f5a6b";
+    let quoted = format!("see bar://cmd/model?tty={TTY}&sid={SID}");
+    let other_line = osc8(&format!("bar://cmd/compact?tty=ttys002&sid={other}"));
+    let decoys = [
+        // Another session's transcript quotes the link as plain text.
+        viewer(&quoted, &other_line),
+        // ... or as a link: above the box, so not a status line.
+        viewer(&osc8(&url("model")), &other_line),
+        // The id in plain text on the status line.
+        viewer("", &format!("sid={SID}")),
+        // Right id, other terminal.
+        viewer("", &osc8(&format!("bar://cmd/model?tty=ttys009&sid={SID}"))),
+        // Right id and terminal, but not a command link.
+        viewer(
+            "",
+            &osc8(&format!("bar://toggle/model?tty={TTY}&sid={SID}")),
+        ),
+        // Command off the allowlist.
+        viewer("", &osc8(&format!("bar://cmd/clear?tty={TTY}&sid={SID}"))),
+        // Unterminated link.
+        viewer("", &format!("\x1b]8;;{}", url("model"))),
+    ];
+    for d in &decoys {
+        let f = Fake::new();
+        *f.panes.borrow_mut() = vec![
+            ("/dev/ttys001".into(), "%1".into()),
+            ("/dev/ttys002".into(), "%3".into()),
+        ];
+        f.screen("%1", d);
+        f.screen("%3", &viewer("", &osc8(&url("compact"))));
+        assert_eq!(check(&f, SID, TTY), Ok(Pane("%3".into())), "{d:?}");
+
+        let f = Fake::new();
+        *f.panes.borrow_mut() = vec![("/dev/ttys001".into(), "%1".into())];
+        f.screen("%1", d);
+        refused(&f, &url("model"), Refusal::NoPane);
+    }
+}
+
+#[test]
+fn background_viewer_bel_terminated_link() {
+    let f = Fake::new();
+    *f.panes.borrow_mut() = vec![("/dev/ttys002".into(), "%3".into())];
+    let bel = format!("\x1b]8;;{}\x07ctx\x1b]8;;\x07", url("effort"));
+    f.screen("%3", &viewer("", &bel));
+    assert_eq!(check(&f, SID, TTY), Ok(Pane("%3".into())));
+}
+
+#[test]
+fn two_viewers_of_one_session_take_the_first() {
+    let f = Fake::new();
+    *f.panes.borrow_mut() = vec![
+        ("/dev/ttys001".into(), "%5".into()),
+        ("/dev/ttys002".into(), "%6".into()),
+    ];
+    f.screen("%5", &fixture("empty"));
+    f.screen("%6", &fixture("empty"));
+    assert!(run(&f, &url("model")).is_ok());
+    assert!(f.sent().iter().all(|c| c[2] == "%5"));
+}
+
+#[test]
+fn sid_fallback_status_line_gone_on_second_pass() {
+    let f = Fake::new();
+    *f.panes.borrow_mut() = vec![("/dev/ttys002".into(), "%3".into())];
+    f.screen("%3", &fixture("empty"));
+    // The client detaches; the transcript still quotes the link.
+    let gone = viewer(&osc8(&url("model")), "");
+    *f.on_sleep.borrow_mut() = Some(Box::new(move |f: &Fake| f.screen("%3", &gone)));
+    refused(&f, &url("model"), Refusal::NoPane);
+}
+
 #[test]
 fn sid_fallback_pane_rechecked_on_second_pass() {
     let f = Fake::new();
