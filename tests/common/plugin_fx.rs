@@ -64,6 +64,17 @@ impl Fx {
         self.file("info.log").lines().count()
     }
 
+    /// The plugin's `--ext-info`, run to completion without the product's
+    /// 5 s deadline (which lapses on a loaded host and yields the empty
+    /// fallback). Panics when the output does not parse.
+    pub fn ext_info(&self, name: &str) -> plugin::ExtInfo {
+        let out = std::process::Command::new(self.found(name).path)
+            .arg("--ext-info")
+            .output()
+            .unwrap();
+        plugin::parse_info(&String::from_utf8_lossy(&out.stdout)).expect("--ext-info output")
+    }
+
     /// Stores the interrogation result, as a finished refresh would.
     pub fn prime_info(&self, name: &str) {
         let (key, job) = info_job(&self.found(name));

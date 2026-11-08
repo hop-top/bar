@@ -157,7 +157,7 @@ fn ext_info_timeout_5s_falls_back() {
 #[test]
 fn ext_info_reads_fields() {
     let fx = Fx::new();
-    let i = info(&fx.found("echo"));
+    let i = fx.ext_info("echo");
     assert_eq!((i.name.as_str(), i.version.as_str()), ("echo", "1.0.0"));
     assert_eq!(i.description, "test plugin");
     assert!(i.is_placeholder());

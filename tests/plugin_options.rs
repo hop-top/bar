@@ -8,7 +8,7 @@ mod plugin_fx;
 use plugin_fx::*;
 
 use hop_bar::cache::Cache;
-use hop_bar::plugin::{info, parse_output, validate};
+use hop_bar::plugin::{parse_output, validate};
 use hop_bar::render::{render_in, ColdRunner};
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 
 #[test]
 fn options_validated_against_schema() {
-    let i = info(&Fx::new().found("echo"));
+    let i = Fx::new().ext_info("echo");
     let ok = validate(
         &i.options,
         &opts(&[
