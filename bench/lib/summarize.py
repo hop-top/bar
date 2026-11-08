@@ -7,7 +7,7 @@
 """
 import glob, json, os, re, statistics, sys
 
-TOOLS = ['bar', 'ccstatusline', 'claude-powerline', 'ccline']
+TOOLS = ['bar', 'ccstatusline', 'claude-powerline', 'ccline', 'bar-notokens']
 
 
 def time_v(path):

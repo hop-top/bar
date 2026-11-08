@@ -38,6 +38,12 @@ candidates:
     args: ["HOME={{input.slb}}/home/ccline", "COLUMNS=200", "{{input.slb}}/home/ccline/.claude/ccline/ccline"]
     input_file: "{{input.slb}}/work/session.json"
     prepare: "{{input.slb}}/bench/run.sh _reset ccline"
+  - name: bar-notokens
+    adapter: cli
+    cmd: /usr/bin/env
+    args: ["HOME={{input.slb}}/home/bar-notokens", "COLUMNS=200", "{{input.slb}}/bar/target/release/bar", "render"]
+    input_file: "{{input.slb}}/work/session.json"
+    prepare: "{{input.slb}}/bench/run.sh _reset bar-notokens"
 
 metrics:
   - latency_ms
