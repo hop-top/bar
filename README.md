@@ -16,7 +16,7 @@ Opus 4.7[high] │ ctx 38% │ bar:main │ #131 #129 #128 │ !57 !42          
 
 ## Why bar
 
-Pick bar to compose the line yourself and extend it: a tmux-style config with options on every placeholder, PR and issue segments driven by `gh` search with label/author logic, and a plugin protocol: any `bar-<name>` executable becomes a placeholder, cached so render never waits. Pick [ccstatusline](https://github.com/sirmalloc/ccstatusline) for the widest widget set and a TUI editor, [claude-powerline](https://github.com/Owloops/claude-powerline) for cost tracking and Powerline themes, [CCometixLine](https://github.com/Haleclipse/CCometixLine) for a themed Rust binary on Windows, Linux and macOS. bar has no TUI editor, and clickable commands need macOS and tmux.
+Pick bar to compose the line yourself and extend it: a tmux-style config with options on every placeholder, PR and issue segments driven by `gh` search with label/author logic, and a plugin protocol: any `bar-<name>` executable becomes a placeholder, cached so render never waits. Pick [ccstatusline](https://github.com/sirmalloc/ccstatusline) for the widest widget set and a TUI editor, [claude-powerline](https://github.com/Owloops/claude-powerline) for cost tracking and Powerline themes, [CCometixLine](https://github.com/Haleclipse/CCometixLine) for a themed Rust binary on Windows, Linux and macOS. bar has no TUI editor, and clickable commands need macOS and tmux (inside tmux, start Claude Code with `FORCE_HYPERLINK=1`; see [docs/config.md](docs/config.md#click-handler-macos)).
 
 What it does not do: no TUI editor, no Windows (it uses Unix APIs).
 

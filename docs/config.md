@@ -50,6 +50,8 @@ CI covers the generated script, plist edits, command list and platform guard wit
 5. `open bar://toggle/zz`: nothing changes.
 6. In a Claude Code session, Cmd-click a `usage` bar (iTerm2): the view flips on the next refresh.
 
+Links need Claude Code to render them. It shows status-line links only in a terminal it detects as link-capable, and inside tmux detection can fail: links then print as plain text and nothing reacts to a click, though bar emits them. Start Claude Code with `FORCE_HYPERLINK=1` (e.g. `export FORCE_HYPERLINK=1` in your shell profile), and keep tmux passing links through (`set -as terminal-features ",*:hyperlinks"`, tmux 3.4+). Quick test: if Cmd-clicking the repo name does not open the browser, Claude Code is not rendering links.
+
 ## Config file
 
 Search order, first existing wins:
