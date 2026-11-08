@@ -5,7 +5,10 @@
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
 use std::os::unix::fs::MetadataExt;
+use std::sync::OnceLock;
 use std::time::Instant;
+
+use memchr::memmem::Finder;
 
 /// Longer lines are skipped unparsed.
 pub const MAX_LINE: usize = 512 * 1024;
@@ -124,11 +127,21 @@ impl Mark {
 /// colon. Inside a string the quotes are escaped, so it cannot match there.
 pub fn has_usage_key(line: &[u8]) -> bool {
     const MARK: &[u8] = b"\"usage\"";
-    line.windows(MARK.len()).enumerate().any(|(i, w)| {
-        w == MARK
-            && line[i + MARK.len()..]
-                .iter()
-                .find(|b| !b.is_ascii_whitespace())
-                == Some(&b':')
-    })
+    static FINDER: OnceLock<Finder<'static>> = OnceLock::new();
+    let finder = FINDER.get_or_init(|| Finder::new(MARK));
+    let mut at = 0;
+    // every occurrence, overlapping ones included
+    while let Some(i) = finder.find(&line[at..]) {
+        let end = at + i + MARK.len();
+        if line[end..].iter().find(|b| !b.is_ascii_whitespace()) == Some(&b':') {
+            return true;
+        }
+        at += i + 1;
+    }
+    false
+}
+
+/// `needle` occurs in `line`.
+pub fn contains(line: &[u8], needle: &[u8]) -> bool {
+    memchr::memmem::find(line, needle).is_some()
 }

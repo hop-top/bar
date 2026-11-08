@@ -4,16 +4,21 @@
 //! only what was appended since. A render reads at most `INLINE_CAP`
 //! bytes; the rest of a big file is left to a background `bar refresh`.
 
+use std::borrow::Cow;
 use std::fs;
 use std::io::Read;
+use std::marker::PhantomData;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
 use std::path::Path;
 use std::time::Instant;
 
+use serde::de::value::MapAccessDeserializer;
+use serde::de::{IgnoredAny, MapAccess, Visitor};
+use serde::{Deserialize, Deserializer};
 use serde_json::{json, Value};
 
 use crate::cache::{hash_hex, Cache, Job};
-use crate::linescan::{has_usage_key, Mark};
+use crate::linescan::{contains, has_usage_key, Mark};
 
 /// Most bytes one render reads.
 pub const INLINE_CAP: u64 = 1024 * 1024;
@@ -127,21 +132,188 @@ pub fn parse_ts(s: &str) -> Option<i64> {
     Some(days * 86_400 + h * 3600 + mi * 60 + sec)
 }
 
-/// A `Skill` tool call in a main-conversation assistant entry.
-fn skill_calls(v: &Value) -> u64 {
-    if v["type"] != "assistant" || v["isSidechain"] == true {
-        return 0;
+/// What one transcript line contributes to the totals.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Facts<'a> {
+    /// A main-chain `compact_boundary` system entry.
+    compaction: bool,
+    /// `Skill` tool calls in a main-chain assistant entry.
+    skills: u64,
+    /// `message.usage`, when it is an object.
+    usage: Option<Usage<'a>>,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Usage<'a> {
+    ts: Option<i64>,
+    id: Cow<'a, str>,
+    input: u64,
+    cache_creation: u64,
+    cache_read: u64,
+    output: u64,
+}
+
+/// The fields `Facts` needs, read without building a JSON tree. `C` is
+/// `message.content`: skill-call blocks on lines that mention `Skill`,
+/// skipped unread otherwise.
+#[derive(Deserialize)]
+struct Entry<'a, C> {
+    #[serde(rename = "type", borrow)]
+    kind: Option<Cow<'a, str>>,
+    #[serde(borrow)]
+    subtype: Option<Cow<'a, str>>,
+    #[serde(rename = "isSidechain")]
+    sidechain: Option<bool>,
+    #[serde(borrow)]
+    timestamp: Option<Cow<'a, str>>,
+    #[serde(borrow)]
+    message: Option<Obj<Message<'a, C>>>,
+}
+
+#[derive(Deserialize)]
+struct Message<'a, C> {
+    #[serde(borrow)]
+    id: Option<Cow<'a, str>>,
+    usage: Option<Obj<Counts>>,
+    content: Option<C>,
+}
+
+#[derive(Deserialize)]
+struct Counts {
+    input_tokens: Option<u64>,
+    cache_creation_input_tokens: Option<u64>,
+    cache_read_input_tokens: Option<u64>,
+    output_tokens: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct Block<'a> {
+    #[serde(rename = "type", borrow)]
+    kind: Option<Cow<'a, str>>,
+    #[serde(borrow)]
+    name: Option<Cow<'a, str>>,
+}
+
+/// `T` read from a JSON object only; serde would also fill a struct from
+/// an array, which the tree-based reading treats as no object at all.
+struct Obj<T>(T);
+
+impl<'de, T: Deserialize<'de>> Deserialize<'de> for Obj<T> {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V<T>(PhantomData<T>);
+        impl<'de, T: Deserialize<'de>> Visitor<'de> for V<T> {
+            type Value = Obj<T>;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("an object")
+            }
+            fn visit_map<A: MapAccess<'de>>(self, map: A) -> Result<Obj<T>, A::Error> {
+                T::deserialize(MapAccessDeserializer::new(map)).map(Obj)
+            }
+        }
+        d.deserialize_map(V(PhantomData))
     }
-    let blocks = v["message"]["content"].as_array();
-    blocks.map_or(0, |b| {
-        b.iter()
-            .filter(|c| c["type"] == "tool_use" && c["name"] == "Skill")
-            .count() as u64
+}
+
+/// Typed reading; `None` when the line does not fit the expected shape
+/// (wrong types, duplicate keys, invalid JSON), left to `facts_tree`.
+fn facts_typed<'a, C: Deserialize<'a>>(
+    text: &'a str,
+    boundary: bool,
+    skill: impl Fn(&C) -> u64,
+) -> Option<Facts<'a>> {
+    let e: Obj<Entry<'a, C>> = serde_json::from_str(text).ok()?;
+    let e = e.0;
+    let main = e.sidechain != Some(true);
+    let compaction = boundary
+        && e.kind.as_deref() == Some("system")
+        && e.subtype.as_deref() == Some("compact_boundary")
+        && main;
+    let msg = e.message.map(|m| m.0);
+    let skills = match (&msg, e.kind.as_deref()) {
+        (Some(m), Some("assistant")) if main => m.content.as_ref().map_or(0, skill),
+        _ => 0,
+    };
+    let usage = msg.and_then(|m| {
+        let u = m.usage?.0;
+        Some(Usage {
+            ts: e.timestamp.as_deref().and_then(parse_ts),
+            id: m.id.unwrap_or_default(),
+            input: u.input_tokens.unwrap_or(0),
+            cache_creation: u.cache_creation_input_tokens.unwrap_or(0),
+            cache_read: u.cache_read_input_tokens.unwrap_or(0),
+            output: u.output_tokens.unwrap_or(0),
+        })
+    });
+    Some(Facts {
+        compaction,
+        skills,
+        usage,
     })
 }
 
-fn contains(line: &[u8], needle: &[u8]) -> bool {
-    line.windows(needle.len()).any(|w| w == needle)
+fn skill_blocks(blocks: &Vec<Obj<Block>>) -> u64 {
+    let skill =
+        |b: &Block| b.kind.as_deref() == Some("tool_use") && b.name.as_deref() == Some("Skill");
+    blocks.iter().filter(|b| skill(&b.0)).count() as u64
+}
+
+/// Reference reading through a full JSON tree; `None` when the line is not
+/// valid JSON.
+fn facts_tree(text: &str, boundary: bool, skill: bool) -> Option<Facts<'static>> {
+    let v: Value = serde_json::from_str(text).ok()?;
+    let main = v["isSidechain"] != true;
+    let compaction =
+        boundary && v["type"] == "system" && v["subtype"] == "compact_boundary" && main;
+    let skills = if skill && v["type"] == "assistant" && main {
+        v["message"]["content"].as_array().map_or(0, |b| {
+            b.iter()
+                .filter(|c| c["type"] == "tool_use" && c["name"] == "Skill")
+                .count() as u64
+        })
+    } else {
+        0
+    };
+    let usage = v
+        .get("message")
+        .and_then(|m| m.get("usage"))
+        .filter(|u| u.is_object())
+        .map(|u| {
+            let n = |k: &str| u[k].as_u64().unwrap_or(0);
+            Usage {
+                ts: v
+                    .get("timestamp")
+                    .and_then(Value::as_str)
+                    .and_then(parse_ts),
+                id: Cow::Owned(v["message"]["id"].as_str().unwrap_or_default().into()),
+                input: n("input_tokens"),
+                cache_creation: n("cache_creation_input_tokens"),
+                cache_read: n("cache_read_input_tokens"),
+                output: n("output_tokens"),
+            }
+        });
+    Some(Facts {
+        compaction,
+        skills,
+        usage,
+    })
+}
+
+/// What `line` contributes. The typed reading skips what it does not
+/// need without checking it; where that could accept a line the tree
+/// rejects (a `\uD…` escape may be a lone surrogate) or the line does not
+/// fit, the tree decides.
+fn facts(line: &[u8], usage: bool, boundary: bool, skill: bool) -> Option<Facts<'_>> {
+    // invalid UTF-8 anywhere fails the tree too
+    let text = std::str::from_utf8(line).ok()?;
+    let surrogate = contains(line, b"\\ud") || contains(line, b"\\uD");
+    let typed = match (surrogate, skill) {
+        (true, _) => None,
+        (false, true) => facts_typed(text, boundary, skill_blocks),
+        (false, false) => facts_typed(text, boundary, |_: &IgnoredAny| 0),
+    };
+    let f = typed.or_else(|| facts_tree(text, boundary, skill))?;
+    // the usage-key check gates usage, as before
+    Some(if usage { f } else { Facts { usage: None, ..f } })
 }
 
 /// Folds one transcript line into the totals; anything unexpected is
@@ -153,37 +325,21 @@ fn apply(st: &mut State, line: &[u8]) {
     if !(usage || boundary || skill) {
         return;
     }
-    let Ok(v) = serde_json::from_slice::<Value>(line) else {
+    let Some(f) = facts(line, usage, boundary, skill) else {
         return;
     };
-    if boundary
-        && v["type"] == "system"
-        && v["subtype"] == "compact_boundary"
-        && v["isSidechain"] != true
-    {
+    if f.compaction {
         st.stats.compactions = st.stats.compactions.saturating_add(1);
     }
-    if skill {
-        st.stats.skills = st.stats.skills.saturating_add(skill_calls(&v));
-    }
-    if !usage {
-        return;
-    }
-    let Some(u) = v.get("message").and_then(|m| m.get("usage")) else {
+    st.stats.skills = st.stats.skills.saturating_add(f.skills);
+    let Some(u) = f.usage else {
         return;
     };
-    if !u.is_object() {
-        return;
-    }
-    if let Some(ts) = v
-        .get("timestamp")
-        .and_then(Value::as_str)
-        .and_then(parse_ts)
-    {
+    if let Some(ts) = u.ts {
         st.stats.last_ts = Some(st.stats.last_ts.map_or(ts, |t| t.max(ts)));
     }
     // a message is written once per content block, usage repeated
-    let id = v["message"]["id"].as_str().unwrap_or_default();
+    let id = &*u.id;
     if id.is_empty() || id.len() > MAX_ID {
         st.last_id.clear();
     } else {
@@ -192,14 +348,11 @@ fn apply(st: &mut State, line: &[u8]) {
         }
         st.last_id = id.to_string();
     }
-    let n = |k: &str| u[k].as_u64().unwrap_or(0);
     let s = &mut st.stats;
-    s.input = s.input.saturating_add(n("input_tokens"));
-    s.cache_creation = s
-        .cache_creation
-        .saturating_add(n("cache_creation_input_tokens"));
-    s.cache_read = s.cache_read.saturating_add(n("cache_read_input_tokens"));
-    s.output = s.output.saturating_add(n("output_tokens"));
+    s.input = s.input.saturating_add(u.input);
+    s.cache_creation = s.cache_creation.saturating_add(u.cache_creation);
+    s.cache_read = s.cache_read.saturating_add(u.cache_read);
+    s.output = s.output.saturating_add(u.output);
 }
 
 fn state_file(state_dir: &Path, path: &Path) -> std::path::PathBuf {

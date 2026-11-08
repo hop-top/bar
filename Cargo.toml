@@ -14,7 +14,9 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4", features = ["derive", "string"] }
 libc = "=0.2.191"
+memchr = "2"
 hop-top-kit = { version = "=0.5.0-alpha.6", features = ["cli", "config"] }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 unicode-width = "=0.2.2"
 
