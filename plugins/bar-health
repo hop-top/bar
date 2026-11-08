@@ -41,4 +41,4 @@ jq -cn --arg lbl "$label" --arg url "$url" --argjson up "$up" '
   {text: (if $up == 1 then "✓" else "✗" end),
    style: (if $up == 1 then "good" else "bad" end),
    link: $url}
-  + ($lbl | clean) as $l | (if $l != "" then {label: $l} else {} end)' 2>/dev/null || exit 1
+  + (($lbl | clean) as $l | if $l != "" then {label: $l} else {} end)' 2>/dev/null || exit 1
