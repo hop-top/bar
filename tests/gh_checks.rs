@@ -186,3 +186,19 @@ fn issues_never_get_marks() {
     f.prime(Kind::Issue, &[]);
     assert_eq!(strip(&f.show(Kind::Issue, &[("checks", "fail")])), "!5");
 }
+
+fn preview_prs(opts: &str, icons: &str) -> String {
+    let src = format!("set icons {icons}\nset left \"#{{prs{opts}}}\"\n");
+    let c = hop_bar::conf::parse(&src).unwrap();
+    let out = hop_bar::preview::render("early", hop_bar::conf::LoadResult::Ok(c), Some(80), 0);
+    strip(&out).trim().to_string()
+}
+
+#[test]
+fn preview_samples_check_states() {
+    assert_eq!(preview_prs("", "none"), "#131✗ #129 #128");
+    let all = "[checks=fail,pending,pass,icon=none]";
+    assert_eq!(preview_prs(all, "none"), "#131✗ #129• #128✓");
+    assert_eq!(preview_prs(all, "emoji"), "#131❌ #129🟡 #128✅");
+    assert_eq!(preview_prs("[checks=none]", "none"), "#131 #129 #128");
+}

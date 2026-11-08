@@ -5,13 +5,13 @@ Fast, configurable and extensible status line for [Claude Code](https://code.cla
 Rendering never waits on the network (slow data comes from a background cache) and costs 3.2 to 3.7 ms of CPU per render ([measured](docs/technical.md#performance)). The layout is a tmux-style config with options on every placeholder, and any `bar-<name>` executable on `PATH` becomes a placeholder.
 
 ```text
-Opus 4.7[high] │ ctx 38% │ bar:main │ #131 #129 #128 │ !57 !42              4h40m █████ │ 6d ████░              work
+Opus 4.7[high] │ ctx 38% │ bar:main │ #131✗ #129 #128 │ !57 !42             4h40m █████ │ 6d ████░              work
 ```
 
-Output of `bar preview`, colour stripped. In a terminal the usage bars are one colour, red to green by pace, and repo, branch, PRs and issues are links. In a window's final stretch (the last hour of the 5-hour window, the last day of the weekly one; `--state final`) the scale flips: red then means budget that will go unused.
+Output of `bar preview`, colour stripped. In a terminal the usage bars are one colour, red to green by pace, and repo, branch, PRs and issues are links; `✗` after a PR number marks failing CI. In a window's final stretch (the last hour of the 5-hour window, the last day of the weekly one; `--state final`) the scale flips: red then means budget that will go unused.
 
 ```text
-Opus 4.7[high] │ ctx 38% │ bar:main │ #131 #129 #128 │ !57 !42             25m ███░░ │ 20h0m ████░              work
+Opus 4.7[high] │ ctx 38% │ bar:main │ #131✗ #129 #128 │ !57 !42             25m ███░░ │ 20h0m ████░             work
 ```
 
 ## Why bar
@@ -84,6 +84,7 @@ bar preview   # layout with sample data; --state early|burning|final
 
 ```sh
 bar preview --preset powerline   # try one with sample data
+bar preview --preset             # all presets, one after another
 bar init --preset capsule        # write it as your config; never overwrites
 ```
 
@@ -91,7 +92,7 @@ bar init --preset capsule        # write it as your config; never overwrites
  Opus 4.7[high] > ctx 38% > bar:main >                4h40m █████ > 6d ████░ >               < work
 ```
 
-The `powerline` preset without icons and with `set skin-glyphs ascii`, at `COLUMNS=104`, colour stripped. See [Skins](docs/config.md#skins), [Palettes](docs/config.md#palettes) and [Presets](docs/config.md#presets).
+The `powerline` preset without icons and with `set skin-glyphs ascii`, at `COLUMNS=104`, colour stripped. See [Skins](docs/config.md#skins), [Palettes](docs/config.md#palettes) and [Presets](docs/config.md#presets). Pictures of every skin, palette, bar glyph set, pace state and icon set: [Gallery](docs/gallery.md).
 
 Plugins: `bar plugin list` shows the `bar-<name>` executables found on `PATH`; see [docs/plugins.md](docs/plugins.md). Five reference plugins live in `plugins/`: `ci`, `claude-credits`, `health`, `mem` and `tlc`.
 

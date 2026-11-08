@@ -76,6 +76,42 @@ fn preview_renders_a_preset() {
     bar(&t, &["preview", "--preset", "nope"]).assert().code(2);
 }
 
+fn stdout(t: &Tmp, args: &[&str]) -> String {
+    let o = bar(t, args).assert().success();
+    String::from_utf8(o.get_output().stdout.clone()).unwrap()
+}
+
+#[test]
+fn bare_preset_previews_every_preset_in_order() {
+    let t = Tmp::new();
+    t.write("xdg/bar/bar.conf", "set left \"#{model}\"\n");
+    for state in ["early", "final"] {
+        let all = stdout(&t, &["preview", "--state", state, "--preset"]);
+        let want: String = presets::NAMES
+            .iter()
+            .map(|n| {
+                let one = stdout(&t, &["preview", "--state", state, "--preset", n]);
+                format!("\x1b[38;5;250m── {n} ──\x1b[39m\n{one}")
+            })
+            .collect();
+        assert_eq!(all, want, "{state}");
+    }
+    // flag last or first, same output
+    let first = stdout(&t, &["preview", "--preset", "--state", "early"]);
+    assert_eq!(
+        first,
+        stdout(&t, &["preview", "--state", "early", "--preset"])
+    );
+}
+
+#[test]
+fn named_preset_has_no_header() {
+    let t = Tmp::new();
+    let out = stdout(&t, &["preview", "--preset", "minimal"]);
+    assert!(!out.contains("──"), "{out:?}");
+    assert_eq!(out.lines().count(), 1, "{out:?}");
+}
+
 #[test]
 fn preview_preset_ignores_user_config() {
     let t = Tmp::new();

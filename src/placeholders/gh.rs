@@ -220,6 +220,16 @@ fn check_mark(ctx: &Ctx, opts: &Options, state: Checks) -> String {
     fg(color, icons::check_mark(ctx.config.icons, state))
 }
 
+/// A PR's coloured `#N` and its check mark (empty when not shown).
+pub fn pr_parts(ctx: &Ctx, opts: &Options, pr: &Value) -> (String, String) {
+    let n = pr["number"].as_u64().unwrap_or_default();
+    let state = checks(pr);
+    (
+        fg(pr_color(ctx, pr, state), &format!("#{n}")),
+        check_mark(ctx, opts, state),
+    )
+}
+
 fn has_bug_label(issue: &Value) -> bool {
     issue["labels"]
         .as_array()
@@ -260,17 +270,14 @@ fn render_kind(kind: Kind, ctx: &Ctx, opts: &Options) -> Option<String> {
         .iter()
         .map(|item| {
             let n = item["number"].as_u64().unwrap_or_default();
-            let state = checks(item);
-            let text = match kind {
-                Kind::Pr => fg(pr_color(ctx, item, state), &format!("#{n}")),
-                Kind::Issue if has_bug_label(item) => fg(ctx.config.colors.bad, &format!("!{n}")),
-                Kind::Issue => dim(&format!("!{n}")),
+            let (text, mark) = match kind {
+                Kind::Pr => pr_parts(ctx, opts, item),
+                Kind::Issue if has_bug_label(item) => {
+                    (fg(ctx.config.colors.bad, &format!("!{n}")), String::new())
+                }
+                Kind::Issue => (dim(&format!("!{n}")), String::new()),
             };
             let url = sanitize(str_of(item, "url"));
-            let mark = match kind {
-                Kind::Pr => check_mark(ctx, opts, state),
-                Kind::Issue => String::new(),
-            };
             let shown = if links && url.starts_with("https://") {
                 link(&url, &text)
             } else {

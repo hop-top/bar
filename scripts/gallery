@@ -1,0 +1,705 @@
+#!/usr/bin/env python3
+"""Builds docs/gallery.md and docs/gallery/*.svg from real `bar` output.
+
+Every image is the ANSI output of `bar preview` (or `bar render` with a
+seeded sample history, for sparklines) for one config, drawn as an SVG with
+each character converted to a path from the font, so viewers need no font.
+
+    scripts/gallery            regenerate page, images and MANIFEST
+    scripts/gallery --check    exit 1 when the committed files are stale
+
+Font: Hack Nerd Font Mono (Regular and Bold), from ~/Library/Fonts,
+/Library/Fonts, ~/.local/share/fonts or /usr/share/fonts, or the directory
+in GALLERY_FONT_DIR. Drawing needs fontTools (vetted in
+docs/dependencies.md); --check does not: it reruns bar, compares the output
+hashes with docs/gallery/MANIFEST, and checks that page and images match the
+hashes recorded there.
+"""
+
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+OUT = ROOT / "docs" / "gallery"
+PAGE = ROOT / "docs" / "gallery.md"
+MANIFEST = OUT / "MANIFEST"
+FONT_FILES = {
+    False: "HackNerdFontMono-Regular.ttf",
+    True: "HackNerdFontMono-Bold.ttf",
+}
+
+# --- samples --------------------------------------------------------------
+
+MID = (
+    'set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch}"\n'
+    'set center "#{usage[type=5h]} │ #{usage[type=7d]}"\n'
+    'set right "#{account}"\n'
+)
+GIT = (
+    'set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} #{dirty} │ #{prs[limit=3]}"\n'
+    'set right "#{usage[type=5h]} │ #{usage[type=7d]}"\n'
+)
+
+
+def usage_pair(opts):
+    return (
+        f'set left "#{{usage[type=5h,{opts}]}} │ #{{usage[type=7d,{opts}]}}"\n'
+    )
+
+
+def sample(name, alt, conf, state="early", columns=100, history=False):
+    return {
+        "name": name,
+        "alt": alt,
+        "conf": conf,
+        "state": state,
+        "columns": columns,
+        "history": history,
+    }
+
+
+SECTIONS = []
+
+
+def section(title, intro, samples):
+    SECTIONS.append({"title": title, "intro": intro, "samples": samples})
+
+
+section(
+    "Skins",
+    "`set skin` picks how segments are drawn. Powerline and capsule glyphs "
+    "need a Nerd Font in the terminal. See [Skins](config.md#skins).",
+    [
+        sample(
+            "skin-plain",
+            "Plain skin, default palette: segments split by muted bars.",
+            "set palette default\nset icons nerdfont\n" + MID,
+        ),
+        sample(
+            "skin-powerline",
+            "Powerline skin, nord palette: segments on coloured backgrounds "
+            "joined by arrows.",
+            "set skin powerline\nset palette nord\nset icons nerdfont\n" + MID,
+        ),
+        sample(
+            "skin-capsule",
+            "Capsule skin, dracula palette: each segment in a rounded pill.",
+            "set skin capsule\nset palette dracula\nset icons nerdfont\n" + MID,
+        ),
+    ],
+)
+
+PALETTES = ["default", "nord", "gruvbox", "dracula", "solarized", "mono", "terminal"]
+section(
+    "Palettes",
+    "`set palette` swaps muted text, state colours, the usage ramp and the "
+    "skin backgrounds; here on the powerline skin in the `burning` state. "
+    "`terminal` uses the terminal's own 16 colours, drawn here with the "
+    "xterm defaults. See [Palettes](config.md#palettes).",
+    [
+        sample(
+            f"palette-{p}",
+            f"Powerline skin with the {p} palette.",
+            f"set skin powerline\nset palette {p}\nset icons nerdfont\n" + MID,
+            state="burning",
+        )
+        for p in PALETTES
+    ],
+)
+
+GLYPHS = [
+    ("blocks", "default"),
+    ("shades", "nord"),
+    ("dots", "gruvbox"),
+    ("squares", "dracula"),
+    ("bars", "solarized"),
+    ("braille", "terminal"),
+    ("eighths", "mono"),
+]
+section(
+    "Bar glyphs",
+    "`glyphs=` on `usage` picks the cells of the bar; 10 cells wide here, "
+    "`burning` state (25% and 30% left), so `eighths` shows its partial "
+    "last cell.",
+    [
+        sample(
+            f"glyphs-{g}",
+            f"Usage bars drawn with the {g} glyph set, {p} palette.",
+            f"set palette {p}\n" + usage_pair(f"glyphs={g},width=10"),
+            state="burning",
+            columns=60,
+        )
+        for g, p in GLYPHS
+    ],
+)
+
+section(
+    "Solid and gradient bars",
+    "`color=solid` (default) paints every filled cell in the colour of the "
+    "current value; `color=gradient` runs the filled cells along the ramp. "
+    "Both on the default palette, whose ramp has eleven steps.",
+    [
+        sample(
+            f"color-{c}",
+            f"10-cell usage bars with color={c}, default palette, burning state.",
+            "set palette default\n" + usage_pair(f"color={c},width=10,show=bar,pct"),
+            state="burning",
+            columns=60,
+        )
+        for c in ["solid", "gradient"]
+    ],
+)
+
+section(
+    "Spark and gauge",
+    "`spark` draws the used percent of the last samples, `gauge` one cell "
+    "for the current value. `bar preview` keeps no history, so these come "
+    "from `bar render` with a sample session (5-hour window 90% used, "
+    "weekly 60%) and five seeded history samples per window "
+    "(15, 35, 55, 75, 90 and 10, 20, 30, 45, 60 percent used).",
+    [
+        sample(
+            "spark-gauge",
+            "5-hour and weekly usage as time, sparkline, gauge cell and "
+            "percentage, solarized palette.",
+            "set palette solarized\n" + usage_pair("show=time,spark,gauge,pct"),
+            columns=60,
+            history=True,
+        ),
+        sample(
+            "spark-gradient",
+            "Sparklines with color=gradient, each cell coloured by its own "
+            "value, default palette.",
+            "set palette default\n"
+            + usage_pair("show=spark,bar,color=gradient,width=8"),
+            columns=60,
+            history=True,
+        ),
+    ],
+)
+
+STATES = [
+    ("early", "plenty of budget left; bars green"),
+    ("burning", "spending fast; bars orange to yellow"),
+    ("final", "last stretch with budget left over; red means budget going unused"),
+]
+section(
+    "Pace states",
+    "`bar preview --state` picks the sample usage; the colour follows the "
+    "pace score, flipped in the final stretch.",
+    [
+        sample(
+            f"state-{s}",
+            f"State {s}: {d}, gruvbox palette.",
+            "set palette gruvbox\n" + MID,
+            state=s,
+        )
+        for s, d in STATES
+    ],
+)
+
+section(
+    "Icons",
+    "`set icons nerdfont` adds a muted glyph before each segment, replacing "
+    "the text label where there is one. `set icons emoji` draws emoji "
+    "instead; their look depends on the viewer's emoji font, so it is shown "
+    "as text below. See [Icons](config.md#icons).",
+    [
+        sample(
+            f"icons-{i}",
+            f"Plain skin with icons {i}, dracula palette.",
+            f"set palette dracula\nset icons {i}\n" + GIT,
+        )
+        for i in ["none", "nerdfont"]
+    ],
+)
+
+section(
+    "Lines",
+    "`set left@2` and friends add lines, up to 4. The `two-line` preset puts "
+    "session and git on line 1 and usage below. See "
+    "[Lines and wrapping](config.md#lines-and-wrapping).",
+    [
+        sample(
+            "two-line",
+            "The two-line preset with the nord palette.",
+            (ROOT / "presets" / "two-line.conf").read_text().split("\n", 1)[1]
+            + "set palette nord\n",
+        ),
+    ],
+)
+
+section(
+    "PR checks",
+    "`checks=` on `prs` marks CI state after each number: #131 failing, "
+    "#129 pending, #128 passing. The default marks failures only. See "
+    "[PR checks](config.md#pr-checks).",
+    [
+        sample(
+            "checks-default",
+            "PR numbers with the default checks=fail: only #131 is marked, "
+            "terminal palette.",
+            'set palette terminal\nset left "#{repo}:#{branch} │ #{prs}"\n',
+            columns=40,
+        ),
+        sample(
+            "checks-all",
+            "PR numbers with checks=fail,pending,pass: a mark after each, "
+            "terminal palette.",
+            "set palette terminal\n"
+            'set left "#{repo}:#{branch} │ #{prs[checks=fail,pending,pass]}"\n',
+            columns=40,
+        ),
+        sample(
+            "checks-nerdfont",
+            "The same marks as Nerd Font glyphs with icons nerdfont, gruvbox "
+            "palette.",
+            "set palette gruvbox\nset icons nerdfont\n"
+            'set left "#{repo}:#{branch} │ #{prs[checks=fail,pending,pass]}"\n',
+            columns=40,
+        ),
+    ],
+)
+
+EMOJI = sample(
+    "icons-emoji",
+    "",
+    "set icons emoji\n" + GIT,
+)
+
+# --- running bar ----------------------------------------------------------
+
+
+def build_bar():
+    out = subprocess.run(
+        ["cargo", "build", "--locked", "-q", "--bin", "bar", "--message-format=json"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    for line in out.splitlines():
+        msg = json.loads(line)
+        if msg.get("reason") == "compiler-artifact" and msg.get("executable"):
+            return msg["executable"]
+    sys.exit("gallery: cargo produced no bar binary")
+
+
+def seed_history(state_dir, now, resets5, resets7):
+    state_dir.mkdir(parents=True, exist_ok=True)
+    for key, resets, used, step in [
+        ("5h", resets5, [15, 35, 55, 75, 90], 600),
+        ("7d", resets7, [10, 20, 30, 45, 60], 6 * 3600),
+    ]:
+        lines = [str(resets)]
+        for i, u in enumerate(used):
+            lines.append(f"{now - 60 - (len(used) - 1 - i) * step} {u:.1f}")
+        (state_dir / f"hist-{key}").write_text("\n".join(lines) + "\n")
+
+
+def run_bar(bar, s):
+    """ANSI output of `bar` for sample `s`, in a throwaway HOME."""
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        conf = t / "xdg" / "bar" / "bar.conf"
+        conf.parent.mkdir(parents=True)
+        conf.write_text(s["conf"])
+        cwd = t / "cwd"
+        cwd.mkdir()
+        env = {
+            "PATH": "/usr/bin:/bin",
+            "HOME": str(t),
+            "XDG_CONFIG_HOME": str(t / "xdg"),
+            "XDG_STATE_HOME": str(t / "xdg-state"),
+            "XDG_CACHE_HOME": str(t / "xdg-cache"),
+            "BAR_STATE_DIR": str(t / "state"),
+            "CLAUDE_CONFIG_DIR": str(t / "claude"),
+            "COLUMNS": str(s["columns"]),
+            "LANG": "C.UTF-8",
+        }
+        if s["history"]:
+            # 30 s of slack so the minute shown does not tick over mid-run
+            now = int(time.time())
+            resets5, resets7 = now + 2 * 3600 + 30, now + 3 * 86400 + 30
+            seed_history(t / "state", now, resets5, resets7)
+            stdin = json.dumps(
+                {
+                    "session_id": "a1b2c3d4-0000-4000-8000-000000000000",
+                    "model": {"display_name": "Claude Opus 4.7"},
+                    "rate_limits": {
+                        "five_hour": {"used_percentage": 90, "resets_at": resets5},
+                        "seven_day": {"used_percentage": 60, "resets_at": resets7},
+                    },
+                }
+            )
+            args = [bar, "render"]
+        else:
+            stdin = ""
+            args = [bar, "preview", "--state", s["state"]]
+        r = subprocess.run(
+            args, cwd=cwd, env=env, input=stdin, capture_output=True, text=True
+        )
+        if r.returncode != 0 or not r.stdout.strip():
+            sys.exit(f"gallery: {s['name']}: bar failed: {r.stderr}")
+        return r.stdout.rstrip("\n")
+
+
+# --- ANSI parsing ---------------------------------------------------------
+
+BASE16 = [
+    "#000000", "#cd0000", "#00cd00", "#cdcd00", "#0000ee", "#cd00cd", "#00cdcd", "#e5e5e5",
+    "#7f7f7f", "#ff0000", "#00ff00", "#ffff00", "#5c5cff", "#ff00ff", "#00ffff", "#ffffff",
+]
+DEFAULT_FG = "#d0d0d0"
+BACKGROUND = "#1c1c1c"
+
+
+def xterm(n):
+    if n < 16:
+        return BASE16[n]
+    if n < 232:
+        n -= 16
+        steps = [0, 95, 135, 175, 215, 255]
+        r, g, b = steps[n // 36], steps[(n // 6) % 6], steps[n % 6]
+        return f"#{r:02x}{g:02x}{b:02x}"
+    v = 8 + (n - 232) * 10
+    return f"#{v:02x}{v:02x}{v:02x}"
+
+
+def parse_ansi(text):
+    """Rows of cells: (char, fg, bg, bold)."""
+    rows = []
+    for line in text.split("\n"):
+        cells, fg, bg, bold, i = [], None, None, False, 0
+        while i < len(line):
+            c = line[i]
+            if c == "\x1b" and line[i + 1 : i + 2] == "]":
+                end = line.index("\x1b\\", i)
+                i = end + 2
+                continue
+            if c == "\x1b" and line[i + 1 : i + 2] == "[":
+                end = i + 2
+                while not line[end].isalpha():
+                    end += 1
+                params = [int(p) if p else 0 for p in line[i + 2 : end].split(";")]
+                j = 0
+                while j < len(params):
+                    p = params[j]
+                    if p == 0:
+                        fg, bg, bold = None, None, False
+                    elif p == 1:
+                        bold = True
+                    elif p == 22:
+                        bold = False
+                    elif p == 39:
+                        fg = None
+                    elif p == 49:
+                        bg = None
+                    elif p in (38, 48) and params[j + 1 : j + 2] == [5]:
+                        col = xterm(params[j + 2])
+                        if p == 38:
+                            fg = col
+                        else:
+                            bg = col
+                        j += 2
+                    elif 30 <= p <= 37:
+                        fg = BASE16[p - 30]
+                    elif 90 <= p <= 97:
+                        fg = BASE16[p - 90 + 8]
+                    elif 40 <= p <= 47:
+                        bg = BASE16[p - 40]
+                    elif 100 <= p <= 107:
+                        bg = BASE16[p - 100 + 8]
+                    else:
+                        sys.exit(f"gallery: unhandled SGR {p}")
+                    j += 1
+                i = end + 1
+                continue
+            cells.append((c, fg or DEFAULT_FG, bg, bold))
+            i += 1
+        while cells and cells[-1][0] == " " and cells[-1][2] is None:
+            cells.pop()
+        rows.append(cells)
+    return rows
+
+
+# --- SVG ------------------------------------------------------------------
+
+CELL_W = 9.0  # px per cell
+PAD = 10.0
+
+
+def font_dir():
+    env = os.environ.get("GALLERY_FONT_DIR")
+    cands = [Path(env)] if env else []
+    cands += [
+        Path.home() / "Library" / "Fonts",
+        Path("/Library/Fonts"),
+        Path.home() / ".local" / "share" / "fonts",
+        Path("/usr/share/fonts"),
+    ]
+    for d in cands:
+        if (d / FONT_FILES[False]).is_file() and (d / FONT_FILES[True]).is_file():
+            return d
+        for hit in sorted(d.rglob(FONT_FILES[False])) if d.is_dir() else []:
+            if (hit.parent / FONT_FILES[True]).is_file():
+                return hit.parent
+    sys.exit(f"gallery: {FONT_FILES[False]} not found; set GALLERY_FONT_DIR")
+
+
+class Fonts:
+    def __init__(self):
+        from fontTools.ttLib import TTFont
+
+        d = font_dir()
+        self.fonts = {b: TTFont(str(d / f)) for b, f in FONT_FILES.items()}
+        f = self.fonts[False]
+        self.upm = f["head"].unitsPerEm
+        self.ascent = f["hhea"].ascent
+        self.descent = -f["hhea"].descent
+        advance = f["hmtx"][f.getBestCmap()[ord("M")]][0]
+        self.scale = CELL_W / advance
+        self.cell_h = (self.ascent + self.descent) * self.scale
+        self.advance = advance
+
+    def path(self, ch, bold):
+        """SVG path data in font units (y up), or None for blank glyphs."""
+        from fontTools.pens.svgPathPen import SVGPathPen
+
+        font = self.fonts[bold]
+        name = font.getBestCmap().get(ord(ch))
+        if name is None:
+            return fallback(ch, self.advance, self.ascent, self.descent)
+        gs = font.getGlyphSet()
+        pen = SVGPathPen(gs, ntos=lambda v: str(round(v)))
+        gs[name].draw(pen)
+        return pen.getCommands() or None
+
+
+LOWER = "▁▂▃▄▅▆▇"
+LEFT = "▏▎▍▌▋▊▉"
+
+
+def block(ch):
+    """(x, y, w, h) in cells for block elements, else None."""
+    if ch == "█":
+        return (0, 0, 1, 1)
+    if ch in LOWER:
+        h = (LOWER.index(ch) + 1) / 8
+        return (0, 1 - h, 1, h)
+    if ch in LEFT:
+        return (0, 0, (LEFT.index(ch) + 1) / 8, 1)
+    return None
+
+
+def fallback(ch, adv, asc, desc):
+    """Marks the font lacks, drawn as strokes in one cell (font units)."""
+    w = adv
+    x0, x1 = round(w * 0.15), round(w * 0.85)
+    y0, y1 = round(asc * 0.05), round(asc * 0.7)
+    t = round(w * 0.13)
+    if ch == "✗":
+        return (
+            f"M{x0} {y0 + t}L{x0 + t} {y0}L{x1} {y1 - t}L{x1 - t} {y1}Z"
+            f"M{x0} {y1 - t}L{x0 + t} {y1}L{x1} {y0 + t}L{x1 - t} {y0}Z"
+        )
+    if ch == "✓":
+        xm, ym = round(w * 0.4), y0
+        return (
+            f"M{x0} {round(asc * 0.38)}L{x0 + t} {round(asc * 0.38) + t}"
+            f"L{xm} {ym + 2 * t}L{x1 - t} {y1 + t}L{x1} {y1}L{xm} {ym}Z"
+        )
+    sys.exit(f"gallery: no glyph for U+{ord(ch):04X} in the font")
+
+
+def svg(rows, alt, fonts):
+    s = fonts.scale
+    width = max((len(r) for r in rows), default=0)
+    w = round(width * CELL_W + 2 * PAD, 2)
+    h = round(len(rows) * fonts.cell_h + 2 * PAD, 2)
+    defs, ids = [], {}
+    rects, glyphs = [], []
+    num = lambda v: f"{v:.2f}".rstrip("0").rstrip(".")
+    for y, row in enumerate(rows):
+        top = PAD + y * fonts.cell_h
+        base = top + fonts.ascent * s
+        x = 0
+        while x < len(row):
+            bg = row[x][2]
+            run = x
+            while run < len(row) and row[run][2] == bg:
+                run += 1
+            if bg:
+                rects.append(
+                    f'<rect x="{num(PAD + x * CELL_W)}" y="{num(top)}" '
+                    f'width="{num((run - x) * CELL_W)}" height="{num(fonts.cell_h)}" fill="{bg}"/>'
+                )
+            x = run
+        blocks = []
+        for x, (ch, fg, _, bold) in enumerate(row):
+            if ch == " ":
+                continue
+            box = block(ch)
+            if box:
+                # block elements as rects, so neighbours join without seams
+                bx, by, bw, bh = box
+                blocks.append([x + bx, top + by * fonts.cell_h, bw, bh * fonts.cell_h, fg])
+                continue
+            key = (ch, bold)
+            if key not in ids:
+                d = fonts.path(ch, bold)
+                if d is None:
+                    ids[key] = None
+                    continue
+                ids[key] = f"g{len(defs)}"
+                defs.append(f'<path id="{ids[key]}" d="{d}"/>')
+            gid = ids[key]
+            if gid:
+                glyphs.append((fg, f'<use href="#{gid}" x="{num((PAD + x * CELL_W) / s)}" y="{num(-base / s)}"/>'))
+        merged = []
+        for b in blocks:
+            last = merged[-1] if merged else None
+            if last and last[1:2] + last[3:] == b[1:2] + b[3:] and abs(last[0] + last[2] - b[0]) < 1e-9:
+                last[2] += b[2]
+            else:
+                merged.append(b)
+        for bx, by, bw, bh, fg in merged:
+            rects.append(
+                f'<rect x="{num(PAD + bx * CELL_W)}" y="{num(by)}" '
+                f'width="{num(bw * CELL_W)}" height="{num(bh)}" fill="{fg}"/>'
+            )
+    body = []
+    i = 0
+    while i < len(glyphs):
+        fg = glyphs[i][0]
+        j = i
+        while j < len(glyphs) and glyphs[j][0] == fg:
+            j += 1
+        body.append(f'<g fill="{fg}">' + "".join(u for _, u in glyphs[i:j]) + "</g>")
+        i = j
+    esc = alt.replace("&", "&amp;").replace("<", "&lt;").replace('"', "&quot;")
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{num(w)}" height="{num(h)}" '
+        f'viewBox="0 0 {num(w)} {num(h)}" role="img" aria-label="{esc}">\n'
+        f"<title>{esc}</title>\n"
+        f'<rect width="100%" height="100%" rx="6" fill="{BACKGROUND}"/>\n'
+        + "".join(r + "\n" for r in rects)
+        + f'<g transform="scale({num(s * 1e6)}e-6,-{num(s * 1e6)}e-6)">\n'
+        + "<defs>\n" + "".join(d + "\n" for d in defs) + "</defs>\n"
+        + "".join(b + "\n" for b in body)
+        + "</g>\n</svg>\n"
+    )
+
+
+# --- page -----------------------------------------------------------------
+
+
+def strip(text):
+    rows = parse_ansi(text)
+    return "\n".join("".join(c[0] for c in r) for r in rows)
+
+
+def page(emoji_text):
+    out = [
+        "# Gallery",
+        "",
+        "What the styling options look like. Every image is real `bar preview` "
+        "output for the config shown under it (sample data, `bar render` with "
+        "seeded history for sparklines), drawn with Hack Nerd Font Mono on a "
+        "dark background. Regenerate with `make gallery`; `make check` fails "
+        "when these files are stale. Options: [Configuration](config.md).",
+        "",
+    ]
+    for sec in SECTIONS:
+        out += [f"## {sec['title']}", "", sec["intro"], ""]
+        for s in sec["samples"]:
+            cmd = "bar render" if s["history"] else f"bar preview --state {s['state']}"
+            out += [
+                f"![{s['alt']}](gallery/{s['name']}.svg)",
+                "",
+                f"`COLUMNS={s['columns']} {cmd}` with:",
+                "",
+                "```text",
+                s["conf"].rstrip("\n"),
+                "```",
+                "",
+            ]
+        if sec["title"] == "Icons":
+            out += [
+                "`set icons emoji`, as text, colour stripped:",
+                "",
+                "```text",
+                emoji_text,
+                "```",
+                "",
+                f"`COLUMNS={EMOJI['columns']} bar preview` with:",
+                "",
+                "```text",
+                EMOJI["conf"].rstrip("\n"),
+                "```",
+                "",
+            ]
+    return "\n".join(out).rstrip("\n") + "\n"
+
+
+# --- main -----------------------------------------------------------------
+
+
+def sha(data):
+    return hashlib.sha256(data.encode()).hexdigest()
+
+
+def samples():
+    return [s for sec in SECTIONS for s in sec["samples"]]
+
+
+def main():
+    check = sys.argv[1:] == ["--check"]
+    if sys.argv[1:] not in ([], ["--check"]):
+        sys.exit(__doc__)
+    bar = build_bar()
+    outputs = {s["name"]: run_bar(bar, s) for s in samples()}
+    emoji = strip(run_bar(bar, EMOJI))
+    text = page(emoji)
+    if check:
+        want = {}
+        if MANIFEST.is_file():
+            for line in MANIFEST.read_text().splitlines():
+                name, ansi_sha, svg_sha = line.split()
+                want[name] = (ansi_sha, svg_sha)
+        stale = []
+        for name, ansi in outputs.items():
+            f = OUT / f"{name}.svg"
+            got = (sha(ansi), sha(f.read_text()) if f.is_file() else "")
+            if want.get(name) != got:
+                stale.append(name)
+        extra = {p.stem for p in OUT.glob("*.svg")} - set(outputs)
+        stale += sorted(extra)
+        if not PAGE.is_file() or PAGE.read_text() != text:
+            stale.append("gallery.md")
+        if stale:
+            sys.exit("gallery: stale, run `make gallery`: " + ", ".join(stale))
+        return
+    fonts = Fonts()
+    OUT.mkdir(parents=True, exist_ok=True)
+    lines = []
+    for s in samples():
+        rows = parse_ansi(outputs[s["name"]])
+        image = svg(rows, s["alt"], fonts)
+        (OUT / f"{s['name']}.svg").write_text(image)
+        lines.append(f"{s['name']} {sha(outputs[s['name']])} {sha(image)}")
+    for p in OUT.glob("*.svg"):
+        if p.stem not in outputs:
+            p.unlink()
+    MANIFEST.write_text("\n".join(lines) + "\n")
+    PAGE.write_text(text)
+
+
+if __name__ == "__main__":
+    main()

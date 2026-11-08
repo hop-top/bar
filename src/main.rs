@@ -30,9 +30,9 @@ enum SubCmd {
         /// Usage pace to show.
         #[arg(long, value_parser = hop_bar::preview::STATES, default_value = "early")]
         state: String,
-        /// Render a built-in preset instead of your config.
-        #[arg(long, value_parser = hop_bar::presets::NAMES)]
-        preset: Option<String>,
+        /// Render a built-in preset instead of your config; bare, every preset in turn.
+        #[arg(long, num_args = 0..=1, value_name = "NAME", value_parser = hop_bar::presets::NAMES)]
+        preset: Option<Option<String>>,
     },
     /// Write a preset as your config; refuses when a config exists.
     Init {
@@ -198,17 +198,37 @@ fn preview(m: &ArgMatches) {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs() as i64);
-    let load = match m.get_one::<String>("preset") {
+    let preset = |p: &str| {
         // names come from the value parser, so the preset exists and parses
-        Some(p) => match conf::parse(hop_bar::presets::get(p).unwrap_or_default()) {
+        match conf::parse(hop_bar::presets::get(p).unwrap_or_default()) {
             Ok(c) => conf::LoadResult::Ok(c),
             Err(e) => conf::LoadResult::Invalid(e),
-        },
-        None => conf::load(),
+        }
     };
-    let out = hop_bar::preview::render(state, load, columns, now);
     let mut so = std::io::stdout().lock();
-    let _ = writeln!(so, "{out}");
+    match m.get_one::<String>("preset") {
+        Some(p) => {
+            let _ = writeln!(
+                so,
+                "{}",
+                hop_bar::preview::render(state, preset(p), columns, now)
+            );
+        }
+        // bare `--preset`: every preset, each under a muted header
+        None if m.value_source("preset").is_some() => {
+            for p in hop_bar::presets::NAMES {
+                let out = hop_bar::preview::render(state, preset(p), columns, now);
+                let _ = writeln!(so, "{}\n{out}", hop_bar::style::dim(&format!("── {p} ──")));
+            }
+        }
+        None => {
+            let _ = writeln!(
+                so,
+                "{}",
+                hop_bar::preview::render(state, conf::load(), columns, now)
+            );
+        }
+    }
 }
 
 fn init(m: &ArgMatches) {
