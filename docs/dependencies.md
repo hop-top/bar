@@ -12,11 +12,20 @@ Vetting record for third-party crates added to `hop-bar`.
 - Advisories: OSV query for crates.io `unicode-width` 0.2.2 returns none.
 - Shared with `hop-top-kit` through `comfy-table`; the pin resolves to one copy.
 
-## libc =0.2.191
+## libc =0.2.191 (Unix only)
 
-- Use: `localtime_r` and `tm` for local-date buckets in spend history, instead of a hand-written `struct tm`.
+- Use: `localtime_r` and `tm` for local-date buckets in spend history, instead of a hand-written `struct tm`; `kill(pid, 0)` for session liveness. Declared under `[target.'cfg(unix)'.dependencies]`.
 - Source: `rust-lang/libc`; already in `Cargo.lock` at 0.2.191 through `hop-top-kit`'s dependencies, so the pin resolves to the existing copy and adds nothing new to the build.
 - License: MIT OR Apache-2.0.
+
+## windows-sys =0.61.2 (Windows only)
+
+- Use: kernel32 calls in `src/platform/windows.rs`: clearing the inherit flag on the standard handles before a detached spawn (`GetStdHandle`, `SetHandleInformation`), process liveness (`OpenProcess`, `GetExitCodeProcess`), local zone offset (`GetDynamicTimeZoneInformation`, `SystemTimeToTzSpecificLocalTimeEx`, FILETIME/SYSTEMTIME conversions), and the `CREATE_*`/`DETACHED_PROCESS` flag constants. Features: `Win32_Foundation`, `Win32_System_Console`, `Win32_System_Threading`, `Win32_System_Time`. Declared under `[target.'cfg(windows)'.dependencies]`, so Unix builds do not compile it.
+- Source: `microsoft/windows-rs`; crates.io release 2025-10-06, over 14 days old. Already in `Cargo.lock` at 0.61.2 through `clap` (`anstream`, `anstyle-query`, `anstyle-wincon` on Windows), so the exact pin resolves to the existing copy; its only dependency is `windows-link` 0.2.1, also already locked.
+- Alternatives: hand-written `extern "system"` declarations (more unsafe surface, no type checking against the Win32 metadata); `chrono`/`time` for the zone offset (a full date-time crate for one number); `dirs` for the home dir (the kit `xdg` module and `USERPROFILE` already cover it).
+- License: MIT OR Apache-2.0.
+- `rsx analyze microsoft/windows-rs`: PASS, score 6.6/10, policy balanced.
+- Advisories: OSV query for crates.io `windows-sys` 0.61.2 returns none.
 
 ## Data: models.dev price snapshot
 
