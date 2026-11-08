@@ -1,5 +1,9 @@
 //! Reference plugins driven directly: JSON on stdin, JSON on stdout, fakes
 //! for `tlc`, `security` and `curl` first on `PATH`.
+
+// Unix fixtures (shell scripts, modes, POSIX paths); Windows coverage: tests/windows.rs
+#![cfg(unix)]
+
 mod common;
 #[path = "common/plugins_fx.rs"]
 mod plugins_fx;

@@ -1,3 +1,6 @@
+// Unix fixtures (shell scripts, modes, POSIX paths); Windows coverage: tests/windows.rs
+#![cfg(unix)]
+
 use hop_bar::conf::Config;
 use hop_bar::options::Options;
 use hop_bar::placeholders::dirs::{abbrev_home, shown};

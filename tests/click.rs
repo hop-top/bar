@@ -1,3 +1,6 @@
+// Unix fixtures (shell scripts, modes, POSIX paths); Windows coverage: tests/windows.rs
+#![cfg(unix)]
+
 #[path = "common/fake_env.rs"]
 mod fake_env;
 

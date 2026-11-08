@@ -35,9 +35,14 @@ fn first_sample_is_kept_and_stored_private() {
         .map(|e| e.unwrap().path())
         .find(|p| p.to_string_lossy().contains("5h"))
         .expect("history file");
-    let mode =
-        std::os::unix::fs::PermissionsExt::mode(&std::fs::metadata(file).unwrap().permissions());
-    assert_eq!(mode & 0o777, 0o600);
+    assert!(file.is_file());
+    #[cfg(unix)]
+    {
+        let mode = std::os::unix::fs::PermissionsExt::mode(
+            &std::fs::metadata(file).unwrap().permissions(),
+        );
+        assert_eq!(mode & 0o777, 0o600);
+    }
 }
 
 #[test]

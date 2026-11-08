@@ -1,5 +1,8 @@
 //! CI check state of `prs`: rollup mapping, marks, option and old caches.
 
+// Unix fixtures (shell scripts, modes, POSIX paths); Windows coverage: tests/windows.rs
+#![cfg(unix)]
+
 #[path = "common/gh_fx.rs"]
 mod gh_fx;
 

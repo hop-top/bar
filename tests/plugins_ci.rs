@@ -1,4 +1,8 @@
 //! bar-ci, bar-mem, bar-health driven directly with fakes first on `PATH`.
+
+// Unix fixtures (shell scripts, modes, POSIX paths); Windows coverage: tests/windows.rs
+#![cfg(unix)]
+
 mod common;
 #[path = "common/plugins_fx.rs"]
 mod plugins_fx;

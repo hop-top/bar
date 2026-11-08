@@ -1,3 +1,6 @@
+// Unix fixtures (shell scripts, modes, POSIX paths); Windows coverage: tests/windows.rs
+#![cfg(unix)]
+
 use hop_bar::cache::{Job, Request};
 use hop_bar::gitfs::{discover, Found};
 use hop_bar::placeholders::gitst::{cache_key, parse, Status};

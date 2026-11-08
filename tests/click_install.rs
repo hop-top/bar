@@ -1,3 +1,6 @@
+// Unix fixtures (shell scripts, modes, POSIX paths); Windows coverage: tests/windows.rs
+#![cfg(unix)]
+
 use assert_cmd::Command;
 use hop_bar::click::{applescript, info_plist_commands, install_plan, run_install, InstallCfg};
 use std::path::{Path, PathBuf};
