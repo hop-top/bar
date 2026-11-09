@@ -26,7 +26,7 @@ What feeds it:
 | cwd, root, repo, branch, dirty, ahead, PRs, issues, sessions, account, tokens, cache, spend history, sid, tmux, worktree, compactions, skills, update | the samples `bar preview` uses |
 | plugins (`bar-<name>`) | the sample in the plugin's [`web` metadata](plugins.md#web-configurator-metadata), painted as a real output; a plugin without one shows its name |
 
-Times count down from the browser clock, in UTC. The preview width follows the columns slider.
+Times count down from the browser clock, in UTC. The preview width follows the columns slider, or the width of the page with **fit to width** (on by default on small screens, where the preview also stays at the top while you scroll).
 
 ## Plugins
 

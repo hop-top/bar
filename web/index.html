@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>bar configurator</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2316181d'/%3E%3Crect x='5' y='13' width='9' height='6' rx='1.5' fill='%235b8ff0'/%3E%3Crect x='16' y='13' width='11' height='6' rx='1.5' fill='%2387d787'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -58,21 +59,26 @@
       <div id="preset-list" class="preset-list" role="group" aria-labelledby="presets-h"></div>
     </section>
 
-    <section class="preview card">
+    <section class="preview card" aria-labelledby="preview-h">
       <div class="card-head">
-        <h2>Preview</h2>
-        <label class="inline">columns
-          <input id="columns" type="range" min="40" max="240" value="120">
-          <output id="columns-out">120</output>
-        </label>
+        <h2 id="preview-h">Preview</h2>
+        <div class="row wrap">
+          <label class="inline"><input id="fit" type="checkbox"> fit to width</label>
+          <label class="inline">columns
+            <input id="columns" type="range" min="40" max="240" value="120">
+            <output id="columns-out" for="columns">120</output>
+          </label>
+        </div>
       </div>
       <p id="preview-error" class="preview-error" aria-live="polite" hidden></p>
       <div class="term-wrap"><div id="term" class="term" role="img" aria-label="status line preview"></div></div>
-      <p class="note">Rendered by bar itself (compiled to WebAssembly). Session fields come from the JSON below; git, GitHub, transcript and account values are bar's preview samples; plugins draw the sample from their manifest entry, or their name.</p>
-      <details>
-        <summary>Session JSON (what Claude Code sends on stdin)</summary>
-        <textarea id="session" spellcheck="false" rows="14"></textarea>
-        <button id="session-reset" class="btn small">Reset sample</button>
+      <details class="more">
+        <summary>Where the preview data comes from</summary>
+        <p class="note">Rendered by bar itself (compiled to WebAssembly). Session fields come from the JSON below; git, GitHub, transcript and account values are bar's preview samples; plugins draw the sample from their manifest entry, or their name.</p>
+        <label>Session JSON (what Claude Code sends on stdin)
+          <textarea id="session" spellcheck="false" rows="12"></textarea>
+        </label>
+        <button id="session-reset" class="btn small" type="button">Reset sample</button>
       </details>
     </section>
 
