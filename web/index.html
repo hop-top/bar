@@ -11,6 +11,8 @@
   <header class="top">
     <h1><span class="mark">bar</span> configurator</h1>
     <div class="actions">
+      <button id="undo" class="btn" type="button" aria-keyshortcuts="Control+Z Meta+Z" disabled>Undo</button>
+      <button id="redo" class="btn" type="button" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z" disabled>Redo</button>
       <label class="btn">Load bar.conf<input id="load" type="file" accept=".conf,text/plain" hidden></label>
       <label class="btn" title="Output of: bar web plugins -o plugins.json">Load plugins.json<input id="load-plugins" type="file" accept=".json,application/json" hidden></label>
       <button id="copy" class="btn">Copy</button>
@@ -46,23 +48,24 @@
         <div id="line-tabs" class="tabs" role="tablist"></div>
       </div>
       <div id="groups" class="groups"></div>
-      <p id="compose-off" class="warn" hidden>Fix the errors in bar.conf to edit the layout here.</p>
+      <p id="compose-off" class="warn" hidden>Layout and look are locked while bar.conf has errors, so your text stays as typed. Fix them below, or use <b>Revert to last valid</b>.</p>
     </section>
 
     <section class="look card">
       <h2>Look</h2>
-      <div class="grid">
+      <fieldset id="look" class="grid">
+        <legend class="sr-only">Look</legend>
         <label>preset
           <span class="row"><select id="preset"></select><button id="preset-apply" class="btn small">Apply</button></span>
         </label>
         <div id="settings" class="settings"></div>
         <label>separator <input id="separator" type="text" maxlength="4"></label>
         <label>gap <input id="gap" type="number" min="0" max="20"></label>
-      </div>
+      </fieldset>
     </section>
 
     <section class="source card">
-      <div class="card-head"><h2>bar.conf</h2><span id="status" class="status"></span></div>
+      <div class="card-head"><h2>bar.conf</h2><span class="row"><span id="status" class="status"></span><button id="revert" class="btn small" type="button" hidden>Revert to last valid</button></span></div>
       <textarea id="conf" spellcheck="false" rows="14" aria-label="bar.conf"></textarea>
       <ul id="issues" class="issues"></ul>
     </section>
@@ -73,6 +76,7 @@
   <script src="pkg/plugins.js"></script>
   <script src="ansi.js"></script>
   <script src="conf.js"></script>
+  <script src="history.js"></script>
   <script src="compose.js"></script>
   <script src="app.js"></script>
 </body>

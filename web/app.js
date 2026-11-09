@@ -49,6 +49,9 @@
 
   let text = "";
   let lastInspect = null;
+  // last text with no errors, for "Revert to last valid"
+  let lastValid = null;
+  let history = History.create();
 
   // Plugins: the bundled manifest (reference plugins), then the user's
   // plugins.json over it, by name.
@@ -68,7 +71,10 @@
 
   function store() {
     try {
-      localStorage.setItem(STORE, JSON.stringify({ text, columns: ui.columns.value, plugins: userPlugins }));
+      localStorage.setItem(
+        STORE,
+        JSON.stringify({ text, lastValid, history: history.save(), columns: ui.columns.value, plugins: userPlugins }),
+      );
     } catch (_) {
       /* storage unavailable: nothing kept between visits */
     }
@@ -103,6 +109,9 @@
     const errors = report.issues.filter((i) => i.level === "error").length;
     ui.status.textContent = errors ? `${errors} error${errors > 1 ? "s" : ""}` : "valid";
     ui.status.classList.toggle("bad", errors > 0);
+    if (!errors) lastValid = text;
+    $("revert").hidden = !errors || lastValid === null || lastValid === text;
+    return errors;
   }
 
   function syncControls(inspect) {
@@ -112,18 +121,49 @@
     $("gap").value = inspect.set.gap;
   }
 
-  // `from` is the control that made the change; it is not redrawn.
-  function setText(next, from) {
+  // `from` is the control that made the change; it is not redrawn. Every
+  // change but undo/redo itself is recorded; `group` folds typing runs.
+  function setText(next, from, { group = null, record = true } = {}) {
+    if (record && next !== text) history.record(text, group);
     text = next;
     if (from !== ui.conf) ui.conf.value = text;
     const inspect = JSON.parse(bar.inspect(text));
     lastInspect = inspect;
     syncControls(inspect);
     Compose.update(inspect.ok ? inspect : null);
+    // controls write `set` lines: locked while the text does not parse
+    $("look").disabled = !inspect.ok;
     renderIssues();
     renderPreview();
+    $("undo").disabled = !history.canUndo();
+    $("redo").disabled = !history.canRedo();
     store();
   }
+
+  function undo() {
+    const prev = history.undo(text);
+    if (prev !== null) setText(prev, null, { record: false });
+  }
+  function redo() {
+    const next = history.redo(text);
+    if (next !== null) setText(next, null, { record: false });
+  }
+  $("undo").onclick = undo;
+  $("redo").onclick = redo;
+  // Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y: the page's history, bar.conf
+  // typing included; the session JSON keeps the browser's own.
+  document.addEventListener("keydown", (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || e.target === ui.session) return;
+    const k = e.key.toLowerCase();
+    if (k === "z" || k === "y") {
+      e.preventDefault();
+      if (k === "y" || e.shiftKey) redo();
+      else undo();
+    }
+  });
+  $("revert").onclick = () => {
+    if (lastValid !== null) setText(lastValid);
+  };
 
   // Look controls
   const settingsBox = $("settings");
@@ -165,7 +205,8 @@
   });
 
   // Source, session, columns
-  ui.conf.oninput = () => setText(ui.conf.value, ui.conf);
+  ui.conf.oninput = () => setText(ui.conf.value, ui.conf, { group: "typing" });
+  ui.conf.onblur = () => history.seal();
   ui.session.oninput = renderPreview;
   $("session-reset").onclick = () => {
     ui.session.value = JSON.stringify(sampleSession(), null, 2);
@@ -219,10 +260,12 @@
   // Start: last session's config, else the full preset
   const saved = restore();
   setPlugins(saved && Array.isArray(saved.plugins) ? saved.plugins : []);
+  if (saved && saved.history) history = History.create(saved.history);
+  if (saved && typeof saved.lastValid === "string") lastValid = saved.lastValid;
   if (saved && saved.columns) ui.columns.value = saved.columns;
   ui.session.value = JSON.stringify(sampleSession(), null, 2);
   $("app").hidden = false;
-  setText(saved && typeof saved.text === "string" ? saved.text : bar.preset("full"));
+  setText(saved && typeof saved.text === "string" ? saved.text : bar.preset("full"), null, { record: false });
   // countdowns move: redraw once a minute
   setInterval(renderPreview, 60000);
 })();
