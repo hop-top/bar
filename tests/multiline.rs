@@ -48,7 +48,21 @@ fn line_keys_parse() {
     assert_eq!(lines[1], ["l2", "", ""]);
     assert_eq!(lines[2], ["", "c3", ""]);
     assert_eq!(lines[3], ["", "", "r4"]);
-    for bad in ["left@0", "left@5", "center@9", "right@x", "right@", "top@2"] {
+    // any number of lines, up to the ceiling
+    let c = cfg("set left@40 l40\n");
+    let lines = c.lines();
+    assert_eq!(lines.len(), 40);
+    assert_eq!(lines[39], ["l40", "", ""]);
+    assert!(lines[1..39].iter().all(|l| l == &["", "", ""]));
+    assert!(parse("set left@64 x").is_ok());
+    for bad in [
+        "left@0",
+        "left@65",
+        "center@999",
+        "right@x",
+        "right@",
+        "top@2",
+    ] {
         assert!(parse(&format!("set {bad} v")).is_err(), "{bad}");
     }
 }
@@ -93,7 +107,49 @@ fn empty_line_omitted() {
 }
 
 #[test]
-fn wrap_off_caps_at_four_rows() {
+fn many_lines_print_every_row_up_to_max_rows() {
+    let mut src = String::new();
+    for n in 1..=12 {
+        src.push_str(&format!("set left@{n} \"l{n}\"\n"));
+    }
+    let got = rows(&src, Some(80));
+    assert_eq!(got.len(), 12);
+    assert_eq!(got[11], "l12");
+    // the default cap is 16 rows
+    let mut src = String::new();
+    for n in 1..=30 {
+        src.push_str(&format!("set left@{n} \"l{n}\"\n"));
+    }
+    assert_eq!(rows(&src, Some(80)).len(), 16);
+    assert_eq!(rows(&format!("{src}set max-rows 20\n"), Some(80)).len(), 20);
+    assert_eq!(
+        rows(&format!("{src}set max-rows 2\n"), Some(80)),
+        ["l1", "l2"]
+    );
+}
+
+#[test]
+fn max_rows_parses_within_bounds() {
+    assert_eq!(Config::default().max_rows, 16);
+    assert_eq!(cfg("set max-rows 64").max_rows, 64);
+    for bad in ["0", "65", "x", "-1", ""] {
+        assert!(parse(&format!("set max-rows {bad}")).is_err(), "{bad:?}");
+    }
+}
+
+#[test]
+fn wrap_on_flows_past_four_rows() {
+    let segs: Vec<String> = (0..10).map(|i| format!("s{i:02}")).collect();
+    let src = format!("set left \"{}\"\nset wrap on\n", segs.join(" │ "));
+    let got = rows(&src, Some(8));
+    assert_eq!(got, segs);
+    // max-rows still bounds the flow
+    let got = rows(&format!("{src}set max-rows 6\n"), Some(8));
+    assert_eq!(got, &segs[..6]);
+}
+
+#[test]
+fn wrap_off_caps_at_max_rows() {
     // every line pushes its centre below: 2 rows per line
     let mut src = String::new();
     for n in 1..=4 {
@@ -101,6 +157,7 @@ fn wrap_off_caps_at_four_rows() {
             "set left@{n} \"l{n}{A}\"\nset center@{n} \"c{n}{B}\"\n"
         ));
     }
+    src.push_str("set max-rows 4\n");
     let got = rows(&src, Some(20));
     assert_eq!(
         got,
@@ -157,11 +214,11 @@ fn wrap_on_breaks_at_segment_boundaries() {
     let cases: [(usize, Vec<Vec<&str>>); 5] = [
         (40, vec![vec![A, B, C], vec![D, E]]),
         (30, vec![vec![A, B], vec![C, D], vec![E]]),
-        // five rows needed: four printed, the last segment dropped
-        (20, vec![vec![A], vec![B], vec![C], vec![D]]),
-        (14, vec![vec![A], vec![B], vec![C], vec![D]]),
+        // five rows, none dropped
+        (20, vec![vec![A], vec![B], vec![C], vec![D], vec![E]]),
+        (14, vec![vec![A], vec![B], vec![C], vec![D], vec![E]]),
         // a segment wider than the row stands alone
-        (8, vec![vec![A], vec![B], vec![C], vec![D]]),
+        (8, vec![vec![A], vec![B], vec![C], vec![D], vec![E]]),
     ];
     for (cols, want) in cases {
         let want: Vec<String> = want.iter().map(|r| joined(r)).collect();
@@ -181,24 +238,25 @@ fn wrap_on_without_columns_keeps_todays_layout() {
 }
 
 #[test]
-fn wrap_on_shares_the_four_row_cap_across_lines() {
+fn wrap_on_shares_max_rows_across_lines() {
     let two = format!(
-        "set left \"{A} │ {B} │ {C}\"\nset left@2 \"{D} │ {E}\"\nset left@3 xx\nset wrap on\n"
+        "set left \"{A} │ {B} │ {C}\"\nset left@2 \"{D} │ {E}\"\nset left@3 xx\nset wrap on\nset max-rows 4\n"
     );
     // line 1 takes three rows, line 2 gets the last (what fits), line 3 is cut
     assert_eq!(
         rows(&two, Some(20)),
         [A.to_string(), B.to_string(), C.to_string(), D.to_string()]
     );
-    let src = format!("{}set left@2 ff\nset wrap on\n", abcde());
+    let src = format!("{}set left@2 ff\nset wrap on\nset max-rows 4\n", abcde());
     assert_eq!(rows(&src, Some(20)).len(), 4);
 }
 
 #[test]
-fn wrap_on_fourth_row_fits_and_drops_the_rest() {
+fn wrap_on_last_row_fits_and_drops_the_rest() {
     // ten 3-cell segments, two per 10-cell row: eight shown, two dropped
     let segs: Vec<String> = (0..10).map(|i| format!("s{i:02}")).collect();
     let src = format!("set left \"{}\"\nset wrap on\n", segs.join(" │ "));
+    let src = format!("{src}set max-rows 4\n");
     let got = rows(&src, Some(14));
     let want: Vec<String> = segs[..8].chunks(2).map(|p| p.join(" │ ")).collect();
     assert_eq!(got, want);
@@ -324,11 +382,11 @@ fn centre_line_under_skin_with_wrap_on() {
 
 #[test]
 fn check_validates_line_keys() {
-    let r = check_text("set left@5 \"#{ctx}\"\n", None, &[]);
+    let r = check_text("set left@65 \"#{ctx}\"\n", None, &[]);
     assert!(
         r.issues
             .iter()
-            .any(|i| i.level == Level::Error && i.line == 1 && i.message.contains("1-4")),
+            .any(|i| i.level == Level::Error && i.line == 1 && i.message.contains("1-64")),
         "{:?}",
         r.issues
     );

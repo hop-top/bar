@@ -27,8 +27,11 @@ pub enum Wrap {
     On,
 }
 
-/// Most status lines a config can set, and most rows a render prints.
-pub const MAX_LINES: usize = 4;
+/// Highest line number a layout key takes, and highest `set max-rows`.
+pub const MAX_LINES: usize = 64;
+
+/// Most rows a render prints unless `set max-rows` says otherwise.
+pub const DEFAULT_MAX_ROWS: usize = 16;
 
 /// The three groups of one status line.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -99,8 +102,11 @@ pub struct Config {
     pub left: String,
     pub center: String,
     pub right: String,
-    /// Lines 2 and up (`set left@2` ...); `left`/`center`/`right` are line 1.
-    pub more_lines: [Line; MAX_LINES - 1],
+    /// Lines 2 and up (`set left@2` ...), as far as the highest one set;
+    /// `left`/`center`/`right` are line 1.
+    pub more_lines: Vec<Line>,
+    /// Most rows a render prints, all lines and wrapping together.
+    pub max_rows: usize,
     /// `set subagent`: layout of a `bar subagent` row; `None` uses
     /// [`crate::subagent::DEFAULT_LAYOUT`].
     pub subagent: Option<String>,
@@ -147,7 +153,8 @@ impl Default for Config {
             left: String::new(),
             center: String::new(),
             right: String::new(),
-            more_lines: Default::default(),
+            more_lines: Vec::new(),
+            max_rows: DEFAULT_MAX_ROWS,
             subagent: None,
             subagent_hide: Vec::new(),
             separator: "│".into(),
@@ -182,12 +189,17 @@ impl Default for Config {
 
 impl Config {
     /// Left, centre and right sources of every line, line 1 first.
-    pub fn lines(&self) -> [[&str; 3]; MAX_LINES] {
-        let mut out = [[""; 3]; MAX_LINES];
-        out[0] = [&self.left, &self.center, &self.right];
-        for (o, l) in out[1..].iter_mut().zip(&self.more_lines) {
-            *o = [&l.left, &l.center, &l.right];
-        }
+    pub fn lines(&self) -> Vec<[&str; 3]> {
+        let mut out = vec![[
+            self.left.as_str(),
+            self.center.as_str(),
+            self.right.as_str(),
+        ]];
+        out.extend(
+            self.more_lines
+                .iter()
+                .map(|l| [l.left.as_str(), l.center.as_str(), l.right.as_str()]),
+        );
         out
     }
 }

@@ -376,7 +376,7 @@ set right "#{usage[type=5h]} │ #{usage[type=7d]}"
 
 ## Lines
 
-`set left@2` and friends add lines, up to 4. The `two-line` preset puts session and git on line 1 and usage below. `set wrap on` flows a line too long for `COLUMNS` onto more rows instead. See [Lines and wrapping](config.md#lines-and-wrapping).
+`set left@2` and friends add lines, up to 64. The `two-line` preset puts session and git on line 1 and usage below. `set wrap on` flows a line too long for `COLUMNS` onto more rows instead. See [Lines and wrapping](config.md#lines-and-wrapping).
 
 ![The two-line preset with the nord palette.](gallery/two-line.svg)
 

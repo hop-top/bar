@@ -279,3 +279,14 @@ fn save_refuses_once_when_the_file_changed_on_disk() {
     ed.save().unwrap();
     assert_eq!(std::fs::read_to_string(&path).unwrap(), ed.text());
 }
+
+#[test]
+fn lines_beyond_four_are_editable() {
+    let mut ed = editor(Some("set left@7 \"#{ctx}\"\n"));
+    // line 7 in use, plus the next line
+    assert_eq!(ed.rows_shown(), 24);
+    at(&mut ed, 18, 0);
+    assert_eq!(ed.selected_segment().as_deref(), Some("#{ctx}"));
+    assert!(ed.insert("model"));
+    assert!(ed.text().contains("set left@7 "));
+}

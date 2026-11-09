@@ -193,7 +193,11 @@ fn draw_rows(f: &mut Frame, ed: &Editor, area: Rect) {
         lines.push(Line::from(spans));
     }
     let block = Block::new().borders(Borders::ALL).title(" layout ");
-    f.render_widget(Paragraph::new(lines).block(block), area);
+    // keep the selected row in view when the lines outgrow the pane
+    let height = area.height.saturating_sub(2) as usize;
+    let top = (ed.cur.row + 1).saturating_sub(height.max(1));
+    let p = Paragraph::new(lines).block(block).scroll((top as u16, 0));
+    f.render_widget(p, area);
 }
 
 fn draw_side(f: &mut Frame, app: &mut App, area: Rect) {

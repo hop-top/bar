@@ -167,6 +167,7 @@ pub fn inspect(config_text: &str) -> Value {
         Ok(c) => json!({
             "ok": true,
             "lines": c.lines(),
+            "max_lines": conf::MAX_LINES,
             "set": settings(&c),
         }),
         Err(errs) => {

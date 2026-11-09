@@ -139,7 +139,7 @@
   // `set` keys bar knows: candidates the renderer does not reject as
   // unknown, so a stale entry here never suggests a wrong key.
   const SET_KEYS = [
-    "left", "center", "right", "separator", "gap", "wrap", "refresh", "icons", "icon-width", "claude-dir",
+    "left", "center", "right", "separator", "gap", "wrap", "max-rows", "refresh", "icons", "icon-width", "claude-dir",
     "compact-at", "update-check", "project-config", "color.good", "color.warn", "color.bad", "skin",
     "skin-glyphs", "palette", "ramp", "price",
   ].filter((k) => !JSON.stringify(JSON.parse(bar.inspect(`set ${k} x`))).includes("unknown set key"));

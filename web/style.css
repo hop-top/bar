@@ -170,7 +170,7 @@ select, input[type="text"], input[type="number"] {
 .row { display: flex; gap: 6px; align-items: center; }
 .row select { flex: 1; }
 
-.tabs { display: flex; gap: 4px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; }
 .tab { border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 6px; padding: 3px 10px; cursor: pointer; font: inherit; font-size: 12px; }
 .tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .tab.empty { color: var(--muted); }

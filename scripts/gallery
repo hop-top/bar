@@ -262,7 +262,7 @@ section(
 
 section(
     "Lines",
-    "`set left@2` and friends add lines, up to 4. The `two-line` preset puts "
+    "`set left@2` and friends add lines, up to 64. The `two-line` preset puts "
     "session and git on line 1 and usage below. `set wrap on` flows a line "
     "too long for `COLUMNS` onto more rows instead. See "
     "[Lines and wrapping](config.md#lines-and-wrapping).",
