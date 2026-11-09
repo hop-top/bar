@@ -9,7 +9,8 @@
 
 const Compose = (() => {
   const SIDES = ["left", "center", "right"];
-  const LINES = 4;
+  const MIN_TABS = 4; // tabs shown at least; a spare empty line follows the last used one
+  let maxLines = 64; // inspect().max_lines
   let ui = null;
   let line = 1;
   let open = null; // {side, i}: the chip whose editor is shown
@@ -51,6 +52,7 @@ const Compose = (() => {
     const key = focusNext || focusedKey();
     focusNext = null;
     lines = inspect ? inspect.lines : null;
+    if (inspect && inspect.max_lines) maxLines = inspect.max_lines;
     ui.off.hidden = !!lines;
     ui.groups.hidden = !lines;
     drawTabs();
@@ -60,7 +62,7 @@ const Compose = (() => {
     }
     groups = {};
     SIDES.forEach((side, s) => {
-      const t = ui.tokens(lines[line - 1][s]);
+      const t = ui.tokens(lines[line - 1] ? lines[line - 1][s] : "");
       groups[side] = t.ok ? t.tokens : [];
     });
     if (open && !(groups[open.side] && groups[open.side][open.i])) open = null;
@@ -68,10 +70,21 @@ const Compose = (() => {
     restoreFocus(key);
   }
 
+  // Tabs for every line up to the last one in use, one spare line to grow
+  // into, and the shown line; at least MIN_TABS, at most the line ceiling.
+  function tabCount() {
+    let last = 0;
+    (lines || []).forEach((l, i) => {
+      if (l.some((g) => g !== "")) last = i + 1;
+    });
+    return Math.min(maxLines, Math.max(MIN_TABS, last + 1, line));
+  }
+
   function drawTabs() {
     ui.tabs.replaceChildren();
-    for (let n = 1; n <= LINES; n++) {
-      const used = lines && lines[n - 1].some((g) => g !== "");
+    const count = tabCount();
+    for (let n = 1; n <= count; n++) {
+      const used = lines && lines[n - 1] && lines[n - 1].some((g) => g !== "");
       const tab = el("button", {
         className: "tab" + (used ? "" : " empty"),
         textContent: `line ${n}`,
@@ -85,10 +98,10 @@ const Compose = (() => {
       if (!used) tab.title = "empty line";
       tab.onclick = () => select(n);
       tab.onkeydown = (e) => {
-        const to = { ArrowRight: n + 1, ArrowLeft: n - 1, Home: 1, End: LINES }[e.key];
+        const to = { ArrowRight: n + 1, ArrowLeft: n - 1, Home: 1, End: count }[e.key];
         if (to === undefined) return;
         e.preventDefault();
-        select(((to - 1 + LINES) % LINES) + 1);
+        select(((to - 1 + count) % count) + 1);
       };
       ui.tabs.append(tab);
     }

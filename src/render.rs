@@ -1,7 +1,7 @@
 //! Wires config, placeholders and layout into the status line text.
 
 use crate::cache::Cache;
-use crate::conf::{Config, LoadResult, Wrap, MAX_LINES};
+use crate::conf::{Config, LoadResult, Wrap};
 use crate::expand::{CommandRunner, Expander};
 use crate::format::{parse, segments, Token};
 use crate::icons;
@@ -282,7 +282,7 @@ fn render_impl(
     let _ansi = style::use_ansi(palette::by_name(config.palette).is_some_and(|p| p.ansi));
     let mut rows: Vec<String> = Vec::new();
     for src in config.lines() {
-        let budget = MAX_LINES - rows.len();
+        let budget = config.max_rows.saturating_sub(rows.len());
         if budget == 0 {
             break;
         }

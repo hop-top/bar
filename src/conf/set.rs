@@ -1,7 +1,9 @@
 //! `set` directives: one key and value each, plus `set price` and the
 //! palette fill-in applied after the whole file is read.
 
-use super::{code, duration, layout_key, Config, Icons, ProjectMode, Skin, SkinGlyphs, Wrap};
+use super::{
+    code, duration, layout_key, Config, Icons, ProjectMode, Skin, SkinGlyphs, Wrap, MAX_LINES,
+};
 use crate::compact::CompactAt;
 use crate::palette;
 use crate::prices::Price;
@@ -14,6 +16,9 @@ fn group_slot<'a>(c: &'a mut Config, group: &str, line: usize) -> &'a mut String
             "center" => &mut c.center,
             _ => &mut c.right,
         };
+    }
+    if c.more_lines.len() < line - 1 {
+        c.more_lines.resize(line - 1, Default::default());
     }
     let l = &mut c.more_lines[line - 2];
     match group {
@@ -40,6 +45,12 @@ pub(super) fn apply_set(c: &mut Config, key: &str, val: &str) -> Result<(), Stri
                 "off" | "auto" => Wrap::Off,
                 "on" => Wrap::On,
                 _ => return Err(format!("invalid wrap `{val}` (off|on)")),
+            }
+        }
+        "max-rows" => {
+            c.max_rows = match val.parse::<usize>() {
+                Ok(n) if (1..=MAX_LINES).contains(&n) => n,
+                _ => return Err(format!("invalid max-rows `{val}` (1-{MAX_LINES})")),
             }
         }
         "refresh" => c.refresh = duration(val)?,

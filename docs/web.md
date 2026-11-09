@@ -42,7 +42,7 @@ bar web plugins -o plugins.json
 
 **+ placeholder** opens a search over core placeholders and plugins, each with its description and a sample drawn with the preview data; a name that is in neither list is added as a plugin. Added to a group that ends in a placeholder, it comes after a separator, so values never run together. A chip opens its editor on click: each option with its default and a line of help, or the text of a text chip (spaces show as `␠`).
 
-Keyboard: each group's chips are one tab stop. Arrow keys move between chips, Alt+arrow keys reorder, Delete removes, Enter opens the editor and Escape closes it. The line tabs take arrow keys, Home and End. Focus stays on the chip or field you edited.
+Keyboard: each group's chips are one tab stop. Arrow keys move between chips, Alt+arrow keys reorder, Delete removes, Enter opens the editor and Escape closes it. The line tabs (one per line in use, a spare empty line after the last, at least four, up to line 64) take arrow keys, Home and End. Focus stays on the chip or field you edited.
 
 The `bar.conf` text is the state. Layout, preset and look controls rewrite only the `set` lines they own (`set left`, `set center@2`, `set skin`, ...), so comments, `default`, `rule`, `account`, `plugin` and `set price` lines stay as written. Edit the text directly for anything the controls do not cover; the controls follow.
 

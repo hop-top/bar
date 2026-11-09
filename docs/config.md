@@ -59,7 +59,7 @@ A project file comes with the repository, so what it may do is set in your confi
 
 | Directive | Form |
 |-----------|------|
-| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-4) `subagent subagent-hide separator gap wrap refresh icons icon-width skin skin-glyphs palette claude-dir compact-at project-config update-check color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
+| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-64) `subagent subagent-hide separator gap wrap max-rows refresh icons icon-width skin skin-glyphs palette claude-dir compact-at project-config update-check color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
 | `default` | `default <placeholder> key=value ...` |
 | `account` | `account "<glob>" <label> <color>` |
 | `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%`; see [Rules](#rules) |
@@ -69,11 +69,12 @@ Quote values with spaces (double quotes; a value is one token). `#` outside quot
 
 | `set` key | Values |
 |---|---|
-| `left`, `center`, `right` | Layout of line 1; `left@N`, `center@N`, `right@N` for lines 2-4. See [Lines and wrapping](#lines-and-wrapping) |
+| `left`, `center`, `right` | Layout of line 1; `left@N`, `center@N`, `right@N` for lines 2-64. See [Lines and wrapping](#lines-and-wrapping) |
 | `subagent` | Layout of each subagent row below the prompt; see [Subagent rows](#subagent-rows) |
 | `subagent-hide` | Statuses whose subagent rows are hidden, a comma list (`completed,failed,killed`); default none. See [Subagent rows](#subagent-rows) |
 | `separator` | Changes only where segments split (the text a layout is cut at). Output between segments stays ` │ `. Default `│` |
 | `gap` | Fewest spaces between the left and right groups (and around a centred group) on one row, default `3`; with less room the groups are joined by ` │ ` or the centre group moves to its own row. See [Lines and wrapping](#lines-and-wrapping) |
+| `max-rows` | most rows a render prints, 1-64 (default 16); see [Lines and wrapping](#lines-and-wrapping) |
 | `wrap` | `off` (default) or `on`; see [Lines and wrapping](#lines-and-wrapping). `auto` is read as `off` |
 | `refresh` | Default ttl floor for plugins, default `5s`. A number with a unit: `s`, `m`, `h` or `d` (`30s`, `2m`). `gh` lists use 120 s and `%cmd%` values 1 h, whatever this says |
 | `icons` | `none` (default, output unchanged), `nerdfont` or `emoji`. See [Icons](#icons) |
@@ -629,7 +630,7 @@ Skin separators, `set skin-glyphs`: `nerd` (default) uses the Nerd Font / Powerl
 
 ### Lines and wrapping
 
-`left`, `center` and `right` make line 1. `set left@N`, `center@N` and `right@N`, N from 2 to 4, make line N; `left@1` is `left`. A line whose groups all render empty is left out, so a line of git state disappears outside a repository.
+`left`, `center` and `right` make line 1. `set left@N`, `center@N` and `right@N`, N from 2 to 64, make line N; `left@1` is `left`. A line whose groups all render empty is left out, so a line of git state disappears outside a repository.
 
 Each line is laid out on its own, with the same `COLUMNS`, margin, gap and skin, in a width of `COLUMNS` minus 4 cells:
 
@@ -643,7 +644,7 @@ Each line is laid out on its own, with the same `COLUMNS`, margin, gap and skin,
 - Wrapped rows are left-aligned (centre and right alignment are dropped) and keep the skin: backgrounds keep cycling, and Powerline arrows point right.
 - Without `COLUMNS` nothing is measured, so wrapping never starts.
 
-A render prints at most 4 rows, all lines together. Rows past the fourth are dropped. With `wrap on`, the fourth row is filled like any other, whole segments while they fit, and the segments after it are dropped; segments are never cut.
+A render prints at most `max-rows` rows (default 16, `set max-rows N`, N from 1 to 64), all lines and wrapped rows together. Rows past the limit are dropped. With `wrap on`, the last allowed row is filled like any other, whole segments while they fit, and the segments after it are dropped; segments are never cut. The limit only guards against a runaway config: Claude Code states no maximum for the number of lines a status line prints, and each extra row takes a row of the terminal.
 
 ### Subagent rows
 
@@ -742,7 +743,7 @@ Each row is laid out like the status line, with the same skin, palette, icons an
 `bar check` lints the config without rendering and prints the file it read (or says the built-in layout is in use), and the [project config](#project-config) found from the working directory with its mode (`not applied` under `off`). Both files are checked together, as `bar render` applies them.
 
 - Parse errors with line numbers. An unreadable file is one error without a line.
-- Line numbers in `left@N`, `center@N`, `right@N` (1-4; anything else is an error).
+- Line numbers in `left@N`, `center@N`, `right@N` (1-64; anything else is an error).
 - Layout placeholders (`left`, `center`, `right`, and their `@N` forms) and `default` lines: unknown placeholder, unknown option, bad option value. Plugin placeholders are checked against their `--ext-info` schema.
 - `subagent`: the same, plus a plugin placeholder there is an error (rows draw none), and a row placeholder (`task.*`) in any other layout is one.
 - `prs` / `issues`: invalid `limit`, invalid `checks` item, invalid `author` / `assignee` / `label` expression.
@@ -799,7 +800,7 @@ Width comes from `COLUMNS`, else 120.
 `bar edit` opens the config file in a full-screen terminal editor (macOS, Linux and Windows terminals). It edits your config, the file the [search order](#config-file) finds; with none, it starts from the built-in layout and saving creates the first search path's file. A [project config](#project-config) is neither edited nor applied to its preview.
 
 - Preview: the [bar preview](#bar-preview) sample data drawn by the renderer at the terminal's width, redrawn on every change; `t` cycles the pace state. A plugin placeholder shows the first sample of its [`web` metadata](plugins.md#web-configurator-metadata) that matches its options, painted as a real output, from the same cached `--ext-info` `bar web plugins` reads (run once when not cached); a plugin without a matching sample shows its name, muted. A config error shows the error lines instead.
-- Layout: one row per group (`left`, `center`, `right`) of every line in use plus the next line. Arrows (or `h j k l`) select a segment; `H`/`L` move it within its group, `J`/`K` to the next or previous group; `d` deletes it.
+- Layout: one row per group (`left`, `center`, `right`) of every line in use plus the next line (up to line 64); the pane scrolls with the selection. Arrows (or `h j k l`) select a segment; `H`/`L` move it within its group, `J`/`K` to the next or previous group; `d` deletes it.
 - Placeholders: `a` opens the picker, a fuzzy search over core placeholders and `bar-<name>` plugins on `PATH` (by name and description), and adds the pick as a new segment after the selected one.
 - Options: `enter` lists the options of the selected placeholder (`tab` picks another one in the segment), from the core option table or the plugin's `--ext-info` schema, plus `icon`, `bg` and, on plugins, `click`. Left and right cycle a fixed set of values, `enter` types a value (checked against the option's kind), `backspace` removes the option.
 - Style: `p` preset, `s` skin, `c` palette, `i` icons; the preview follows the highlighted value before `enter` applies it. A preset sets its layout (its segments joined with your `separator`) and its `skin`, `skin-glyphs`, `palette`, `icons` and `gap`, and drops those keys where it sets none; every other line stays.

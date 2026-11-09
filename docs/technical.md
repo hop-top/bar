@@ -2,11 +2,11 @@
 
 ## Flow
 
-`bar render`: stdin session JSON, config, `COLUMNS` in; at most four rows out; always exit 0.
+`bar render`: stdin session JSON, config, `COLUMNS` in; at most `max-rows` (16) rows out; always exit 0.
 
 1. `session::parse` (lenient) and `conf::load` with the session's directory: the user config, then the project `.bar.conf` (`conf::project::find`, stats only) applied over it by `conf::parse_layers`.
 2. Per group (`left`, `center`, `right`): `format::parse` into tokens, split into segments at the separator, render each placeholder, drop empty segments.
-3. Plain skin: `layout::join` joins each group's segments and `layout::compose_groups` fits the groups to `COLUMNS` minus margin 4 (one line, else two). Other skins: `skin::paint` draws each group and returns its text with its width (skin glyphs one cell each), then `layout::compose_groups` fits them the same way. Each configured line (`Config::lines`) goes through this alone; empty lines are skipped and the rows are capped at 4. With `set wrap on`, a line that `layout::place_groups` reports as not fitting one row is cut into rows by `layout::flow` at segment boundaries and each row is drawn as a left group; segments past the fourth row are dropped.
+3. Plain skin: `layout::join` joins each group's segments and `layout::compose_groups` fits the groups to `COLUMNS` minus margin 4 (one line, else two). Other skins: `skin::paint` draws each group and returns its text with its width (skin glyphs one cell each), then `layout::compose_groups` fits them the same way. Each configured line (`Config::lines`) goes through this alone; empty lines are skipped and the rows are capped at `max-rows`. With `set wrap on`, a line that `layout::place_groups` reports as not fitting one row is cut into rows by `layout::flow` at segment boundaries and each row is drawn as a left group; segments past the last allowed row are dropped.
 
 `bar subagent`: the `subagentStatusLine` JSON (`columns`, `tasks`) in; one `{"id", "content"}` JSON line per drawn row out; always exit 0. `subagent::parse` (lenient, at most 64 tasks), then per task `subagent::session` builds a `Session` from the task (model, effort, context, directory; no session id or transcript) with `Session::task` set, and `render::render_row` renders the `subagent` layout as one left group through the same segment, skin and palette code, dropping trailing segments past `columns` and clipping what is left with `style::clip` (escape-aware). `placeholders::lookup_in` resolves `task.*` names only when `Session::task` is set; plugins are not looked up there.
 
