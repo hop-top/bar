@@ -40,6 +40,8 @@ pub(super) enum Rec {
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(super) struct Usage<'a> {
     pub ts: Option<i64>,
+    /// Not a sidechain entry.
+    pub main: bool,
     pub id: Cow<'a, str>,
     pub input: u64,
     pub cache_creation: u64,
@@ -262,6 +264,7 @@ fn facts_typed<'a, C: Deserialize<'a>>(
         let split = u.cache_creation.map(|s| s.0);
         Some(Usage {
             ts: ts_ms.map(|t| t.div_euclid(1000)),
+            main,
             id: m.id.unwrap_or_default(),
             input: u.input_tokens.unwrap_or(0),
             cache_creation: u.cache_creation_input_tokens.unwrap_or(0),
@@ -324,6 +327,7 @@ fn facts_tree(text: &str, boundary: bool, skill: bool) -> Option<Facts<'static>>
             let split = u.get("cache_creation").filter(|s| s.is_object());
             Usage {
                 ts: ts_ms.map(|t| t.div_euclid(1000)),
+                main,
                 id: Cow::Owned(v["message"]["id"].as_str().unwrap_or_default().into()),
                 input: n("input_tokens"),
                 cache_creation: n("cache_creation_input_tokens"),

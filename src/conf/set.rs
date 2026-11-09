@@ -2,6 +2,7 @@
 //! palette fill-in applied after the whole file is read.
 
 use super::{code, duration, layout_key, Config, Icons, Skin, SkinGlyphs, Wrap};
+use crate::compact::CompactAt;
 use crate::palette;
 use crate::prices::Price;
 
@@ -56,6 +57,11 @@ pub(super) fn apply_set(c: &mut Config, key: &str, val: &str) -> Result<(), Stri
             }
         }
         "claude-dir" => c.claude_dir = Some(val.into()),
+        "compact-at" => {
+            c.compact_at = Some(CompactAt::parse(val).ok_or_else(|| {
+                format!("invalid compact-at `{val}` (tokens like 200k, or 1%..100%)")
+            })?)
+        }
         "color.good" => c.colors.good = code(val)?,
         "color.warn" => c.colors.warn = code(val)?,
         "color.bad" => c.colors.bad = code(val)?,

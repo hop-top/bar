@@ -14,6 +14,14 @@ pub struct SpendLimit {
     pub resets_at: i64,
 }
 
+/// `context_window.current_usage`: token counts of the last API call.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct CtxUsage {
+    pub input: u64,
+    pub cache_creation: u64,
+    pub cache_read: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Session {
     pub cwd: String,
@@ -23,6 +31,12 @@ pub struct Session {
     pub session_id: String,
     pub transcript_path: String,
     pub context_used: Option<f64>,
+    /// `context_window.context_window_size`; positive or `None`.
+    pub context_size: Option<u64>,
+    /// `context_window.total_input_tokens`.
+    pub context_tokens: Option<u64>,
+    /// `context_window.current_usage`; `None` while it is `null`.
+    pub context_usage: Option<CtxUsage>,
     pub five_hour: Option<Window>,
     pub seven_day: Option<Window>,
     pub spend_limit: Option<SpendLimit>,
@@ -72,6 +86,17 @@ fn num_at(v: &Value, path: &[&str]) -> Option<f64> {
         .filter(|n| n.is_finite() && *n >= 0.0)
 }
 
+fn current_usage(v: &Value) -> Option<CtxUsage> {
+    let u = v.get("context_window")?.get("current_usage")?;
+    u.is_object().then_some(())?;
+    let n = |k: &str| num_at(u, &[k]).map_or(0, |n| n as u64);
+    Some(CtxUsage {
+        input: n("input_tokens"),
+        cache_creation: n("cache_creation_input_tokens"),
+        cache_read: n("cache_read_input_tokens"),
+    })
+}
+
 fn count_at(v: &Value, path: &[&str]) -> u64 {
     num_at(v, path).map_or(0, |n| n as u64)
 }
@@ -103,6 +128,11 @@ pub fn parse(input: &str) -> Session {
             .get("context_window")
             .and_then(|c| c.get("used_percentage"))
             .and_then(Value::as_f64),
+        context_size: num_at(&v, &["context_window", "context_window_size"])
+            .filter(|n| *n >= 1.0)
+            .map(|n| n as u64),
+        context_tokens: num_at(&v, &["context_window", "total_input_tokens"]).map(|n| n as u64),
+        context_usage: current_usage(&v),
         five_hour: window(&v, "five_hour"),
         seven_day: window(&v, "seven_day"),
         spend_limit: spend_limit(&v),

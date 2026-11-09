@@ -4,6 +4,7 @@ compile_error!("bar supports Unix (macOS, Linux) and Windows only");
 pub mod cache;
 pub mod check;
 pub mod click;
+pub mod compact;
 pub mod conf;
 pub mod expand;
 pub mod expr;

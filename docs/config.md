@@ -3,7 +3,7 @@
 How to write `bar.conf`: where it lives, the directives, every placeholder and its options, styling, layout and the commands around the config. Pictures of skins, skin glyphs, segment backgrounds, palettes, bar glyphs, usage components, pace states, icons, lines and wrapping, and PR checks: [Gallery](gallery.md).
 
 - [Overview](#overview): [config file](#config-file), [directives](#directives), [rules](#rules), [minimal example](#minimal-example)
-- [Placeholders](#placeholders): [session](#session), [usage](#usage), [tokens, cache, cachettl](#tokens-cache-cachettl), [ttft, tps, misses](#ttft-tps-misses), [spendhist](#spendhist), [git and directories](#git-and-directories), [prs and issues](#prs-and-issues), [account, agents, sessions, tmux](#account-agents-sessions-tmux), [every placeholder](#options-on-every-placeholder), [values](#values)
+- [Placeholders](#placeholders): [session](#session), [ctx](#ctx), [usage](#usage), [tokens, cache, cachettl](#tokens-cache-cachettl), [ttft, tps, misses](#ttft-tps-misses), [spendhist](#spendhist), [git and directories](#git-and-directories), [prs and issues](#prs-and-issues), [account, agents, sessions, tmux](#account-agents-sessions-tmux), [every placeholder](#options-on-every-placeholder), [values](#values)
 - [Styling](#styling): [skins](#skins), [palettes](#palettes), [icons](#icons), [glyphs](#glyphs), [colours](#colours)
 - [Layout](#layout): [lines and wrapping](#lines-and-wrapping)
 - [Commands](#commands): [bar check](#bar-check), [bar preview](#bar-preview), [presets and bar init](#presets), [click handler](#click-handler-macos), [clickable commands](#clickable-commands), [hooks](#hooks)
@@ -58,6 +58,7 @@ Quote values with spaces (double quotes; a value is one token). `#` outside quot
 | `skin-glyphs` | `nerd` (default) or `ascii`. See [Glyphs](#glyphs) |
 | `palette` | `default`, `nord`, `gruvbox`, `dracula`, `solarized`, `mono` or `terminal`. See [Palettes](#palettes) |
 | `claude-dir` | Claude Code config dir read by [spendhist](#spendhist) |
+| `compact-at` | Where Claude Code auto-compacts, for [ctx](#ctx): tokens (`200000`, `200k`, `1M`) or a percent of the context window (`1%`-`100%`). Unset, bar works it out; see [Auto-compaction point](#auto-compaction-point) |
 | `color.good`, `color.warn`, `color.bad`, `ramp` | State colours (one code `0`-`255`) and usage ramp (exactly 11 codes, quoted, worst score first). See [Colours](#colours) |
 | `price` | Model price override for [spendhist](#spendhist) |
 
@@ -105,7 +106,7 @@ Fields of the session: model, effort, context, cost and the rest of the statusli
 
 | Placeholder | Option | Default | Meaning |
 |---|---|---|---|
-| `model`, `effort`, `ctx` | `click` | on | `none` turns the command link off; the link appears only once the handler is installed (`bar click install`). See [Clickable commands](#clickable-commands) |
+| `model`, `effort` | `click` | on | `none` turns the command link off; the link appears only once the handler is installed (`bar click install`). See [Clickable commands](#clickable-commands) |
 | `cost` | `fmt` | `usd` | Session cost, `$1.23`; `<$0.01` under a cent. Hidden when absent. `usd` is the only value |
 | `burn` | none | | Cost per hour, `$4.10/h`; hidden for the first 60 s of the session |
 | `duration` | none | | Session time: `45s`, `12m`, `1h05m` |
@@ -120,12 +121,67 @@ Fields of the session: model, effort, context, cost and the rest of the statusli
 
 - `model`: `model.display_name` (else `model.id`) without a leading `Claude `, muted, e.g. `Opus 4.7`.
 - `effort`: `effort.level` as `[high]`, muted. When the session JSON has none, it reads `effortLevel` from `<claude dir>/settings.json` (`modelSettings.<model id>.effortLevel` first); hidden when neither is set.
-- `ctx`: `context_window.used_percentage` as `ctx 38%`, coloured on the ramp from green at 0% to red from 91%.
+- `ctx`: context use, `ctx 38%` by default; options and components under [ctx](#ctx).
 - `cost`, `burn`, `duration`, `lines`, `version`, `style`, `vim`, `agent`, `thinking` and `fast` read the statusline JSON fields `cost.total_cost_usd`, `cost.total_duration_ms`, `cost.total_lines_added`, `cost.total_lines_removed`, `version`, `output_style.name`, `vim.mode`, `agent.name`, `thinking.enabled` and `fast_mode`. Missing, mistyped, negative or non-finite values hide the placeholder. None of these are in the default layout.
 - `cost` is the session's own cost; `spend` is the account spend-limit window.
 - `sid` reads `session_id`; a non-numeric `len` renders as 8 and `bar check` rejects it.
 - `compactions` counts `system` transcript entries with subtype `compact_boundary`; `skills` counts `Skill` tool calls in non-sidechain assistant entries (skills a user starts with a slash command are not counted). Both share the transcript scan of [`tokens`](#tokens-cache-cachettl), so they are empty without a readable `transcript_path`.
 - The statusline JSON carries no voice-mode, sandbox or skill field, so there are no placeholders for them.
+
+### ctx
+
+Context window use: percentage, bar, token counts, room before auto-compaction, the cache split of the last request and growth per request.
+
+`#{ctx[show=pct, of=window|compact, count=used|left, glyphs=blocks, color=solid|gradient, width=5, click=none]}`
+
+| Option | Default | Meaning |
+|---|---|---|
+| `show` | `pct` | list of `pct`, `bar`, `gauge`, `tokens`, `left`, `split`, `growth`, `trend` |
+| `of` | `window` | `window` measures `pct`, `bar`, `gauge` and `tokens` against the context window, `compact` against the [auto-compaction point](#auto-compaction-point) |
+| `count` | `used` | `used`, `left`: what `pct`, `bar` and `gauge` show |
+| `glyphs` | `blocks` | `blocks`, `shades`, `dots`, `squares`, `bars`, `braille`, `eighths`; see [Glyphs](#glyphs) |
+| `color` | `solid` | `solid`, `gradient` |
+| `width` | `5` | Bar cells, clamped to 1..40 |
+| `click` | on | `none` turns the `/compact` link off; see [Clickable commands](#clickable-commands) |
+
+Components (`show`), in the order listed:
+
+- `pct`: `38%`. With `of=window` this is `context_window.used_percentage`.
+- `bar`, `gauge`: the same value as a bar of `width` cells or one `▁..█` cell, drawn with the [usage glyph sets](#glyphs).
+- `tokens`: `76k/200k`, tokens in the context (`context_window.total_input_tokens`, else derived from the percentage) over the window (`context_window.context_window_size`) or, with `of=compact`, over the auto-compaction point.
+- `left`: `124k left`, tokens until auto-compaction. Hidden while auto-compaction is off.
+- `split`: `r 70k w 4.8k new 1.2k`, the last request's context read from the prompt cache, written to it, and sent uncached (`context_window.current_usage`). Hidden before the first request and right after a compaction, while Claude Code sends `null`.
+- `growth`: `+3.2k`, how much the context grew on the last request (negative when it shrank).
+- `trend`: `+2.1k/req`, average growth per request since the last compaction.
+- A component without its data is left out; the placeholder hides when nothing is left.
+
+Colour:
+
+- `pct`, `bar`, `gauge` and the `tokens` count use the ramp from green at 0% used to red from 91%, on the measured scale; `count=left` changes what is drawn, not the colour.
+- `color=gradient` colours each filled bar cell by its own value, the last filled cell matching the solid colour (the good end first for `count=used`, the bad end first for `count=left`).
+- `left` is coloured by how full the context is against the auto-compaction point. `split`, `growth` and `trend` are muted.
+
+Requests and the transcript:
+
+- `growth` and `trend` come from the session transcript (`transcript_path`), read in the same incremental pass as [tokens](#tokens-cache-cachettl). Each main-conversation request's context is its `input_tokens` plus both cache counts; a message written as several lines counts once, sidechain entries are skipped, and a `compact_boundary` starts a new series.
+- Both need two requests since the last compaction; they render empty without a readable transcript.
+- A request is one API call: a turn with tool calls makes several.
+- The statusline JSON and the transcript have no per-source sizes (system prompt, tools, memory files, messages), so there is no such breakdown; `/context` in Claude Code shows it.
+
+#### Auto-compaction point
+
+The statusline JSON does not say when Claude Code will compact, so bar works it out, first match wins:
+
+1. `set compact-at`: tokens, or a percent of the context window.
+2. Off: `DISABLE_AUTO_COMPACT=1` or `DISABLE_COMPACT=1` in the environment, or `"autoCompactEnabled": false` in the user settings file. `left` hides; `of=compact` falls back to the window.
+3. The window: `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (`200000`, `200k`, `1M`; kept within 100k-1M, ignored when not a number), else `modelSettings.<model.id>.autoCompactWindow` in the user settings file (`"auto"` selects the default), else its top-level `autoCompactWindow`.
+4. The default: about 967k tokens for a 1M context window, otherwise the whole window.
+
+The result is capped at the context window. When it lies below the window, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` (1-100) lowers it to that percent.
+
+- The environment is bar's own, which Claude Code passes to the status line command.
+- The user settings file is `settings.json` in `CLAUDE_CONFIG_DIR`, else `~/.claude`, read only when `left` or `of=compact` is used. Project, local and managed settings files and the `--autocompact` flag are not read; set `compact-at` when one of those decides the window.
+- `context_window.used_percentage` measures against the full window, so `of=window` reads 97% for a 1M session that is about to compact; `of=compact` reads 100% there.
 
 ### usage
 
@@ -575,7 +631,7 @@ Exit 0 when there are no errors (warnings allowed), 2 on a config error. `--form
 
 `bar preview [--state early|burning|final] [--preset [<name>]]` renders your layout (or a [preset](#presets)) with built-in sample data for every core placeholder. A bare `--preset` renders every preset in turn, each under a muted `── <name> ──` header.
 
-- Sample session: model, effort, context, usage windows, spend limit, cost, duration, lines, version, style, vim mode, agent, thinking, fast mode, session id, compaction and skill counts.
+- Sample session: model, effort, context (38% of 200k, cache split, growth), usage windows, spend limit, cost, duration, lines, version, style, vim mode, agent, thinking, fast mode, session id, compaction and skill counts.
 - Stand-ins for the rest: repo, branch, git state, worktree, PRs (#131 failing CI, #129 pending, #128 passing), issues, account label, subagents, open sessions, spend history, transcript tokens and cache, directories.
 - In the `final` state the sample tree is clean, so `dirty` is empty.
 - It reads no session, account, git repository, `gh` or plugin, and writes no state. Plugin placeholders render empty.
@@ -728,7 +784,7 @@ In the state directory:
 | Path | Written by | Holds |
 |---|---|---|
 | `cache/` | render, `bar refresh` | cached `gh`, `git status`, `tmux`, `%cmd%` and plugin results, locks and failure markers |
-| `transcript/<hash>.json` | render, `bar refresh` | per-transcript offsets and token totals ([tokens](#tokens-cache-cachettl)) |
+| `transcript/<hash>.json` | render, `bar refresh` | per-transcript offsets, token totals and recent context sizes ([tokens](#tokens-cache-cachettl), [ctx](#ctx)) |
 | `spendhist/<hash>.json` | `bar refresh` | spend history scan ([spendhist](#spendhist)) |
 | `hist-5h`, `hist-7d` | render | usage samples for `spark` |
 | `pct-5h`, `pct-7d`, `toggle-<plugin>`, `toggle-<plugin>.<toggle>` | `bar toggle` | toggle state: present means on |
@@ -749,6 +805,7 @@ Environment variables bar reads:
 | `BAR_APP_DIR` | Where `bar click install` puts `bar-click.app` (default `~/Applications`) |
 | `BAR_REFRESH_TIMEOUT` | Seconds a background `bar refresh` may run, default 20, clamped to 1-29 |
 | `CLAUDE_CONFIG_DIR` | Claude Code config dir: `settings.json`, `.claude.json`, `sessions/`, `projects/` |
+| `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`, `DISABLE_AUTO_COMPACT`, `DISABLE_COMPACT` | [Auto-compaction point](#auto-compaction-point) for `ctx` |
 | `ANTHROPIC_API_KEY` | Only tested for presence, by `account` |
 | `TMUX`, `TMUX_PANE` | `tmux` placeholder |
 | `TZ` | Local zone for `spendhist` (Unix) |
