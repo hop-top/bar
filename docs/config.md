@@ -572,7 +572,7 @@ Links point at the `origin` remote's web address: ssh and scp remotes become `ht
 
 #### Opening directories
 
-`open` makes `cwd`, `root` and `repo` a link that opens the directory, shown in full or not (`base=1`), in the file manager or an editor:
+`open` makes `cwd`, `root` and `repo` a link that opens the directory, in the file manager or an editor. The link always names the full path, whether the text is shown whole, abbreviated (`fish`, `depth`) or as its last component (`base=1`):
 
 | Value | Link | Opens in |
 |---|---|---|
