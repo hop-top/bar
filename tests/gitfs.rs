@@ -22,7 +22,7 @@ impl Tmp {
         ISOLATE.call_once(|| {
             std::env::set_var("GIT_CONFIG_GLOBAL", "/dev/null");
         });
-        let p = std::env::temp_dir().join(format!(
+        let p = crate::common::tmp::root().join(format!(
             "bar-gitfs-{}-{}",
             std::process::id(),
             N.fetch_add(1, Ordering::SeqCst)
@@ -37,7 +37,7 @@ impl Tmp {
 
 impl Drop for Tmp {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        crate::common::tmp::remove(&self.0);
     }
 }
 

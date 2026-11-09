@@ -2,6 +2,7 @@
 #![cfg(unix)]
 //! GitLab remotes for `prs` and `issues`, with a fake `glab` on PATH.
 
+mod common;
 #[path = "common/gh_fx.rs"]
 mod gh_fx;
 

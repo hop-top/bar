@@ -1,6 +1,7 @@
 // Unix fixtures (shell scripts, modes, POSIX paths); Windows coverage: tests/windows.rs
 #![cfg(unix)]
 
+mod common;
 #[path = "common/gh_fx.rs"]
 mod gh_fx;
 

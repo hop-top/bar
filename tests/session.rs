@@ -57,7 +57,7 @@ fn workspace_current_dir_wins_over_cwd() {
 #[test]
 fn render_exits_zero_on_garbage_stdin() {
     for input in [&b"\xff\xfe{{{"[..], b"null", b"[1,2]", b"{\"cwd\":5}", b""] {
-        let root = std::env::temp_dir().join(format!("bar-session-{}", std::process::id()));
+        let root = common::tmp::Dir::new(&format!("bar-session-{}", std::process::id()));
         let (iso, cwd) = common::isolation(&root);
         Command::cargo_bin("bar")
             .unwrap()

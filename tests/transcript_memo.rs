@@ -1,3 +1,4 @@
+mod common;
 use hop_bar::cache::Cache;
 use hop_bar::conf::Config;
 use hop_bar::options::Options;
@@ -9,8 +10,7 @@ use std::sync::atomic::Ordering;
 
 #[test]
 fn three_placeholders_share_one_load() {
-    let dir = std::env::temp_dir().join(format!("bar-memo-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = common::tmp::Dir::new(&format!("bar-memo-{}", std::process::id()));
     let file = dir.join("t.jsonl");
     std::fs::write(
         &file,
@@ -40,5 +40,4 @@ fn three_placeholders_share_one_load() {
         assert!(out.is_some(), "{n}");
     }
     assert_eq!(LOADS.load(Ordering::Relaxed) - before, 1);
-    let _ = std::fs::remove_dir_all(&dir);
 }

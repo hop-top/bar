@@ -1,5 +1,6 @@
 // Unix fixtures (shell scripts, modes, POSIX paths); Windows coverage: tests/windows.rs
 #![cfg(unix)]
+mod common;
 
 use hop_bar::cache::{Job, Request};
 use hop_bar::gitfs::{discover, Found};
@@ -12,7 +13,7 @@ use std::time::Duration;
 static N: AtomicUsize = AtomicUsize::new(0);
 
 fn tmp() -> PathBuf {
-    let p = std::env::temp_dir().join(format!(
+    let p = crate::common::tmp::root().join(format!(
         "bar-gitst-{}-{}",
         std::process::id(),
         N.fetch_add(1, Ordering::SeqCst)

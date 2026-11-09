@@ -1,5 +1,6 @@
 //! User palette files: `palettes/<name>.conf` beside `bar.conf`, the file
 //! format, how `set palette` finds them, and what `bar check` reports.
+mod common;
 
 use hop_bar::check::{check_text, Level};
 use hop_bar::color::Color;
@@ -23,7 +24,7 @@ struct Tree(PathBuf);
 
 impl Tree {
     fn new() -> Tree {
-        let t = std::env::temp_dir().join(format!(
+        let t = crate::common::tmp::root().join(format!(
             "bar-palette-{}-{}",
             std::process::id(),
             N.fetch_add(1, Ordering::SeqCst)
@@ -52,7 +53,7 @@ impl Tree {
 
 impl Drop for Tree {
     fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
+        crate::common::tmp::remove(&self.0);
     }
 }
 

@@ -59,7 +59,7 @@ pub struct Fx {
 impl Fx {
     pub fn new(remote: Option<&str>) -> Fx {
         let lock = ENV.lock().unwrap_or_else(|e| e.into_inner());
-        let root = std::env::temp_dir().join(format!(
+        let root = crate::common::tmp::root().join(format!(
             "bar-gh-{}-{}",
             std::process::id(),
             N.fetch_add(1, Ordering::SeqCst)

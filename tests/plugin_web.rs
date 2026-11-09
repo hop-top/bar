@@ -225,14 +225,12 @@ fn web_plugins_maps_options_and_hints() {
 
 // --- reference plugins and the command ---
 
-fn root() -> PathBuf {
-    let r = std::env::temp_dir().join(format!(
+fn root() -> common::tmp::Dir {
+    common::tmp::Dir::new(&format!(
         "bar-plugin-web-{}-{}",
         std::process::id(),
         N.fetch_add(1, Ordering::SeqCst)
-    ));
-    std::fs::create_dir_all(&r).unwrap();
-    r
+    ))
 }
 
 fn reference() -> PathBuf {

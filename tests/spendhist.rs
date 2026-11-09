@@ -1,3 +1,4 @@
+mod common;
 use hop_bar::prices::{self, Price};
 use hop_bar::spendhist::{self, Summary, Tz};
 use std::fs;
@@ -7,7 +8,7 @@ struct Fx(PathBuf);
 
 impl Fx {
     fn new(tag: &str) -> Fx {
-        let p = std::env::temp_dir().join(format!("bar-sh-{tag}-{}", std::process::id()));
+        let p = crate::common::tmp::root().join(format!("bar-sh-{tag}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&p);
         fs::create_dir_all(p.join("claude/projects/p1")).unwrap();
         fs::create_dir_all(p.join("claude/projects/p2")).unwrap();
@@ -43,7 +44,7 @@ impl Fx {
 
 impl Drop for Fx {
     fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
+        crate::common::tmp::remove(&self.0);
     }
 }
 

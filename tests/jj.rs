@@ -1,3 +1,4 @@
+mod common;
 use hop_bar::cache::{Job, Request};
 use hop_bar::placeholders::jj::{
     args, cache_key, discover, nearer_than, parse, Info, DEFAULT_SHOW, SHOW, TEMPLATE,
@@ -8,7 +9,7 @@ use std::path::{Path, PathBuf};
 pub const SAMPLE: &str = "kp\0qxywon\x003f2a\x001b9c\0feat\0main\x1ffeat\0other\x1fdefault\0empty conflict\0fix: the thing\0";
 
 fn tmp(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("bar-jj-{tag}-{}", std::process::id()));
+    let d = crate::common::tmp::root().join(format!("bar-jj-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d.canonicalize().unwrap()

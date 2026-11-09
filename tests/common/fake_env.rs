@@ -49,7 +49,7 @@ pub struct Fake {
 impl Fake {
     /// Idle live session on `TTY`, own pane `%1` with an empty box.
     pub fn new() -> Fake {
-        let root = std::env::temp_dir().join(format!(
+        let root = crate::common::tmp::root().join(format!(
             "bar-click-env-{}-{}",
             std::process::id(),
             N.fetch_add(1, Ordering::SeqCst)
@@ -112,7 +112,7 @@ impl Default for Fake {
 
 impl Drop for Fake {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.root);
+        crate::common::tmp::remove(&self.root);
     }
 }
 
