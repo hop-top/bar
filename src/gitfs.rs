@@ -326,18 +326,65 @@ fn system_configs() -> Vec<PathBuf> {
     v
 }
 
-/// Header lines in a global config that change what the repository
-/// config alone says: includes and `remote` subsections, plus URL
-/// rewrites when reading a URL (`urls`), else `branch` subsections.
+/// A global config that changes what the repository config alone says:
+/// includes and `remote` entries, plus URL rewrites when reading a URL
+/// (`urls`), else `branch` subsection entries. Parsed as the repository
+/// config is (continued lines joined), so every header form counts; a
+/// body the parser does not model counts too.
 fn global_overrides(body: &str, urls: bool) -> bool {
-    body.lines().any(|l| {
-        let l = l.trim_start().to_ascii_lowercase();
-        l.starts_with("[include")
-            || l.starts_with("[remote \"")
-            || if urls {
-                l.starts_with("[url")
-            } else {
-                l.starts_with("[branch \"")
-            }
-    })
+    let body = config::join_continued(body);
+    let Ok(cfg) = config::parse(&body) else {
+        return true;
+    };
+    cfg.has_entries("remote", false)
+        || if urls {
+            cfg.rewrites
+        } else {
+            cfg.has_entries("branch", true)
+        }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::global_overrides;
+
+    #[test]
+    fn global_remote_and_branch_entries_in_any_header_form() {
+        for body in [
+            "[remote \"o\"]\n\turl = x\n",
+            "[remote\t\"o\"]\n\turl = x\n",
+            "[Remote \"o\"]\n\tpushurl = x\n",
+            "[remote.origin]\n\turl = x\n",
+            "[include]\n\tpath = x\n",
+        ] {
+            assert!(global_overrides(body, true), "urls: {body:?}");
+            assert!(global_overrides(body, false), "branch: {body:?}");
+        }
+        for body in [
+            "[branch \"main\"]\n\tremote = o\n",
+            "[branch\t\"main\"]\n\tmerge = refs/heads/x\n",
+            "[branch.main]\n\tremote = o\n",
+        ] {
+            assert!(global_overrides(body, false), "{body:?}");
+        }
+        assert!(global_overrides(
+            "[url \"https://m/\"]\n\tinsteadOf = gh:\n",
+            true
+        ));
+        assert!(!global_overrides(
+            "[url \"https://m/\"]\n\tinsteadOf = gh:\n",
+            false
+        ));
+        assert!(!global_overrides("[branch \"main\"]\n\tremote = o\n", true));
+        let alias = "[alias]\n\tlg = log \\\n\t  --oneline\n";
+        assert!(!global_overrides(alias, true), "a continued alias");
+        assert!(global_overrides(
+            &format!("{alias}[remote \"o\"]\n\turl = x\n"),
+            true
+        ));
+        assert!(!global_overrides(
+            "[user]\n\tname = me\n[core]\n\teditor = vi\n[branch]\n\tautosetupmerge = true\n",
+            false
+        ));
+    }
 }

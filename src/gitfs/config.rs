@@ -42,6 +42,59 @@ fn subsection(s: &str) -> Option<String> {
     Some(out)
 }
 
+/// A line that ends in a backslash git reads as a line continuation: not
+/// an escaped one (`\\`), not inside a comment.
+fn continues(line: &str) -> bool {
+    let mut quoted = false;
+    let mut chars = line.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => {
+                if chars.next().is_none() {
+                    return true;
+                }
+            }
+            '"' => quoted = !quoted,
+            '#' | ';' if !quoted => return false,
+            _ => {}
+        }
+    }
+    false
+}
+
+/// `body` with each continued line joined to the next (backslash and line
+/// break dropped), for scanning a config whose values may span lines.
+pub(super) fn join_continued(body: &str) -> String {
+    let mut out = String::with_capacity(body.len());
+    for line in body.lines() {
+        if continues(line) {
+            out.push_str(&line[..line.len() - 1]);
+        } else {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out
+}
+
+/// Byte offset of the `]` closing a section header (`rest` follows the
+/// `[`), skipping any inside the quoted subsection name.
+fn header_end(rest: &str) -> Option<usize> {
+    let mut quoted = false;
+    let mut chars = rest.char_indices();
+    while let Some((i, c)) = chars.next() {
+        match c {
+            '\\' if quoted => {
+                chars.next()?;
+            }
+            '"' => quoted = !quoted,
+            ']' if !quoted => return Some(i),
+            _ => {}
+        }
+    }
+    None
+}
+
 pub(super) fn parse(body: &str) -> Result<Config<'_>, Unsupported> {
     let mut cfg = Config {
         entries: Vec::new(),
@@ -49,12 +102,13 @@ pub(super) fn parse(body: &str) -> Result<Config<'_>, Unsupported> {
     };
     let (mut section, mut sub) = (String::new(), None::<String>);
     for raw in body.lines() {
-        if raw.ends_with('\\') {
+        if continues(raw) {
             return Err(Unsupported);
         }
         let mut line = raw.trim();
         while let Some(rest) = line.strip_prefix('[') {
-            let (head, tail) = rest.split_once(']').ok_or(Unsupported)?;
+            let end = header_end(rest).ok_or(Unsupported)?;
+            let (head, tail) = (&rest[..end], &rest[end + 1..]);
             let lower = head.to_ascii_lowercase();
             if lower.starts_with("include")
                 || lower.starts_with("remote.")
@@ -89,6 +143,13 @@ pub(super) fn parse(body: &str) -> Result<Config<'_>, Unsupported> {
 }
 
 impl Config<'_> {
+    /// Any entry in `section` (in a subsection only, with `sub`).
+    pub fn has_entries(&self, section: &str, sub: bool) -> bool {
+        self.entries
+            .iter()
+            .any(|e| e.section == section && (!sub || e.sub.is_some()))
+    }
+
     /// Values of `section "sub".key`, in file order, decoded.
     fn values<'s>(
         &'s self,
@@ -127,27 +188,39 @@ impl Config<'_> {
     }
 }
 
-/// Config value: trimmed, quotes removed, `#`/`;` outside quotes start a
+/// Config value: trimmed (whitespace inside quotes kept), quotes removed, `#`/`;` outside quotes start a
 /// comment, `\\ \" \n \t \b` escapes.
 fn value(v: &str) -> Option<String> {
     let mut out = String::new();
+    // length up to the last character that is kept at the end: anything
+    // but whitespace outside quotes
+    let mut keep = 0;
     let mut quoted = false;
     let mut chars = v.trim().chars();
     while let Some(c) = chars.next() {
         match c {
             '"' => quoted = !quoted,
-            '\\' => out.push(match chars.next()? {
-                'n' => '\n',
-                't' => '\t',
-                'b' => '\u{8}',
-                c @ ('\\' | '"') => c,
-                _ => return None,
-            }),
+            '\\' => {
+                out.push(match chars.next()? {
+                    'n' => '\n',
+                    't' => '\t',
+                    'b' => '\u{8}',
+                    c @ ('\\' | '"') => c,
+                    _ => return None,
+                });
+                keep = out.len();
+            }
             '#' | ';' if !quoted => break,
-            c => out.push(c),
+            c => {
+                out.push(c);
+                if quoted || !c.is_whitespace() {
+                    keep = out.len();
+                }
+            }
         }
     }
-    (!quoted).then(|| out.trim_end().to_string())
+    out.truncate(keep);
+    (!quoted).then_some(out)
 }
 
 /// Where a fetch refspec maps `src` (a full ref name), as git's
@@ -233,6 +306,38 @@ mod tests {
                 .unwrap()
                 .rewrites
         );
+    }
+
+    #[test]
+    fn bracket_inside_a_quoted_subsection() {
+        let c = parse("[remote \"a]b\"]\n url = u\n").unwrap();
+        assert_eq!(c.first("remote", "a]b", "url"), Ok(Some("u".into())));
+        let c = parse("[remote \"a\\\"]b\"] url = v\n").unwrap();
+        assert_eq!(c.first("remote", "a\"]b", "url"), Ok(Some("v".into())));
+        assert!(parse("[remote \"a]b\n url = u\n").is_err());
+    }
+
+    #[test]
+    fn line_end_backslash_that_does_not_continue() {
+        let c = parse(
+            "[remote \"o\"]\n url = C:\\\\\n # a comment \\\n pushurl = p ; note \\\n fetch = f\n",
+        )
+        .unwrap();
+        assert_eq!(c.first("remote", "o", "url"), Ok(Some("C:\\".into())));
+        assert_eq!(c.first("remote", "o", "pushurl"), Ok(Some("p".into())));
+        assert_eq!(c.first("remote", "o", "fetch"), Ok(Some("f".into())));
+        assert!(parse("[remote \"o\"]\n url = a\\\\\\\n b\n").is_err());
+        assert!(parse("[remote \"o\"]\n url = \"a ; b\\\n c\"\n").is_err());
+    }
+
+    #[test]
+    fn spaces_inside_quotes_are_kept() {
+        let c =
+            parse("[branch \"m\"]\n a = \"x  \"  \n b = y  \n c = \" \"z\n d = x\\t\n").unwrap();
+        assert_eq!(c.last("branch", "m", "a"), Ok(Some("x  ".into())));
+        assert_eq!(c.last("branch", "m", "b"), Ok(Some("y".into())));
+        assert_eq!(c.last("branch", "m", "c"), Ok(Some(" z".into())));
+        assert_eq!(c.last("branch", "m", "d"), Ok(Some("x\t".into())));
     }
 
     #[test]
