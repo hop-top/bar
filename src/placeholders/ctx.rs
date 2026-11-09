@@ -97,8 +97,14 @@ pub fn render_parts(
     };
     let used = s.context_used.filter(|u| u.is_finite());
     let size = s.context_size;
-    // tokens in the window: the JSON total, else derived from the percent
-    let tokens = s.context_tokens.or_else(|| {
+    // tokens in the window: the last request's inputs, else the JSON
+    // total, else derived from the percent
+    let from_usage = s.context_usage.as_ref().map(|u| {
+        u.input
+            .saturating_add(u.cache_creation)
+            .saturating_add(u.cache_read)
+    });
+    let tokens = from_usage.or(s.context_tokens).or_else(|| {
         let (u, n) = (used?, size?);
         Some((u.clamp(0.0, 100.0) * n as f64 / 100.0).round() as u64)
     });
