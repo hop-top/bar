@@ -56,7 +56,11 @@ Optional: `gh` for PRs and issues, `jq` for the reference plugins.
 
 ## Use
 
-In `~/.claude/settings.json`:
+```sh
+bar install --refresh 5       # set bar as the status line in ~/.claude/settings.json (shows the diff, asks first)
+```
+
+Or by hand, in `~/.claude/settings.json`:
 
 ```json
 { "statusLine": { "type": "command", "command": "bar render", "refreshInterval": 5 } }

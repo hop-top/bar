@@ -6,7 +6,7 @@ How to write `bar.conf`: where it lives, the directives, every placeholder and i
 - [Placeholders](#placeholders): [session](#session), [ctx](#ctx), [usage](#usage), [tokens, cache, cachettl](#tokens-cache-cachettl), [ttft, tps, misses](#ttft-tps-misses), [spendhist](#spendhist), [git and directories](#git-and-directories), [prs and issues](#prs-and-issues), [account, agents, sessions, tmux](#account-agents-sessions-tmux), [every placeholder](#options-on-every-placeholder), [values](#values)
 - [Styling](#styling): [skins](#skins), [palettes](#palettes), [icons](#icons), [glyphs](#glyphs), [colours](#colours)
 - [Layout](#layout): [lines and wrapping](#lines-and-wrapping)
-- [Commands](#commands): [bar check](#bar-check), [bar preview](#bar-preview), [presets and bar init](#presets), [click handler](#click-handler-macos), [clickable commands](#clickable-commands), [hooks](#hooks)
+- [Commands](#commands): [bar install](#bar-install), [bar check](#bar-check), [bar preview](#bar-preview), [presets and bar init](#presets), [click handler](#click-handler-macos), [clickable commands](#clickable-commands), [hooks](#hooks)
 - [Files and environment](#files-and-environment)
 
 ## Overview
@@ -613,6 +613,7 @@ A render prints at most 4 rows, all lines together. Rows past the fourth are dro
 | Command | Does | Exit |
 |---|---|---|
 | `bar render` | Reads the session JSON on stdin, prints the status line ([technical notes](technical.md#flow)) | always 0 |
+| `bar install [--project\|--local] [--refresh <secs>] [--hooks] [--uninstall] [--yes]` | Sets bar as Claude Code's status line ([bar install](#bar-install)) | 0, 2 without a terminal and `--yes` or with a bad home, 1 declined or on failure |
 | `bar check` | Lints the config ([bar check](#bar-check)) | 0, 2 on a config error |
 | `bar preview [--state early\|burning\|final] [--preset [<name>]]` | Layout with sample data ([bar preview](#bar-preview)) | 0 |
 | `bar init [--preset <name>]` | Writes a preset as your config ([presets](#presets)) | 0, 2 when a config exists or the path is unusable |
@@ -626,6 +627,23 @@ A render prints at most 4 rows, all lines together. Rows past the fourth are dro
 | `bar --version`, `bar --help`, `bar <command> --help` | Version, help | 0 |
 
 `--format csv|json|table|text|yaml` is accepted by every command and changes the output of `bar check`, `bar plugin list` and `bar plugin info` (default `table`). A usage error (unknown command or flag) exits 2. `bar refresh <request>` is internal: render spawns it to fill the cache in the background.
+
+### bar install
+
+`bar install` writes bar into Claude Code's `statusLine` setting:
+
+```json
+"statusLine": { "type": "command", "command": "'/path/to/bar' render" }
+```
+
+- The file: user settings, `<claude dir>/settings.json` (`CLAUDE_CONFIG_DIR`, else `~/.claude`); `--project` edits `.claude/settings.json` and `--local` edits `.claude/settings.local.json` in the current directory, so run those from the project root.
+- `<path>` is the absolute path of the running binary, quoted as for the [hooks](#hooks): on Windows with forward slashes and unquoted when it has no spaces or shell characters.
+- It prints a unified diff of the file first, then asks `write <file>? [y/N]`. `--yes` skips the question; without a terminal on stdin and without `--yes` it prints the diff, writes nothing and exits 2. Any answer but `y` or `yes` writes nothing and exits 1.
+- Other keys and their order are kept, as are other fields of an existing `statusLine` (`padding`, `hideVimModeIndicator`, `refreshInterval`). `--refresh <secs>` (1 or more) sets `refreshInterval`, which re-runs the status line on a timer as well as on Claude Code's events.
+- An existing file is copied to `settings.json.bak-<time>-<pid>` (likewise for the other files) and written atomically, keeping its mode; a symlink is written through to its target. A file that does not parse as a JSON object is left untouched (exit 1). Nothing is written when the file already says the same.
+- A status line that does not run bar is kept in `install/<hash>.json` in the state directory before it is replaced.
+- `--hooks` also adds the `bar click hook` entries to the same file, as `bar click install --hooks-only` does ([Hooks](#hooks)).
+- `bar install --uninstall` puts back the status line bar replaced, or removes `statusLine` when there was none, again after a diff and confirmation. A `statusLine` that does not run `bar render` is left as is. With `--hooks` it also removes hook entries that run only `bar click hook`, and event lists or a `hooks` object left empty by that.
 
 ### bar check
 
@@ -804,6 +822,7 @@ In the state directory:
 | `hist-5h`, `hist-7d` | render | usage samples for `spark` |
 | `pct-5h`, `pct-7d`, `toggle-<plugin>`, `toggle-<plugin>.<toggle>` | `bar toggle` | toggle state: present means on |
 | `click-installed`, `click-handler.applescript` | `bar click install` | handler marker, handler source |
+| `install/<hash>.json` | `bar install` | the status line it replaced, per settings file |
 | `click.log` | `bar click run` | refusals |
 | `sessions/`, `agents/`, `records/` | `bar click hook` | [Hooks](#hooks) |
 
