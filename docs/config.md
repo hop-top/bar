@@ -82,7 +82,7 @@ Quote values with spaces (double quotes; a value is one token). `#` outside quot
 | `skin` | `plain` (default), `powerline` or `capsule`. See [Skins](#skins) |
 | `skin-glyphs` | `nerd` (default) or `ascii`. See [Glyphs](#glyphs) |
 | `palette` | `default`, `nord`, `gruvbox`, `dracula`, `solarized`, `mono` or `terminal`. See [Palettes](#palettes) |
-| `color-depth` | `256` (default), `truecolor`, `16`, `none` or `auto`. See [Colour depth](#colour-depth) |
+| `color-depth` | `256`, `truecolor`, `16`, `none` or `auto`; unset, 256 colours unless `NO_COLOR` or `TERM=dumb`. See [Colour depth](#colour-depth) |
 | `gradient` | `off` (default), a preset or colours painted across every line. See [Gradients](#gradients) |
 | `claude-dir` | Claude Code config dir read by [spendhist](#spendhist) |
 | `compact-at` | Where Claude Code auto-compacts, for [ctx](#ctx): tokens (`200000`, `200k`, `1M`) or a percent of the context window (`1%`-`100%`). Unset, bar works it out; see [Auto-compaction point](#auto-compaction-point) |
@@ -641,21 +641,21 @@ Skin separators, `set skin-glyphs`: `nerd` (default) uses the Nerd Font / Powerl
 
 | Value | Output |
 |---|---|
-| `256` (default) | 256-colour SGR (`38;5;n`); `#rrggbb` becomes the nearest code from the colour cube or the grey ramp (16-255) |
+| `256` | 256-colour SGR (`38;5;n`); `#rrggbb` becomes the nearest code from the colour cube or the grey ramp (16-255) |
 | `truecolor` | `#rrggbb` as 24-bit SGR (`38;2;r;g;b`); codes stay `38;5;n` |
 | `16` | Every colour as the nearest of the 16 ANSI colours (`30`-`37`, `90`-`97`; backgrounds `40`-`47`, `100`-`107`), measured against xterm's default values |
 | `none` | No colour: colour SGR is left out; bold, links and text stay |
 | `auto` | From the environment, below |
 
-`auto`, in order:
+`auto` reads the environment (a variable set to an empty value counts as unset):
 
-1. `FORCE_COLOR` set and not empty: `0` or `false` gives `none`, `1` `16`, `2` `256`, `3` `truecolor`; any other value turns colour on at the depth `COLORTERM` gives.
-2. `NO_COLOR` set and not empty: `none`.
-3. `COLORTERM` `truecolor` or `24bit`: `truecolor`; otherwise `256`.
+1. `NO_COLOR` set, or `TERM=dumb`: `none`.
+2. Otherwise `COLORTERM` `truecolor` or `24bit`: `truecolor`; anything else `256`.
+3. `FORCE_COLOR` then sets a floor: `1` at least `16`, `2` at least `256`, `3` `truecolor`, any other value at least the `COLORTERM` depth. It turns colour back on under `NO_COLOR` or `TERM=dumb`, and never lowers what step 2 found. `FORCE_COLOR=0` (or `false`) is the exception: it turns colour off, `none`.
 
-The fixed values ignore the environment, `NO_COLOR` included, so the default output never changes with it. Any config draws at any depth: hex colours, gradients and 256-colour codes are quantised to what the depth allows.
+Without `set color-depth` bar draws as `auto` capped at `256`: 256 colours, or none when `NO_COLOR` is set, `TERM` is `dumb` or `FORCE_COLOR` is `0`. The fixed values (`none`, `16`, `256`, `truecolor`) ignore the environment, `NO_COLOR` and `TERM` included. Any config draws at any depth: hex colours, gradients and 256-colour codes are quantised to what the depth allows.
 
-Claude Code runs the status line command with the environment it was started in: `COLORTERM`, `NO_COLOR` and `FORCE_COLOR` reach bar only when they are set where `claude` starts (Claude Code sets none of them itself). Terminals with 24-bit colour usually set `COLORTERM=truecolor`; inside tmux it is often unset, so `auto` draws 256 colours there unless tmux passes it on (`set -ga update-environment COLORTERM`) or the config says `truecolor`.
+Claude Code runs the status line command as a child process, so these variables reach bar when they are set in the environment `claude` was started from. Terminals with 24-bit colour usually set `COLORTERM=truecolor`; inside tmux it is often unset, so `auto` draws 256 colours there unless tmux passes it on (`set -ga update-environment COLORTERM`) or the config says `truecolor`.
 
 ### Gradients
 
