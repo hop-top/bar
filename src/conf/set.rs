@@ -117,6 +117,7 @@ pub(super) fn apply_set(c: &mut Config, key: &str, val: &str) -> Result<(), Stri
                 _ => return Err(format!("invalid usage-api `{val}` (on|off)")),
             }
         }
+        "gitlab-hosts" => c.gitlab_hosts = crate::placeholders::glab::parse_hosts(val)?,
         "project-config" => {
             c.project_config = ProjectMode::parse(val).ok_or_else(|| {
                 format!(

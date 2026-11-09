@@ -17,7 +17,7 @@ A status line for [Claude Code](https://code.claude.com/docs/en/statusline) that
 - **Plugins are plain programs.** Any executable that prints one JSON object is a placeholder. bar runs it in the background and caches the result ([Plugins](docs/plugins.md)).
 - **The layout is a config file.** tmux-style, options on every placeholder, linted by `bar check`, previewed by `bar preview`.
 - **It knows your Claude usage.** 5-hour and 7-day bars coloured by pace, projections, sparklines; cost, burn rate, tokens, spend history.
-- **It knows your repo.** Branch and dirty state from files, PRs and issues from `gh`, failing CI marked.
+- **It knows your repo.** Branch and dirty state from files, PRs and issues from `gh` (merge requests from `glab` on GitLab), failing CI marked.
 
 ### Benchmarks
 
@@ -54,7 +54,7 @@ cargo install --path . --locked
 
 Guided setup inside Claude Code: `/plugin marketplace add hop-top/bar`, then `/plugin install bar@hop-top` and `/bar` ([docs](docs/claude-plugin.md)).
 
-Optional: `gh` for PRs and issues, `jq` for the reference plugins.
+Optional: `gh` (GitHub) or `glab` (GitLab) for PRs and issues, `jq` for the reference plugins.
 
 ## Use
 

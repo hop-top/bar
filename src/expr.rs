@@ -287,6 +287,26 @@ pub fn to_queries(key: &str, e: &Expr) -> Vec<String> {
     )
 }
 
+/// DNF of `e` as conjuncts of `(negated, value)` literals, without the
+/// `label:a,b` folding; for forges whose filters are AND-only flags.
+pub fn to_terms(e: &Expr) -> Vec<Vec<(bool, String)>> {
+    let mut out: Vec<Vec<(bool, String)>> = Vec::new();
+    for conj in dnf(&nnf(e, false, false)) {
+        let mut lits: Vec<(bool, String)> = Vec::new();
+        for t in conj {
+            if let Term::Lit(n, v) = t {
+                if !lits.contains(&(n, v.clone())) {
+                    lits.push((n, v));
+                }
+            }
+        }
+        if !out.contains(&lits) {
+            out.push(lits);
+        }
+    }
+    out
+}
+
 /// Cartesian product of per-key query lists, space-joined, order-stable,
 /// deduplicated. Empty lists (key unset) are skipped. Errors when the
 /// product would exceed `MAX_CONJUNCTS`, checked before building.

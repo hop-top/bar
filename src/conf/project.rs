@@ -182,6 +182,10 @@ pub(super) fn guard(
         "set" if t.get(1).map(String::as_str) == Some("usage-api") => {
             Err(format!("`set usage-api` {NEEDS_FULL}"))
         }
+        // which hosts glab reaches is the user's choice
+        "set" if t.get(1).map(String::as_str) == Some("gitlab-hosts") => {
+            Err(format!("`set gitlab-hosts` {NEEDS_FULL}"))
+        }
         // which transcripts and accounts are read is the user's choice
         "set" if t.get(1).map(String::as_str) == Some("claude-dir") => {
             Err(format!("`set claude-dir` {NEEDS_FULL}"))

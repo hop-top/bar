@@ -1,4 +1,5 @@
-//! `prs` and `issues`: `gh` lists cached per query, merged at render time.
+//! `prs` and `issues`: `gh` (GitHub) or `glab` (GitLab, see `glab`) lists
+//! cached per query, merged at render time.
 
 use super::repo::{may_spawn, remote_url_with};
 use super::{link_enabled, work_dir, Ctx, Placeholder};
@@ -14,7 +15,7 @@ use serde_json::Value;
 pub const TTL: u64 = 120;
 /// Queries per placeholder; more are dropped.
 pub const MAX_QUERIES: usize = 8;
-const DEFAULT_LIMIT: usize = 5;
+pub(crate) const DEFAULT_LIMIT: usize = 5;
 const PR_FIELDS: &str = "number,url,reviewDecision,mergeable,statusCheckRollup";
 const ISSUE_FIELDS: &str = "number,url,labels";
 
@@ -28,7 +29,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Kind::Pr => "pr",
             Kind::Issue => "issue",
@@ -36,14 +37,14 @@ impl Kind {
     }
 
     /// Option keys compiled into search terms.
-    fn search_keys(self) -> &'static [&'static str] {
+    pub(crate) fn search_keys(self) -> &'static [&'static str] {
         match self {
             Kind::Pr => &["author"],
             Kind::Issue => &["assignee", "author", "label"],
         }
     }
 
-    fn state(self, opts: &Options) -> &'static str {
+    pub(crate) fn state(self, opts: &Options) -> &'static str {
         match (self, opts.get("status")) {
             (_, Some("closed")) => "closed",
             (Kind::Pr, Some("merged")) => "merged",
@@ -57,6 +58,8 @@ pub struct Plan {
     pub jobs: Vec<(String, Job)>,
     pub warning: Option<String>,
     pub limit: usize,
+    /// A GitLab remote: MRs read `!N`, issues `#N`.
+    pub gitlab: bool,
 }
 
 /// `owner/repo` of a github.com remote URL; other hosts give `None`.
@@ -125,6 +128,7 @@ pub fn plan(kind: Kind, remote: &str, opts: &Options) -> Option<Plan> {
         jobs,
         warning,
         limit,
+        gitlab: false,
     })
 }
 
@@ -198,7 +202,10 @@ fn pr_color(ctx: &Ctx, pr: &Value, state: Checks) -> Color {
         || str_of(pr, "mergeable") == "CONFLICTING"
     {
         colors.bad
-    } else if state == Checks::Pending || str_of(pr, "reviewDecision") == "REVIEW_REQUIRED" {
+    } else if state == Checks::Pending
+        || str_of(pr, "reviewDecision") == "REVIEW_REQUIRED"
+        || pr["isDraft"].as_bool() == Some(true)
+    {
         colors.warn
     } else {
         colors.good
@@ -223,10 +230,14 @@ fn check_mark(ctx: &Ctx, opts: &Options, state: Checks) -> String {
 
 /// A PR's coloured `#N` and its check mark (empty when not shown).
 pub fn pr_parts(ctx: &Ctx, opts: &Options, pr: &Value) -> (String, String) {
+    numbered_parts(ctx, opts, pr, '#')
+}
+
+fn numbered_parts(ctx: &Ctx, opts: &Options, pr: &Value, sign: char) -> (String, String) {
     let n = pr["number"].as_u64().unwrap_or_default();
     let state = checks(pr);
     (
-        fg(pr_color(ctx, pr, state), &format!("#{n}")),
+        fg(pr_color(ctx, pr, state), &format!("{sign}{n}")),
         check_mark(ctx, opts, state),
     )
 }
@@ -262,7 +273,9 @@ fn merged(cache: &Cache, plan: &Plan) -> Vec<Value> {
 fn render_kind(kind: Kind, ctx: &Ctx, opts: &Options) -> Option<String> {
     let cache = ctx.cache?;
     let remote = remote_url_with(&work_dir(ctx), may_spawn(ctx))?;
-    let plan = plan(kind, &remote, opts)?;
+    let plan = plan(kind, &remote, opts)
+        .or_else(|| super::glab::plan(kind, &remote, &ctx.config.gitlab_hosts, opts))?;
+    let (pr_sign, issue_sign) = if plan.gitlab { ('!', '#') } else { ('#', '!') };
     if plan.limit == 0 {
         return None;
     }
@@ -272,11 +285,12 @@ fn render_kind(kind: Kind, ctx: &Ctx, opts: &Options) -> Option<String> {
         .map(|item| {
             let n = item["number"].as_u64().unwrap_or_default();
             let (text, mark) = match kind {
-                Kind::Pr => pr_parts(ctx, opts, item),
-                Kind::Issue if has_bug_label(item) => {
-                    (fg(ctx.config.colors.bad, &format!("!{n}")), String::new())
-                }
-                Kind::Issue => (dim(&format!("!{n}")), String::new()),
+                Kind::Pr => numbered_parts(ctx, opts, item, pr_sign),
+                Kind::Issue if has_bug_label(item) => (
+                    fg(ctx.config.colors.bad, &format!("{issue_sign}{n}")),
+                    String::new(),
+                ),
+                Kind::Issue => (dim(&format!("{issue_sign}{n}")), String::new()),
             };
             let url = sanitize(str_of(item, "url"));
             let shown = if links && url.starts_with("https://") {

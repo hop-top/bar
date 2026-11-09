@@ -152,7 +152,7 @@ fn hostile_url_not_linked() {
 #[test]
 fn non_github_remote_omitted() {
     for remote in [
-        Some("https://gitlab.com/o/r.git"),
+        Some("https://gitlab.example.com/o/r.git"),
         Some("https://github.com.evil.io/o/r"),
         None,
     ] {
