@@ -134,10 +134,16 @@ The launcher and the platform packages have no npm dependencies; `scripts/npm-st
 
 ### actions/setup-node v7.1.0 (release workflow)
 
-- Use: Node 22 and the registry `.npmrc` for the `npm` job of `.github/workflows/release-rs-caller.yml`; pinned to commit `949feb2413d6458794dcd2491c4babbbce0c15c1`.
+- Use: Node for the `npm` job of `.github/workflows/release-rs-caller.yml`; pinned to commit `949feb2413d6458794dcd2491c4babbbce0c15c1`.
 - Source: `actions/setup-node`, released 2026-10-08, over 14 days old.
 - License: MIT.
 - `rsx analyze actions/setup-node`: PASS, score 6.3/10, policy balanced.
+
+### Node.js 26.12.0 and npm 12.2.1 (release workflow)
+
+- Use: the `npm` job's runtime and publishing CLI; npm 12.2.1 is installed over the bundled one with `npm install -g npm@12.2.1`. Trusted publishing needs npm 11.5.1 or newer and Node 22.14.0 or newer; dist-tag changes through it, npm 12.2.0 or newer.
+- Released: Node.js 26.12.0 on 2026-10-14, npm 12.2.1 on 2026-10-15; both over 14 days old, the versions the benchmark image pins.
+- Checked by: setup-node's download of the exact Node version; npm from the registry against its sha512.
 
 ## Dev container
 
@@ -174,4 +180,3 @@ Not crates: the built-in `#rrggbb` palettes use colour values published by each 
 
 - `one-dark` backgrounds: the syntax background `hsl(220, 13%, 18%)` (`#282c34`) and the same hue and saturation at 22% and 15% lightness (`#31363f`, `#21252b`).
 - Some theme shades were left out where muted, state or repo-name text fell under 3:1 on them, or where two neighbours quantise to the same 256-colour code.
-
