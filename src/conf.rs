@@ -1,5 +1,6 @@
 //! Config parser: line-oriented, tmux-style directives.
 
+use crate::compact::CompactAt;
 use crate::options::Options;
 use crate::palette;
 use crate::prices::Price;
@@ -123,6 +124,9 @@ pub struct Config {
     pub claude_dir: Option<String>,
     /// `set price` overrides, in file order.
     pub prices: Vec<Price>,
+    /// `set compact-at`: where auto-compaction runs, overriding what
+    /// bar reads from Claude Code's environment and settings.
+    pub compact_at: Option<CompactAt>,
 }
 
 impl Default for Config {
@@ -155,6 +159,7 @@ impl Default for Config {
             plugins: BTreeMap::new(),
             claude_dir: None,
             prices: Vec::new(),
+            compact_at: None,
         }
     }
 }

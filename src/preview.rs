@@ -1,11 +1,13 @@
 //! `bar preview`: the configured layout filled with built-in sample data.
 //! Reads no session, account, git, gh or plugin; touches no state.
 
+use crate::click::Term;
 use crate::conf::{Config, LoadResult};
 use crate::options::Options;
+use crate::placeholders::ctx as ctxp;
 use crate::placeholders::{dirs, gh, lookup, niche, speed, spendhist, tokens, usage, Ctx};
 use crate::render::{builtin_config, render_sample};
-use crate::session::{Session, SpendLimit, Window};
+use crate::session::{CtxUsage, Session, SpendLimit, Window};
 use crate::style::{accent, bold, dim, fg};
 use serde_json::{json, Value};
 use std::path::Path;
@@ -53,6 +55,13 @@ fn session(state: &str, now: i64) -> Session {
         session_id: String::new(),
         transcript_path: String::new(),
         context_used: Some(38.0),
+        context_size: Some(200_000),
+        context_tokens: Some(76_000),
+        context_usage: Some(CtxUsage {
+            input: 1_200,
+            cache_creation: 4_800,
+            cache_read: 70_000,
+        }),
         five_hour: Some(win(p.five)),
         seven_day: Some(win(p.seven)),
         spend_limit: Some(SpendLimit {
@@ -163,8 +172,18 @@ fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Op
         )),
         "cwd" | "root" => dirs::shown("~/src/bar", opts, ""),
         // fields of the sample session
-        "model" | "effort" | "ctx" | "spend" | "cost" | "burn" | "duration" | "lines"
-        | "version" | "style" | "vim" | "agent" | "thinking" | "fast" => {
+        "ctx" => {
+            let stats = || Some(tokens::sample_stats(ctx.now));
+            let src = ctxp::Sources {
+                state: Path::new("/nonexistent/bar-preview"),
+                stats: &stats,
+                env: &|_| None,
+                settings: &|| None,
+            };
+            ctxp::render_parts(ctx, opts, &src, label, || Term::current().clone())
+        }
+        "model" | "effort" | "spend" | "cost" | "burn" | "duration" | "lines" | "version"
+        | "style" | "vim" | "agent" | "thinking" | "fast" => {
             lookup(name)?.render_labeled(ctx, opts, label)
         }
         _ => None,

@@ -5,6 +5,7 @@ use crate::expr;
 use crate::format::{self, Token};
 use crate::icons;
 use crate::options::Options;
+use crate::placeholders::ctx::parts::SHOW_ITEMS as CTX_ITEMS;
 use crate::placeholders::gh::{self, Kind};
 use crate::placeholders::usage::glyphs::{GLYPH_SETS, SHOW_ITEMS};
 use crate::placeholders::{gitst, speed};
@@ -142,7 +143,16 @@ fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
         "ttft" | "tps" => &[("show", OneOf(&["last", "avg", "both"]))],
         "misses" => &[("show", List(speed::SHOW))],
         "agents" => &[("names", OneOf(&["0", "1"])), ("max", Int)],
-        "model" | "effort" | "ctx" => &[("click", Any)],
+        "model" | "effort" => &[("click", Any)],
+        "ctx" => &[
+            ("click", Any),
+            ("show", List(&CTX_ITEMS)),
+            ("of", OneOf(&["window", "compact"])),
+            ("count", OneOf(&["used", "left"])),
+            ("glyphs", OneOf(&GLYPH_SETS)),
+            ("color", OneOf(&["solid", "gradient"])),
+            ("width", Int),
+        ],
         "repo" | "branch" => &[("max", Int), ("link", Any)],
         "usage" => &[
             ("type", OneOf(&["5h", "7d", "h", "d"])),

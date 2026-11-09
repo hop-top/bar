@@ -38,6 +38,13 @@ pub struct Stats {
     pub compactions: u64,
     /// `Skill` tool calls on the main conversation.
     pub skills: u64,
+    /// Context size (input plus cache tokens) of main-conversation
+    /// requests since the last compaction: the first, the one before the
+    /// last, and the last; `ctx_reqs` counts them.
+    pub ctx_first: u64,
+    pub ctx_prev: u64,
+    pub ctx_last: u64,
+    pub ctx_reqs: u64,
     /// Unix seconds of the last assistant message.
     pub last_ts: Option<i64>,
     /// Transcript mtime, unix seconds.
@@ -70,6 +77,7 @@ impl State {
             "offset": m.offset, "skip": m.skip, "in": s.input,
             "cc": s.cache_creation, "cr": s.cache_read, "out": s.output,
             "comp": s.compactions, "skl": s.skills,
+            "cf": s.ctx_first, "cp": s.ctx_prev, "cl": s.ctx_last, "cn": s.ctx_reqs,
             "last_ts": s.last_ts, "last_id": self.last_id,
             "turns": s.turns.to_json(),
         })
@@ -95,6 +103,10 @@ impl State {
                 output: n("out"),
                 compactions: n("comp"),
                 skills: n("skl"),
+                ctx_first: n("cf"),
+                ctx_prev: n("cp"),
+                ctx_last: n("cl"),
+                ctx_reqs: n("cn"),
                 last_ts: v["last_ts"].as_i64(),
                 mtime: 0,
                 partial: false,
@@ -166,12 +178,14 @@ fn apply(st: &mut State, line: &[u8]) {
     let Some(f) = facts(line, usage, boundary, skill, user) else {
         return;
     };
-    let turns = &mut st.stats.turns;
     if f.compaction {
-        st.stats.compactions = st.stats.compactions.saturating_add(1);
-        turns.compaction();
+        let s = &mut st.stats;
+        s.compactions = s.compactions.saturating_add(1);
+        (s.ctx_first, s.ctx_prev, s.ctx_last, s.ctx_reqs) = (0, 0, 0, 0);
+        s.turns.compaction();
     }
     st.stats.skills = st.stats.skills.saturating_add(f.skills);
+    let turns = &mut st.stats.turns;
     match (f.rec, &f.usage, f.ts_ms) {
         (Rec::Prompt, _, ts) => turns.prompt(ts),
         (Rec::ToolResult, _, ts) => turns.tool_result(ts),
@@ -206,6 +220,17 @@ fn apply(st: &mut State, line: &[u8]) {
     s.cache_creation = s.cache_creation.saturating_add(u.cache_creation);
     s.cache_read = s.cache_read.saturating_add(u.cache_read);
     s.output = s.output.saturating_add(u.output);
+    if u.main {
+        let size = u
+            .input
+            .saturating_add(u.cache_creation)
+            .saturating_add(u.cache_read);
+        if s.ctx_reqs == 0 {
+            s.ctx_first = size;
+        }
+        (s.ctx_prev, s.ctx_last) = (s.ctx_last, size);
+        s.ctx_reqs = s.ctx_reqs.saturating_add(1);
+    }
 }
 
 fn state_file(state_dir: &Path, path: &Path) -> std::path::PathBuf {
