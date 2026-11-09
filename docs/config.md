@@ -932,7 +932,7 @@ Each row is laid out like the status line, with the same skin, palette, icons an
 - `subagent`: the same, plus a plugin placeholder there is an error (rows draw none), and a row placeholder (`task.*`) in any other layout is one.
 - `prs` / `issues`: invalid `limit`, invalid `checks` item, invalid `author` / `assignee` / `label` expression.
 - `set budget-*` values: a bad dollar amount or `budget-warn` percent is an error.
-- Warnings: `gh` not on `PATH` while `prs` or `issues` is used; a `budget` placeholder whose type has no `set budget-<type>`; a `default` line for a plugin that is not on `PATH` (a layout using it is an error); an expression that expands to more than 8 queries (only the first 8 run).
+- Warnings: `gh` not on `PATH` while `prs` or `issues` is used; a `budget` placeholder whose type has no `set budget-<type>`; `extra` or `usage[model=...]` without `set usage-api on`; a `default` line for a plugin that is not on `PATH` (a layout using it is an error); an expression that expands to more than 8 queries (only the first 8 run).
 - Options holding `%command%` or `%$VAR%` are skipped; they resolve at render time.
 
 - Warnings for project lines that are left out: invalid ones, lines a project file may not hold under `safe`, and `set project-config` in a project file; and for an unreadable project file.
