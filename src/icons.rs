@@ -77,6 +77,7 @@ pub fn builtin(set: Icons, name: &str, opts: &Options) -> Option<&'static str> {
         "dirty" => ("\u{f040}", "✏️"),             // nf-fa-pencil
         "ahead" => ("\u{f062}", "⬆️"),             // nf-fa-arrow_up
         "worktree" => ("\u{f1bb}", "🌳"),          // nf-fa-tree
+        "diff" => ("\u{f440}", "➕"),              // nf-oct-diff
         "sha" => ("\u{f417}", "📌"),               // nf-oct-git_commit
         "tag" => ("\u{f412}", "🏷️"),               // nf-oct-tag
         "stash" => ("\u{f187}", "📦"),             // nf-fa-archive

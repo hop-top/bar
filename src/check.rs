@@ -12,7 +12,7 @@ use crate::placeholders::ctx::parts::SHOW_ITEMS as CTX_ITEMS;
 use crate::placeholders::gh::{self, Kind};
 use crate::placeholders::money::SHOW as MONEY_ITEMS;
 use crate::placeholders::usage::glyphs::{GLYPH_SETS, SHOW_ITEMS};
-use crate::placeholders::{gitst, jj, modes, remotes, speed, task};
+use crate::placeholders::{gitdiff, gitst, jj, modes, remotes, speed, task};
 use crate::plugin;
 use crate::render::builtin_config;
 use serde_json::{json, Value};
@@ -115,6 +115,11 @@ pub fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
         ],
         "dirty" => &[("show", List(gitst::SHOW)), ("ttl", Pos)],
         "ahead" | "conflicts" => &[("ttl", Pos)],
+        "diff" => &[
+            ("scope", OneOf(gitdiff::SCOPES)),
+            ("show", List(gitdiff::SHOW)),
+            ("ttl", Pos),
+        ],
         "sha" => &[("len", Int), ("link", Any)],
         "tag" => &[("max", Int), ("link", Any), ("ttl", Pos)],
         "gitop" => &[("step", Any)],
@@ -225,6 +230,9 @@ pub fn option_help(name: &str, key: &str) -> Option<(&'static str, &'static str)
             "10",
             "seconds before git status is refreshed, for an index too large to read",
         ),
+        ("diff", "scope") => ("both", "both (against HEAD), staged or unstaged"),
+        ("diff", "show") => ("added,removed", "parts to show"),
+        ("diff", "ttl") => ("10", "seconds before git diff is refreshed"),
         ("sha", "len") => ("7", "characters of the commit id; 0 hides it"),
         ("sha" | "tag", "link") => ("", "false, no, off or 0 give plain text"),
         ("tag", "max") => ("", "truncate to this many characters"),

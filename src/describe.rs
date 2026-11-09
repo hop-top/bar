@@ -42,6 +42,7 @@ pub fn describe(name: &str) -> &'static str {
         "dirty" => "staged, modified and untracked files",
         "ahead" => "commits ahead of and behind upstream",
         "worktree" => "git worktree name",
+        "diff" => "lines added and removed in the working tree",
         "sha" => "commit id of HEAD",
         "tag" => "tag pointing at HEAD",
         "stash" => "stash entries",

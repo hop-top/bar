@@ -37,6 +37,14 @@ pub enum Job {
     /// `git remote get-url <name>` in `dir` (absolute), no shell. A
     /// remote other than `origin` that does not exist gives an empty value.
     GitRemote { dir: String, name: String },
+    /// `git diff --numstat` of `scope` (`both`, `staged`, `unstaged`) in
+    /// `dir` (absolute), no shell, reduced to totals. Output: `stamp`, then
+    /// `<added> <removed> <binary> <cut>`.
+    GitDiff {
+        dir: String,
+        scope: String,
+        stamp: String,
+    },
     /// `jj log` of the working-copy commit of the workspace at `dir`
     /// (absolute), no shell, never snapshotting the working copy.
     Jj { dir: String },
@@ -93,6 +101,9 @@ impl Job {
             }
             Job::GitRemote { dir, name } => {
                 json!({"kind": "git-remote", "dir": dir, "name": name})
+            }
+            Job::GitDiff { dir, scope, stamp } => {
+                json!({"kind": "git-diff", "dir": dir, "scope": scope, "stamp": stamp})
             }
             Job::Jj { dir } => json!({"kind": "jj", "dir": dir}),
             Job::PluginInfo { path } => json!({"kind": "plugin-info", "path": path}),
@@ -158,6 +169,19 @@ impl Job {
                         .ok_or("git-remote job with an invalid remote name")?
                         .into(),
                 },
+            }),
+            Some("git-diff") => Ok(Job::GitDiff {
+                dir: abs_path(v, "dir")?,
+                scope: v["scope"]
+                    .as_str()
+                    .filter(|s| crate::placeholders::gitdiff::SCOPES.contains(s))
+                    .ok_or("git-diff job without a valid scope")?
+                    .into(),
+                stamp: v["stamp"]
+                    .as_str()
+                    .filter(|s| crate::placeholders::gitdiff::valid_stamp(s))
+                    .ok_or("git-diff job without a valid stamp")?
+                    .into(),
             }),
             Some("jj") => Ok(Job::Jj {
                 dir: abs_path(v, "dir")?,
@@ -250,6 +274,9 @@ impl Job {
                     crate::cache::Child::Failed if name != "origin" => Some(String::new()),
                     _ => None,
                 }
+            }
+            Job::GitDiff { dir, scope, stamp } => {
+                crate::placeholders::gitdiff::run(dir, scope, stamp, limit)
             }
             Job::Jj { dir } => {
                 let mut c = Command::new(crate::platform::program("jj"));

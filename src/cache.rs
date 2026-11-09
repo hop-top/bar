@@ -183,10 +183,22 @@ impl Cache {
     /// The stored value, possibly stale; spawns a refresh when it is older
     /// than `ttl` seconds or missing. Never waits on the job.
     pub fn read_or_refresh(&self, key: &str, ttl: u64, job: &Job) -> Option<String> {
+        self.read_or_refresh_if(key, ttl, job, |_| true)
+    }
+
+    /// As [`Cache::read_or_refresh`]; a value `current` rejects (made for
+    /// another commit or index) is stale whatever its age.
+    pub fn read_or_refresh_if(
+        &self,
+        key: &str,
+        ttl: u64,
+        job: &Job,
+        current: impl Fn(&str) -> bool,
+    ) -> Option<String> {
         let path = self.path_for(key);
         let value = read_capped(&path);
-        let fresh =
-            value.is_some() && modified_age(&path).is_some_and(|a| a < Duration::from_secs(ttl));
+        let fresh = value.as_deref().is_some_and(current)
+            && modified_age(&path).is_some_and(|a| a < Duration::from_secs(ttl));
         if fresh || self.backing_off(key) {
             return value;
         }

@@ -509,7 +509,7 @@ Limits and failures:
 
 ### Git and directories
 
-Repository, branch, remotes, upstream, commit, tag, stash, operation in progress, working-tree state, the [Jujutsu](#jujutsu) working-copy commit and the session directory. The git ones are read from the repository files ([Performance](technical.md#performance)).
+Repository, branch, remotes, upstream, commit, tag, stash, operation in progress, working-tree state and line counts, the [Jujutsu](#jujutsu) working-copy commit and the session directory. The git ones are read from the repository files ([Performance](technical.md#performance)).
 
 Links point at the `origin` remote's web address: ssh and scp remotes become `https://<host>/<path>`, an https remote keeps a port other than 443 (`https://git.example.com:8443/g/p`). When the config needs git to tell the URL (an `include` or `insteadOf`), `sha`, `tag`, `prs` and `issues` use a background `git remote get-url origin`, cached for 60 s, and show no link until it is in.
 
@@ -528,6 +528,9 @@ Links point at the `origin` remote's web address: ssh and scp remotes become `ht
 | | `ttl` | `10` | Seconds before the cached `git status` is refreshed in the background (minimum 1) |
 | `ahead` | `ttl` | `10` | As `dirty`. Output `↑2 ↓1`; hidden at 0/0 or without an upstream |
 | `worktree` | none | | Directory name of a linked worktree; hidden in the main worktree |
+| `diff` | `scope` | `both` | Lines added and removed, `+12 -3`: `both` the working tree against HEAD, `staged` the index against HEAD, `unstaged` the working tree against the index; hidden at 0/0. A `+` suffix (`+90000+`) marks a lower bound when git's output passed 8 MiB |
+| | `show` | `added,removed` | Comma list of `added`, `removed` |
+| | `ttl` | `10` | Seconds before the cached `git diff-index` / `git diff-files` is refreshed in the background (minimum 1); see below |
 | `sha` | `len` | `7` | Characters of HEAD's commit id; `0` hides it. Links to `<repo>/commit/<id>`. Hidden on an unborn branch |
 | | `link` | on | `false`, `no`, `off`, `0` give plain text |
 | `tag` | `link` | on | Link to `<repo>/tree/<tag>` |
@@ -588,6 +591,11 @@ Commit, tags and stash:
 - `tag` shows a tag pointing exactly at HEAD: lightweight tags whose target is HEAD and annotated tags whose peeled target is HEAD. With several, an annotated tag wins over a lightweight one, then the highest version (`v1.10` above `v1.9`). There is no "nearest tag plus distance" form; that needs the commit graph.
 - Annotated tags in `packed-refs` are recognised from the file. A loose tag ref that does not point at HEAD could still be an annotated tag of HEAD, which only the object database can tell (as can more than 256 loose tags, which are not read); then `tag` shows the cached result of a background `git for-each-ref --points-at`, refreshed every `ttl` seconds, and the tags the files gave until the first result is in. Render never waits on it.
 - `stash` counts the entries of the stash reflog, as `git stash list` does. In a reftable repository the count comes from the cached `git status` (`--show-stash`) instead, and `tag` asks the background `git for-each-ref` with HEAD from that status.
+
+Line counts:
+
+- `diff` reads a background `git diff-index --numstat -M` (`both`, `staged` with `--cached`) or `git diff-files --numstat -M` (`unstaged`) in the repository root, totalled; render never runs git. Plumbing commands: they never write the index, and diff config (external diff drivers, `textconv`, `diff.renames`) does not apply. Renames are found as `git diff` finds them, so a moved file counts only its edited lines. Binary files count no lines. Untracked files are not counted; `dirty` shows them. On an unborn branch the base is the empty tree.
+- The cached value (key `gitdiff:<repo root>:<scope>`) keeps HEAD's commit and the index's file id, mtime and size: a commit, `git add`, checkout or reset refreshes it on the next render instead of after `ttl`; edits to tracked files show within `ttl` seconds. The last value is shown while the refresh runs. A run is limited to the refresh timeout, so a very large working tree shows nothing until one completes, and the last totals after that.
 
 Operation and conflicts:
 
@@ -837,6 +845,7 @@ set backgrounds "#202030 236 #303048"
 | `dirty` | `nf-fa-pencil` U+F040 | ✏️ |
 | `ahead` | `nf-fa-arrow_up` U+F062 | ⬆️ |
 | `worktree` | `nf-fa-tree` U+F1BB | 🌳 |
+| `diff` | `nf-oct-diff` U+F440 | ➕ |
 | `sha` | `nf-oct-git_commit` U+F417 | 📌 |
 | `tag` | `nf-oct-tag` U+F412 | 🏷️ |
 | `stash` | `nf-fa-archive` U+F187 | 📦 |
@@ -1000,7 +1009,7 @@ Core placeholders read the subagent, not the main session:
 - `model`: the subagent's model, its id read as a name (`claude-opus-5-5` as `Opus 5.5`); empty until Claude Code has resolved it.
 - `effort`: the effort set for the subagent (a level, or a token budget as a number); empty when none is set, never the one from your settings.
 - `ctx`: its token count against its context window (`ctx 21%`, `show=tokens`, `bar`, ...); components that need the transcript (`growth`, `trend`) and `split` render empty.
-- `cwd`, `root`, `repo`, `branch`, `dirty`, `ahead`, `worktree`: the subagent's directory (its own worktree when it runs in one).
+- `cwd`, `root`, `repo`, `branch`, `dirty`, `ahead`, `worktree`, `diff`: the subagent's directory (its own worktree when it runs in one).
 - The rest have no subagent data (session cost, usage windows, transcript totals, ...) and render empty or read as for the status line. `prs`, `issues`, `usage` and the like add the same text to every row, so they are best left out.
 
 Plugins are not drawn in a row (`bar check` reports them), and click links are off.
@@ -1303,6 +1312,6 @@ Environment variables bar reads:
 | `TZ` | Local zone for `spendhist` (Unix) |
 | `COLORTERM`, `NO_COLOR`, `FORCE_COLOR` | With `set color-depth auto`, or no `color-depth` set (capped at 256); see [Colour depth](#colour-depth) |
 | `PATH`, `PATHEXT` (Windows) | Plugins, `gh`, `git`, `jj`, `tmux` |
-| `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, `GIT_CONFIG_COUNT`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_SYSTEM`, `GIT_CONFIG_NOSYSTEM` | When any is set, `repo`, `branch` and `sha` run `git` instead of reading the repository files, and `dirty`, `ahead`, `worktree`, `tag`, `stash`, `gitop`, `conflicts` render empty ([Performance](technical.md#performance)) |
+| `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, `GIT_CONFIG_COUNT`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_SYSTEM`, `GIT_CONFIG_NOSYSTEM` | When any is set, `repo`, `branch` and `sha` run `git` instead of reading the repository files, and `dirty`, `ahead`, `worktree`, `diff`, `tag`, `stash`, `gitop`, `conflicts` render empty ([Performance](technical.md#performance)) |
 
 `FORCE_HYPERLINK` is read by Claude Code, not bar; see [Click handler](#click-handler-macos).
