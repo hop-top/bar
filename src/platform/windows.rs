@@ -27,6 +27,24 @@ use windows_sys::Win32::System::Time::{
 
 use super::{exec_exts, split_exec_name};
 
+/// The Windows system directory (`C:\Windows\System32`), from the API
+/// rather than `SystemRoot`, which the environment can change.
+pub fn system_dir() -> PathBuf {
+    use std::os::windows::ffi::OsStringExt;
+    let mut buf = [0u16; 260];
+    // SAFETY: the buffer and its length in u16 units are passed together
+    let n = unsafe {
+        windows_sys::Win32::System::SystemInformation::GetSystemDirectoryW(
+            buf.as_mut_ptr(),
+            buf.len() as u32,
+        )
+    } as usize;
+    if n == 0 || n >= buf.len() {
+        return PathBuf::from(r"C:\Windows\System32");
+    }
+    PathBuf::from(std::ffi::OsString::from_wide(&buf[..n]))
+}
+
 /// `USERPROFILE` (where Claude Code keeps `.claude`), else `HOME`.
 pub fn home() -> Option<PathBuf> {
     ["USERPROFILE", "HOME"]

@@ -50,6 +50,41 @@ pub mod dirs {
     }
 }
 
+#[cfg(all(feature = "test-tools", not(debug_assertions)))]
+compile_error!("the `test-tools` feature is for tests only");
+
+/// A system tool trusted with Claude Code's sign-in: a fixed path, never
+/// found through `PATH` or the working directory. macOS: `/usr/bin/<name>`;
+/// Windows: `<system dir>\<name>.exe`; other Unix, where tools live in
+/// different places: the absolute-`PATH` lookup of `program`. The
+/// `test-tools` feature (tests only) uses `program` everywhere.
+pub fn system_program(name: &str) -> std::path::PathBuf {
+    if cfg!(feature = "test-tools") {
+        return program(name);
+    }
+    system_path(name)
+}
+
+/// `system_program` as a release build resolves it, whatever the features.
+pub fn system_path(name: &str) -> std::path::PathBuf {
+    fixed_path(name)
+}
+
+#[cfg(target_os = "macos")]
+fn fixed_path(name: &str) -> std::path::PathBuf {
+    std::path::Path::new("/usr/bin").join(name)
+}
+
+#[cfg(windows)]
+fn fixed_path(name: &str) -> std::path::PathBuf {
+    windows::system_dir().join(format!("{name}.exe"))
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+fn fixed_path(name: &str) -> std::path::PathBuf {
+    program(name)
+}
+
 /// `PATHEXT` when it is unset or empty.
 pub const DEFAULT_PATHEXT: &str = ".COM;.EXE;.BAT;.CMD";
 

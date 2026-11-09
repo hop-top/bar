@@ -6,7 +6,7 @@ build:
 	cargo build --release
 
 test:
-	cargo test --locked
+	cargo test --locked --features test-tools
 
 lint:
 	cargo fmt --all -- --check

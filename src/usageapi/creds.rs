@@ -78,7 +78,7 @@ fn file(dir: &Path, now_ms: i64) -> Option<String> {
 /// argument of any process.
 #[cfg(target_os = "macos")]
 fn keychain(service: &str, account: Option<&str>, now_ms: i64, limit: Duration) -> Option<String> {
-    let mut c = std::process::Command::new(crate::platform::program("security"));
+    let mut c = std::process::Command::new(crate::platform::system_program("security"));
     c.args(["find-generic-password", "-s", service]);
     if let Some(a) = account {
         c.args(["-a", a]);
