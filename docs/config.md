@@ -155,7 +155,7 @@ Components (`show`), in the order listed:
 
 - `pct`: `38%`. With `of=window` this is `context_window.used_percentage`.
 - `bar`, `gauge`: the same value as a bar of `width` cells or one `▁..█` cell, drawn with the [usage glyph sets](#glyphs).
-- `tokens`: `76k/200k`, tokens in the context (`context_window.total_input_tokens`, else derived from the percentage) over the window (`context_window.context_window_size`) or, with `of=compact`, over the auto-compaction point.
+- `tokens`: `76k/200k`, tokens in the context (the input, cache write and cache read counts of `context_window.current_usage`, else `context_window.total_input_tokens`, else derived from the percentage) over the window (`context_window.context_window_size`) or, with `of=compact`, over the auto-compaction point.
 - `left`: `124k left`, tokens until auto-compaction. Hidden while auto-compaction is off.
 - `split`: `r 70k w 4.8k new 1.2k`, the last request's context read from the prompt cache, written to it, and sent uncached (`context_window.current_usage`). Hidden before the first request and right after a compaction, while Claude Code sends `null`.
 - `growth`: `+3.2k`, how much the context grew on the last request (negative when it shrank).

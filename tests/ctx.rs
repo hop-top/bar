@@ -158,6 +158,20 @@ fn tokens_against_window_or_compact_point() {
 }
 
 #[test]
+fn tokens_prefer_the_current_usage_inputs() {
+    // current_usage sums to 80k; the total says 76k
+    let s = session::parse(
+        r#"{"context_window":{"used_percentage":38,"context_window_size":200000,"total_input_tokens":76000,"current_usage":{"input_tokens":2000,"output_tokens":300,"cache_creation_input_tokens":8000,"cache_read_input_tokens":70000}}}"#,
+    );
+    assert_eq!(Env::new().show(&s, "show=tokens").unwrap(), "ctx 80k/200k");
+    // null after a compaction: the total
+    let s = session::parse(
+        r#"{"context_window":{"used_percentage":38,"context_window_size":200000,"total_input_tokens":76000,"current_usage":null}}"#,
+    );
+    assert_eq!(Env::new().show(&s, "show=tokens").unwrap(), "ctx 76k/200k");
+}
+
+#[test]
 fn tokens_derived_from_percent_when_total_missing() {
     let s =
         session::parse(r#"{"context_window":{"used_percentage":50,"context_window_size":200000}}"#);
