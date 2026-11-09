@@ -2,10 +2,10 @@
 <title>Powerline skin with the dracula palette.</title>
 <rect width="100%" height="100%" rx="6" fill="#1c1c1c"/>
 <rect x="10" y="10" width="180" height="17.4" fill="#303030"/>
-<rect x="190" y="10" width="72" height="17.4" fill="#5f0087"/>
+<rect x="190" y="10" width="72" height="17.4" fill="#5f5faf"/>
 <rect x="262" y="10" width="135" height="17.4" fill="#444444"/>
-<rect x="469" y="10" width="126" height="17.4" fill="#5f00af"/>
-<rect x="595" y="10" width="117" height="17.4" fill="#3a3a3a"/>
+<rect x="469" y="10" width="126" height="17.4" fill="#875faf"/>
+<rect x="595" y="10" width="117" height="17.4" fill="#4e4e4e"/>
 <rect x="802" y="10" width="72" height="17.4" fill="#303030"/>
 <rect x="541" y="10" width="9" height="17.4" fill="#ffff87"/>
 <rect x="658" y="10" width="18" height="17.4" fill="#ffff87"/>
@@ -55,15 +55,15 @@
 <g fill="#303030"><use href="#g14" x="26030" y="-3271"/></g>
 <g fill="#afafd7"><use href="#g15" x="28496" y="-3271"/></g>
 <g fill="#ffff87"><use href="#g16" x="30962" y="-3271"/><use href="#g17" x="32195" y="-3271"/><use href="#g18" x="33428" y="-3271"/></g>
-<g fill="#5f0087"><use href="#g14" x="35894" y="-3271"/></g>
+<g fill="#5f5faf"><use href="#g14" x="35894" y="-3271"/></g>
 <g fill="#afafd7"><use href="#g19" x="38360" y="-3271"/></g>
 <g fill="#5fafff"><use href="#g20" x="40826" y="-3271"/><use href="#g21" x="42059" y="-3271"/><use href="#g22" x="43292" y="-3271"/></g>
 <g fill="#afafd7"><use href="#g23" x="44525" y="-3271"/><use href="#g24" x="45758" y="-3271"/><use href="#g25" x="48224" y="-3271"/><use href="#g26" x="49457" y="-3271"/><use href="#g11" x="50690" y="-3271"/><use href="#g27" x="51923" y="-3271"/></g>
 <g fill="#444444"><use href="#g14" x="54389" y="-3271"/></g>
 <g fill="#afafd7"><use href="#g28" x="65486" y="-3271"/><use href="#g16" x="67952" y="-3271"/><use href="#g10" x="69185" y="-3271"/><use href="#g29" x="70418" y="-3271"/><use href="#g25" x="71651" y="-3271"/><use href="#g30" x="75350" y="-3271"/><use href="#g30" x="76583" y="-3271"/><use href="#g30" x="77816" y="-3271"/><use href="#g30" x="79049" y="-3271"/></g>
-<g fill="#5f00af"><use href="#g14" x="81515" y="-3271"/></g>
+<g fill="#875faf"><use href="#g14" x="81515" y="-3271"/></g>
 <g fill="#afafd7"><use href="#g31" x="83981" y="-3271"/><use href="#g32" x="86447" y="-3271"/><use href="#g33" x="87680" y="-3271"/><use href="#g30" x="92612" y="-3271"/><use href="#g30" x="93845" y="-3271"/><use href="#g30" x="95078" y="-3271"/></g>
-<g fill="#3a3a3a"><use href="#g14" x="97544" y="-3271"/></g>
+<g fill="#4e4e4e"><use href="#g14" x="97544" y="-3271"/></g>
 <g fill="#303030"><use href="#g34" x="108641" y="-3271"/></g>
 <g fill="#afafd7"><use href="#g35" x="111107" y="-3271"/></g>
 <g fill="#5fafff"><use href="#g36" x="113573" y="-3271"/><use href="#g37" x="114806" y="-3271"/><use href="#g22" x="116039" y="-3271"/><use href="#g38" x="117272" y="-3271"/></g>

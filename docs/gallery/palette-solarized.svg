@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="884" height="37.4" viewBox="0 0 884 37.4" role="img" aria-label="Powerline skin with the solarized palette.">
 <title>Powerline skin with the solarized palette.</title>
 <rect width="100%" height="100%" rx="6" fill="#1c1c1c"/>
-<rect x="10" y="10" width="180" height="17.4" fill="#1c1c1c"/>
-<rect x="190" y="10" width="72" height="17.4" fill="#00005f"/>
-<rect x="262" y="10" width="135" height="17.4" fill="#303030"/>
-<rect x="469" y="10" width="126" height="17.4" fill="#000087"/>
-<rect x="595" y="10" width="117" height="17.4" fill="#262626"/>
-<rect x="802" y="10" width="72" height="17.4" fill="#1c1c1c"/>
+<rect x="10" y="10" width="180" height="17.4" fill="#005f5f"/>
+<rect x="190" y="10" width="72" height="17.4" fill="#262626"/>
+<rect x="262" y="10" width="135" height="17.4" fill="#005f87"/>
+<rect x="469" y="10" width="126" height="17.4" fill="#008787"/>
+<rect x="595" y="10" width="117" height="17.4" fill="#5f8787"/>
+<rect x="802" y="10" width="72" height="17.4" fill="#005f5f"/>
 <rect x="541" y="10" width="9" height="17.4" fill="#af8700"/>
 <rect x="658" y="10" width="18" height="17.4" fill="#af8700"/>
 <g transform="scale(7299.27e-6,-7299.27e-6)">
@@ -52,19 +52,19 @@
 <path id="g38" d="M174 1556H467V739L819 1120H1174L750 702L1198 0H874L567 524L467 428V0H174Z"/>
 </defs>
 <g fill="#8a8a8a"><use href="#g0" x="2603" y="-3271"/><use href="#g1" x="5069" y="-3271"/><use href="#g2" x="6302" y="-3271"/><use href="#g3" x="7535" y="-3271"/><use href="#g4" x="8768" y="-3271"/><use href="#g5" x="11234" y="-3271"/><use href="#g6" x="12467" y="-3271"/><use href="#g7" x="13700" y="-3271"/><use href="#g8" x="14933" y="-3271"/><use href="#g9" x="17399" y="-3271"/><use href="#g10" x="18632" y="-3271"/><use href="#g11" x="19865" y="-3271"/><use href="#g12" x="21098" y="-3271"/><use href="#g10" x="22331" y="-3271"/><use href="#g13" x="23564" y="-3271"/></g>
-<g fill="#1c1c1c"><use href="#g14" x="26030" y="-3271"/></g>
+<g fill="#005f5f"><use href="#g14" x="26030" y="-3271"/></g>
 <g fill="#8a8a8a"><use href="#g15" x="28496" y="-3271"/></g>
 <g fill="#af8700"><use href="#g16" x="30962" y="-3271"/><use href="#g17" x="32195" y="-3271"/><use href="#g18" x="33428" y="-3271"/></g>
-<g fill="#00005f"><use href="#g14" x="35894" y="-3271"/></g>
+<g fill="#262626"><use href="#g14" x="35894" y="-3271"/></g>
 <g fill="#8a8a8a"><use href="#g19" x="38360" y="-3271"/></g>
 <g fill="#5fafff"><use href="#g20" x="40826" y="-3271"/><use href="#g21" x="42059" y="-3271"/><use href="#g22" x="43292" y="-3271"/></g>
 <g fill="#8a8a8a"><use href="#g23" x="44525" y="-3271"/><use href="#g24" x="45758" y="-3271"/><use href="#g25" x="48224" y="-3271"/><use href="#g26" x="49457" y="-3271"/><use href="#g11" x="50690" y="-3271"/><use href="#g27" x="51923" y="-3271"/></g>
-<g fill="#303030"><use href="#g14" x="54389" y="-3271"/></g>
+<g fill="#005f87"><use href="#g14" x="54389" y="-3271"/></g>
 <g fill="#8a8a8a"><use href="#g28" x="65486" y="-3271"/><use href="#g16" x="67952" y="-3271"/><use href="#g10" x="69185" y="-3271"/><use href="#g29" x="70418" y="-3271"/><use href="#g25" x="71651" y="-3271"/><use href="#g30" x="75350" y="-3271"/><use href="#g30" x="76583" y="-3271"/><use href="#g30" x="77816" y="-3271"/><use href="#g30" x="79049" y="-3271"/></g>
-<g fill="#000087"><use href="#g14" x="81515" y="-3271"/></g>
+<g fill="#008787"><use href="#g14" x="81515" y="-3271"/></g>
 <g fill="#8a8a8a"><use href="#g31" x="83981" y="-3271"/><use href="#g32" x="86447" y="-3271"/><use href="#g33" x="87680" y="-3271"/><use href="#g30" x="92612" y="-3271"/><use href="#g30" x="93845" y="-3271"/><use href="#g30" x="95078" y="-3271"/></g>
-<g fill="#262626"><use href="#g14" x="97544" y="-3271"/></g>
-<g fill="#1c1c1c"><use href="#g34" x="108641" y="-3271"/></g>
+<g fill="#5f8787"><use href="#g14" x="97544" y="-3271"/></g>
+<g fill="#005f5f"><use href="#g34" x="108641" y="-3271"/></g>
 <g fill="#8a8a8a"><use href="#g35" x="111107" y="-3271"/></g>
 <g fill="#5fafff"><use href="#g36" x="113573" y="-3271"/><use href="#g37" x="114806" y="-3271"/><use href="#g22" x="116039" y="-3271"/><use href="#g38" x="117272" y="-3271"/></g>
 </g>
