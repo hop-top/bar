@@ -135,7 +135,7 @@ const Compose = (() => {
 
   function optionsEditor(side, i) {
     const t = groups[side][i];
-    const spec = (ui.schema.placeholders.find((p) => p.name === t.name) || { options: [] }).options;
+    const spec = ui.options(t.name);
     const get = (k) => (t.options.find(([o]) => o === k) || [null, ""])[1];
     const put = (k, v) => {
       const at = t.options.findIndex(([o]) => o === k);
@@ -146,11 +146,16 @@ const Compose = (() => {
     };
     const field = (o) => {
       const cur = get(o.key);
+      const name = o.label || o.key;
+      const tip = (n) => {
+        if (o.help) n.title = o.help;
+        return n;
+      };
       if (o.kind === "one") {
         const sel = el("select", {}, el("option", { value: "", textContent: "(default)" }));
         for (const v of o.values) sel.append(el("option", { value: v, textContent: v, selected: v === cur }));
         sel.onchange = () => put(o.key, sel.value);
-        return el("label", {}, o.key, sel);
+        return tip(el("label", {}, name, sel));
       }
       if (o.kind === "list") {
         const on = new Set(cur.split(",").filter(Boolean));
@@ -163,12 +168,21 @@ const Compose = (() => {
           };
           box.append(el("label", {}, cb, v));
         }
-        return el("label", {}, o.key, box);
+        return tip(el("label", {}, name, box));
       }
       const num = o.kind === "int" || o.kind === "pos";
       const input = el("input", { type: num ? "number" : "text", value: cur, min: o.kind === "pos" ? 1 : 0 });
+      if (o.placeholder) input.placeholder = o.placeholder;
+      // suggested values for free-form options
+      if (o.values && o.values.length) {
+        const list = el("datalist", { id: `opt-${t.name}-${o.key}` });
+        for (const v of o.values) list.append(el("option", { value: v }));
+        input.setAttribute("list", list.id);
+        input.onchange = () => put(o.key, input.value.trim());
+        return tip(el("label", {}, name, input, list));
+      }
       input.onchange = () => put(o.key, input.value.trim());
-      return el("label", {}, o.key, input);
+      return tip(el("label", {}, name, input));
     };
     const known = new Set(spec.map((o) => o.key).concat(["icon", "bg"]));
     const extra = t.options.filter(([k]) => !known.has(k)).map(([k]) => ({ key: k, kind: "any", values: [] }));
@@ -178,8 +192,16 @@ const Compose = (() => {
 
   function adders(side) {
     const sel = el("select", { title: "add a placeholder" }, el("option", { value: "", textContent: "+ placeholder" }));
-    for (const p of ui.schema.placeholders) sel.append(el("option", { value: p.name, textContent: p.name }));
-    sel.append(el("option", { value: "\u0000plugin", textContent: "plugin…" }));
+    const core = el("optgroup", { label: "core" });
+    for (const p of ui.schema.placeholders) core.append(el("option", { value: p.name, textContent: p.name }));
+    sel.append(core);
+    const plugins = el("optgroup", { label: "plugins" });
+    for (const p of ui.plugins()) {
+      const label = p.category ? `${p.name} (${p.category})` : p.name;
+      plugins.append(el("option", { value: p.name, textContent: label, title: p.description || "" }));
+    }
+    plugins.append(el("option", { value: "\u0000plugin", textContent: "other plugin…" }));
+    sel.append(plugins);
     sel.onchange = () => {
       let name = sel.value;
       if (name === "\u0000plugin") name = (prompt("Plugin name (bar-<name> on PATH):") || "").trim();

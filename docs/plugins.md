@@ -40,8 +40,38 @@ Any executable named `bar-<name>` on `PATH` (on Windows `bar-<name>.exe`, `.cmd`
 | `icon` | Optional default segment icon, used when `set icons` is not `none`. Sanitised; at most 2 cells. |
 | `ttl` | How long a render result stays fresh: seconds (`300`) or a duration (`90s`, `5m`, `1h`, `1d`). Default 60 s; zero or unparsable means the default. |
 | `cache` | Optional. `"session"`: the output depends on the Claude Code session, so results are cached per session id and the render input carries `session.record`. Any other value or none: shared across sessions. |
+| `web` | Optional. What the [web configurator](web.md) shows for the plugin, which it cannot run: see [Web configurator metadata](#web-configurator-metadata). Without it the plugin still works everywhere, and the page previews it as its name. |
 
 The result is cached for a day per binary path and modification time, so a changed binary is asked again at once; renders never run `--ext-info` themselves. A cold cache renders nothing and asks in the background. Output that does not parse, a non-zero exit or a timeout counts as a failed refresh (kept value, 60 s backoff); `bar plugin info` and `bar check`, which run it directly, fall back to the file name, an empty version and no capabilities.
+
+### Web configurator metadata
+
+The web configurator runs bar's renderer in the browser, where no plugin can run. A plugin can describe itself for it with a `web` object in `--ext-info`; every field is optional, and unknown fields are ignored.
+
+```json
+"web": {
+  "description": "Closed tasks of the session track",
+  "category": "tasks",
+  "samples": [
+    { "when": { "show": "track" }, "output": { "label": "◉", "text": "web-ui", "score": 77 } },
+    { "output": { "label": "◉", "icon": "\uf45d", "text": "7∕9", "alt": "web-ui", "score": 77 } }
+  ],
+  "options": {
+    "status": { "label": "Status filter", "help": "Comma-separated statuses to count", "placeholder": "DONE,CANCELLED", "choices": ["DONE", "DONE,CANCELLED"] }
+  }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `description` | Picker text; the top-level `description` when absent. |
+| `category` | Picker group, a short word (`git`, `tasks`, `system`, ...). |
+| `samples` | Preview outputs, in order. Each has `output`, an object in the [render output](#render) shape (`text` required; `label`, `icon`, `style`, `score`, `metric`, `link`, `alt`, `label_toggle`), and optionally `when`, an object of option values. The preview uses the first sample whose `when` values all equal the placeholder's options, after schema defaults are filled in; a sample without `when` matches any options. Values are written as in a layout (`"true"`, `"3"`) or as JSON of the option's type. The output goes through the same paint code as a real render: style and score colours, label, icons, skins. With no match, or no samples, the preview shows the plugin name. A toggle is never on in the preview, so `text` shows, not `alt`. |
+| `options` | Hints per declared option: `label` (shown instead of the key), `help` (tooltip), `placeholder` (example in an empty field), `choices` (suggested values; each must be a valid value of the option, so for an `enum` a subset of `enum`). The option schema itself stays in `options` at the top level. |
+
+`bar check` validates the `web` object of each plugin a config uses and reports problems as warnings (``plugin `tlc`: web: samples[0]: ...``): a non-object, a non-string `description`, `category`, `label`, `help` or `placeholder`, a sample without a valid `output`, a `when` or hint for an undeclared option, or a `when` value or choice the option does not accept.
+
+`bar web plugins` prints `plugins.json`, the `--ext-info` of every placeholder plugin bar finds on `PATH` (or in each `--dir DIR` instead), `web` objects included; `-o FILE` writes it to a file. It reads the cached `--ext-info` when fresh and otherwise runs it now (5 s limit), storing the result for later renders. Load the file into the web configurator to compose and preview with your plugins.
 
 ## Render
 
@@ -114,6 +144,8 @@ Save as `bar-hello`, `chmod +x`, put it on `PATH`, then `set left "#{hello[who=b
 ## Reference plugins
 
 Five POSIX shell scripts ship in `plugins/`. They need `sh` and the tool they wrap, and all but `bar-mem` need `jq`; and are Unix plugins (extension-less, so Windows discovery skips them); put them on `PATH` (copy or symlink) to enable `#{tlc}`, `#{claude-credits}`, `#{ci}`, `#{mem}` and `#{health}`. Colour comes from core: `bar-tlc` emits `score`, `bar-claude-credits` emits `metric`. The only `style` either sets is `bad` on the credits `?`.
+
+Each declares a `web` object with preview samples and option hints, so the [web configurator](web.md) can show it.
 
 ### `bar-tlc`
 

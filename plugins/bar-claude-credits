@@ -6,7 +6,7 @@
 # endpoint for organisation `org=...`.
 # The cookie reaches curl only on stdin, never in argv or the environment.
 if [ "$1" = "--ext-info" ]; then
-  printf '%s\n' '{"name":"claude-credits","version":"0.1.0","description":"Claude Console prepaid credit balance","capabilities":["discover","placeholder"],"options":{"account":{"type":"string"}},"ttl":"5m"}'
+  printf '%s\n' '{"name":"claude-credits","version":"0.1.0","description":"Claude Console prepaid credit balance","capabilities":["discover","placeholder"],"options":{"account":{"type":"string"}},"ttl":"5m","web":{"category":"usage","samples":[{"output":{"text":"$149.07","label":"14d"}}],"options":{"account":{"label":"Keychain entry","help":"Keychain entry holding the Console session cookie; else plugin claude-credits keychain=...","placeholder":"claude-console"}}}}'
   exit 0
 fi
 

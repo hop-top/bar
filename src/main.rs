@@ -89,6 +89,11 @@ enum SubCmd {
         #[command(subcommand)]
         cmd: PluginCmd,
     },
+    /// Web configurator support.
+    Web {
+        #[command(subcommand)]
+        cmd: WebCmd,
+    },
     /// Model price data (models.dev).
     Prices {
         #[command(subcommand)]
@@ -109,6 +114,18 @@ enum PricesCmd {
         /// Write this file instead of the data dir's models.json.
         #[arg(long, value_name = "FILE")]
         out: Option<std::path::PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+enum WebCmd {
+    /// Print plugins.json for the web configurator: the `--ext-info` of
+    /// every plugin found on PATH (or in --dir), including its `web`
+    /// object. `-o FILE` writes it to FILE.
+    Plugins {
+        /// Look for plugins in this directory instead of PATH; repeatable.
+        #[arg(long, value_name = "DIR")]
+        dir: Vec<std::path::PathBuf>,
     },
 }
 
@@ -196,6 +213,7 @@ fn main() {
         Some(("click", m)) => click_cmd(m),
         Some(("plugin", m)) => plugin_cmd(m),
         Some(("prices", m)) => prices_cmd(m),
+        Some(("web", m)) => web_cmd(m),
         Some(("refresh", m)) => {
             refresh(m.get_one::<String>("request").map_or("", String::as_str));
         }
@@ -460,6 +478,44 @@ fn plugin_cmd(m: &ArgMatches) {
     if let Err(e) = dispatch(leaf, &mut out, &data, DispatchOptions::default()) {
         eprintln!("bar plugin: {e}");
         std::process::exit(2);
+    }
+}
+
+fn web_cmd(m: &ArgMatches) {
+    let Some(("plugins", p)) = m.subcommand() else {
+        return;
+    };
+    let given: Vec<std::path::PathBuf> = p
+        .get_many::<std::path::PathBuf>("dir")
+        .into_iter()
+        .flatten()
+        .map(|d| std::path::absolute(d).unwrap_or_else(|_| d.clone()))
+        .collect();
+    let dirs = if given.is_empty() {
+        plugin::path_dirs(std::env::var_os("PATH").as_deref())
+    } else {
+        given
+    };
+    let cache = Cache::new(&click::state_dir());
+    let infos: Vec<_> = plugin::discover(&dirs)
+        .iter()
+        .map(|f| plugin::info_now(&cache, f))
+        .collect();
+    let body = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&plugin::web::manifest(&infos)).unwrap_or_default()
+    );
+    // the global `-o/--output` (hop-top-kit output flags); `-` is stdout
+    let out = p.get_one::<String>("output").map_or("", String::as_str);
+    let written = match out {
+        "" | "-" => std::io::stdout()
+            .write_all(body.as_bytes())
+            .map_err(|e| e.to_string()),
+        path => std::fs::write(path, body).map_err(|e| format!("{path}: {e}")),
+    };
+    if let Err(e) = written {
+        eprintln!("bar web plugins: {e}");
+        std::process::exit(1);
     }
 }
 

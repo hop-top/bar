@@ -171,6 +171,15 @@ impl Cache {
         modified_age(&self.fail_path(key)).is_some_and(|a| a < window)
     }
 
+    /// The stored value when younger than `ttl` seconds; never spawns.
+    pub fn read_fresh(&self, key: &str, ttl: u64) -> Option<String> {
+        let path = self.path_for(key);
+        let age = modified_age(&path)?;
+        (age < Duration::from_secs(ttl))
+            .then(|| read_capped(&path))
+            .flatten()
+    }
+
     /// The stored value, possibly stale; spawns a refresh when it is older
     /// than `ttl` seconds or missing. Never waits on the job.
     pub fn read_or_refresh(&self, key: &str, ttl: u64, job: &Job) -> Option<String> {

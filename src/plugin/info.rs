@@ -48,14 +48,22 @@ pub struct ExtInfo {
     /// `"cache": "session"`: output depends on the session, so results are
     /// cached per session id and the session's record is sent.
     pub session_cache: bool,
+    /// The optional `web` object as given: what the web configurator shows
+    /// for the plugin (`plugin::web`).
+    pub web: Option<Value>,
 }
 
 impl ExtInfo {
     /// What the host assumes when `--ext-info` fails: name from the file,
     /// empty version, no capabilities.
     pub fn fallback(found: &Found) -> ExtInfo {
+        ExtInfo::named(&found.name)
+    }
+
+    /// Info with only a name: no version, capabilities or options.
+    pub fn named(name: &str) -> ExtInfo {
         ExtInfo {
-            name: found.name.clone(),
+            name: name.to_string(),
             version: String::new(),
             description: String::new(),
             capabilities: Vec::new(),
@@ -66,6 +74,7 @@ impl ExtInfo {
             declares_bg_option: false,
             declares_click_option: false,
             session_cache: false,
+            web: None,
         }
     }
 
@@ -108,6 +117,9 @@ impl ExtInfo {
         if self.session_cache {
             out["cache"] = json!("session");
         }
+        if let Some(web) = &self.web {
+            out["web"] = web.clone();
+        }
         out
     }
 }
@@ -126,7 +138,7 @@ fn parse_bool(s: &str) -> Option<bool> {
 }
 
 /// An option value as the plugin receives it: number, bool or string.
-fn typed(spec: &OptSpec, raw: &str) -> Option<Value> {
+pub(super) fn typed(spec: &OptSpec, raw: &str) -> Option<Value> {
     match spec.kind {
         OptType::Int => raw.trim().parse::<i64>().ok().map(Value::from),
         OptType::Bool => parse_bool(raw).map(Value::from),
@@ -217,6 +229,7 @@ pub fn parse_info(raw: &str) -> Option<ExtInfo> {
         declares_bg_option,
         declares_click_option,
         session_cache: v["cache"] == "session",
+        web: v.get("web").filter(|w| !w.is_null()).cloned(),
     })
 }
 
@@ -247,6 +260,29 @@ pub fn info_job(found: &Found) -> (String, Job) {
 pub fn cached_info(cache: &Cache, found: &Found) -> Option<ExtInfo> {
     let (key, job) = info_job(found);
     parse_info(&cache.read_or_refresh(&key, INFO_TTL, &job)?)
+}
+
+/// The cached interrogation when fresh, else `--ext-info` run now (5 s
+/// limit) and its output stored for the next caller; synthesized info
+/// when that fails. Never spawns a background job.
+pub fn info_now(cache: &Cache, found: &Found) -> ExtInfo {
+    let (key, job) = info_job(found);
+    if let Some(i) = cache
+        .read_fresh(&key, INFO_TTL)
+        .and_then(|o| parse_info(&o))
+    {
+        return i;
+    }
+    match job.execute(INFO_TIMEOUT) {
+        Some(raw) => match parse_info(&raw) {
+            Some(i) => {
+                let _ = cache.store(&key, &raw);
+                i
+            }
+            None => ExtInfo::fallback(found),
+        },
+        None => ExtInfo::fallback(found),
+    }
 }
 
 /// Typed option values: every key must be in the schema and parse as its

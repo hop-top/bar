@@ -4,7 +4,7 @@
 # repo, on a detached HEAD or with no runs; a failed gh call emits nothing, so
 # the cached value stays. Needs sh, jq, git and gh.
 if [ "$1" = "--ext-info" ]; then
-  printf '%s\n' '{"name":"ci","version":"0.1.0","description":"Latest CI run of the current branch","capabilities":["discover","placeholder"],"options":{"name":{"type":"bool"}},"ttl":"60s"}'
+  printf '%s\n' '{"name":"ci","version":"0.1.0","description":"Latest CI run of the current branch","capabilities":["discover","placeholder"],"options":{"name":{"type":"bool"}},"ttl":"60s","web":{"category":"git","samples":[{"when":{"name":"true"},"output":{"text":"✓ test","score":100}},{"output":{"text":"✓","score":100}}],"options":{"name":{"label":"Workflow name","help":"Show the workflow name after the mark"}}}}'
   exit 0
 fi
 
