@@ -209,7 +209,13 @@
 
   function syncControls(inspect) {
     if (!inspect.ok) return;
-    for (const s of schema.settings) $("set-" + s.key).value = inspect.set[s.key];
+    for (const s of schema.settings) {
+      const sel = $("set-" + s.key);
+      const v = inspect.set[s.key];
+      // a value the list lacks (a custom gradient) shows as itself
+      if (![...sel.options].some((o) => o.value === v)) sel.append(new Option(v, v));
+      sel.value = v;
+    }
     $("separator").value = inspect.set.separator;
     $("gap").value = inspect.set.gap;
   }
@@ -270,7 +276,9 @@
     const sel = document.createElement("select");
     sel.id = "set-" + s.key;
     for (const v of s.values) sel.append(new Option(v, v));
-    sel.onchange = () => setText(Conf.set(text, s.key, sel.value));
+    // `gradient off` is the default: the line goes rather than says so
+    sel.onchange = () =>
+      setText(Conf.set(text, s.key, s.key === "gradient" && sel.value === "off" ? null : sel.value));
     const label = document.createElement("label");
     label.append(s.key, sel);
     settingsBox.append(label);
