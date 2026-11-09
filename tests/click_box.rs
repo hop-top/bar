@@ -2,7 +2,7 @@
 mod fake_env;
 
 use fake_env::{fixture, url, Fake};
-use hop_bar::click::{box_is_empty, run, Refusal};
+use hop_bar::click::{box_is_empty, run, Pane, Refusal};
 use std::path::Path;
 
 /// A box border `n` cells wide, coloured as Claude Code draws it.
@@ -163,4 +163,118 @@ fn draft_of_n_lines_ending_in_typed_box_refused() {
         body.push_str(&format!("\n{}\n❯\u{a0}", "─".repeat(60)));
         assert!(!box_is_empty(&boxed(&body)), "{n}");
     }
+}
+
+// ── Session name in the top border ──────────────────────────────────────────
+
+/// A top border `n` cells wide with `label` near its right end, as Claude
+/// Code draws a named session: one `─` after the label.
+fn named(n: usize, label: &str) -> String {
+    let lead = n - hop_bar::style::visible_width(label) - 1;
+    format!("\x1b[38;5;244m{}{label}─", "─".repeat(lead))
+}
+
+/// `top` above an empty prompt above a 60-cell bottom border.
+fn under(top: &str) -> String {
+    format!(
+        "{top}\n\x1b[39m❯\u{a0}\n{}\n  \x1b[2m? for shortcuts\x1b[22m\n",
+        rule(60)
+    )
+}
+
+#[test]
+fn named_border_opens_box() {
+    assert!(box_is_empty(&fixture("empty-named")));
+    assert!(box_is_empty(&fixture("empty-named-placeholder")));
+    // Label content does not matter; SGR around and inside it is allowed.
+    for label in [
+        " demo session ",
+        " a ",
+        " x-0001 (copy) #2 ",
+        " \x1b[1mdemo\x1b[22m session ",
+        " デモ ",
+    ] {
+        assert!(box_is_empty(&under(&named(60, label))), "{label:?}");
+    }
+    // Shortest frame: two cells before the label, one after, 20 in all.
+    let short = format!("── {} ─\n\x1b[39m❯\u{a0}\n{}\n", "d".repeat(15), rule(20));
+    assert!(box_is_empty(&short));
+    let f = Fake::new();
+    f.screen("%1", &fixture("empty-named"));
+    assert_eq!(run(&f, &url("model")), Ok(Pane("%1".into())));
+    assert_eq!(f.sent().len(), 2);
+}
+
+#[test]
+fn named_border_must_be_framed() {
+    let refuse = [
+        // No `─` run before the label, or only one cell of it.
+        format!(" demo session {}", "─".repeat(46)),
+        format!("─ demo session {}", "─".repeat(45)),
+        // No `─` after the label.
+        format!("{} demo session", "─".repeat(46)),
+        // Label not set off by spaces.
+        format!("{}demo session─", "─".repeat(47)),
+        format!("{} demo session─", "─".repeat(46)),
+        format!("{}demo session ─", "─".repeat(46)),
+        // Blank label, two labels, label with a control character.
+        format!("{}    ─", "─".repeat(55)),
+        format!("{} demo ── session ─", "─".repeat(42)),
+        format!("{} demo\tsession ─", "─".repeat(45)),
+        // Prompt marker or box corner in the label.
+        format!("{} ❯ demo ─", "─".repeat(51)),
+    ];
+    for top in &refuse {
+        assert!(!box_is_empty(&under(top)), "{top:?}");
+    }
+    // Under 20 cells in all.
+    let tiny = format!("── abc ─\n\x1b[39m❯\u{a0}\n{}\n", "─".repeat(8));
+    assert!(!box_is_empty(&tiny));
+}
+
+#[test]
+fn named_border_width_must_match_bottom() {
+    // Bottom border wider or narrower than the labelled top: refuse.
+    for n in [59, 61, 40] {
+        assert!(!box_is_empty(&under(&named(n, " demo session "))), "{n}");
+    }
+    // A wide label counts its cells, not its chars.
+    assert!(!box_is_empty(&under(&format!("{} デモ ─", "─".repeat(55)))));
+    // The bottom border never carries a label.
+    let s = format!(
+        "{}\n\x1b[39m❯\u{a0}\n{}\n",
+        named(60, " demo session "),
+        named(60, " demo session ")
+    );
+    assert!(!box_is_empty(&s));
+}
+
+#[test]
+fn named_box_drafts_refused() {
+    for name in [
+        "named-draft",
+        "named-draft-multiline",
+        "named-draft-typed-border",
+    ] {
+        assert!(!box_is_empty(&fixture(name)), "{name}");
+        let f = Fake::new();
+        f.screen("%1", &fixture(name));
+        refused(&f, &url("model"), Refusal::NotEmpty);
+    }
+    // Draft that types a labelled border and a marker, at any indent, as the
+    // last lines above the real bottom border.
+    for indent in ["", "  "] {
+        let body = format!(
+            "❯\u{a0}x\n{indent}{}\n{indent}❯\u{a0}",
+            named(58, " demo session ").replace("\x1b[38;5;244m", "")
+        );
+        let s = format!("{}\n{body}\n{}\n", named(60, " demo session "), rule(60));
+        assert!(!box_is_empty(&s), "{indent:?}");
+    }
+    // Draft that types a labelled border under a plain real top.
+    let s = boxed(&format!(
+        "❯\u{a0}\n{}\n❯\u{a0}",
+        named(60, " demo session ")
+    ));
+    assert!(!box_is_empty(&s));
 }

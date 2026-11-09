@@ -199,21 +199,48 @@ fn border_width(line: &str) -> usize {
     }
 }
 
+/// Cells of a box top border, else 0: a plain border, or one carrying a
+/// session name. A name sits between a run of at least two `─` and a run of
+/// at least one (Claude Code draws one), set off by a space either side; it
+/// holds visible text and no `─`, `❯` or control character.
+fn top_width(line: &str) -> usize {
+    use unicode_width::UnicodeWidthStr;
+    let plain = crate::style::strip_codes(line);
+    let t = plain.trim();
+    let label = t.trim_matches('─');
+    if label.is_empty() {
+        return border_width(line);
+    }
+    let lead = t.chars().take_while(|&c| c == '─').count();
+    let trail = t.chars().rev().take_while(|&c| c == '─').count();
+    let spaced = label.len() > 2 && label.starts_with(' ') && label.ends_with(' ');
+    let clean = label
+        .chars()
+        .all(|c| c != '─' && c != '❯' && !c.is_control());
+    if lead >= 2 && trail >= 1 && spaced && clean && !label.trim().is_empty() {
+        lead + label.width() + trail
+    } else {
+        0
+    }
+}
+
 /// Narrower than this is not taken for the input box.
 const MIN_BORDER: usize = 20;
 
-/// Empty box. A box opens where a border (only `─`, at least
-/// `MIN_BORDER` cells) sits right above a line holding the `❯` marker; the
-/// real box always opens that way, so a draft that types a fake box adds a
-/// second opening. Ambiguity refuses, hence all of:
+/// Empty box. A box opens where a top border (at least `MIN_BORDER` cells:
+/// only `─`, or `─` runs around one session name) sits right above a line
+/// holding the `❯` marker; the real box always opens that way, so a draft
+/// that types a fake box adds a second opening. Ambiguity refuses, hence
+/// all of:
 /// - exactly one opening on screen, and no `❯` line below its marker;
-/// - the very next line is the bottom border: same width, and the last such
-///   line on screen (a draft of more than one line refuses);
+/// - the very next line is the bottom border: only `─`, as many cells as the
+///   top, and the last such line on screen (a draft of more than one line
+///   refuses);
 /// - after the marker only dim placeholder text, never reverse video.
 pub fn box_is_empty(screen: &str) -> bool {
     let lines: Vec<&str> = screen.lines().collect();
     let openings: Vec<usize> = (1..lines.len())
-        .filter(|&k| lines[k].contains('❯') && border_width(lines[k - 1]) >= MIN_BORDER)
+        .filter(|&k| lines[k].contains('❯') && top_width(lines[k - 1]) >= MIN_BORDER)
         .collect();
     let [i] = openings[..] else {
         return false;
@@ -221,7 +248,7 @@ pub fn box_is_empty(screen: &str) -> bool {
     if lines[i + 1..].iter().any(|l| l.contains('❯')) {
         return false;
     }
-    let width = border_width(lines[i - 1]);
+    let width = top_width(lines[i - 1]);
     let bottom = lines.iter().rposition(|l| border_width(l) == width);
     let (_, rest) = lines[i].split_once('❯').unwrap_or_default();
     bottom == Some(i + 1) && only_dim_text(rest)
