@@ -288,6 +288,33 @@ fn web_plugins_writes_the_manifest_of_a_dir() {
         .success();
     let written: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
     assert_eq!(written, v);
+    // an existing file is kept without --force
+    std::fs::write(&file, "mine\n").unwrap();
+    let o = bar(&r)
+        .args(["web", "plugins", "--dir"])
+        .arg(reference())
+        .arg("-o")
+        .arg(&file)
+        .output()
+        .unwrap();
+    assert_eq!(o.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&o.stderr).contains("--force"));
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "mine\n");
+    bar(&r)
+        .args(["web", "plugins", "--force", "--dir"])
+        .arg(reference())
+        .arg("-o")
+        .arg(&file)
+        .assert()
+        .success();
+    let written: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    assert_eq!(written, v);
+    let left: Vec<_> = std::fs::read_dir(&r)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.contains("plugins.json") && n != "plugins.json")
+        .collect();
+    assert!(left.is_empty(), "{left:?}");
 }
 
 #[test]

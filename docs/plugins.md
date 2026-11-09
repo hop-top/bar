@@ -71,7 +71,7 @@ The web configurator runs bar's renderer in the browser, where no plugin can run
 
 `bar check` validates the `web` object of each plugin a config uses and reports problems as warnings (``plugin `tlc`: web: samples[0]: ...``): a non-object, a non-string `description`, `category`, `label`, `help` or `placeholder`, a sample without a valid `output`, a `when` or hint for an undeclared option, or a `when` value or choice the option does not accept.
 
-`bar web plugins` prints `plugins.json`, the `--ext-info` of every placeholder plugin bar finds on `PATH` (or in each `--dir DIR` instead), `web` objects included; `-o FILE` writes it to a file. It reads the cached `--ext-info` when fresh and otherwise runs it now (5 s limit), storing the result for later renders. Load the file into the web configurator to compose and preview with your plugins. [`bar edit`](config.md#bar-edit) previews plugins from the same samples, reading `--ext-info` the same way for the plugins its config uses.
+`bar web plugins` prints `plugins.json`, the `--ext-info` of every placeholder plugin bar finds on `PATH` (or in each `--dir DIR` instead), `web` objects included; `-o FILE` writes it to a file, atomically; an existing file is kept unless `--force`. It reads the cached `--ext-info` when fresh and otherwise runs it now (5 s limit), storing the result for later renders. Load the file into the web configurator to compose and preview with your plugins. [`bar edit`](config.md#bar-edit) previews plugins from the same samples, reading `--ext-info` the same way for the plugins its config uses.
 
 ## Render
 
