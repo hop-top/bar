@@ -78,6 +78,18 @@ fn count(v: &Value, key: &str) -> Option<u64> {
     (n.is_finite() && n >= 0.0).then_some(n as u64)
 }
 
+/// A token budget as text: `32000` (also for `32000.0`), `2.5`;
+/// empty when negative or not finite.
+fn budget(n: &serde_json::Number) -> String {
+    match n.as_f64() {
+        Some(f) if f.is_finite() && f >= 0.0 && f.fract() == 0.0 && f < 1e15 => {
+            format!("{}", f as u64)
+        }
+        Some(f) if f.is_finite() && f >= 0.0 => f.to_string(),
+        _ => String::new(),
+    }
+}
+
 fn task(v: &Value) -> Option<Task> {
     let id = text(v, "id");
     if id.is_empty() || id.len() > MAX_ID {
@@ -85,7 +97,7 @@ fn task(v: &Value) -> Option<Task> {
     }
     let effort = match v.get("effort") {
         Some(Value::String(s)) => s.chars().take(MAX_TEXT).collect(),
-        Some(Value::Number(n)) => n.to_string(),
+        Some(Value::Number(n)) => budget(n),
         _ => String::new(),
     };
     let samples: Vec<u64> = v

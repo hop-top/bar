@@ -349,3 +349,16 @@ fn clip_keeps_escapes_and_closes_links() {
     assert_eq!(clip("abc", 5, 1), "abc");
     assert_eq!(strip_codes(&clip("abc", 1, 1)), "…");
 }
+
+#[test]
+fn a_whole_number_effort_has_no_fraction() {
+    let e = |v: &str| {
+        let p = subagent::parse(&format!("{{\"tasks\":[{{\"id\":\"t\",\"effort\":{v}}}]}}"));
+        p.tasks[0].effort.clone()
+    };
+    assert_eq!(e("32000"), "32000");
+    assert_eq!(e("32000.0"), "32000");
+    assert_eq!(e("1.5e4"), "15000");
+    assert_eq!(e("2.5"), "2.5");
+    assert_eq!(e("-1"), "", "not a budget");
+}
