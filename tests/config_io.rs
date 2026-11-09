@@ -262,3 +262,15 @@ fn import_refuses_invalid_files_and_unconfirmed_writes() {
     );
     assert!(backups(&t).is_empty());
 }
+
+#[test]
+fn write_config_refuses_a_file_changed_since_read() {
+    let t = Tmp::new();
+    t.write("bar.conf", "set skin plain\n");
+    let f = t.path().join("bar.conf");
+    let e = hop_bar::confio::write_config(&f, Some("set skin capsule\n"), "x\n").unwrap_err();
+    assert!(e.contains("changed since it was read"), "{e}");
+    assert_eq!(std::fs::read_to_string(&f).unwrap(), "set skin plain\n");
+    hop_bar::confio::write_config(&f, Some("set skin plain\n"), "x\n").unwrap();
+    assert_eq!(std::fs::read_to_string(&f).unwrap(), "x\n");
+}

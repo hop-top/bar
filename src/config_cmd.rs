@@ -98,13 +98,14 @@ fn export(m: &ArgMatches) {
             let _ = so.write_all(body.as_bytes());
         }
         Some(f) => {
-            if f.exists() && !m.get_flag("force") {
+            let old = std::fs::read_to_string(f).ok();
+            if old.is_some() && !m.get_flag("force") {
                 fail(&format!(
                     "{} exists; pass --force to overwrite",
                     f.display()
                 ));
             }
-            if let Err(e) = confio::write_config(f, &body) {
+            if let Err(e) = confio::write_config(f, old.as_deref(), &body) {
                 fail(&e);
             }
             println!("wrote {}", f.display());
@@ -200,7 +201,7 @@ fn import(m: &ArgMatches) {
             fail("import", "nothing written", 1);
         }
     }
-    match confio::write_config(&target, &new) {
+    match confio::write_config(&target, old.as_deref(), &new) {
         Ok(Some(bak)) => println!("wrote {name} (old file: {})", bak.display()),
         Ok(None) => println!("wrote {name}"),
         Err(e) => fail("import", &e, 1),

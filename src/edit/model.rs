@@ -37,6 +37,9 @@ pub struct Editor {
     pub exists: bool,
     /// The file as it was before this session is backed up (first save).
     backed_up: bool,
+    /// The file's text as last read or written (`None`: missing); a save
+    /// refuses once when the file no longer holds it.
+    disk: Option<String>,
     pub cur: Cursor,
 }
 
@@ -73,6 +76,7 @@ impl Editor {
     /// built-in layout is then the starting point).
     pub fn new(path: PathBuf, text: Option<String>) -> Editor {
         let exists = text.is_some();
+        let disk = text.clone();
         let text = text.unwrap_or_else(builtin_text);
         Editor {
             doc: Doc::new(&text),
@@ -82,6 +86,7 @@ impl Editor {
             path,
             exists,
             backed_up: false,
+            disk,
             cur: Cursor::default(),
         }
     }
@@ -348,10 +353,16 @@ impl Editor {
 
     /// Writes the text to the file through [`crate::rewrite`] (through a
     /// symlink to its target, atomic, permissions kept). The first save
-    /// backs the old file up. Returns the file written and that backup.
+    /// backs the old file up. A file changed on disk since it was read is
+    /// not overwritten; saving again does. Returns the file written and
+    /// that backup.
     pub fn save(&mut self) -> Result<(PathBuf, Option<PathBuf>), String> {
         let text = self.doc.text();
         let target = crate::rewrite::target(&self.path)?;
+        if let Err(e) = crate::rewrite::unchanged(&target, self.disk.as_deref()) {
+            self.disk = std::fs::read_to_string(&target).ok();
+            return Err(format!("{e}; save again to overwrite it"));
+        }
         let shown = |e: std::io::Error| format!("{}: {e}", target.display());
         let bak = if self.backed_up {
             crate::rewrite::write(&target, &text).map_err(shown)?;
@@ -361,6 +372,7 @@ impl Editor {
                 .map_err(shown)?
         };
         self.backed_up = true;
+        self.disk = Some(text.clone());
         self.saved = text;
         self.exists = true;
         Ok((target, bak))

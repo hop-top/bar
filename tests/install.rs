@@ -335,3 +335,52 @@ fn local_scope_backup_stays_out_of_the_project() {
         "{out}"
     );
 }
+
+/// Answers `y`, after editing `file` as another program would while the
+/// question is up.
+struct EditWhileAsking {
+    file: PathBuf,
+    answered: bool,
+}
+
+impl std::io::Read for EditWhileAsking {
+    fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+        unreachable!()
+    }
+}
+
+impl std::io::BufRead for EditWhileAsking {
+    fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+        if !self.answered {
+            std::fs::write(&self.file, "{\"theme\": \"light\"}\n").unwrap();
+            self.answered = true;
+            return Ok(b"y\n");
+        }
+        Ok(b"")
+    }
+    fn consume(&mut self, _: usize) {}
+}
+
+#[test]
+fn a_file_changed_during_the_question_is_not_overwritten() {
+    let t = Tmp::new();
+    t.write("claude/settings.json", EXISTING);
+    let s = t.path().join("claude/settings.json");
+    let e = env(&t, s.clone());
+    let o = Opts {
+        yes: false,
+        ..opts()
+    };
+    let mut input = EditWhileAsking {
+        file: s.clone(),
+        answered: false,
+    };
+    let mut out = Vec::new();
+    let r = install::run(&e, &o, true, &mut input, &mut out);
+    let Err(Error::Failed(msg)) = r else {
+        panic!("{r:?}");
+    };
+    assert!(msg.contains("changed since it was read"), "{msg}");
+    assert_eq!(read(&s), json!({"theme": "light"}));
+    assert!(!t.path().join("state").exists());
+}

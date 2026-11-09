@@ -81,10 +81,16 @@ pub fn imported(old: Option<&str>, text: &str, mode: Mode) -> String {
 }
 
 /// Writes `body` to `path` through [`crate::rewrite`]: through a symlink,
-/// old file backed up, atomic, mode kept. Returns the backup path when
-/// there was a file.
-pub fn write_config(path: &Path, body: &str) -> Result<Option<PathBuf>, String> {
+/// old file backed up, atomic, mode kept. `expected` is the text the file
+/// was read as (`None`: missing); a file changed since is refused.
+/// Returns the backup path when there was a file.
+pub fn write_config(
+    path: &Path,
+    expected: Option<&str>,
+    body: &str,
+) -> Result<Option<PathBuf>, String> {
     let target = crate::rewrite::target(path)?;
+    crate::rewrite::unchanged(&target, expected)?;
     crate::rewrite::replace(&target, body, crate::rewrite::Backups::Beside)
         .map_err(|e| format!("{}: {e}", path.display()))
 }
