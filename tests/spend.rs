@@ -27,6 +27,7 @@ fn limit(period: &str, left: i64) -> Session {
         spend_limit: Some(SpendLimit {
             period: period.into(),
             resets_at: NOW + left,
+            ..SpendLimit::default()
         }),
         ..Session::default()
     }
@@ -55,7 +56,8 @@ fn session_parses_spend_limit() {
         s.spend_limit,
         Some(SpendLimit {
             period: "monthly".into(),
-            resets_at: 1234
+            resets_at: 1234,
+            ..SpendLimit::default()
         })
     );
     assert_eq!(session::parse(r#"{"rate_limits":{}}"#).spend_limit, None);

@@ -47,4 +47,5 @@ pub mod subagent;
 pub mod transcript;
 pub mod tz;
 pub mod update;
+pub mod usageapi;
 pub mod web;

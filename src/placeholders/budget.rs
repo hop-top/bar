@@ -1,10 +1,10 @@
 //! `budget`: spend against a `set budget-<kind>` limit.
 
-use super::cost::usd;
+use super::money::{usd, usd_whole};
 use super::spendhist::{summary, tz_opt};
 use super::usage::glyphs::{self, level};
 use super::{Ctx, Placeholder};
-use crate::budget::{limit_text, standing, used_pct, Kind};
+use crate::budget::{standing, used_pct, Kind};
 use crate::conf::Config;
 use crate::options::Options;
 use crate::spendhist::{Spend, BLOCK_HOURS};
@@ -95,11 +95,11 @@ pub fn fmt(cfg: &Config, opts: &Options, spent: Spend, limit: u64) -> String {
     for item in show_list(opts) {
         parts.push(match item {
             "spent" => st.paint(&amount),
-            "limit" => dim(&limit_text(limit)),
+            "limit" => dim(&usd_whole(limit)),
             "ratio" => format!(
                 "{}{}",
                 st.paint(&amount),
-                dim(&format!("/{}", limit_text(limit)))
+                dim(&format!("/{}", usd_whole(limit)))
             ),
             "pct" => st.paint(&format!("{}%", value.round() as i64)),
             "left" if st.over => format!(

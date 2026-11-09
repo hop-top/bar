@@ -110,6 +110,13 @@ pub(super) fn apply_set(c: &mut Config, key: &str, val: &str) -> Result<(), Stri
                 _ => return Err(format!("invalid service-status `{val}` (on|off)")),
             }
         }
+        "usage-api" => {
+            c.usage_api = match val {
+                "on" => true,
+                "off" => false,
+                _ => return Err(format!("invalid usage-api `{val}` (on|off)")),
+            }
+        }
         "project-config" => {
             c.project_config = ProjectMode::parse(val).ok_or_else(|| {
                 format!(

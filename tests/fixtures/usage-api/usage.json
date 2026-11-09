@@ -1,0 +1,22 @@
+{
+  "five_hour": {"utilization": 23.0, "resets_at": "2026-11-09T17:00:00.000000+00:00"},
+  "seven_day": {"utilization": 41.0, "resets_at": "2026-11-13T09:00:00.000000+00:00"},
+  "seven_day_opus": {"utilization": 18.5, "resets_at": "2026-11-13T09:00:00.000000+00:00"},
+  "seven_day_sonnet": {"utilization": null, "resets_at": null},
+  "seven_day_oauth_apps": null,
+  "limits": [
+    {"kind": "session", "percent": 23, "resets_at": "2026-11-09T17:00:00Z", "scope": null},
+    {"kind": "weekly_scoped", "percent": 12, "resets_at": "2026-11-13T09:00:00Z",
+     "scope": {"model": {"display_name": "Sonnet"}}},
+    {"kind": "weekly_scoped", "percent": 30, "resets_at": "2026-11-13T09:00:00Z",
+     "scope": {"model": {"display_name": "Fable"}}}
+  ],
+  "extra_usage": {
+    "is_enabled": true,
+    "monthly_limit": 5000,
+    "used_credits": 1234.0,
+    "utilization": 24.68,
+    "currency": "USD"
+  },
+  "account_uuid": "00000000-0000-0000-0000-000000000000"
+}

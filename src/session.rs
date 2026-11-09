@@ -12,6 +12,12 @@ pub struct Window {
 pub struct SpendLimit {
     pub period: String,
     pub resets_at: i64,
+    /// `used_percentage`, when present.
+    pub used_percentage: Option<f64>,
+    /// `used_usd`, when present (Claude Code v2.1.284 and later).
+    pub used_usd: Option<f64>,
+    /// `limit_usd`, when present.
+    pub limit_usd: Option<f64>,
 }
 
 /// `context_window.current_usage`: token counts of the last API call.
@@ -106,6 +112,9 @@ fn spend_limit(v: &Value) -> Option<SpendLimit> {
     Some(SpendLimit {
         period: l.get("period")?.as_str()?.to_owned(),
         resets_at: l.get("resets_at")?.as_i64()?,
+        used_percentage: num_at(l, &["used_percentage"]),
+        used_usd: num_at(l, &["used_usd"]),
+        limit_usd: num_at(l, &["limit_usd"]),
     })
 }
 

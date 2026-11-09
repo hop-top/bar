@@ -1,5 +1,6 @@
 //! Hermetic environment for tests that run the `bar` binary: state in a
-//! temp dir, a fake `gh` and `curl` that fail without network, a non-git
+//! temp dir, a fake `gh`, `curl` and `security` that fail without
+//! network or keychain, a non-git
 //! cwd; every config, data, cache and credential location points into
 //! `root`.
 #![allow(dead_code)]
@@ -27,6 +28,7 @@ pub fn isolation(root: &Path) -> (Vec<(&'static str, OsString)>, PathBuf) {
     std::fs::create_dir_all(&cwd).unwrap();
     fake_gh(&bin, &gh_log(root));
     fake_curl(&bin);
+    fake_security(&bin);
     let inherited = std::env::var_os("PATH").unwrap_or_default();
     let dirs = std::iter::once(bin).chain(std::env::split_paths(&inherited));
     let path = std::env::join_paths(dirs).unwrap();
@@ -99,6 +101,17 @@ fn fake_curl(bin: &Path) {
     std::fs::write(&curl, "#!/bin/sh\nexit 7\n").unwrap();
     std::fs::set_permissions(&curl, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
 }
+
+/// A `security` that fails: nothing reads the real keychain.
+#[cfg(unix)]
+fn fake_security(bin: &Path) {
+    let s = bin.join("security");
+    std::fs::write(&s, "#!/bin/sh\nexit 44\n").unwrap();
+    std::fs::set_permissions(&s, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+}
+
+#[cfg(windows)]
+fn fake_security(_: &Path) {}
 
 #[cfg(windows)]
 fn fake_curl(bin: &Path) {
