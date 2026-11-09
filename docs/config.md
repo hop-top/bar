@@ -181,7 +181,7 @@ The statusline JSON does not say when Claude Code will compact, so bar works it 
 
 1. `set compact-at`: tokens, or a percent of the context window.
 2. Off: `DISABLE_AUTO_COMPACT=1` or `DISABLE_COMPACT=1` in the environment, or `"autoCompactEnabled": false` in the user settings file. `left` hides; `of=compact` falls back to the window.
-3. The window: `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (`200000`, `200k`, `1M`; kept within 100k-1M, ignored when not a number), else `modelSettings.<model.id>.autoCompactWindow` in the user settings file (`"auto"` selects the default), else its top-level `autoCompactWindow`.
+3. The window: `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (`200000`, `200k`, `1M`; kept within 100k-1M, ignored when not a number), else the model's `modelSettings` entry's `autoCompactWindow` in the user settings file (`"auto"` selects the default; entries are keyed by the canonical model name, such as `claude-opus-4-6`, which the dated, `[1m]`, Bedrock, Vertex and `vendor/` spellings of `model.id` match), else its top-level `autoCompactWindow`.
 4. The default: about 967k tokens for a 1M context window, otherwise the whole window.
 
 The result is capped at the context window. When it lies below the window, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` (1-100) lowers it to that percent.

@@ -66,6 +66,15 @@ pub fn candidates(model: &str) -> Vec<Cand> {
     out
 }
 
+/// The vendor's own spelling of `model`: lower case, without a `[1m]`
+/// suffix and the gateway and cloud forms `candidates` strips
+/// (`us.anthropic.claude-opus-4-6-v1:0[1m]` to `claude-opus-4-6`).
+pub fn canonical(model: &str) -> String {
+    let lower = model.trim().to_ascii_lowercase();
+    let bare = lower.strip_suffix("[1m]").unwrap_or(&lower);
+    candidates(bare).pop().map_or_else(String::new, |c| c.id)
+}
+
 /// `claude-x-v1:0` to `claude-x`.
 fn strip_version(s: &str) -> &str {
     s.rsplit_once('-')
