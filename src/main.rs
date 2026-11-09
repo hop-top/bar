@@ -41,6 +41,9 @@ enum SubCmd {
         #[command(subcommand)]
         cmd: config_cmd::ConfigCmd,
     },
+    /// Edit the config in a full-screen terminal editor with a live preview.
+    #[cfg(feature = "edit")]
+    Edit,
     /// Write a preset as your config; refuses when a config exists.
     Init {
         /// Preset to write.
@@ -165,6 +168,13 @@ fn main() {
         Some(("install", m)) => install(m),
         Some(("update", _)) => update(),
         Some(("config", m)) => config_cmd::run(m),
+        #[cfg(feature = "edit")]
+        Some(("edit", _)) => {
+            if let Err(e) = hop_bar::edit::run() {
+                eprintln!("bar edit: {e}");
+                std::process::exit(EXIT_USAGE);
+            }
+        }
         Some(("toggle", m)) => {
             let key = m.get_one::<String>("key").map_or("", String::as_str);
             match click::toggle(&click::state_dir(), key) {

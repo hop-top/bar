@@ -8,6 +8,8 @@ pub mod compact;
 pub mod conf;
 pub mod confio;
 pub mod diff;
+#[cfg(feature = "edit")]
+pub mod edit;
 pub mod expand;
 pub mod expr;
 pub mod format;

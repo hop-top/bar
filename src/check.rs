@@ -20,8 +20,8 @@ mod report;
 pub use report::{Issue, Level, ProjectInfo, Report};
 
 /// How an option value is checked.
-#[derive(Clone, Copy)]
-enum Val {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Val {
     Any,
     Int,
     /// Integer of at least 1.
@@ -34,7 +34,9 @@ enum Val {
 const STATUS_PR: &[&str] = &["open", "closed", "merged"];
 const STATUS_ISSUE: &[&str] = &["open", "closed"];
 
-fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
+/// Options a core placeholder takes and how each value is checked; `None`
+/// for names that are not core placeholders.
+pub fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
     use Val::*;
     Some(match name {
         "account" | "sessions" | "spend" | "burn" | "duration" | "api" | "lines" | "version"

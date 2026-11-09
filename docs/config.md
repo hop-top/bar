@@ -6,7 +6,7 @@ How to write `bar.conf`: where it lives, the directives, every placeholder and i
 - [Placeholders](#placeholders): [session](#session), [ctx](#ctx), [usage](#usage), [tokens, cache, cachettl](#tokens-cache-cachettl), [ttft, tps, misses](#ttft-tps-misses), [spendhist](#spendhist), [git and directories](#git-and-directories), [prs and issues](#prs-and-issues), [account, agents, sessions, tmux](#account-agents-sessions-tmux), [update](#update), [every placeholder](#options-on-every-placeholder), [values](#values)
 - [Styling](#styling): [skins](#skins), [palettes](#palettes), [icons](#icons), [glyphs](#glyphs), [colours](#colours)
 - [Layout](#layout): [lines and wrapping](#lines-and-wrapping)
-- [Commands](#commands): [bar install](#bar-install), [bar update](#update), [bar check](#bar-check), [bar config](#bar-config), [bar preview](#bar-preview), [presets and bar init](#presets), [click handler](#click-handler-macos), [clickable commands](#clickable-commands), [hooks](#hooks)
+- [Commands](#commands): [bar install](#bar-install), [bar update](#update), [bar check](#bar-check), [bar config](#bar-config), [bar preview](#bar-preview), [bar edit](#bar-edit), [presets and bar init](#presets), [click handler](#click-handler-macos), [clickable commands](#clickable-commands), [hooks](#hooks)
 - [Files and environment](#files-and-environment)
 
 ## Overview
@@ -650,6 +650,7 @@ A render prints at most 4 rows, all lines together. Rows past the fourth are dro
 | `bar config export [<file>\|-] [--user] [--force]` | Writes the effective config ([bar config](#bar-config)) | 0, 2 on a config error, an existing file or a write error |
 | `bar config import <file>\|- --merge\|--replace [--yes]` | Merges a file into your config or replaces it, after a preview ([bar config](#bar-config)) | 0, 2 on an invalid file or when it cannot ask, 1 when declined or the write fails |
 | `bar preview [--state early\|burning\|final] [--preset [<name>]]` | Layout with sample data ([bar preview](#bar-preview)) | 0 |
+| `bar edit` | Full-screen config editor with a live preview ([bar edit](#bar-edit)) | 0, 2 without a terminal or on an unreadable file |
 | `bar init [--preset <name>]` | Writes a preset as your config ([presets](#presets)) | 0, 2 when a config exists or the path is unusable |
 | `bar toggle <key>` | Flips `5h`, `7d`, `<plugin>` or `<plugin>.<toggle>` ([usage](#usage)) | 0, 2 on an unknown key |
 | `bar click install [--dry-run] [--hooks-only]` | URL handler app and hooks ([click handler](#click-handler-macos)) | 0, 2 unsupported or bad home, 1 on failure |
@@ -731,6 +732,21 @@ States:
 - `final`: last stretch with budget left over; bars red.
 
 Width comes from `COLUMNS`, else 120.
+
+### bar edit
+
+`bar edit` opens the config file in a full-screen terminal editor (macOS, Linux and Windows terminals). It edits your config, the file the [search order](#config-file) finds; with none, it starts from the built-in layout and saving creates the first search path's file. A [project config](#project-config) is neither edited nor applied to its preview.
+
+- Preview: the [bar preview](#bar-preview) sample data drawn by the renderer at the terminal's width, redrawn on every change; `t` cycles the pace state. Plugin placeholders show their name, muted. A config error shows the error lines instead.
+- Layout: one row per group (`left`, `center`, `right`) of every line in use plus the next line. Arrows (or `h j k l`) select a segment; `H`/`L` move it within its group, `J`/`K` to the next or previous group; `d` deletes it.
+- Placeholders: `a` opens the picker, a fuzzy search over core placeholders and `bar-<name>` plugins on `PATH` (by name and description), and adds the pick as a new segment after the selected one.
+- Options: `enter` lists the options of the selected placeholder (`tab` picks another one in the segment), from the core option table or the plugin's `--ext-info` schema, plus `icon`, `bg` and, on plugins, `click`. Left and right cycle a fixed set of values, `enter` types a value (checked against the option's kind), `backspace` removes the option.
+- Style: `p` preset, `s` skin, `c` palette, `i` icons; the preview follows the highlighted value before `enter` applies it. A preset sets its layout and its `skin`, `skin-glyphs`, `palette`, `icons` and `gap`, and drops those keys where it sets none; every other line stays.
+- `u` / `ctrl+z` undo, `U` / `ctrl+y` redo, `w` / `ctrl+s` save, `q` / `esc` quit; with unsaved changes quitting asks to save (`y`), discard (`n`) or stay (`esc`).
+
+Saving changes only the lines an edit touched: a change rewrites the value of the `set` line in effect for that key (the last one), keeping its quoting, the comment after it and the line ending; a key the file does not set yet gets one `set` line at the end. Comments, blank lines, `rule`, `default`, `account` and `plugin` lines and anything the editor does not know are kept as written. The first save of a session copies the old file to `bar.conf.bak-<time>-<pid>`; every save writes a temp file beside it and renames it into place, keeping its permissions; a symlinked config is written through to its target. Segments an edit rewrites are joined with ` <separator> `. An option value cannot hold `"`, and only `show`, `alt` and `checks` take commas.
+
+`bar edit` is built by the default `edit` cargo feature; `cargo install --path . --locked --no-default-features` leaves it out (and its terminal libraries) for a smaller binary.
 
 ### Presets
 

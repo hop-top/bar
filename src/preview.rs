@@ -205,10 +205,25 @@ pub fn render(state: &str, load: LoadResult, columns: Option<usize>, now: i64) -
         LoadResult::Ok(c) => c,
         _ => builtin_config(),
     };
+    render_config(state, &config, columns, now, false)
+}
+
+/// The preview line(s) of `config`. With `stubs`, a plugin placeholder
+/// shows its name, muted, where `bar preview` leaves it empty.
+pub fn render_config(
+    state: &str,
+    config: &Config,
+    columns: Option<usize>,
+    now: i64,
+    stubs: bool,
+) -> String {
     render_sample(
         &session(state, now),
-        &config,
+        config,
         Some(columns.unwrap_or(DEFAULT_COLUMNS)),
-        &|name, opts, ctx, label| sample(state, name, opts, ctx, label),
+        &|name, opts, ctx, label| match lookup(name) {
+            None if stubs => Some(dim(name)),
+            _ => sample(state, name, opts, ctx, label),
+        },
     )
 }

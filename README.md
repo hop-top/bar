@@ -73,6 +73,7 @@ If the line stays empty, use the absolute path to `bar` (on Windows with forward
 ```sh
 bar preview --preset          # every preset, with sample data
 bar init --preset powerline   # write one as your config
+bar edit                      # edit the config with a live preview
 bar check                     # lint the config
 ```
 
