@@ -137,7 +137,7 @@ Binary size: the release `bar` grows by about 390 KB (2.11 MB to 2.50 MB on macO
 | Base: `python:3.14.8-slim-trixie` (Debian 13), the benchmark image's | index digest `sha256:fbecd461…` | 2026-10-21 | digest |
 | Debian packages (gcc, make, git 2.47.3, binaryen 120, curl, jq, less, procps, xz) | snapshot.debian.org `20261020T000000Z` | snapshot date | apt signatures |
 | rustup (`rustup-init`) | 1.29.2 | 2026-10-21 | sha256 (`rustup-init.sha256`) |
-| Rust (rustc, cargo, std, clippy, rustfmt, rust-src, wasm32-unknown-unknown std) | 1.99.1, as in the benchmark image | 2026-10-15 | rustup, against the signed channel manifest |
+| Rust (rustc, cargo, std, clippy, rustfmt, rust-src, wasm32-unknown-unknown std) | 1.99.1, as in the benchmark image | 2026-10-15 | rustup: sha256 from the release channel manifest |
 | wasm-bindgen-cli (musl build) | 0.2.121, the version `web/wasm` pins | 2026-05-07 | sha256 (release asset digest) |
 | gh | 2.103.2 | 2026-10-23 | sha256 (release asset digest) |
 | jj (musl build) | 0.46.0 | 2026-10-07 | sha256 (release asset digest) |
