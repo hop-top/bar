@@ -54,7 +54,9 @@ fn shows_a_newer_release_only() {
     let cfg = parse("set update-check on\n").unwrap();
     assert!(cfg.update_check);
     cache.store(key(), "v999.0.0\n").unwrap();
-    assert_eq!(go(&cache, &cfg).as_deref(), Some("↑ 999.0.0"));
+    // a development build (0.0.0) is not compared with releases
+    let want = (!dev()).then_some("↑ 999.0.0");
+    assert_eq!(go(&cache, &cfg).as_deref(), want);
     cache.store(key(), update::current()).unwrap();
     assert_eq!(go(&cache, &cfg), None);
     // a failed check is stored empty
@@ -138,5 +140,15 @@ fn bar_update_reports() {
         .unwrap();
     let o = bar(&t, &["update"], "");
     let out = String::from_utf8_lossy(&o.stdout);
-    assert!(out.contains("release: 999.0.0"), "{out}");
+    if dev() {
+        assert!(out.contains("development build"), "{out}");
+        assert!(out.contains("release: v999.0.0"), "{out}");
+    } else {
+        assert!(out.contains("release: 999.0.0"), "{out}");
+    }
+}
+
+/// Whether this is a development build, version `0.0.0`.
+fn dev() -> bool {
+    update::current() == "0.0.0"
 }
