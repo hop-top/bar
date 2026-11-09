@@ -26,6 +26,7 @@ fn opts() -> Opts {
         refresh: None,
         hooks: false,
         subagent: false,
+        subagent_only: false,
         yes: true,
     }
 }

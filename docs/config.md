@@ -646,7 +646,7 @@ A render prints at most 4 rows, all lines together. Rows past the fourth are dro
 
 ### Subagent rows
 
-While Claude runs [subagents](https://code.claude.com/docs/en/sub-agents), Claude Code lists them below the prompt, one row each (`name · description · token count`). With `bar subagent` as the [`subagentStatusLine`](https://code.claude.com/docs/en/statusline#subagent-status-lines) command (`bar install --subagent` sets it), bar draws those rows:
+While Claude runs [subagents](https://code.claude.com/docs/en/sub-agents), Claude Code lists them below the prompt, one row each (`name · description · token count`). With `bar subagent` as the [`subagentStatusLine`](https://code.claude.com/docs/en/statusline#subagent-status-lines) command (`bar install --subagent` sets it with the status line, `bar install --subagent-only` on its own), bar draws those rows:
 
 ```json
 "subagentStatusLine": { "type": "command", "command": "'/path/to/bar' subagent" }
@@ -695,7 +695,7 @@ Each row is laid out like the status line, with the same skin, palette, icons an
 |---|---|---|
 | `bar render` | Reads the session JSON on stdin, prints the status line ([technical notes](technical.md#flow)) | always 0 |
 | `bar subagent` | Reads the subagent rows on stdin, prints one `{"id", "content"}` JSON line per row it draws ([subagent rows](#subagent-rows)) | always 0 |
-| `bar install [--project\|--local] [--refresh <secs>] [--hooks] [--subagent] [--uninstall] [--yes]` | Sets bar as Claude Code's status line ([bar install](#bar-install)) | 0, 2 without a terminal and `--yes` or with a bad home, 1 declined or on failure |
+| `bar install [--project\|--local] [--refresh <secs>] [--hooks] [--subagent\|--subagent-only] [--uninstall] [--yes]` | Sets bar as Claude Code's status line ([bar install](#bar-install)) | 0, 2 without a terminal and `--yes` or with a bad home, 1 declined or on failure |
 | `bar update` | Version, newest release the [update check](#update) found, how to upgrade; never downloads | 0 |
 | `bar check` | Lints the config ([bar check](#bar-check)) | 0, 2 on a config error |
 | `bar config export [<file>\|-] [--user] [--force]` | Writes the effective config ([bar config](#bar-config)) | 0, 2 on a config error, an existing file or a write error |
@@ -730,9 +730,9 @@ Each row is laid out like the status line, with the same skin, palette, icons an
 - An existing file is first copied to `backups/<name>-<hash>.bak-<time>-<pid>` in the state directory (mode 0600), never beside it: `.claude/` may be committed and a settings file may hold keys. The path is printed; the newest 5 backups of each file are kept. The file is then written atomically, keeping its mode; a symlink is written through to its target. A file that does not parse as a JSON object is left untouched (exit 1). Nothing is written when the file already says the same.
 - A status line that does not run bar is kept in `install/<hash>.json` in the state directory before it is replaced.
 - `--hooks` also adds the `bar click hook` entries to the same file, as `bar click install --hooks-only` does ([Hooks](#hooks)).
-- `--subagent` also sets `subagentStatusLine` to `'<path>' subagent` ([Subagent rows](#subagent-rows)), keeping other fields of an existing one; a `subagentStatusLine` that does not run bar is kept in the same `install/<hash>.json` first.
+- `--subagent` also sets `subagentStatusLine` to `'<path>' subagent` ([Subagent rows](#subagent-rows)), keeping other fields of an existing one; a `subagentStatusLine` that does not run bar is kept in the same `install/<hash>.json` first. `--subagent-only` sets `subagentStatusLine` and leaves `statusLine` as it is (it does not take `--refresh`).
 - The file is read again right before writing; if it changed since the diff was made (another program or session wrote it while the question was up), nothing is written and the exit is 1: run `bar install` again.
-- `bar install --uninstall` puts back the status line bar replaced, or removes `statusLine` when there was none, again after a diff and confirmation. A `statusLine` that does not run `bar render` is left as is. With `--hooks` it also removes hook entries that run only `bar click hook`, whatever path to `bar` they use, and event lists or a `hooks` object left empty by that. With `--subagent` it also puts back the `subagentStatusLine` bar replaced, or removes bar's; without it, a `subagentStatusLine` that runs bar stays and a line says so.
+- `bar install --uninstall` puts back the status line bar replaced, or removes `statusLine` when there was none, again after a diff and confirmation. A `statusLine` that does not run `bar render` is left as is. With `--hooks` it also removes hook entries that run only `bar click hook`, whatever path to `bar` they use, and event lists or a `hooks` object left empty by that. With `--subagent` it also puts back the `subagentStatusLine` bar replaced, or removes bar's; without it, a `subagentStatusLine` that runs bar stays and a line says so. With `--subagent-only` it does that for `subagentStatusLine` alone and keeps `statusLine`, bar's or not.
 
 ### bar check
 

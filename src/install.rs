@@ -104,6 +104,9 @@ pub struct Opts {
     pub hooks: bool,
     /// Also set (or with `uninstall` remove) `subagentStatusLine`.
     pub subagent: bool,
+    /// Set (or with `uninstall` remove) only `subagentStatusLine`;
+    /// `statusLine` is left as it is.
+    pub subagent_only: bool,
     /// Write without asking.
     pub yes: bool,
 }
@@ -298,11 +301,13 @@ fn plan_install(env: &Env, o: &Opts) -> Result<Plan, String> {
     let obj = root.as_object_mut().ok_or("not a JSON object")?;
     let bar = env.bar.display().to_string();
     let mut kept = serde_json::Map::new();
-    set_line(obj, &STATUS, render_command(&bar, env.windows), &mut kept);
-    if let Some(n) = o.refresh {
-        obj[STATUS.name]["refreshInterval"] = json!(n);
+    if !o.subagent_only {
+        set_line(obj, &STATUS, render_command(&bar, env.windows), &mut kept);
+        if let Some(n) = o.refresh {
+            obj[STATUS.name]["refreshInterval"] = json!(n);
+        }
     }
-    if o.subagent {
+    if o.subagent || o.subagent_only {
         set_line(
             obj,
             &SUBAGENT,
@@ -352,10 +357,14 @@ fn plan_uninstall(env: &Env, o: &Opts) -> Result<Plan, String> {
     let mut notes = Vec::new();
     let mut saved = read_record(&rec);
     let mut touched = false;
-    for (key, on) in [(&STATUS, true), (&SUBAGENT, o.subagent)] {
+    let keys = [
+        (&STATUS, !o.subagent_only, !o.subagent_only),
+        (&SUBAGENT, o.subagent || o.subagent_only, true),
+    ];
+    for (key, on, remind) in keys {
         let bars = runs_bar(obj.get(key.name), key);
         if !on {
-            if bars {
+            if bars && remind {
                 notes.push(format!(
                     "{} still runs bar; bar install --uninstall{} removes it",
                     key.name, key.flag
