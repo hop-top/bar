@@ -33,6 +33,19 @@ fn sgr(st: &mut Style, params: &str) {
                 }
                 i += 2;
             }
+            n @ (38 | 48) if nums.get(i + 1) == Some(&2) => {
+                let ch = |k: usize| nums.get(i + k).and_then(|&v| u8::try_from(v).ok());
+                let c = match (ch(2), ch(3), ch(4)) {
+                    (Some(r), Some(g), Some(b)) => Some(Color::Rgb(r, g, b)),
+                    _ => None,
+                };
+                if n == 38 {
+                    st.fg = c;
+                } else {
+                    st.bg = c;
+                }
+                i += 4;
+            }
             _ => {}
         }
         i += 1;
