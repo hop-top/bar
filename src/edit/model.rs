@@ -357,7 +357,8 @@ impl Editor {
             crate::rewrite::write(&target, &text).map_err(shown)?;
             None
         } else {
-            crate::rewrite::replace(&target, &text).map_err(shown)?
+            crate::rewrite::replace(&target, &text, crate::rewrite::Backups::Beside)
+                .map_err(shown)?
         };
         self.backed_up = true;
         self.saved = text;

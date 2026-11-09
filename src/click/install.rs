@@ -180,7 +180,7 @@ pub fn run_install(
             writeln!(out, "{l}").map_err(io)?;
         }
     }
-    if let Some(backup) = apply_settings(&fresh).map_err(io)? {
+    if let Some(backup) = apply_settings(&fresh, &cfg.state_dir).map_err(io)? {
         writeln!(out, "backup {}", backup.display()).map_err(io)?;
     }
     write_private(&cfg.state_dir.join(MARKER), MARKER_CMD).map_err(io)?;
@@ -198,7 +198,7 @@ pub fn run_hooks_only(cfg: &InstallCfg, dry_run: bool, out: &mut dyn Write) -> R
     if dry_run {
         return Ok(());
     }
-    if let Some(backup) = apply_settings(&plan).map_err(io)? {
+    if let Some(backup) = apply_settings(&plan, &cfg.state_dir).map_err(io)? {
         writeln!(out, "backup {}", backup.display()).map_err(io)?;
     }
     Ok(())
