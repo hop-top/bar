@@ -3,7 +3,7 @@
 # Linux: /proc/meminfo (BAR_MEMINFO overrides the path, for tests). Score is
 # the free share. Any failure emits nothing. Needs sh, awk.
 if [ "$1" = "--ext-info" ]; then
-  printf '%s\n' '{"name":"mem","version":"0.1.0","description":"Used memory percentage","capabilities":["discover","placeholder"],"ttl":"30s"}'
+  printf '%s\n' '{"name":"mem","version":"0.1.0","description":"Used memory percentage","capabilities":["discover","placeholder"],"ttl":"30s","web":{"category":"system","samples":[{"output":{"text":"mem 62%","score":38}}]}}'
   exit 0
 fi
 

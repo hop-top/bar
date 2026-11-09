@@ -2,7 +2,9 @@
 # Builds the web configurator's renderer: bar's real renderer (web/wasm)
 # compiled to WebAssembly, bound with wasm-bindgen into web/pkg/.
 #
-#   scripts/web           build web/pkg/ (then open web/index.html)
+#   scripts/web           build web/pkg/ (then open web/index.html): the
+#                         module, its glue, and plugins.js, the manifest of
+#                         the reference plugins in plugins/
 #   scripts/web --check   build and lint web/wasm for wasm32; skips, exit 0,
 #                         when the toolchain has no wasm32-unknown-unknown
 #
@@ -54,6 +56,19 @@ if command -v wasm-opt >/dev/null; then
 	wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int \
 		-o "$PKG/bar_web_bg.wasm" "$PKG/bar_web_bg.wasm"
 fi
+
+# Manifest of the reference plugins in plugins/, as a classic script too.
+# Its own state dir: the --ext-info cache stays out of the user's.
+state=$(mktemp -d)
+BAR_STATE_DIR="$state" "$CARGO" run --quiet --locked --manifest-path "$ROOT/Cargo.toml" -- \
+	web plugins --dir "$ROOT/plugins" -o "$PKG/plugins.json"
+rm -rf "$state"
+python3 - "$PKG/plugins.json" "$PKG/plugins.js" <<'PY'
+import json, sys
+manifest = json.load(open(sys.argv[1]))
+with open(sys.argv[2], "w") as f:
+    f.write("var BAR_PLUGINS = %s;\n" % json.dumps(manifest, ensure_ascii=False))
+PY
 
 # The module as base64 in a classic script, so the page also runs from
 # file://, where browsers refuse to fetch a .wasm file.

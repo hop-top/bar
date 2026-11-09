@@ -5,12 +5,14 @@
 mod discover;
 mod info;
 mod render;
+pub mod web;
 
 use std::time::Duration;
 
 pub use discover::{discover, find, path_dirs, Found};
 pub use info::{
-    cached_info, info, info_job, parse_info, validate, ExtInfo, OptSpec, OptType, RESERVED,
+    cached_info, info, info_job, info_now, parse_info, validate, ExtInfo, OptSpec, OptType,
+    RESERVED,
 };
 pub use render::{
     paint, paint_with, parse_output, plan, render, render_found, render_found_with, Metric, Output,

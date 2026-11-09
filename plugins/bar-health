@@ -4,7 +4,7 @@
 # goes to curl on stdin, never in arguments. Bad or missing url: exit 1, no
 # output. Needs sh, jq and curl.
 if [ "$1" = "--ext-info" ]; then
-  printf '%s\n' '{"name":"health","version":"0.1.0","description":"HTTP health of a URL","capabilities":["discover","placeholder"],"options":{"url":{"type":"string"},"label":{"type":"string"}},"ttl":"30s"}'
+  printf '%s\n' '{"name":"health","version":"0.1.0","description":"HTTP health of a URL","capabilities":["discover","placeholder"],"options":{"url":{"type":"string"},"label":{"type":"string"}},"ttl":"30s","web":{"category":"system","samples":[{"output":{"text":"✓","style":"good","label":"api"}}],"options":{"url":{"label":"URL","help":"http or https URL to send a HEAD request to","placeholder":"https://example.com/health"},"label":{"label":"Label","help":"Shown dim before the mark","placeholder":"api"}}}}'
   exit 0
 fi
 

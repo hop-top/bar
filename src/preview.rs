@@ -3,11 +3,13 @@
 
 use crate::click::Term;
 use crate::conf::{Config, LoadResult};
+use crate::icons;
 use crate::options::Options;
 use crate::placeholders::ctx as ctxp;
 use crate::placeholders::{
     dirs, gh, lookup, model, modes, niche, speed, spendhist, tokens, update, usage, Ctx,
 };
+use crate::plugin::{self, ExtInfo};
 use crate::render::{builtin_config, render_sample};
 use crate::session::{CtxUsage, Session, SpendLimit, Window};
 use crate::style::{accent, bold, dim, fg};
@@ -214,15 +216,43 @@ fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Op
 
 /// `config` filled from `session` where it has the data and from the
 /// `early` samples elsewhere (git, gh, transcript, accounts), at `now`.
-/// Pure: no clock, files, processes or plugins.
-pub fn render_session(session: &Session, config: &Config, columns: usize, now: i64) -> String {
+/// Plugins draw the sample their `plugins` entry gives for the options
+/// (`plugin::web::sample`), painted as a real output; a plugin with no
+/// entry draws its name. Pure: no clock, files, processes or plugin runs.
+pub fn render_session(
+    session: &Session,
+    config: &Config,
+    columns: usize,
+    now: i64,
+    plugins: &[ExtInfo],
+) -> String {
     render_sample(
         session,
         config,
         Some(columns),
         now,
-        &|name, opts, ctx, label| sample("early", name, opts, ctx, label),
+        &|name, opts, ctx, label| match lookup(name) {
+            Some(_) => sample("early", name, opts, ctx, label),
+            None => plugin_sample(name, opts, ctx, plugins),
+        },
     )
+}
+
+/// A plugin's sample output through bar's plugin paint. Options are
+/// checked as for a real render: a listed plugin with options it does not
+/// accept draws nothing.
+fn plugin_sample(name: &str, opts: &Options, ctx: &Ctx, plugins: &[ExtInfo]) -> Option<String> {
+    let (pick, opts) = icons::split(opts);
+    let mut own = Options::default();
+    for (k, v) in opts.iter().filter(|(k, _)| k.as_str() != "click") {
+        own.set(k, v);
+    }
+    let (info, typed) = match plugins.iter().find(|p| p.name == name) {
+        Some(i) => (i.clone(), plugin::validate(&i.options, &own).ok()?),
+        None => (ExtInfo::named(name), Default::default()),
+    };
+    let out = plugin::web::sample(&info, &typed);
+    plugin::paint_with(&out, name, ctx.config, ctx.now, &pick, info.icon.as_deref())
 }
 
 /// The preview line(s) for `state`; the user's layout when the config

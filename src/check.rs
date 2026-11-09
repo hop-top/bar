@@ -308,6 +308,13 @@ impl Checker<'_> {
                 self.add(Level::Warning, line, msg);
             }
         }
+        for issue in plugin::web::issues(&info) {
+            self.add(
+                Level::Warning,
+                line,
+                format!("plugin `{name}`: web: {issue}"),
+            );
+        }
         let mut concrete = Options::default();
         for (k, v) in opts.iter().filter(|(_, v)| !v.contains('%')) {
             if k == "icon" {

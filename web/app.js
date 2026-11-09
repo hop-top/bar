@@ -50,9 +50,25 @@
   let text = "";
   let lastInspect = null;
 
+  // Plugins: the bundled manifest (reference plugins), then the user's
+  // plugins.json over it, by name.
+  const bundled = typeof BAR_PLUGINS === "object" && BAR_PLUGINS ? BAR_PLUGINS.plugins || [] : [];
+  let userPlugins = [];
+  let manifest = "";
+  let pluginList = [];
+  function setPlugins(list) {
+    userPlugins = list;
+    const byName = new Map();
+    for (const p of bundled.concat(userPlugins)) if (p && typeof p.name === "string") byName.set(p.name, p);
+    manifest = JSON.stringify({ plugins: [...byName.values()] });
+    pluginList = JSON.parse(bar.plugins(manifest));
+    $("plugins-status").textContent = `${pluginList.length} plugin${pluginList.length === 1 ? "" : "s"}` +
+      (userPlugins.length ? ` (${userPlugins.length} from your plugins.json)` : "");
+  }
+
   function store() {
     try {
-      localStorage.setItem(STORE, JSON.stringify({ text, columns: ui.columns.value }));
+      localStorage.setItem(STORE, JSON.stringify({ text, columns: ui.columns.value, plugins: userPlugins }));
     } catch (_) {
       /* storage unavailable: nothing kept between visits */
     }
@@ -69,13 +85,13 @@
   function renderPreview() {
     const cols = parseInt(ui.columns.value, 10);
     $("columns-out").value = cols;
-    const out = bar.render(text, ui.session.value, cols, Date.now() / 1000);
+    const out = bar.render(text, ui.session.value, cols, Date.now() / 1000, manifest);
     const rows = Ansi.toHtml(out).map((h) => `<span class="row">${h || " "}</span>`);
     ui.term.innerHTML = rows.join("") + `<span class="cols" style="width:${cols}ch"></span>`;
   }
 
   function renderIssues() {
-    const report = JSON.parse(bar.check(text));
+    const report = JSON.parse(bar.check(text, manifest));
     ui.issues.replaceChildren(
       ...report.issues.map((i) => {
         const li = document.createElement("li");
@@ -137,6 +153,13 @@
     tabs: $("line-tabs"),
     off: $("compose-off"),
     tokens: (src) => JSON.parse(bar.tokens(src)),
+    plugins: () => pluginList,
+    options: (name) => {
+      const core = schema.placeholders.find((p) => p.name === name);
+      if (core) return core.options;
+      const plugin = pluginList.find((p) => p.name === name);
+      return plugin ? plugin.options : [];
+    },
     separator: () => (lastInspect && lastInspect.ok ? lastInspect.set.separator : "│"),
     onGroup: (side, line, src) => setText(Conf.setGroup(text, side, line, src)),
   });
@@ -151,6 +174,22 @@
   ui.columns.oninput = () => {
     renderPreview();
     store();
+  };
+
+  // The user's plugins.json (`bar web plugins -o plugins.json`)
+  $("load-plugins").onchange = async (e) => {
+    const f = e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    try {
+      const v = JSON.parse(await f.text());
+      const list = Array.isArray(v) ? v : v.plugins;
+      if (!Array.isArray(list)) throw new Error("no plugins list");
+      setPlugins(list);
+      setText(text);
+    } catch (err) {
+      alert(`Not a plugins.json: ${err.message}`);
+    }
   };
 
   // Load, copy, download
@@ -178,6 +217,7 @@
 
   // Start: last session's config, else the full preset
   const saved = restore();
+  setPlugins(saved && Array.isArray(saved.plugins) ? saved.plugins : []);
   if (saved && saved.columns) ui.columns.value = saved.columns;
   ui.session.value = JSON.stringify(sampleSession(), null, 2);
   $("app").hidden = false;

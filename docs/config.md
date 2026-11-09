@@ -658,6 +658,7 @@ A render prints at most 4 rows, all lines together. Rows past the fourth are dro
 | `bar click hook` | Claude Code hook ([hooks](#hooks)) | always 0 |
 | `bar plugin list` | Plugins on `PATH`: name, version, description, path ([plugins](plugins.md#discovery)) | 0 |
 | `bar plugin info <name>` | One plugin's `--ext-info` result and path | 0, 1 when no such plugin |
+| `bar web plugins [--dir <dir>]... [-o <file>]` | `plugins.json` for the [web configurator](web.md): `--ext-info` of every plugin on `PATH` or in the `--dir`s ([metadata](plugins.md#web-configurator-metadata)) | 0, 1 when the file cannot be written |
 | `bar prices update [--out <file>]` | Fetches models.dev prices ([snapshot fetch](#spendhist)); `--out` writes that file instead of the data dir's `models.json` | 0, 2 on failure |
 | `bar --version`, `bar --help`, `bar <command> --help` | Version, help | 0 |
 

@@ -27,16 +27,16 @@ fn plain(s: &str) -> String {
 #[test]
 fn render_measures_time_from_the_given_now() {
     let conf = "set left \"#{usage[type=5h,view=time,show=time]}\"";
-    let out = plain(&web::render(conf, &session(json!({})), 80, NOW));
+    let out = plain(&web::render(conf, &session(json!({})), 80, NOW, ""));
     assert!(out.contains("2h0m"), "{out:?}");
-    let later = plain(&web::render(conf, &session(json!({})), 80, NOW + 3600));
+    let later = plain(&web::render(conf, &session(json!({})), 80, NOW + 3600, ""));
     assert!(later.contains("1h0m"), "{later:?}");
 }
 
 #[test]
 fn render_reads_session_fields_from_the_json() {
     let conf = "set left \"#{model} #{ctx}\"";
-    let out = plain(&web::render(conf, &session(json!({})), 80, NOW));
+    let out = plain(&web::render(conf, &session(json!({})), 80, NOW, ""));
     assert!(out.contains("Sonnet 4.6"), "{out:?}");
     assert!(out.contains("42%"), "{out:?}");
 }
@@ -44,13 +44,13 @@ fn render_reads_session_fields_from_the_json() {
 #[test]
 fn render_answers_repo_data_with_samples() {
     let conf = "set left \"#{repo}:#{branch}\"";
-    let out = plain(&web::render(conf, &session(json!({})), 80, NOW));
+    let out = plain(&web::render(conf, &session(json!({})), 80, NOW, ""));
     assert_eq!(out.trim(), "bar:main");
 }
 
 #[test]
 fn render_is_the_config_error_line_for_a_bad_config() {
-    let out = web::render("set skin bogus", &session(json!({})), 80, NOW);
+    let out = web::render("set skin bogus", &session(json!({})), 80, NOW, "");
     assert_eq!(out, hop_bar::render::CONFIG_ERROR);
 }
 
@@ -61,6 +61,7 @@ fn render_tolerates_malformed_session_json() {
         "{not json",
         80,
         NOW,
+        "",
     ));
     assert_eq!(out.trim(), "bar");
 }
@@ -68,7 +69,11 @@ fn render_tolerates_malformed_session_json() {
 #[test]
 fn render_places_groups_in_the_given_columns() {
     let conf = "set left L\nset right R";
-    let width = |cols| plain(&web::render(conf, "{}", cols, NOW)).chars().count();
+    let width = |cols| {
+        plain(&web::render(conf, "{}", cols, NOW, ""))
+            .chars()
+            .count()
+    };
     assert_eq!(width(50) - width(30), 20);
 }
 
@@ -143,7 +148,7 @@ fn schema_values_pass_check() {
                 _ => "x".into(),
             };
             let conf = format!("set left \"#{{{name}[{key}={sample}]}}\"");
-            let errs: Vec<Value> = web::check(&conf)["issues"]
+            let errs: Vec<Value> = web::check(&conf, "")["issues"]
                 .as_array()
                 .unwrap()
                 .iter()
@@ -157,7 +162,7 @@ fn schema_values_pass_check() {
 
 #[test]
 fn check_flags_unknown_options() {
-    let v = web::check("set left \"#{usage[bogus=1]}\"");
+    let v = web::check("set left \"#{usage[bogus=1]}\"", "");
     assert!(v["issues"]
         .as_array()
         .unwrap()
@@ -173,13 +178,13 @@ fn preset_returns_the_shipped_text() {
 
 #[test]
 fn check_leaves_out_path_warnings() {
-    let v = web::check("set left \"#{prs}\"");
+    let v = web::check("set left \"#{prs}\"", "");
     assert_eq!(v, json!({"ok": true, "issues": []}));
 }
 
 #[test]
 fn check_takes_unknown_names_for_plugins() {
-    let v = web::check("set left \"#{myplugin}\"");
+    let v = web::check("set left \"#{myplugin}\"", "");
     assert_eq!(v["ok"], true, "{v}");
     assert_eq!(v["issues"][0]["level"], "warning");
     assert!(v["issues"][0]["message"]

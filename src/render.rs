@@ -44,6 +44,8 @@ pub fn builtin_config() -> Config {
 
 /// Stands in for every placeholder in a preview: no plugins, no real data.
 /// The flag says whether the text label is drawn (false when an icon is).
+/// For a name that is not a core placeholder it gets the options with
+/// `icon` still in them and draws label and icon itself.
 pub type Sample<'a> = &'a dyn Fn(&str, &Options, &Ctx, bool) -> Option<String>;
 
 /// Core names first; anything else is a `bar-<name>` plugin. Returns the
@@ -60,8 +62,12 @@ fn render_placeholder(
 }
 
 fn render_value(name: &str, opts: &Options, ctx: &Ctx, sample: Option<Sample>) -> String {
-    let (pick, opts) = icons::split(opts);
     let core = lookup(name);
+    // a plugin sample paints its own label and icon, from the full options
+    if let (Some(sample), None) = (sample, core) {
+        return sample(name, opts, ctx, true).unwrap_or_default();
+    }
+    let (pick, opts) = icons::split(opts);
     let glyph = icons::resolve(
         ctx.config,
         &pick,

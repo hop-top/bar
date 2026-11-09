@@ -2,16 +2,29 @@
 
 use wasm_bindgen::prelude::wasm_bindgen;
 
-/// The status line as ANSI text; `now` in Unix seconds.
+/// The status line as ANSI text; `now` in Unix seconds, `manifest` a
+/// plugins.json or empty.
 #[wasm_bindgen]
-pub fn render(config_text: &str, session_json: &str, columns: usize, now: f64) -> String {
-    hop_bar::web::render(config_text, session_json, columns, now as i64)
+pub fn render(
+    config_text: &str,
+    session_json: &str,
+    columns: usize,
+    now: f64,
+    manifest: &str,
+) -> String {
+    hop_bar::web::render(config_text, session_json, columns, now as i64, manifest)
 }
 
 /// `bar check` issues, JSON.
 #[wasm_bindgen]
-pub fn check(config_text: &str) -> String {
-    hop_bar::web::check(config_text).to_string()
+pub fn check(config_text: &str, manifest: &str) -> String {
+    hop_bar::web::check(config_text, manifest).to_string()
+}
+
+/// The plugins of a manifest for the picker, JSON.
+#[wasm_bindgen]
+pub fn plugins(manifest: &str) -> String {
+    hop_bar::web::plugins(manifest).to_string()
 }
 
 /// Lines and settings of a config, JSON.

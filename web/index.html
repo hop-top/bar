@@ -11,6 +11,7 @@
     <h1><span class="mark">bar</span> configurator</h1>
     <div class="actions">
       <label class="btn">Load bar.conf<input id="load" type="file" accept=".conf,text/plain" hidden></label>
+      <label class="btn" title="Output of: bar web plugins -o plugins.json">Load plugins.json<input id="load-plugins" type="file" accept=".json,application/json" hidden></label>
       <button id="copy" class="btn">Copy</button>
       <button id="download" class="btn primary">Download bar.conf</button>
     </div>
@@ -30,7 +31,7 @@
         </label>
       </div>
       <div class="term-wrap"><div id="term" class="term" role="img" aria-label="status line preview"></div></div>
-      <p class="note">Rendered by bar itself (compiled to WebAssembly). Session fields come from the JSON below; git, GitHub, transcript and account values are bar's preview samples; plugins draw nothing here.</p>
+      <p class="note">Rendered by bar itself (compiled to WebAssembly). Session fields come from the JSON below; git, GitHub, transcript and account values are bar's preview samples; plugins draw the sample from their manifest entry, or their name.</p>
       <details>
         <summary>Session JSON (what Claude Code sends on stdin)</summary>
         <textarea id="session" spellcheck="false" rows="14"></textarea>
@@ -40,7 +41,7 @@
 
     <section class="compose card">
       <div class="card-head">
-        <h2>Layout</h2>
+        <h2>Layout <span id="plugins-status" class="status"></span></h2>
         <div id="line-tabs" class="tabs" role="tablist"></div>
       </div>
       <div id="groups" class="groups"></div>
@@ -68,6 +69,7 @@
 
   <script src="pkg/bar_web.js"></script>
   <script src="pkg/bar_web_wasm.js"></script>
+  <script src="pkg/plugins.js"></script>
   <script src="ansi.js"></script>
   <script src="conf.js"></script>
   <script src="compose.js"></script>
