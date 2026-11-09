@@ -1234,7 +1234,7 @@ Environment variables bar reads:
 | `TMUX_TMPDIR` | Baked into the click handler, so `bar click run` finds the tmux server |
 | `GIT_INDEX_FILE` | When set, `conflicts` counts from the cached `git status` instead of the index file |
 | `TZ` | Local zone for `spendhist` (Unix) |
-| `COLORTERM`, `NO_COLOR`, `FORCE_COLOR` | Only with `set color-depth auto`; see [Colour depth](#colour-depth) |
+| `COLORTERM`, `NO_COLOR`, `FORCE_COLOR` | With `set color-depth auto`, or no `color-depth` set (capped at 256); see [Colour depth](#colour-depth) |
 | `PATH`, `PATHEXT` (Windows) | Plugins, `gh`, `git`, `jj`, `tmux` |
 | `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, `GIT_CONFIG_COUNT`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_SYSTEM`, `GIT_CONFIG_NOSYSTEM` | When any is set, `repo`, `branch` and `sha` run `git` instead of reading the repository files, and `dirty`, `ahead`, `worktree`, `tag`, `stash`, `gitop`, `conflicts` render empty ([Performance](technical.md#performance)) |
 
