@@ -20,6 +20,10 @@ pub enum Job {
     Gh { args: Vec<String> },
     /// `git status --porcelain=v2 --branch` in `dir` (absolute), no shell.
     GitStatus { dir: String },
+    /// `git for-each-ref --points-at=<commit> refs/tags` in `dir`
+    /// (absolute), no shell; `commit` is a full object id. Output: the
+    /// commit, then one `<objecttype> <tag>` line per tag.
+    GitTags { dir: String, commit: String },
     /// `<path> --ext-info`, no shell; stdout when it parses as plugin info.
     PluginInfo { path: String },
     /// `<path>` with `input` on stdin, no shell; stdout when it parses as
@@ -65,6 +69,9 @@ impl Job {
             }
             Job::Gh { args } => json!({"kind": "gh", "args": args}),
             Job::GitStatus { dir } => json!({"kind": "git-status", "dir": dir}),
+            Job::GitTags { dir, commit } => {
+                json!({"kind": "git-tags", "dir": dir, "commit": commit})
+            }
             Job::PluginInfo { path } => json!({"kind": "plugin-info", "path": path}),
             Job::PluginRender { path, input } => {
                 json!({"kind": "plugin-render", "path": path, "input": input})
@@ -101,6 +108,14 @@ impl Job {
             }),
             Some("git-status") => Ok(Job::GitStatus {
                 dir: abs_path(v, "dir")?,
+            }),
+            Some("git-tags") => Ok(Job::GitTags {
+                dir: abs_path(v, "dir")?,
+                commit: v["commit"]
+                    .as_str()
+                    .filter(|c| crate::gitfs::is_oid(c))
+                    .ok_or("git-tags job without a commit id")?
+                    .into(),
             }),
             Some("plugin-info") => Ok(Job::PluginInfo {
                 path: abs_path(v, "path")?,
@@ -162,6 +177,16 @@ impl Job {
                     .current_dir(dir)
                     .env("GIT_OPTIONAL_LOCKS", "0");
                 run_child(c, None, limit)
+            }
+            Job::GitTags { dir, commit } => {
+                let mut c = Command::new(crate::platform::program("git"));
+                c.arg("for-each-ref")
+                    .arg(format!("--points-at={commit}"))
+                    .arg("--format=%(objecttype) %(refname:strip=2)")
+                    .arg("refs/tags")
+                    .current_dir(dir)
+                    .env("GIT_OPTIONAL_LOCKS", "0");
+                run_child(c, None, limit).map(|out| format!("{commit}\n{out}"))
             }
             Job::PluginInfo { path } => {
                 let mut c = Command::new(path);

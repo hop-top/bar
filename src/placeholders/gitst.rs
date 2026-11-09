@@ -25,6 +25,8 @@ pub struct Status {
     /// Worktree changes and unmerged paths.
     pub modified: usize,
     pub untracked: usize,
+    /// Unmerged paths (also counted in `modified`).
+    pub unmerged: usize,
     /// `(ahead, behind)`; `None` without an upstream.
     pub ahead_behind: Option<(usize, usize)>,
     /// Input hit the cache size cap: the counts are lower bounds.
@@ -60,6 +62,7 @@ pub fn parse(text: &str) -> Status {
             s.modified += usize::from(y.is_some_and(|c| c != '.'));
         } else if line.starts_with("u ") {
             s.modified += 1;
+            s.unmerged += 1;
         } else if line.starts_with("? ") {
             s.untracked += 1;
         }
@@ -76,7 +79,7 @@ pub fn parse_show(raw: &str, set: &[&'static str]) -> Option<Vec<&'static str>> 
     Some(out)
 }
 
-fn ttl(opts: &Options) -> u64 {
+pub(crate) fn ttl(opts: &Options) -> u64 {
     opts.get("ttl")
         .and_then(|t| t.trim().parse::<u64>().ok())
         .map_or(TTL, |t| t.max(1))
@@ -84,7 +87,7 @@ fn ttl(opts: &Options) -> u64 {
 
 /// Cached status of the session's repository; stale values are served
 /// while a background refresh runs.
-fn status(ctx: &Ctx, opts: &Options) -> Option<Status> {
+pub(crate) fn status(ctx: &Ctx, opts: &Options) -> Option<Status> {
     let cache: &Cache = ctx.cache?;
     let Found::Repo(repo) = gitfs::discover(&work_dir(ctx)) else {
         return None;

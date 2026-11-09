@@ -508,7 +508,7 @@ Limits and failures:
 
 ### Git and directories
 
-Repository, branch, working-tree state and the session directory.
+Repository, branch, commit, tag, stash, operation in progress, working-tree state and the session directory. All of it is read from the repository files ([Performance](technical.md#performance)).
 
 | Placeholder | Option | Default | Meaning |
 |---|---|---|---|
@@ -518,8 +518,28 @@ Repository, branch, working-tree state and the session directory.
 | | `ttl` | `10` | Seconds before the cached `git status` is refreshed in the background (minimum 1) |
 | `ahead` | `ttl` | `10` | As `dirty`. Output `↑2 ↓1`; hidden at 0/0 or without an upstream |
 | `worktree` | none | | Directory name of a linked worktree; hidden in the main worktree |
+| `sha` | `len` | `7` | Characters of HEAD's commit id; `0` hides it. Links to `<repo>/commit/<id>`. Hidden on an unborn branch |
+| | `link` | on | `false`, `no`, `off`, `0` give plain text |
+| `tag` | `link` | on | Link to `<repo>/tree/<tag>` |
+| | `max` | none | Truncate to this many characters with `…` |
+| | `ttl` | `10` | Seconds before the background tag list is refreshed (minimum 1); see below |
+| `stash` | none | | Stash entries, `$2`; hidden when the stash is empty |
+| `gitop` | `step` | on | Operation in progress in this worktree: `merge`, `rebase 2/5`, `am 1/3`, `am/rebase`, `cherry-pick`, `revert`, `bisect`; hidden when there is none. `false`, `no`, `off`, `0` leave out the step count |
+| `conflicts` | `ttl` | `10` | Unmerged paths, `✗3`; hidden at 0. As `dirty` for an index the files cannot give (see below) |
 | `cwd` | `base` | `0` | Session directory with home as `~`; `1` shows the last component only |
 | `root` | `base` | `0` | Git top-level directory of the session directory, read without running `git`; hidden outside a repository |
+
+Commit, tags and stash:
+
+- `sha` follows HEAD through symbolic refs, loose refs and `packed-refs`; in a linked worktree HEAD is the worktree's own and branches come from the main repository. SHA-256 repositories show their longer ids.
+- `tag` shows a tag pointing exactly at HEAD: lightweight tags whose target is HEAD and annotated tags whose peeled target is HEAD. With several, an annotated tag wins over a lightweight one, then the highest version (`v1.10` above `v1.9`). There is no "nearest tag plus distance" form; that needs the commit graph.
+- Annotated tags in `packed-refs` are recognised from the file. A loose tag ref that does not point at HEAD could still be an annotated tag of HEAD, which only the object database can tell; then `tag` shows the cached result of a background `git for-each-ref --points-at`, refreshed every `ttl` seconds, and the tags the files gave until the first result is in. Render never waits on it.
+- `stash` counts the entries of the stash reflog, as `git stash list` does.
+
+Operation and conflicts:
+
+- `gitop` reads the same markers as git's own prompt script: `rebase-merge/` (step from `msgnum`/`end`), `rebase-apply/` (`next`/`last`; `rebasing` or `applying` tell rebase from am), `MERGE_HEAD`, `CHERRY_PICK_HEAD`, `REVERT_HEAD`, the first line of `sequencer/todo`, then `BISECT_LOG`, in that order.
+- `conflicts` counts paths with a stage above 0 in the index (versions 2, 3 and 4), each path once, as `git status` does. An index over 2 MiB, a split index, or `GIT_INDEX_FILE` in the environment is counted from the cached `git status` that `dirty` uses instead, refreshed every `ttl` seconds in the background.
 
 ### prs and issues
 
@@ -716,6 +736,11 @@ Colours and width:
 | `dirty` | `nf-fa-pencil` U+F040 | ✏️ |
 | `ahead` | `nf-fa-arrow_up` U+F062 | ⬆️ |
 | `worktree` | `nf-fa-tree` U+F1BB | 🌳 |
+| `sha` | `nf-oct-git_commit` U+F417 | 📌 |
+| `tag` | `nf-oct-tag` U+F412 | 🏷️ |
+| `stash` | `nf-fa-archive` U+F187 | 📦 |
+| `gitop` | `nf-oct-git_merge` U+F419 | 🔄 |
+| `conflicts` | `nf-fa-warning` U+F071 | ⚠️ |
 | `agents` | `nf-fa-users` U+F0C0 | 👥 |
 | `cost` | `nf-fa-credit_card` U+F09D | 💳 |
 | `burn` | `nf-fa-fire` U+F06D | 🔥 |
@@ -969,7 +994,7 @@ Exit 0 when there are no errors (warnings allowed), 2 on a config error. `--form
 `bar preview [--state early|burning|final] [--preset [<name>]]` renders your layout (or a [preset](#presets)) with built-in sample data for every core placeholder. A bare `--preset` renders every preset in turn, each under a muted `── <name> ──` header.
 
 - Sample session: model, effort, context (38% of 200k, cache split, growth), usage windows, spend limit, cost, duration, lines, version, style, vim mode, agent, thinking, fast mode, session id, compaction and skill counts.
-- Stand-ins for the rest: repo, branch, git state, worktree, PRs (#131 failing CI, #129 pending, #128 passing), issues, account label, subagents, open sessions, spend history, transcript tokens and cache, directories.
+- Stand-ins for the rest: repo, branch, git state, commit, tag, stash, operation in progress, conflicts, worktree, PRs (#131 failing CI, #129 pending, #128 passing), issues, account label, subagents, open sessions, spend history, transcript tokens and cache, directories.
 - In the `final` state the sample tree is clean, so `dirty` is empty.
 - It reads no session, account, git repository, `gh` or plugin, and writes no state. Plugin placeholders render empty.
 - `--subagent` draws the `subagent` layout (or the preset's, or the default) for three sample subagents instead, one row per line: a running `Explore`, a running `reviewer` on Opus 5.5 at high effort, and a completed task. Rows fit `COLUMNS` when it is set.
@@ -1169,9 +1194,10 @@ Environment variables bar reads:
 | `ANTHROPIC_API_KEY` | Only tested for presence, by `account` |
 | `TMUX`, `TMUX_PANE` | `tmux` placeholder |
 | `TMUX_TMPDIR` | Baked into the click handler, so `bar click run` finds the tmux server |
+| `GIT_INDEX_FILE` | When set, `conflicts` counts from the cached `git status` instead of the index file |
 | `TZ` | Local zone for `spendhist` (Unix) |
 | `COLORTERM`, `NO_COLOR`, `FORCE_COLOR` | Only with `set color-depth auto`; see [Colour depth](#colour-depth) |
 | `PATH`, `PATHEXT` (Windows) | Plugins, `gh`, `git`, `tmux` |
-| `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, `GIT_CONFIG_COUNT`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_SYSTEM`, `GIT_CONFIG_NOSYSTEM` | When any is set, `repo` and `branch` run `git` instead of reading the repository files, and `dirty`, `ahead`, `worktree` render empty ([Performance](technical.md#performance)) |
+| `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, `GIT_CONFIG_COUNT`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_SYSTEM`, `GIT_CONFIG_NOSYSTEM` | When any is set, `repo`, `branch` and `sha` run `git` instead of reading the repository files, and `dirty`, `ahead`, `worktree`, `tag`, `stash`, `gitop`, `conflicts` render empty ([Performance](technical.md#performance)) |
 
 `FORCE_HYPERLINK` is read by Claude Code, not bar; see [Click handler](#click-handler-macos).

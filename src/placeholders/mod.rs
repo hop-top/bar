@@ -8,6 +8,8 @@ pub mod ctx;
 pub mod dirs;
 pub mod extra;
 pub mod gh;
+pub mod gitop;
+pub mod gitref;
 pub mod gitst;
 pub mod misc;
 pub mod model;
@@ -100,6 +102,11 @@ static REGISTRY: &[(&str, &(dyn Placeholder + Sync))] = &[
     ("dirty", &gitst::Dirty),
     ("ahead", &gitst::Ahead),
     ("worktree", &gitst::Worktree),
+    ("sha", &gitref::Sha),
+    ("tag", &gitref::Tag),
+    ("stash", &gitref::Stash),
+    ("gitop", &gitop::GitOp),
+    ("conflicts", &gitop::Conflicts),
     ("sid", &niche::Sid),
     ("compactions", &niche::Compactions),
     ("skills", &niche::Skills),
