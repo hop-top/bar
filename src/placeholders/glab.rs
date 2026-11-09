@@ -38,12 +38,15 @@ pub fn parse_hosts(val: &str) -> Result<Vec<String>, String> {
     Ok(hosts)
 }
 
-/// `https://host/group/.../project` of a remote URL on gitlab.com or one
-/// of `hosts`; other hosts give `None`.
+/// `https://host[:port]/group/.../project` of a remote URL on gitlab.com
+/// or one of `hosts`; other hosts give `None`.
 pub fn gitlab_repo(url: &str, hosts: &[String]) -> Option<String> {
     let (host, path) = url.strip_prefix("https://")?.split_once('/')?;
     let host = host.to_ascii_lowercase();
-    if host != GITLAB_COM && !hosts.contains(&host) {
+    let (name, port) = host.split_once(':').unwrap_or((&host, "0"));
+    if !port.bytes().all(|b| b.is_ascii_digit())
+        || (name != GITLAB_COM && !hosts.iter().any(|h| h == name))
+    {
         return None;
     }
     let ok = |s: &str| {

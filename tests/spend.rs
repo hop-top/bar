@@ -18,6 +18,7 @@ fn go(s: &Session) -> Option<String> {
         cache: None,
         columns: None,
         plugin_dirs: &[],
+        memo: Default::default(),
     };
     render_with(&ctx, &Options::default())
 }

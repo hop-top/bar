@@ -286,6 +286,7 @@ fn render_impl(
         cache: from.cache,
         columns,
         plugin_dirs: from.plugin_dirs,
+        memo: Default::default(),
     };
     let _muted = style::use_muted(config.muted);
     let _ansi = style::use_ansi(palette::by_name(config.palette).is_some_and(|p| p.ansi));
@@ -473,6 +474,7 @@ fn row_impl(
         cache: from.cache,
         columns,
         plugin_dirs: from.plugin_dirs,
+        memo: Default::default(),
     };
     let _muted = style::use_muted(config.muted);
     let _ansi = style::use_ansi(palette::by_name(config.palette).is_some_and(|p| p.ansi));

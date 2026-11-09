@@ -49,6 +49,7 @@ impl Env {
             cache: None,
             columns: None,
             plugin_dirs: &[],
+            memo: Default::default(),
         };
         let stats = || self.stats.clone();
         let env = |k: &str| self.vars.get(k).cloned();

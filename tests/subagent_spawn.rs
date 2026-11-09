@@ -50,6 +50,7 @@ fn command_links_never_probe_the_terminal_in_a_row() {
         cache: None,
         columns: None,
         plugin_dirs: &[],
+        memo: Default::default(),
     };
     let o = Options::default();
     assert!(model::model_with(&ctx, &o, t.path(), no_probe).is_some());

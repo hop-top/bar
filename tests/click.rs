@@ -186,6 +186,7 @@ fn render_three(state: &Path, o: &Options, term: &Term) -> Vec<String> {
         cache: None,
         columns: None,
         plugin_dirs: &[],
+        memo: Default::default(),
     };
     vec![
         model::model_with(&ctx, o, state, || term.clone()).unwrap(),

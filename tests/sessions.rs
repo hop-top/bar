@@ -70,6 +70,7 @@ fn go(t: &Tmp) -> Option<String> {
         cache: None,
         columns: None,
         plugin_dirs: &[],
+        memo: Default::default(),
     };
     render_with(&ctx, &Options::default(), &t.state(), &t.claude())
 }
@@ -151,6 +152,7 @@ fn colours_follow_config() {
         cache: None,
         columns: None,
         plugin_dirs: &[],
+        memo: Default::default(),
     };
     let out = render_with(&ctx, &Options::default(), &t.state(), &t.claude()).unwrap();
     assert!(out.contains("38;5;99m"), "{out:?}");

@@ -69,6 +69,7 @@ fn go(state: &Path, sid: &str, opts: &Options, now: i64) -> Option<String> {
         cache: None,
         columns: None,
         plugin_dirs: &[],
+        memo: Default::default(),
     };
     render_with(&ctx, opts, state)
 }

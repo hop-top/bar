@@ -20,6 +20,7 @@ fn run(name: &str, s: &Session, opts: &str) -> Option<String> {
         cache: None,
         columns: None,
         plugin_dirs: &[],
+        memo: Default::default(),
     };
     let mut o = Options::default();
     for kv in opts.split(',').filter(|k| !k.is_empty()) {

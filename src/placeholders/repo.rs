@@ -1,4 +1,5 @@
 use super::{link_enabled, truncate, work_dir, Ctx, Placeholder};
+use crate::cache::Job;
 use crate::gitfs::{self, Found};
 use crate::options::Options;
 use crate::style::{accent, bold, dim, fg, link, sanitize};
@@ -32,6 +33,8 @@ fn git(dir: &Path, args: &[&str]) -> Option<String> {
 }
 
 /// origin URL (ssh, scp or https form) as `https://host/owner/repo`.
+/// Spawns `git` when the files cannot tell; render paths that must not
+/// use `cached_remote` instead.
 pub fn remote_url(cwd: &Path) -> Option<String> {
     remote_url_with(cwd, true)
 }
@@ -48,25 +51,76 @@ pub fn remote_url_with(cwd: &Path, spawn: bool) -> Option<String> {
         },
         Found::Unsupported => get()?,
     };
+    web_url(&raw)
+}
+
+/// Remote URL stays fresh for a minute.
+pub const REMOTE_TTL: u64 = 60;
+
+pub fn remote_key(top: &Path) -> String {
+    format!("gitremote:{}", top.display())
+}
+
+/// As `remote_url`, never spawning: when the files cannot tell, the
+/// cached result of a background `git remote get-url origin`, nothing
+/// until it is in. Computed once per render.
+pub(crate) fn cached_remote(ctx: &Ctx) -> Option<String> {
+    ctx.memo
+        .remote
+        .get_or_init(|| {
+            let dir = work_dir(ctx);
+            let top = match gitfs::discover(&dir) {
+                Found::NotRepo => return None,
+                Found::Repo(r) => match r.origin_url() {
+                    Ok(u) => return web_url(&u?),
+                    Err(_) => r.top,
+                },
+                Found::Unsupported => dir,
+            };
+            let top = top.canonicalize().unwrap_or(top);
+            let job = Job::GitRemote {
+                dir: top.to_str()?.to_string(),
+            };
+            let raw = ctx
+                .cache?
+                .read_or_refresh(&remote_key(&top), REMOTE_TTL, &job)?;
+            web_url(&raw)
+        })
+        .clone()
+}
+
+/// A remote URL as the web address of the repository; an https port other
+/// than 443 is kept, ssh ports are not.
+pub fn web_url(raw: &str) -> Option<String> {
     let u = raw.trim();
     let u = u.strip_suffix(".git").unwrap_or(u);
     let u = u.strip_suffix('/').unwrap_or(u);
-    let (host, path) = if let Some((scheme, rest)) = u.split_once("://") {
+    let (host, port, path) = if let Some((scheme, rest)) = u.split_once("://") {
         if scheme.is_empty() || !scheme.chars().all(|c| c.is_ascii_lowercase() || c == '+') {
             return None;
         }
         let (auth, path) = rest.split_once('/')?;
         let auth = auth.rsplit_once('@').map_or(auth, |(_, h)| h);
-        (auth.split(':').next()?, path)
+        let (host, port) = auth.split_once(':').unwrap_or((auth, ""));
+        let keep = scheme == "https"
+            && port != "443"
+            && !port.is_empty()
+            && port.bytes().all(|b| b.is_ascii_digit());
+        (host, if keep { port } else { "" }, path)
     } else {
         let (before, path) = u.split_once(':')?;
         if before.contains('/') {
             return None;
         }
-        (before.rsplit_once('@').map_or(before, |(_, h)| h), path)
+        (before.rsplit_once('@').map_or(before, |(_, h)| h), "", path)
     };
-    (!host.is_empty() && !path.is_empty() && !host.contains('/') && !path.contains('@'))
-        .then(|| format!("https://{host}/{path}"))
+    if host.is_empty() || path.is_empty() || host.contains('/') || path.contains('@') {
+        return None;
+    }
+    Some(match port {
+        "" => format!("https://{host}/{path}"),
+        p => format!("https://{host}:{p}/{path}"),
+    })
 }
 
 fn basename(p: &Path) -> String {

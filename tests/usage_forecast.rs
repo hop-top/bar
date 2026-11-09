@@ -30,6 +30,7 @@ fn run(used: f64, left: i64, o: &[(&str, &str)], state: &Path) -> String {
         cache: None,
         columns: None,
         plugin_dirs: &[],
+        memo: Default::default(),
     };
     let mut opts = Options::default();
     opts.set("type", "5h");
@@ -181,6 +182,7 @@ fn custom_bad_colour_applies_to_eta_and_proj() {
         cache: None,
         columns: None,
         plugin_dirs: &[],
+        memo: Default::default(),
     };
     let mut opts = Options::default();
     opts.set("show", "eta,proj");
@@ -207,6 +209,7 @@ fn seven_day_window() {
         cache: None,
         columns: None,
         plugin_dirs: &[],
+        memo: Default::default(),
     };
     let mut opts = Options::default();
     opts.set("type", "7d");

@@ -21,6 +21,11 @@ fn remote_url_forms() {
         ("https://github.com/o/r/", "https://github.com/o/r"),
         ("https://github.com/o/r.git", "https://github.com/o/r"),
         ("https://u:p@ss@host.io/o/r.git", "https://host.io/o/r"),
+        // an https port other than 443 is part of the web address
+        ("https://host.io:8443/g/p.git", "https://host.io:8443/g/p"),
+        ("https://tok@host.io:8443/g/p", "https://host.io:8443/g/p"),
+        ("https://host.io:443/g/p", "https://host.io/g/p"),
+        ("ssh://git@host.io:8443/g/p", "https://host.io/g/p"),
     ];
     for (raw, want) in cases {
         git(&d, &["config", "remote.origin.url", raw]);

@@ -204,12 +204,15 @@ fn default_layout_in_github_repo_stays_in_temp_state() {
     );
     let out = run(&t).cwd(&d).go();
     assert!(out.plain.contains("r:main"), "{}", out.plain);
-    // the cold prs/issues lists spawn detached refreshes; they must hit the fake gh
+    // the cold prs/issues lists spawn detached refreshes; they must hit the
+    // fake gh (once the remote URL is known: the harness's git environment
+    // sends it to a background `git remote get-url` first)
     let log = common::gh_log(t.path());
     let start = std::time::Instant::now();
     while std::fs::read_to_string(&log).map_or(true, |l| !l.contains("pr list")) {
         assert!(start.elapsed().as_secs() < 10, "fake gh never called");
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        run(&t).cwd(&d).go();
     }
     // the fake gh the process resolved first is the one that logged the call
     let first = std::env::split_paths(&out.path).next().unwrap();
