@@ -30,6 +30,7 @@ pub(super) fn apply_set(c: &mut Config, key: &str, val: &str) -> Result<(), Stri
         return Ok(());
     }
     match key {
+        "subagent" => c.subagent = Some(val.into()),
         "separator" => c.separator = val.into(),
         "gap" => c.gap = val.parse().map_err(|_| format!("invalid gap `{val}`"))?,
         "wrap" => {

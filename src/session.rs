@@ -80,6 +80,9 @@ pub struct Session {
     pub fast_mode: bool,
     /// `prompt_cache`, when it is an object.
     pub prompt_cache: Option<PromptCache>,
+    /// The subagent a `bar subagent` row describes; `None` for the
+    /// status line.
+    pub task: Option<crate::subagent::Task>,
 }
 
 fn str_at(v: &Value, path: &[&str]) -> Option<String> {
@@ -222,5 +225,6 @@ pub fn parse(input: &str) -> Session {
         thinking: bool_at(&v, &["thinking", "enabled"]),
         fast_mode: bool_at(&v, &["fast_mode"]),
         prompt_cache: prompt_cache(&v),
+        task: None,
     }
 }

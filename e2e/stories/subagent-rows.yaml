@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: bar.subagent.rows
+title: Draw the subagent rows below the prompt
+binary: bar
+intent: |
+  While Claude runs subagents, Claude Code lists them below the prompt and
+  pipes the visible rows as one JSON object to the subagentStatusLine
+  command. The user points that setting at bar subagent so each row shows
+  the subagent's status, name, progress, model, tokens and running time in
+  the same skin as the status line. A row bar has nothing for keeps Claude
+  Code's own text, and the command always exits 0.
+preconditions:
+  - bar binary is on PATH
+steps:
+  - id: install
+    intent: |
+      Set bar as both the status line and the subagent status line in the
+      user settings file, after showing the diff.
+    invoke: ["bar", "install", "--subagent", "--yes"]
+    capture: [exit_code, stdout]
+  - id: preview
+    intent: |
+      See the configured subagent row layout drawn for sample subagents
+      before any run.
+    invoke: ["bar", "preview", "--subagent"]
+    capture: [exit_code, stdout]
+  - id: rows
+    intent: |
+      Turn the rows Claude Code sends into one JSON line per row, each
+      with the task id and the drawn row.
+    invoke: ["bar", "subagent"]
+    capture: [exit_code, stdout]

@@ -1,6 +1,7 @@
-//! `bar install`: sets bar as Claude Code's `statusLine` in one of its
-//! settings files, showing the diff and asking first; `--uninstall`
-//! puts back the status line bar replaced, or removes bar's.
+//! `bar install`: sets bar as Claude Code's `statusLine` (and with
+//! `--subagent` its `subagentStatusLine`) in one of its settings files,
+//! showing the diff and asking first; `--uninstall` puts back what bar
+//! replaced, or removes bar's.
 
 use crate::click::settings::{self, add_hooks, command_for, load, remove_hooks, write_settings};
 use serde_json::{json, Value};
@@ -101,6 +102,8 @@ pub struct Opts {
     pub refresh: Option<u64>,
     /// Also add (or with `uninstall` remove) the `bar click hook` entries.
     pub hooks: bool,
+    /// Also set (or with `uninstall` remove) `subagentStatusLine`.
+    pub subagent: bool,
     /// Write without asking.
     pub yes: bool,
 }
@@ -144,16 +147,44 @@ pub fn render_command(bar: &str, windows: bool) -> String {
     command_for(bar, "render", windows)
 }
 
+/// The subagent status line command: `'<bar>' subagent`.
+pub fn subagent_command(bar: &str, windows: bool) -> String {
+    command_for(bar, "subagent", windows)
+}
+
 /// Whether `cmd` runs `bar render` (any path to a `bar` binary, quoted
 /// or not).
 pub fn is_bar_command(cmd: &str) -> bool {
     settings::runs_bar(cmd, "render")
 }
 
-fn is_bar_status_line(v: Option<&Value>) -> bool {
+/// The settings keys install writes: the key, the `bar` arguments its
+/// command runs, and what it is called in messages.
+struct Key {
+    name: &'static str,
+    args: &'static str,
+    what: &'static str,
+    flag: &'static str,
+}
+
+const STATUS: Key = Key {
+    name: "statusLine",
+    args: "render",
+    what: "status line",
+    flag: "",
+};
+
+const SUBAGENT: Key = Key {
+    name: "subagentStatusLine",
+    args: "subagent",
+    what: "subagent status line",
+    flag: " --subagent",
+};
+
+fn runs_bar(v: Option<&Value>, key: &Key) -> bool {
     v.and_then(|s| s.get("command"))
         .and_then(Value::as_str)
-        .is_some_and(is_bar_command)
+        .is_some_and(|c| settings::runs_bar(c, key.args))
 }
 
 /// Where install keeps the status line it replaced in `settings`.
@@ -164,15 +195,24 @@ pub fn record_path(state_dir: &Path, settings: &Path) -> PathBuf {
         .join(format!("{}.json", crate::cache::hash_hex(&key)))
 }
 
-fn read_record(path: &Path) -> Option<Value> {
-    let v: Value = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
-    v.get("statusLine").cloned()
+/// The record's settings values, by key; empty when there is none.
+fn read_record(path: &Path) -> serde_json::Map<String, Value> {
+    let v: Option<Value> = std::fs::read_to_string(path)
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok());
+    let mut m = match v {
+        Some(Value::Object(m)) => m,
+        _ => serde_json::Map::new(),
+    };
+    m.retain(|k, _| k == STATUS.name || k == SUBAGENT.name);
+    m
 }
 
-/// What to do with the record of the replaced status line.
+/// What to do with the record of the replaced status lines.
 enum Record {
     Keep,
-    Write(Value),
+    /// Write these keys (`statusLine`, `subagentStatusLine`).
+    Write(serde_json::Map<String, Value>),
     Remove,
 }
 
@@ -228,6 +268,28 @@ impl Plan {
     }
 }
 
+/// Sets `key` in `obj` to run `bar <key.args>` (other fields of the
+/// current value kept); a current value that does not run bar goes into
+/// `kept`.
+fn set_line(
+    obj: &mut serde_json::Map<String, Value>,
+    key: &Key,
+    command: String,
+    kept: &mut serde_json::Map<String, Value>,
+) {
+    let cur = obj.get(key.name).cloned();
+    if let Some(c) = cur.as_ref().filter(|c| !runs_bar(Some(c), key)) {
+        kept.insert(key.name.into(), c.clone());
+    }
+    let mut line = match cur {
+        Some(Value::Object(m)) => Value::Object(m),
+        _ => json!({}),
+    };
+    line["type"] = json!("command");
+    line["command"] = json!(command);
+    obj.insert(key.name.into(), line);
+}
+
 fn plan_install(env: &Env, o: &Opts) -> Result<Plan, String> {
     let l = load(&env.settings)?;
     let shown = l.path.display().to_string();
@@ -235,28 +297,37 @@ fn plan_install(env: &Env, o: &Opts) -> Result<Plan, String> {
     let mut root = l.root.clone();
     let obj = root.as_object_mut().ok_or("not a JSON object")?;
     let bar = env.bar.display().to_string();
-    let cur = obj.get("statusLine").cloned();
-    let record = match &cur {
-        Some(c) if !is_bar_status_line(Some(c)) => Record::Write(c.clone()),
-        _ => Record::Keep,
-    };
-    let mut line = match &cur {
-        Some(Value::Object(m)) => Value::Object(m.clone()),
-        _ => json!({}),
-    };
-    line["type"] = json!("command");
-    line["command"] = json!(render_command(&bar, env.windows));
+    let mut kept = serde_json::Map::new();
+    set_line(obj, &STATUS, render_command(&bar, env.windows), &mut kept);
     if let Some(n) = o.refresh {
-        line["refreshInterval"] = json!(n);
+        obj[STATUS.name]["refreshInterval"] = json!(n);
     }
-    obj.insert("statusLine".into(), line);
+    if o.subagent {
+        set_line(
+            obj,
+            &SUBAGENT,
+            subagent_command(&bar, env.windows),
+            &mut kept,
+        );
+    }
     let mut notes = Vec::new();
-    if matches!(record, Record::Write(_)) {
-        notes.push(format!(
-            "the current status line is kept in {}; bar install --uninstall puts it back",
-            rec.display()
-        ));
+    for key in [&STATUS, &SUBAGENT] {
+        if kept.contains_key(key.name) {
+            notes.push(format!(
+                "the current {} is kept in {}; bar install --uninstall{} puts it back",
+                key.what,
+                rec.display(),
+                key.flag
+            ));
+        }
     }
+    let record = if kept.is_empty() {
+        Record::Keep
+    } else {
+        let mut all = read_record(&rec);
+        all.extend(kept);
+        Record::Write(all)
+    };
     if o.hooks {
         add_hooks(
             &mut root,
@@ -279,21 +350,39 @@ fn plan_uninstall(env: &Env, o: &Opts) -> Result<Plan, String> {
     let mut root = l.root.clone();
     let obj = root.as_object_mut().ok_or("not a JSON object")?;
     let mut notes = Vec::new();
-    let mut record = Record::Keep;
-    if is_bar_status_line(obj.get("statusLine")) {
-        match read_record(&rec) {
-            Some(prev) => {
-                obj.insert("statusLine".into(), prev);
-                notes.push("restores the status line bar replaced".into());
+    let mut saved = read_record(&rec);
+    let mut touched = false;
+    for (key, on) in [(&STATUS, true), (&SUBAGENT, o.subagent)] {
+        let bars = runs_bar(obj.get(key.name), key);
+        if !on {
+            if bars {
+                notes.push(format!(
+                    "{} still runs bar; bar install --uninstall{} removes it",
+                    key.name, key.flag
+                ));
             }
-            None => {
-                obj.shift_remove("statusLine");
-            }
+            continue;
         }
-        record = Record::Remove;
-    } else if obj.contains_key("statusLine") {
-        notes.push("statusLine does not run bar; left as is".into());
+        if bars {
+            touched = true;
+            match saved.remove(key.name) {
+                Some(prev) => {
+                    obj.insert(key.name.into(), prev);
+                    notes.push(format!("restores the {} bar replaced", key.what));
+                }
+                None => {
+                    obj.shift_remove(key.name);
+                }
+            }
+        } else if obj.contains_key(key.name) {
+            notes.push(format!("{} does not run bar; left as is", key.name));
+        }
     }
+    let record = match (touched, saved.is_empty()) {
+        (false, _) => Record::Keep,
+        (true, true) => Record::Remove,
+        (true, false) => Record::Write(saved),
+    };
     if o.hooks {
         remove_hooks(&mut root);
     }
@@ -358,9 +447,12 @@ pub fn run(
     crate::rewrite::unchanged(&plan.path, plan.text.as_deref())
         .map_err(|e| Error::Failed(format!("{e}; run bar install again")))?;
     let rec = record_path(&env.state_dir, &plan.path);
-    if let Record::Write(prev) = &plan.record {
-        let body = json!({"settings": plan.path.display().to_string(), "statusLine": prev});
-        crate::click::write_atomic(&rec, &(body.to_string() + "\n")).map_err(io)?;
+    if let Record::Write(keys) = &plan.record {
+        let mut body = serde_json::Map::new();
+        body.insert("settings".into(), json!(plan.path.display().to_string()));
+        body.extend(keys.clone());
+        let body = Value::Object(body).to_string() + "\n";
+        crate::click::write_atomic(&rec, &body).map_err(io)?;
     }
     let backup = write_settings(
         &plan.path,
