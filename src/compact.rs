@@ -7,7 +7,7 @@
 use crate::prices::norm::canonical;
 use serde_json::Value;
 
-/// Tokens a 1M-window model compacts at by default ("about 967K").
+/// Tokens a native 1M-window model compacts at by default ("about 967K").
 pub const NATIVE_1M_DEFAULT: u64 = 967_000;
 /// Claude Code's accepted auto-compact window range.
 const MIN_WINDOW: u64 = 100_000;
@@ -60,9 +60,35 @@ fn setting_window(v: Option<&Value>) -> Option<Option<u64>> {
     Some(Some((n as u64).clamp(MIN_WINDOW, MAX_WINDOW)))
 }
 
-/// The window Claude Code picks when none is set.
-pub fn default_window(window: u64) -> u64 {
-    if window >= MAX_WINDOW {
+/// A model that runs with a 1M window without a `[1m]` variant: the
+/// Fable models, Sonnet 5 and later, Haiku 5.5 and later, Opus 4.7 and
+/// later. Anything else (the 4.6 `[1m]` variants, older or unknown ids)
+/// is not.
+pub fn native_1m(model_id: &str) -> bool {
+    let id = canonical(model_id);
+    let Some(rest) = id.strip_prefix("claude-") else {
+        return false;
+    };
+    let mut it = rest.split('-');
+    let family = it.next().unwrap_or_default();
+    let num = |s: Option<&str>| s.and_then(|s| s.parse::<u32>().ok());
+    let Some(major) = num(it.next()) else {
+        return false;
+    };
+    let minor = num(it.next()).unwrap_or(0);
+    match family {
+        "fable" => true,
+        "sonnet" => major >= 5,
+        "haiku" => (major, minor) >= (5, 5),
+        "opus" => (major, minor) >= (4, 7),
+        _ => false,
+    }
+}
+
+/// The point Claude Code picks when no window is set: about 967k for a
+/// native 1M-window model, otherwise the whole window.
+pub fn default_window(window: u64, model_id: &str) -> u64 {
+    if window >= MAX_WINDOW && native_1m(model_id) {
         NATIVE_1M_DEFAULT
     } else {
         window
@@ -121,7 +147,9 @@ pub fn threshold(
         .or_else(per_model)
         .or_else(|| setting_window(get("autoCompactWindow")))
         .flatten();
-    let mut at = chosen.unwrap_or_else(|| default_window(window)).min(window);
+    let mut at = chosen
+        .unwrap_or_else(|| default_window(window, model_id))
+        .min(window);
     // the override applies only where compaction runs before the limit
     if at < window {
         let pct = env("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE")
