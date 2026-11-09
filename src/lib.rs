@@ -26,6 +26,7 @@ pub mod preview;
 pub mod prices;
 pub mod render;
 pub mod session;
+pub mod settings;
 pub mod skin;
 pub mod spendhist;
 pub mod style;
