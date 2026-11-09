@@ -128,6 +128,17 @@ Binary size: the release `bar` grows by about 390 KB (2.11 MB to 2.50 MB on macO
 - Use: icons and skin separators in the preview. The page uses an installed copy, else fetches `HackNerdFontMono-Regular.ttf` and `-Bold.ttf` from jsDelivr (`cdn.jsdelivr.net/gh/ryanoasis/nerd-fonts@v3.4.0`), else the system monospace font. Nothing is committed or redistributed.
 - Source: Nerd Fonts v3.4.0, released 2025-04-24. Licences as under [Gallery tooling](#font-hack-nerd-font-mono).
 
+## npm packages (`packaging/npm/`)
+
+The launcher and the platform packages have no npm dependencies; `scripts/npm-stage` and `scripts/npm-check` use only Python's standard library, `tar`, `node` and `npm`.
+
+### actions/setup-node v7.1.0 (release workflow)
+
+- Use: Node 22 and the registry `.npmrc` for the `npm` job of `.github/workflows/release-rs-caller.yml`; pinned to commit `949feb2413d6458794dcd2491c4babbbce0c15c1`.
+- Source: `actions/setup-node`, released 2026-10-08, over 14 days old.
+- License: MIT.
+- `rsx analyze actions/setup-node`: PASS, score 6.3/10, policy balanced.
+
 ## Dev container
 
 `.devcontainer/Dockerfile` builds the [dev container](../CONTRIBUTING.md#dev-container). Nothing in it ships in the binary or release archives. Every pin below was released at least 14 days before it was pinned; checksums are in the Dockerfile.

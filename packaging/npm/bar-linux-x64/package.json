@@ -1,0 +1,24 @@
+{
+  "name": "@hop-top/bar-linux-x64",
+  "version": "0.1.0-beta.0",
+  "description": "bar binary for linux x64 (x86_64-unknown-linux-musl), installed by @hop-top/bar",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hop-top/bar.git"
+  },
+  "homepage": "https://github.com/hop-top/bar",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "bin/bar"
+  ],
+  "preferUnplugged": true,
+  "publishConfig": {
+    "access": "public"
+  }
+}

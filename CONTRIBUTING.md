@@ -7,7 +7,7 @@ Rust edition 2021, stable toolchain. `hop-top-kit` is pinned exactly.
 ```sh
 make setup   # cargo fetch
 make build   # release build
-make check   # fmt-check + clippy -D warnings + tests + web-check + gallery-check + bench-badge-check
+make check   # fmt-check + clippy -D warnings + tests + npm-check + web-check + gallery-check + bench-badge-check
 make gallery # redraw docs/gallery.md and docs/gallery/*.svg
 make bench-badge # redraw docs/badges/bench.svg from bench/results/
 make bench       # benchmark in a pinned container (Docker or Podman); stages results, docs, badge
@@ -16,6 +16,8 @@ make web         # web configurator: bar's renderer as wasm in web/pkg/ (docs/we
 ```
 
 `make check` needs `python3` for `gallery-check`, which fails when [docs/gallery.md](docs/gallery.md) no longer matches `bar` output; run `make gallery` after changing what a render looks like. `bench-docs-check` and `bench-badge-check` fail when the generated benchmark sections of [bench/README.md](bench/README.md) and [README.md](README.md), or [docs/badges/bench.svg](docs/badges/bench.svg), no longer match the results in `bench/results/`; `make bench` writes all of them. `make gallery` also needs fontTools and Hack Nerd Font Mono ([docs/dependencies.md](docs/dependencies.md#gallery-tooling-not-built-into-bar)).
+
+`npm-check` stages the npm packages (`packaging/npm/`) from fake release archives with `scripts/npm-stage`, packs them with `npm pack` and runs the launcher from the unpacked tarballs; offline, skipped without `node` and `npm`.
 
 `web-check` builds and lints the wasm crate `web/wasm` when the toolchain has the `wasm32-unknown-unknown` target, and skips otherwise.
 
