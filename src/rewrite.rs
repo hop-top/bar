@@ -1,6 +1,7 @@
 //! Replacing a file the user owns (`settings.json`, `bar.conf`): written
-//! through a symlink to its target, the old file backed up beside it,
-//! the new one written atomically with the old file's permissions.
+//! through a symlink to its target, the old file backed up (see
+//! [`Backups`]), the new one written atomically and flushed to disk,
+//! with the old file's permissions.
 
 use std::path::{Path, PathBuf};
 
@@ -115,9 +116,36 @@ pub fn write(path: &Path, body: &str) -> std::io::Result<()> {
     if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
         std::fs::create_dir_all(dir)?;
     }
-    crate::click::write_atomic(path, body)?;
+    write_durable(path, body)?;
     if let Some(m) = mode {
         std::fs::set_permissions(path, m)?;
+    }
+    Ok(())
+}
+
+/// Writes a sibling temp file (0600), flushes it to disk, renames it
+/// over `path` and, on Unix, flushes the directory, so a crash leaves
+/// the old file or the new one, never an empty one.
+fn write_durable(path: &Path, body: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    let tmp = path.with_file_name(format!(".{name}.{}.tmp", crate::cache::nonce()));
+    let mut o = std::fs::OpenOptions::new();
+    crate::platform::private_file(o.write(true).create_new(true));
+    let written = o.open(&tmp).and_then(|mut f| {
+        f.write_all(body.as_bytes())?;
+        f.sync_all()
+    });
+    written
+        .and_then(|()| std::fs::rename(&tmp, path))
+        .inspect_err(|_| {
+            let _ = std::fs::remove_file(&tmp);
+        })?;
+    #[cfg(unix)]
+    if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+        if let Ok(d) = std::fs::File::open(dir) {
+            let _ = d.sync_all();
+        }
     }
     Ok(())
 }
@@ -153,6 +181,9 @@ mod tests {
         let f = d.join("a/b/f.conf");
         assert_eq!(replace(&f, "x\n", Backups::Beside).unwrap(), None);
         assert_eq!(std::fs::read_to_string(&f).unwrap(), "x\n");
+        // no temp file left behind
+        let names: Vec<_> = std::fs::read_dir(f.parent().unwrap()).unwrap().collect();
+        assert_eq!(names.len(), 1);
         let _ = std::fs::remove_dir_all(d);
     }
 
