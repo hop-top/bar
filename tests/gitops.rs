@@ -175,3 +175,54 @@ fn unmerged_handles_real_index_truncated_anywhere() {
     }
     assert_eq!(unmerged(&data[..40], 20), None);
 }
+
+/// Version 4 index: `(path, stage)` entries with prefix-compressed names,
+/// no extensions, zeroed checksum.
+fn index_v4(entries: &[(&str, u16)]) -> Vec<u8> {
+    let mut d = b"DIRC\0\0\0\x04".to_vec();
+    d.extend((entries.len() as u32).to_be_bytes());
+    let mut prev = "";
+    for (path, stage) in entries {
+        d.extend([0u8; 40 + 20]);
+        let flags = (stage << 12) | (path.len().min(0xfff) as u16);
+        d.extend(flags.to_be_bytes());
+        let common = prev
+            .bytes()
+            .zip(path.bytes())
+            .take_while(|(a, b)| a == b)
+            .count();
+        let strip = prev.len() - common;
+        assert!(strip < 0x80);
+        d.push(strip as u8);
+        d.extend(&path.as_bytes()[common..]);
+        d.push(0);
+        prev = path;
+    }
+    d.extend([0u8; 20]);
+    d
+}
+
+#[test]
+fn v4_reconstructed_paths_drive_conflict_dedup() {
+    // stages of one path share it whole (strip 0, empty suffix); a
+    // neighbour extends it; a later path strips back
+    let idx = index_v4(&[
+        ("dir/a", 1),
+        ("dir/a", 2),
+        ("dir/a", 3),
+        ("dir/ab", 2),
+        ("dir/ab", 3),
+        ("dir/b", 0),
+        ("dir/c", 1),
+        ("e", 0),
+    ]);
+    assert_eq!(unmerged(&idx, 20), Some(3));
+    // same entries, none conflicted past the first path
+    let idx = index_v4(&[("dir/a", 2), ("dir/a", 3), ("dir/ab", 0), ("dir/b", 0)]);
+    assert_eq!(unmerged(&idx, 20), Some(1));
+    // a strip past the previous path's length is refused
+    let mut bad = index_v4(&[("ab", 1)]);
+    let at = 12 + 40 + 20 + 2;
+    bad[at] = 3;
+    assert_eq!(unmerged(&bad, 20), None);
+}

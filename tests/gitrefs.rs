@@ -154,6 +154,29 @@ fn loose_annotated_tag_is_unknown_and_git_job_tells() {
 }
 
 #[test]
+fn loose_tag_overrides_packed_tag_of_same_name() {
+    let t = Tmp::new();
+    let d = repo(&t, "p");
+    let first = out(&d, &["rev-parse", "HEAD"]);
+    git(&d, &["tag", "moved"]);
+    git(&d, &["commit", "-q", "--allow-empty", "-m", "y"]);
+    git(&d, &["tag", "-a", "-m", "g", "gone"]);
+    git(&d, &["pack-refs", "--all"]);
+    // rewritten after packing: loose refs shadow the packed lines
+    git(&d, &["tag", "-f", "moved"]);
+    git(&d, &["tag", "-f", "gone", &first]);
+    assert!(d.join(".git/refs/tags/moved").exists());
+    assert!(d.join(".git/refs/tags/gone").exists());
+    let r = open(&d);
+    let head = r.head_commit().unwrap().unwrap();
+    let scan = r.tags_at(&head).unwrap();
+    assert_eq!(scan.at, vec![("moved".to_string(), false)]);
+    assert_eq!(out(&d, &["tag", "--points-at", "HEAD"]), "moved");
+    // the loose `gone` names another commit: only git can rule it out
+    assert!(scan.unknown);
+}
+
+#[test]
 fn best_tag_prefers_annotated_then_version() {
     let t = |n: &str, a| (n.to_string(), a);
     assert_eq!(best_tag(&[]), None);
