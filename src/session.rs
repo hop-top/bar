@@ -10,7 +10,9 @@ pub struct Window {
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct SpendLimit {
-    pub period: String,
+    /// `daily`, `weekly` or `monthly`; absent until Claude Code has read
+    /// the dollar fields.
+    pub period: Option<String>,
     pub resets_at: i64,
     /// `used_percentage`, when present.
     pub used_percentage: Option<f64>,
@@ -110,7 +112,7 @@ fn window(v: &Value, key: &str) -> Option<Window> {
 fn spend_limit(v: &Value) -> Option<SpendLimit> {
     let l = v.get("rate_limits")?.get("spend_limit")?;
     Some(SpendLimit {
-        period: l.get("period")?.as_str()?.to_owned(),
+        period: l.get("period").and_then(Value::as_str).map(str::to_owned),
         resets_at: l.get("resets_at")?.as_i64()?,
         used_percentage: num_at(l, &["used_percentage"]),
         used_usd: num_at(l, &["used_usd"]),
