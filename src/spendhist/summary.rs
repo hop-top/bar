@@ -21,9 +21,17 @@ const MAX_SUMMARY: usize = crate::cache::MAX_VALUE - 1024;
 /// input, output, cache write, cache read
 pub type Tokens = [u64; 4];
 
+/// Tokens per model, under one day or one hour.
+pub type Models = BTreeMap<String, Tokens>;
+
+/// Length of a usage block, hours.
+pub const BLOCK_HOURS: i64 = 5;
+
 #[derive(Debug, Clone, Default)]
 pub struct Summary {
-    pub days: BTreeMap<String, BTreeMap<String, Tokens>>,
+    pub days: BTreeMap<String, Models>,
+    /// The last day by UTC hour (unix seconds / 3600).
+    pub hours: BTreeMap<i64, Models>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -39,43 +47,44 @@ impl Summary {
         (v["v"] == 1).then_some(())?;
         Some(Summary {
             days: days_from_json(v.get("days")?)?,
+            hours: match v.get("hours") {
+                Some(h) => hours_from_json(h)?,
+                None => BTreeMap::new(),
+            },
         })
     }
 
     /// Dollars for the days whose date starts with `prefix` (`2026-11-07`
     /// for a day, `2026-11` for a month).
     pub fn spend(&self, prefix: &str, overrides: &[Price]) -> Spend {
-        let mut usd = 0.0;
-        let mut unknown = false;
-        for (_, models) in self.days.iter().filter(|(d, _)| d.starts_with(prefix)) {
-            for (key, t) in models {
-                if key == OTHER {
-                    unknown |= t.iter().any(|n| *n > 0);
-                    continue;
-                }
-                let (model, long) = match key.split_once(LONG_MARK) {
-                    Some((m, _)) => (m, true),
-                    None => (key.as_str(), false),
-                };
-                match prices::lookup(model, overrides) {
-                    Some(r) => {
-                        let k = if long {
-                            prices::long_mult(model, overrides)
-                        } else {
-                            1
-                        };
-                        usd += t
-                            .iter()
-                            .zip(r)
-                            .map(|(n, r)| *n as f64 * (r * k) as f64)
-                            .sum::<f64>()
-                            / 1e12;
-                    }
-                    None => unknown |= t.iter().any(|n| *n > 0),
-                }
+        price(
+            self.days
+                .iter()
+                .filter(|(d, _)| d.starts_with(prefix))
+                .map(|(_, m)| m),
+            overrides,
+        )
+    }
+
+    /// Dollars for the hours from `hour` (unix seconds / 3600) on.
+    pub fn spend_since(&self, hour: i64, overrides: &[Price]) -> Spend {
+        price(self.hours.range(hour..).map(|(_, m)| m), overrides)
+    }
+
+    /// First hour of the usage block running at `now`: a block opens at
+    /// the first active hour, lasts `BLOCK_HOURS`, and the next active hour
+    /// after it opens the next. `None` when no block is running.
+    pub fn block_start(&self, now: i64) -> Option<i64> {
+        let mut start: Option<i64> = None;
+        for (h, models) in &self.hours {
+            if !models.values().any(|t| t.iter().any(|n| *n > 0)) {
+                continue;
+            }
+            if start.is_none_or(|s| *h >= s + BLOCK_HOURS) {
+                start = Some(*h);
             }
         }
-        Spend { usd, unknown }
+        start.filter(|s| now < (s + BLOCK_HOURS) * 3600)
     }
 
     /// Some model with tokens on the days starting with `prefix` has
@@ -94,43 +103,111 @@ impl Summary {
     }
 }
 
-pub(super) fn days_from_json(v: &Value) -> Option<BTreeMap<String, BTreeMap<String, Tokens>>> {
-    let mut out = BTreeMap::new();
-    for (day, models) in v.as_object()? {
-        let mut m = BTreeMap::new();
-        for (model, t) in models.as_object()? {
-            let a = t.as_array()?;
-            let n = |i: usize| a.get(i).and_then(Value::as_u64).unwrap_or(0);
-            m.insert(model.clone(), [n(0), n(1), n(2), n(3)]);
+/// Dollars for every model of every bucket in `buckets`.
+fn price<'a>(buckets: impl Iterator<Item = &'a Models>, overrides: &[Price]) -> Spend {
+    let mut usd = 0.0;
+    let mut unknown = false;
+    for (key, t) in buckets.flatten() {
+        if key == OTHER {
+            unknown |= t.iter().any(|n| *n > 0);
+            continue;
         }
-        out.insert(day.clone(), m);
+        let (model, long) = match key.split_once(LONG_MARK) {
+            Some((m, _)) => (m, true),
+            None => (key.as_str(), false),
+        };
+        match prices::lookup(model, overrides) {
+            Some(r) => {
+                let k = if long {
+                    prices::long_mult(model, overrides)
+                } else {
+                    1
+                };
+                usd += t
+                    .iter()
+                    .zip(r)
+                    .map(|(n, r)| *n as f64 * (r * k) as f64)
+                    .sum::<f64>()
+                    / 1e12;
+            }
+            None => unknown |= t.iter().any(|n| *n > 0),
+        }
+    }
+    Spend { usd, unknown }
+}
+
+fn models_from_json(v: &Value) -> Option<Models> {
+    let mut m = BTreeMap::new();
+    for (model, t) in v.as_object()? {
+        let a = t.as_array()?;
+        let n = |i: usize| a.get(i).and_then(Value::as_u64).unwrap_or(0);
+        m.insert(model.clone(), [n(0), n(1), n(2), n(3)]);
+    }
+    Some(m)
+}
+
+fn models_to_json(models: &Models) -> Value {
+    Value::Object(models.iter().map(|(k, t)| (k.clone(), json!(t))).collect())
+}
+
+pub(super) fn hours_from_json(v: &Value) -> Option<BTreeMap<i64, Models>> {
+    let mut out = BTreeMap::new();
+    for (h, models) in v.as_object()? {
+        out.insert(h.parse().ok()?, models_from_json(models)?);
     }
     Some(out)
 }
 
-pub(super) fn days_to_json(days: &BTreeMap<String, BTreeMap<String, Tokens>>, from: &str) -> Value {
+pub(super) fn hours_to_json(hours: &BTreeMap<i64, Models>) -> Value {
+    Value::Object(
+        hours
+            .iter()
+            .map(|(h, m)| (h.to_string(), models_to_json(m)))
+            .collect(),
+    )
+}
+
+pub(super) fn days_from_json(v: &Value) -> Option<BTreeMap<String, Models>> {
+    let mut out = BTreeMap::new();
+    for (day, models) in v.as_object()? {
+        out.insert(day.clone(), models_from_json(models)?);
+    }
+    Some(out)
+}
+
+pub(super) fn days_to_json(days: &BTreeMap<String, Models>, from: &str) -> Value {
     let mut o = Map::new();
     for (d, models) in days.iter().filter(|(d, _)| d.as_str() >= from) {
-        let m: Map<String, Value> = models.iter().map(|(k, t)| (k.clone(), json!(t))).collect();
-        o.insert(d.clone(), Value::Object(m));
+        o.insert(d.clone(), models_to_json(models));
     }
     Value::Object(o)
 }
 
-/// The summary from day `from`, at most `MAX_SUMMARY` bytes: when too big,
-/// each day keeps only its largest models and folds the rest into `OTHER`.
+/// The summary from day `from`, with `hours`, at most `MAX_SUMMARY` bytes:
+/// when too big, each day and hour keeps only its largest models and folds
+/// the rest into `OTHER`.
 pub(super) fn summary_json(
-    days: &BTreeMap<String, BTreeMap<String, Tokens>>,
+    days: &BTreeMap<String, Models>,
+    hours: &BTreeMap<i64, Models>,
     from: &str,
 ) -> String {
     let mut keep = MAX_MODELS;
     loop {
-        let folded: BTreeMap<String, BTreeMap<String, Tokens>> = days
+        let folded: BTreeMap<String, Models> = days
             .iter()
             .filter(|(d, _)| d.as_str() >= from)
             .map(|(d, m)| (d.clone(), fold_models(m, keep)))
             .collect();
-        let out = json!({"v": 1, "days": days_to_json(&folded, from)}).to_string();
+        let hours: BTreeMap<i64, Models> = hours
+            .iter()
+            .map(|(h, m)| (*h, fold_models(m, keep)))
+            .collect();
+        let out = json!({
+            "v": 1,
+            "days": days_to_json(&folded, from),
+            "hours": hours_to_json(&hours),
+        })
+        .to_string();
         if out.len() <= MAX_SUMMARY || keep == 0 {
             return out;
         }
