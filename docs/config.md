@@ -303,7 +303,7 @@ What the timestamps measure:
 - Cause `ttl`: the time from the previous response's last entry to the user entry that sent this request is longer than the cache lifetime ([detected](#tokens-cache-cachettl) like `cachettl`: 1 hour or 5 minutes). Cause `inv`: the cache was still in its lifetime, so the prefix changed (another model, edited instructions or tools, a cleared or rewound conversation).
 - The first response after a compaction starts a new prompt and is never counted.
 - `cold`: the cached prefix of the last response, which the next request writes again if the cache has gone cold, and the dollars that adds over reading it: tokens times (cache write rate minus cache read rate) for the session's `model.id`, from the [price table](#spendhist) and `set price` rules. The 1-hour cache writes at twice the input rate. Without a price only the tokens show.
-- `count` and `cause` hide at 0 misses; `cold` hides before the first response; the placeholder hides when every item does.
+- `count` and `cause` hide at 0 misses; `cold` hides before the first response and after a compaction until the next one; the placeholder hides when every item does.
 
 State lives in the per-transcript file of [`tokens`](#tokens-cache-cachettl): the response being written, the last turn and running sums, a few numbers per transcript whatever its length.
 
