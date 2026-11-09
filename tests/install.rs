@@ -498,3 +498,84 @@ fn windows_path_with_spaces_falls_back_to_bar_on_path() {
         assert_eq!(command_bar(&plain, Some(&path), true), plain);
     }
 }
+
+/// [`EXISTING`] as serde_json lays it out.
+const PRETTY: &str = r#"{
+  "theme": "dark",
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/statusline.sh",
+    "padding": 2
+  },
+  "permissions": {
+    "allow": [
+      "Bash(ls)"
+    ]
+  }
+}
+"#;
+
+/// `+`/`-` lines of a diff, headers left out.
+fn changes(diff: &str) -> Vec<&str> {
+    diff.lines()
+        .filter(|l| {
+            (l.starts_with('+') || l.starts_with('-'))
+                && !l.starts_with("+++")
+                && !l.starts_with("---")
+        })
+        .collect()
+}
+
+#[test]
+fn diff_and_write_keep_the_file_indentation() {
+    for indent in ["    ", "\t", "  "] {
+        let t = Tmp::new();
+        let text = PRETTY.replace("  ", indent);
+        t.write("claude/settings.json", &text);
+        let s = t.path().join("claude/settings.json");
+        let e = env(&t, s.clone());
+        let (r, out) = run(&e, &opts(), false, "");
+        r.unwrap();
+        let cmd = format!("'{}' render", e.bar.display());
+        assert_eq!(
+            changes(&out),
+            [
+                format!("-{indent}{indent}\"command\": \"~/.claude/statusline.sh\","),
+                format!("+{indent}{indent}\"command\": {},", json!(cmd)),
+            ],
+            "{out}"
+        );
+        let written = std::fs::read_to_string(&s).unwrap();
+        assert_eq!(
+            written,
+            text.replace("\"~/.claude/statusline.sh\"", &json!(cmd).to_string())
+        );
+    }
+}
+
+#[test]
+fn diff_of_a_one_line_file_shows_only_the_change() {
+    let t = Tmp::new();
+    t.write(
+        "claude/settings.json",
+        r#"{"theme":"dark","model":"opus","statusLine":{"type":"command","command":"x"}}"#,
+    );
+    let s = t.path().join("claude/settings.json");
+    let e = env(&t, s.clone());
+    let (r, out) = run(&e, &opts(), false, "");
+    r.unwrap();
+    assert_eq!(changes(&out).len(), 2, "{out}");
+    assert!(out.contains("  \"model\": \"opus\","), "{out}");
+}
+
+#[test]
+fn reformatted_file_diff_shows_content_and_says_so() {
+    let t = Tmp::new();
+    t.write("claude/settings.json", EXISTING);
+    let s = t.path().join("claude/settings.json");
+    let e = env(&t, s.clone());
+    let (r, out) = run(&e, &opts(), false, "");
+    r.unwrap();
+    assert_eq!(changes(&out).len(), 2, "{out}");
+    assert!(out.contains("reformatted"), "{out}");
+}
