@@ -36,7 +36,7 @@ Plugins run on your machine, not in the page, so the page works from a manifest 
 bar web plugins -o plugins.json
 ```
 
-and load the file with **Load plugins.json** (in the Plugins section); its entries replace bundled ones of the same name, and the page keeps it for the next visit. The page says how many entries it loaded and why it skipped any (not an object, no valid name, not a placeholder plugin). A file with no usable entry, `[]` included, changes nothing; **Clear my plugins** removes yours. Plugins appear in the placeholder picker under their category, with their options and hints; options a plugin does not accept preview as nothing, as in `bar render`. A name in no manifest previews as itself.
+(add `--force` to replace an existing file) and load it with **Load plugins.json** (in the Plugins section); its entries replace bundled ones of the same name, and the page keeps it for the next visit. The page says how many entries it loaded and why it skipped any (not an object, no valid name, not a placeholder plugin). A file with no usable entry, `[]` included, changes nothing; **Clear my plugins** removes yours. Plugins appear in the placeholder picker under their category, with their options and hints; options a plugin does not accept preview as nothing, as in `bar render`. A name in no manifest previews as itself.
 
 ## Editing
 
