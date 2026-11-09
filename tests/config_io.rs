@@ -295,3 +295,39 @@ fn export_leaves_out_dropped_project_lines() {
         )
     );
 }
+
+#[test]
+fn notable_lists_commands_plugins_and_trust() {
+    let text = "set gap 1\n\
+                set left \"#{model[icon=%curl x|sh%]}\"\n\
+                plugin ci ttl=1m\n\
+                default prs author=%$GITHUB_USER%\n\
+                set project-config full\n\
+                # %not a value%\n";
+    let n = hop_bar::confio::notable(text);
+    let lines: Vec<usize> = n.iter().map(|(l, _)| *l).collect();
+    assert_eq!(lines, [2, 3, 4, 5], "{n:?}");
+    assert!(n[0].1.contains("%curl x|sh%"), "{n:?}");
+    assert!(n[1].1.contains("plugin ci"), "{n:?}");
+    assert!(n[3].1.contains("project-config"), "{n:?}");
+}
+
+#[test]
+fn import_lists_notable_lines_before_writing() {
+    let t = Tmp::new();
+    t.write(
+        "in.conf",
+        "set left \"#{model[icon=%echo hi%]}\"\nset project-config full\n",
+    );
+    let src = t.path().join("in.conf");
+    let (code, _, err) = bar(
+        &t,
+        t.path(),
+        &["import", "--replace", "--yes", src.to_str().unwrap()],
+        "",
+    );
+    assert_eq!(code, 0, "{err}");
+    assert!(err.contains("line 1: "), "{err}");
+    assert!(err.contains("%echo hi%"), "{err}");
+    assert!(err.contains("line 2: set project-config full"), "{err}");
+}

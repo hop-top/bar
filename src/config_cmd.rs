@@ -193,6 +193,13 @@ fn import(m: &ArgMatches) {
     let diff = hop_bar::diff::unified(old.as_deref().unwrap_or(""), &new, from, &name);
     print!("{diff}");
     let _ = std::io::stdout().flush();
+    let notable = confio::notable(&text);
+    if !notable.is_empty() {
+        eprintln!("{shown} has lines that run commands or plugins, read the environment or set what project configs may do:");
+        for (line, what) in &notable {
+            eprintln!("  line {line}: {what}");
+        }
+    }
     if !m.get_flag("yes") {
         if stdin {
             usage("reading the config from stdin needs --yes");
