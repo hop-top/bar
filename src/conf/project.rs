@@ -184,6 +184,15 @@ pub(super) fn guard(
             let r = opts.iter().try_for_each(|(_, v)| expansion(v));
             r
         }
+        // a subagent row draws no plugins; only `%…%` values matter
+        "set" if t.len() == 3 && t[1] == "subagent" => {
+            for tok in format::parse(&t[2]).unwrap_or_default() {
+                if let Token::Placeholder { options, .. } = tok {
+                    options.iter().try_for_each(|(_, v)| expansion(v))?;
+                }
+            }
+            Ok(())
+        }
         "set" if t.len() == 3 && matches!(layout_key(&t[1]), Some(Ok(_))) => {
             for tok in format::parse(&t[2]).unwrap_or_default() {
                 let Token::Placeholder { name, options } = tok else {

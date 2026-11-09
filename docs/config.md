@@ -5,7 +5,7 @@ How to write `bar.conf`: where it lives, the directives, every placeholder and i
 - [Overview](#overview): [config file](#config-file), [project config](#project-config), [directives](#directives), [rules](#rules), [minimal example](#minimal-example)
 - [Placeholders](#placeholders): [session](#session), [ctx](#ctx), [usage](#usage), [tokens, cache, cachettl](#tokens-cache-cachettl), [ttft, tps, misses](#ttft-tps-misses), [spendhist](#spendhist), [git and directories](#git-and-directories), [prs and issues](#prs-and-issues), [account, agents, sessions, tmux](#account-agents-sessions-tmux), [update](#update), [every placeholder](#options-on-every-placeholder), [values](#values)
 - [Styling](#styling): [skins](#skins), [palettes](#palettes), [icons](#icons), [glyphs](#glyphs), [colours](#colours)
-- [Layout](#layout): [lines and wrapping](#lines-and-wrapping)
+- [Layout](#layout): [lines and wrapping](#lines-and-wrapping), [subagent rows](#subagent-rows)
 - [Commands](#commands): [bar install](#bar-install), [bar update](#update), [bar check](#bar-check), [bar config](#bar-config), [bar preview](#bar-preview), [bar edit](#bar-edit), [presets and bar init](#presets), [click handler](#click-handler-macos), [clickable commands](#clickable-commands), [hooks](#hooks)
 - [Files and environment](#files-and-environment)
 
@@ -59,7 +59,7 @@ A project file comes with the repository, so what it may do is set in your confi
 
 | Directive | Form |
 |-----------|------|
-| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-4) `separator gap wrap refresh icons icon-width skin skin-glyphs palette claude-dir compact-at project-config update-check color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
+| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-4) `subagent separator gap wrap refresh icons icon-width skin skin-glyphs palette claude-dir compact-at project-config update-check color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
 | `default` | `default <placeholder> key=value ...` |
 | `account` | `account "<glob>" <label> <color>` |
 | `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%`; see [Rules](#rules) |
@@ -70,6 +70,7 @@ Quote values with spaces (double quotes; a value is one token). `#` outside quot
 | `set` key | Values |
 |---|---|
 | `left`, `center`, `right` | Layout of line 1; `left@N`, `center@N`, `right@N` for lines 2-4. See [Lines and wrapping](#lines-and-wrapping) |
+| `subagent` | Layout of each subagent row below the prompt; see [Subagent rows](#subagent-rows) |
 | `separator` | Changes only where segments split (the text a layout is cut at). Output between segments stays ` │ `. Default `│` |
 | `gap` | Fewest spaces between the left and right groups (and around a centred group) on one row, default `3`; with less room the groups are joined by ` │ ` or the centre group moves to its own row. See [Lines and wrapping](#lines-and-wrapping) |
 | `wrap` | `off` (default) or `on`; see [Lines and wrapping](#lines-and-wrapping). `auto` is read as `off` |
@@ -643,17 +644,63 @@ Each line is laid out on its own, with the same `COLUMNS`, margin, gap and skin,
 
 A render prints at most 4 rows, all lines together. Rows past the fourth are dropped. With `wrap on`, the fourth row is filled like any other, whole segments while they fit, and the segments after it are dropped; segments are never cut.
 
+### Subagent rows
+
+While Claude runs [subagents](https://code.claude.com/docs/en/sub-agents), Claude Code lists them below the prompt, one row each (`name · description · token count`). With `bar subagent` as the [`subagentStatusLine`](https://code.claude.com/docs/en/statusline#subagent-status-lines) command (`bar install --subagent` sets it), bar draws those rows:
+
+```json
+"subagentStatusLine": { "type": "command", "command": "'/path/to/bar' subagent" }
+```
+
+`set subagent` is the layout of one row, one group; unset, it is
+
+```text
+set subagent "#{task.status} #{task.name} │ #{task.label[max=50]} │ #{model}#{effort} │ #{task.tokens} │ #{task.elapsed}"
+```
+
+which reads `● Explore │ Reading src/conf.rs │ Sonnet 5 │ 41.3k │ 1m`. `set subagent ""` leaves every row to Claude Code.
+
+Row placeholders (they render nothing in the status line; `bar check` reports them there):
+
+| Placeholder | Shows | Options |
+|---|---|---|
+| `task.status` | `●` running (accent), `✓` completed (`color.good`), `✗` failed or killed (`color.bad`), `○` any other status (muted) | `show=mark` (default), `text` (the status word), `both` |
+| `task.name` | The name the subagent is addressed by, else its type (`agentType`), in the accent colour | `max` |
+| `task.type` | The subagent type, such as `Explore` or `code-reviewer`, muted | `max` |
+| `task.label` | What it is doing now, else its description | `max` |
+| `task.desc` | The task description Claude gave when it started the subagent | `max` |
+| `task.tokens` | Its running token count (`41.3k`), on the reversed ramp by its share of the context window when the window is known, else muted | |
+| `task.trend` | Its recent token counts as `▁`..`█`, against the context window (else the largest count), muted; at least 2 counts | `width` (most recent counts drawn, 1-16, default 8) |
+| `task.elapsed` | Time since it started (`45s`, `12m`, `1h05m`), muted, while it runs; Claude Code sends no end time, so a finished task shows nothing | |
+
+`max` truncates to that many characters with `…`. `icon` and `bg` work as on [every placeholder](#options-on-every-placeholder).
+
+Core placeholders read the subagent, not the main session:
+
+- `model`: the subagent's model, its id read as a name (`claude-opus-5-5` as `Opus 5.5`); empty until Claude Code has resolved it.
+- `effort`: the effort set for the subagent (a level, or a token budget as a number); empty when none is set, never the one from your settings.
+- `ctx`: its token count against its context window (`ctx 21%`, `show=tokens`, `bar`, ...); components that need the transcript (`growth`, `trend`) and `split` render empty.
+- `cwd`, `root`, `repo`, `branch`, `dirty`, `ahead`, `worktree`: the subagent's directory (its own worktree when it runs in one).
+- The rest have no subagent data (session cost, usage windows, transcript totals, ...) and render empty or read as for the status line. `prs`, `issues`, `usage` and the like add the same text to every row, so they are best left out.
+
+Plugins are not drawn in a row (`bar check` reports them), and click links are off.
+
+Each row is laid out like the status line, with the same skin, palette, icons and separator: one left group, at most one row. Claude Code sends the usable width of a row (`columns`); while the row is wider, its last segment is dropped, but never its first. A row that renders empty keeps Claude Code's own text, and so does every row when the config has an error.
+
+`bar subagent` reads at most 4 MiB of input and draws at most 64 rows. Claude Code runs it on each refresh of the agent panel. The default layout reads only the input; git placeholders in a row read files and the background cache as in `bar render`. The [project config](#project-config) is found from the session's directory, as for `bar render`; under `safe` a project `set subagent` may not hold `%…%` values.
+
 ## Commands
 
 | Command | Does | Exit |
 |---|---|---|
 | `bar render` | Reads the session JSON on stdin, prints the status line ([technical notes](technical.md#flow)) | always 0 |
-| `bar install [--project\|--local] [--refresh <secs>] [--hooks] [--uninstall] [--yes]` | Sets bar as Claude Code's status line ([bar install](#bar-install)) | 0, 2 without a terminal and `--yes` or with a bad home, 1 declined or on failure |
+| `bar subagent` | Reads the subagent rows on stdin, prints one `{"id", "content"}` JSON line per row it draws ([subagent rows](#subagent-rows)) | always 0 |
+| `bar install [--project\|--local] [--refresh <secs>] [--hooks] [--subagent] [--uninstall] [--yes]` | Sets bar as Claude Code's status line ([bar install](#bar-install)) | 0, 2 without a terminal and `--yes` or with a bad home, 1 declined or on failure |
 | `bar update` | Version, newest release the [update check](#update) found, how to upgrade; never downloads | 0 |
 | `bar check` | Lints the config ([bar check](#bar-check)) | 0, 2 on a config error |
 | `bar config export [<file>\|-] [--user] [--force]` | Writes the effective config ([bar config](#bar-config)) | 0, 2 on a config error, an existing file or a write error |
 | `bar config import <file>\|- --merge\|--replace [--yes]` | Merges a file into your config or replaces it, after a preview ([bar config](#bar-config)) | 0, 2 on an invalid file or when it cannot ask, 1 when declined or the write fails |
-| `bar preview [--state early\|burning\|final] [--preset [<name>]]` | Layout with sample data ([bar preview](#bar-preview)) | 0 |
+| `bar preview [--state early\|burning\|final] [--preset [<name>]] [--subagent]` | Layout with sample data ([bar preview](#bar-preview)) | 0 |
 | `bar edit` | Full-screen config editor with a live preview ([bar edit](#bar-edit)) | 0, 2 without a terminal or on an unreadable file |
 | `bar init [--preset <name>]` | Writes a preset as your config ([presets](#presets)) | 0, 2 when a config exists or the path is unusable |
 | `bar toggle <key>` | Flips `5h`, `7d`, `<plugin>` or `<plugin>.<toggle>` ([usage](#usage)) | 0, 2 on an unknown key |
@@ -683,8 +730,9 @@ A render prints at most 4 rows, all lines together. Rows past the fourth are dro
 - An existing file is first copied to `backups/<name>-<hash>.bak-<time>-<pid>` in the state directory (mode 0600), never beside it: `.claude/` may be committed and a settings file may hold keys. The path is printed; the newest 5 backups of each file are kept. The file is then written atomically, keeping its mode; a symlink is written through to its target. A file that does not parse as a JSON object is left untouched (exit 1). Nothing is written when the file already says the same.
 - A status line that does not run bar is kept in `install/<hash>.json` in the state directory before it is replaced.
 - `--hooks` also adds the `bar click hook` entries to the same file, as `bar click install --hooks-only` does ([Hooks](#hooks)).
+- `--subagent` also sets `subagentStatusLine` to `'<path>' subagent` ([Subagent rows](#subagent-rows)), keeping other fields of an existing one; a `subagentStatusLine` that does not run bar is kept in the same `install/<hash>.json` first.
 - The file is read again right before writing; if it changed since the diff was made (another program or session wrote it while the question was up), nothing is written and the exit is 1: run `bar install` again.
-- `bar install --uninstall` puts back the status line bar replaced, or removes `statusLine` when there was none, again after a diff and confirmation. A `statusLine` that does not run `bar render` is left as is. With `--hooks` it also removes hook entries that run only `bar click hook`, whatever path to `bar` they use, and event lists or a `hooks` object left empty by that.
+- `bar install --uninstall` puts back the status line bar replaced, or removes `statusLine` when there was none, again after a diff and confirmation. A `statusLine` that does not run `bar render` is left as is. With `--hooks` it also removes hook entries that run only `bar click hook`, whatever path to `bar` they use, and event lists or a `hooks` object left empty by that. With `--subagent` it also puts back the `subagentStatusLine` bar replaced, or removes bar's; without it, a `subagentStatusLine` that runs bar stays and a line says so.
 
 ### bar check
 
@@ -693,6 +741,7 @@ A render prints at most 4 rows, all lines together. Rows past the fourth are dro
 - Parse errors with line numbers. An unreadable file is one error without a line.
 - Line numbers in `left@N`, `center@N`, `right@N` (1-4; anything else is an error).
 - Layout placeholders (`left`, `center`, `right`, and their `@N` forms) and `default` lines: unknown placeholder, unknown option, bad option value. Plugin placeholders are checked against their `--ext-info` schema.
+- `subagent`: the same, plus a plugin placeholder there is an error (rows draw none), and a row placeholder (`task.*`) in any other layout is one.
 - `prs` / `issues`: invalid `limit`, invalid `checks` item, invalid `author` / `assignee` / `label` expression.
 - Warnings: `gh` not on `PATH` while `prs` or `issues` is used; a `default` line for a plugin that is not on `PATH` (a layout using it is an error); an expression that expands to more than 8 queries (only the first 8 run).
 - Options holding `%command%` or `%$VAR%` are skipped; they resolve at render time.
@@ -732,6 +781,7 @@ Exit 0 when there are no errors (warnings allowed), 2 on a config error. `--form
 - Stand-ins for the rest: repo, branch, git state, worktree, PRs (#131 failing CI, #129 pending, #128 passing), issues, account label, subagents, open sessions, spend history, transcript tokens and cache, directories.
 - In the `final` state the sample tree is clean, so `dirty` is empty.
 - It reads no session, account, git repository, `gh` or plugin, and writes no state. Plugin placeholders render empty.
+- `--subagent` draws the `subagent` layout (or the preset's, or the default) for three sample subagents instead, one row per line: a running `Explore`, a running `reviewer` on Opus 5.5 at high effort, and a completed task. Rows fit `COLUMNS` when it is set.
 
 States:
 

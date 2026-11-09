@@ -16,6 +16,7 @@ pub mod sessions;
 pub mod speed;
 pub mod spend;
 pub mod spendhist;
+pub mod task;
 pub mod tmux;
 pub mod tokens;
 pub mod update;
@@ -112,6 +113,15 @@ pub fn lookup(name: &str) -> Option<&'static dyn Placeholder> {
         .iter()
         .find(|(n, _)| *n == name)
         .map(|(_, p)| *p as &'static dyn Placeholder)
+}
+
+/// The placeholder `name` resolves to under `ctx`: in a `bar subagent`
+/// row the row placeholders, then the core ones; elsewhere [`lookup`].
+pub fn lookup_in(ctx: &Ctx, name: &str) -> Option<&'static dyn Placeholder> {
+    match ctx.session.task {
+        Some(_) => task::lookup(name).or_else(|| lookup(name)),
+        None => lookup(name),
+    }
 }
 
 /// The session's directory when it exists, else the process's.

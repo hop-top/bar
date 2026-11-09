@@ -38,6 +38,7 @@ pub mod settings;
 pub mod skin;
 pub mod spendhist;
 pub mod style;
+pub mod subagent;
 pub mod transcript;
 pub mod tz;
 pub mod update;

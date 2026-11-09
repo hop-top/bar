@@ -101,6 +101,9 @@ pub struct Config {
     pub right: String,
     /// Lines 2 and up (`set left@2` ...); `left`/`center`/`right` are line 1.
     pub more_lines: [Line; MAX_LINES - 1],
+    /// `set subagent`: layout of a `bar subagent` row; `None` uses
+    /// [`crate::subagent::DEFAULT_LAYOUT`].
+    pub subagent: Option<String>,
     pub separator: String,
     pub gap: usize,
     pub wrap: Wrap,
@@ -143,6 +146,7 @@ impl Default for Config {
             center: String::new(),
             right: String::new(),
             more_lines: Default::default(),
+            subagent: None,
             separator: "│".into(),
             gap: 3,
             wrap: Wrap::Off,

@@ -8,7 +8,7 @@ use crate::icons;
 use crate::layout::{flow, join, place_groups, plain_joiner, Group};
 use crate::options::Options;
 use crate::palette;
-use crate::placeholders::{lookup, Ctx};
+use crate::placeholders::{lookup_in, Ctx};
 use crate::plugin;
 use crate::session::Session;
 use crate::skin::{self, Paint, Seg, Side};
@@ -62,7 +62,11 @@ fn render_placeholder(
 }
 
 fn render_value(name: &str, opts: &Options, ctx: &Ctx, sample: Option<Sample>) -> String {
-    let core = lookup(name);
+    let core = lookup_in(ctx, name);
+    // a subagent row draws no plugin
+    if core.is_none() && ctx.session.task.is_some() {
+        return String::new();
+    }
     // a plugin sample paints its own label and icon, from the full options
     if let (Some(sample), None) = (sample, core) {
         return sample(name, opts, ctx, true).unwrap_or_default();
@@ -302,16 +306,7 @@ fn line_rows(
 ) -> Vec<String> {
     let paint = Paint::of(config.skin);
     let [l, c, r] = segs(config, groups);
-    let group = |segs: &[Seg], side| match paint {
-        Some(p) => skin::paint(p, config.skin_glyphs, segs, side),
-        None => {
-            let text = join(&segs.iter().map(|s| s.text.clone()).collect::<Vec<_>>());
-            Group {
-                width: visible_width_with(&text, config.icon_width),
-                text,
-            }
-        }
-    };
+    let group = |segs: &[Seg], side| draw(config, paint, segs, side);
     let (gl, gc, gr) = (
         group(&l, Side::Left),
         group(&c, Side::Center),
@@ -342,6 +337,20 @@ fn line_rows(
     }
 }
 
+/// A group's segments painted by the skin, or joined by ` │ `.
+fn draw(config: &Config, paint: Option<Paint>, segs: &[Seg], side: Side) -> Group {
+    match paint {
+        Some(p) => skin::paint(p, config.skin_glyphs, segs, side),
+        None => {
+            let text = join(&segs.iter().map(|s| s.text.clone()).collect::<Vec<_>>());
+            Group {
+                width: visible_width_with(&text, config.icon_width),
+                text,
+            }
+        }
+    }
+}
+
 /// Segments with their widths and backgrounds. Backgrounds cycle through
 /// the palette across all groups of the line, left to right; a segment's
 /// `bg` option takes its place. Plain lines ignore them.
@@ -365,6 +374,77 @@ fn segs(config: &Config, groups: [Vec<Rendered>; 3]) -> [Vec<Seg>; 3] {
             })
             .collect()
     })
+}
+
+/// One `bar subagent` row: `layout` as a single left group, painted like
+/// the status line, its trailing segments dropped while it is wider than
+/// `columns` (the first is always kept). No plugins; one row.
+pub fn render_row(
+    session: &Session,
+    config: &Config,
+    layout: &str,
+    columns: Option<usize>,
+    now: i64,
+    runner: &dyn CommandRunner,
+    cache: Option<&Cache>,
+) -> String {
+    let src = Sources {
+        runner,
+        cache,
+        plugin_dirs: &[],
+        sample: None,
+    };
+    row_impl(session, config, layout, columns, now, &src)
+}
+
+/// As [`render_row`] with every placeholder answered by `sample`.
+pub fn render_row_sample(
+    session: &Session,
+    config: &Config,
+    layout: &str,
+    columns: Option<usize>,
+    now: i64,
+    sample: Sample,
+) -> String {
+    let src = Sources {
+        runner: &ColdRunner,
+        cache: None,
+        plugin_dirs: &[],
+        sample: Some(sample),
+    };
+    row_impl(session, config, layout, columns, now, &src)
+}
+
+fn row_impl(
+    session: &Session,
+    config: &Config,
+    layout: &str,
+    columns: Option<usize>,
+    now: i64,
+    from: &Sources,
+) -> String {
+    let ex = Expander::new(from.runner);
+    let ctx = Ctx {
+        session,
+        config,
+        now,
+        runner: from.runner,
+        cache: from.cache,
+        columns,
+        plugin_dirs: from.plugin_dirs,
+    };
+    let _muted = style::use_muted(config.muted);
+    let _ansi = style::use_ansi(palette::by_name(config.palette).is_some_and(|p| p.ansi));
+    let rendered = render_group(layout, &ctx, &ex, from.sample);
+    let groups = [rendered, Vec::new(), Vec::new()];
+    let [mut l, _, _] = segs(config, groups);
+    let paint = Paint::of(config.skin);
+    let mut row = draw(config, paint, &l, Side::Left);
+    while columns.is_some_and(|c| row.width > c) && l.len() > 1 {
+        l.pop();
+        row = draw(config, paint, &l, Side::Left);
+    }
+    row.text.replace(['\n', '\r'], " ")
 }
 
 /// What `bar render` prints: the line(s), or the short config error.

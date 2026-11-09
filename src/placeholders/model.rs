@@ -56,7 +56,9 @@ pub fn effort_with(
     state: &Path,
     term: impl FnOnce() -> Term,
 ) -> Option<String> {
+    // a subagent row shows only the effort Claude Code sent for it
     let level = if ctx.session.effort.is_empty() {
+        ctx.session.task.is_none().then_some(())?;
         settings_effort(&ctx.session.model_id)?
     } else {
         ctx.session.effort.clone()

@@ -71,7 +71,7 @@ pub fn render_with(
 }
 
 /// Ramp score of a used percent: 100 at 0%, 0 from 91%.
-fn score(used: f64) -> i32 {
+pub(crate) fn score(used: f64) -> i32 {
     let pct = used.clamp(0.0, 100.0).round() as i64;
     (100 - pct * 100 / 91).clamp(0, 100) as i32
 }

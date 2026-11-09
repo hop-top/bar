@@ -25,6 +25,7 @@ fn opts() -> Opts {
         uninstall: false,
         refresh: None,
         hooks: false,
+        subagent: false,
         yes: true,
     }
 }

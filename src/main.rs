@@ -25,6 +25,8 @@ struct Cli {
 enum SubCmd {
     /// Print the status line.
     Render,
+    /// Print the subagent rows (Claude Code's subagentStatusLine command).
+    Subagent,
     /// Lint the config file; exit 2 on a config error.
     Check,
     /// Show the layout with built-in sample data.
@@ -35,6 +37,9 @@ enum SubCmd {
         /// Render a built-in preset instead of your config; bare, every preset in turn.
         #[arg(long, num_args = 0..=1, value_name = "NAME", value_parser = hop_bar::presets::NAMES)]
         preset: Option<Option<String>>,
+        /// Show the subagent rows (`set subagent`) for sample subagents instead.
+        #[arg(long)]
+        subagent: bool,
     },
     /// Export the config, or import a file into it.
     Config {
@@ -67,6 +72,9 @@ enum SubCmd {
         /// Also add the `bar click hook` hooks (with --uninstall, remove them).
         #[arg(long)]
         hooks: bool,
+        /// Also set bar as the subagentStatusLine (with --uninstall, remove it).
+        #[arg(long)]
+        subagent: bool,
         /// Write without asking.
         #[arg(short, long)]
         yes: bool,
@@ -170,6 +178,7 @@ fn main() {
     let args: Vec<_> = std::env::args_os().skip(1).take(3).collect();
     match args.as_slice() {
         [a] if a == "render" => return render(),
+        [a] if a == "subagent" => return subagent(),
         [a, req] if a == "refresh" => {
             if let Some(req) = req.to_str().filter(|r| !r.starts_with('-')) {
                 return refresh(req);
@@ -182,6 +191,7 @@ fn main() {
     let matches = cli_cmd.get_matches();
     match matches.subcommand() {
         Some(("render", _)) => render(),
+        Some(("subagent", _)) => subagent(),
         Some(("check", m)) => check(m),
         Some(("preview", m)) => preview(m),
         Some(("init", m)) => init(m),
@@ -286,27 +296,26 @@ fn preview(m: &ArgMatches) {
         }
     };
     let mut so = std::io::stdout().lock();
+    let draw = |state: &str, load: conf::LoadResult| {
+        if m.get_flag("subagent") {
+            hop_bar::preview::subagent(load, columns, now)
+        } else {
+            hop_bar::preview::render(state, load, columns, now)
+        }
+    };
     match m.get_one::<String>("preset") {
         Some(p) => {
-            let _ = writeln!(
-                so,
-                "{}",
-                hop_bar::preview::render(state, preset(p), columns, now)
-            );
+            let _ = writeln!(so, "{}", draw(state, preset(p)));
         }
         // bare `--preset`: every preset, each under a muted header
         None if m.value_source("preset").is_some() => {
             for p in hop_bar::presets::NAMES {
-                let out = hop_bar::preview::render(state, preset(p), columns, now);
+                let out = draw(state, preset(p));
                 let _ = writeln!(so, "{}\n{out}", hop_bar::style::dim(&format!("── {p} ──")));
             }
         }
         None => {
-            let _ = writeln!(
-                so,
-                "{}",
-                hop_bar::preview::render(state, conf::load(cwd().as_deref()), columns, now)
-            );
+            let _ = writeln!(so, "{}", draw(state, conf::load(cwd().as_deref())));
         }
     }
 }
@@ -383,6 +392,7 @@ fn install(m: &ArgMatches) {
         uninstall: m.get_flag("uninstall"),
         refresh: m.get_one::<u64>("refresh").copied(),
         hooks: m.get_flag("hooks"),
+        subagent: m.get_flag("subagent"),
         yes: m.get_flag("yes"),
     };
     let tty = std::io::IsTerminal::is_terminal(&std::io::stdin());
@@ -571,6 +581,36 @@ fn render() {
         if let Some(d) = click::pointer::default_dir() {
             click::pointer::sync(cache.state_dir(), &d, std::time::SystemTime::now());
         }
+    }
+}
+
+/// Largest `subagentStatusLine` input read.
+const MAX_SUBAGENT_INPUT: u64 = 4 * 1024 * 1024;
+
+fn subagent() {
+    use std::io::Read as _;
+    let mut buf = Vec::new();
+    let _ = std::io::stdin()
+        .take(MAX_SUBAGENT_INPUT)
+        .read_to_end(&mut buf);
+    let cache = Cache::new(&click::state_dir());
+    let runner = CachedRunner::new(cache.clone());
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64);
+    // the payload's directory picks the project config, as for render
+    let load = |p: &hop_bar::subagent::Payload| {
+        let dir = Some(std::path::PathBuf::from(&p.cwd))
+            .filter(|d| d.is_absolute())
+            .or_else(cwd);
+        conf::load(dir.as_deref())
+    };
+    let input = String::from_utf8_lossy(&buf);
+    let out = hop_bar::subagent::run(&input, load, now, &runner, Some(&cache));
+    if !out.is_empty() {
+        let mut so = std::io::stdout().lock();
+        let _ = so.write_all(out.as_bytes());
+        let _ = so.flush();
     }
 }
 

@@ -8,7 +8,7 @@ use crate::options::Options;
 use crate::placeholders::ctx::parts::SHOW_ITEMS as CTX_ITEMS;
 use crate::placeholders::gh::{self, Kind};
 use crate::placeholders::usage::glyphs::{GLYPH_SETS, SHOW_ITEMS};
-use crate::placeholders::{gitst, modes, speed};
+use crate::placeholders::{gitst, modes, speed, task};
 use crate::plugin;
 use crate::render::builtin_config;
 use crate::skin;
@@ -39,6 +39,9 @@ const STATUS_ISSUE: &[&str] = &["open", "closed"];
 /// for names that are not core placeholders.
 pub fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
     use Val::*;
+    if let Some(spec) = task::options(name) {
+        return Some(spec);
+    }
     Some(match name {
         "account" | "sessions" | "spend" | "burn" | "duration" | "api" | "lines" | "version"
         | "style" | "vim" | "agent" | "thinking" | "fast" | "update" => &[],
@@ -107,6 +110,9 @@ pub fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
 /// `key` of core placeholder `name`, for the editors; `None` when it takes
 /// no such option. Every option in `core_options` has an entry.
 pub fn option_help(name: &str, key: &str) -> Option<(&'static str, &'static str)> {
+    if let Some(help) = task::option_help(name, key) {
+        return Some(help);
+    }
     Some(match (name, key) {
         ("cost", "fmt") => ("usd", "number format; usd is the only one"),
         ("cwd" | "root", "base") => ("0", "1 shows the last path component only"),
@@ -200,6 +206,8 @@ struct Checker<'a> {
     issues: Vec<Issue>,
     /// File of the lines being linted.
     layer: Layer,
+    /// Linting the `subagent` layout.
+    row: bool,
 }
 
 impl Checker<'_> {
@@ -231,6 +239,16 @@ impl Checker<'_> {
 
     /// `used` is false for a `default` line: it only checks names and values.
     fn placeholder(&mut self, name: &str, opts: &Options, line: usize, used: bool) {
+        let in_row = task::lookup(name).is_some();
+        if used && in_row && !self.row {
+            self.error(line, format!("`{name}` works only in `set subagent`"));
+            return;
+        }
+        if used && self.row && core_options(name).is_none() {
+            let msg = format!("unknown placeholder `{name}` (`set subagent` draws no plugins)");
+            self.error(line, msg);
+            return;
+        }
         match core_options(name) {
             Some(spec) => {
                 let bad = self.core_values(name, spec, opts, line);
@@ -402,6 +420,11 @@ impl Checker<'_> {
                 Some("set") if t.len() == 3 && matches!(layout_key(&t[1]), Some(Ok(_))) => {
                     self.layout(&t[2], i + 1);
                 }
+                Some("set") if t.len() == 3 && t[1] == "subagent" => {
+                    self.row = true;
+                    self.layout(&t[2], i + 1);
+                    self.row = false;
+                }
                 Some("set") if t.len() == 3 && t[1] == "claude-dir" => {
                     if !Path::new(&t[2]).is_absolute() && !t[2].starts_with("~/") {
                         self.add(
@@ -447,6 +470,7 @@ pub fn check_layers(user: Option<Source>, project: Option<Source>, dirs: &[PathB
         gh_warned: Cell::new(false),
         issues: Vec::new(),
         layer: Layer::User,
+        row: false,
     };
     let user_text = match user.map(|(_, t)| t) {
         Some(Err(e)) => {

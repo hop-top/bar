@@ -60,6 +60,7 @@ Optional: `gh` for PRs and issues, `jq` for the reference plugins.
 
 ```sh
 bar install --refresh 5       # set bar as the status line in ~/.claude/settings.json (shows the diff, asks first)
+bar install --subagent        # also draw the subagent rows below the prompt (subagentStatusLine)
 ```
 
 Or by hand, in `~/.claude/settings.json`:
@@ -75,6 +76,7 @@ bar preview --preset          # every preset, with sample data
 bar init --preset powerline   # write one as your config
 bar edit                      # edit the config with a live preview
 bar check                     # lint the config
+bar preview --subagent        # the subagent rows, with sample subagents
 ```
 
 ```text
@@ -84,7 +86,7 @@ set left  "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=5]
 set right "#{usage[type=5h]} │ #{usage[type=7d]}"
 ```
 
-Skins, palettes, icons and multi-line layouts: [configuration](docs/config.md), [gallery](docs/gallery.md).
+Skins, palettes, icons, multi-line layouts and [subagent rows](docs/config.md#subagent-rows): [configuration](docs/config.md), [gallery](docs/gallery.md).
 
 Compose a config in the browser with a live preview: run `make web`, open `web/index.html` ([web configurator](docs/web.md)).
 

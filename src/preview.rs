@@ -7,7 +7,7 @@ use crate::icons;
 use crate::options::Options;
 use crate::placeholders::ctx as ctxp;
 use crate::placeholders::{
-    dirs, gh, lookup, model, modes, niche, speed, spendhist, tokens, update, usage, Ctx,
+    dirs, gh, lookup, model, modes, niche, speed, spendhist, task, tokens, update, usage, Ctx,
 };
 use crate::plugin::{self, ExtInfo};
 use crate::render::{builtin_config, render_sample};
@@ -97,6 +97,7 @@ fn session(state: &str, now: i64) -> Session {
         agent: "reviewer".into(),
         thinking: true,
         fast_mode: true,
+        task: None,
     }
 }
 
@@ -301,4 +302,32 @@ pub fn render_config(
             _ => sample(state, name, opts, ctx, label),
         },
     )
+}
+
+/// `bar preview --subagent`: the `subagent` layout of `load` drawn for
+/// sample subagent rows, one per line. Row placeholders read the sample
+/// tasks; the rest answer as for the status line preview.
+pub fn subagent(load: LoadResult, columns: Option<usize>, now: i64) -> String {
+    let config: Config = match load {
+        LoadResult::Ok(c) => c,
+        _ => builtin_config(),
+    };
+    let layout = config
+        .subagent
+        .as_deref()
+        .unwrap_or(crate::subagent::DEFAULT_LAYOUT);
+    let p = crate::subagent::sample(now);
+    let answer = |name: &str, opts: &Options, ctx: &Ctx, label: bool| match task::lookup(name) {
+        Some(t) => t.render_labeled(ctx, opts, label),
+        None => sample("early", name, opts, ctx, label),
+    };
+    p.tasks
+        .iter()
+        .map(|t| {
+            let s = crate::subagent::session(&p, t);
+            crate::render::render_row_sample(&s, &config, layout, columns, now, &answer)
+        })
+        .filter(|r| !r.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
