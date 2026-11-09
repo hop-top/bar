@@ -373,3 +373,16 @@ fn compaction_clears_the_cached_prefix() {
     // the old prefix is gone; nothing to re-cache until the next request
     assert_eq!(t.turns().prefix(), 0);
 }
+
+#[test]
+fn miss_without_a_user_entry_is_not_labelled_ttl() {
+    let t = Tmp::new();
+    t.append(&[
+        prompt(0),
+        reply("a", 1_000, 5, 0, 50_000, false),
+        // no user entry: when the request was sent is unknown, and the
+        // block-end time includes generation
+        reply("b", 10 * MIN, 5, 0, 50_000, false),
+    ]);
+    assert_eq!(t.turns().misses(), (0, 1));
+}
