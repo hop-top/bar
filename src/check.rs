@@ -256,6 +256,8 @@ struct Checker<'a> {
     gh_missing: bool,
     gh_warned: Cell<bool>,
     budgets: budget::Budgets,
+    /// `set usage-api on`.
+    usage_api: bool,
     issues: Vec<Issue>,
     /// File of the lines being linted.
     layer: Layer,
@@ -310,6 +312,9 @@ impl Checker<'_> {
                 }
                 if name == "budget" && used && !bad {
                     self.budget_set(opts, line);
+                }
+                if used && !self.usage_api {
+                    self.usage_api_off(name, opts, line);
                 }
             }
             None => self.plugin(name, opts, line, used),
@@ -371,6 +376,24 @@ impl Checker<'_> {
             self.error(line, m);
         }
         bad
+    }
+
+    /// Warns when `extra` or `usage[model=...]` is used while `set usage-api
+    /// on` is not: they render nothing then.
+    fn usage_api_off(&mut self, name: &str, opts: &Options, line: usize) {
+        let merged = match self.defaults.get(name) {
+            Some(d) => opts.merged_over(d),
+            None => opts.clone(),
+        };
+        let what = match name {
+            "extra" => "`extra`",
+            "usage" if merged.get("model").is_some_and(|m| !m.trim().is_empty()) => {
+                "`usage[model=...]`"
+            }
+            _ => return,
+        };
+        let msg = format!("no `set usage-api on`: {what} renders nothing");
+        self.add(Level::Warning, line, msg);
     }
 
     /// Warns when the budget a `budget` placeholder shows is not set.
@@ -576,6 +599,7 @@ pub fn check_layers(user: Option<Source>, project: Option<Source>, dirs: &[PathB
             .any(|d| crate::platform::executable_in(d, "gh").is_some()),
         gh_warned: Cell::new(false),
         budgets: Default::default(),
+        usage_api: false,
         issues: Vec::new(),
         layer: Layer::User,
         row: false,
@@ -606,6 +630,7 @@ pub fn check_layers(user: Option<Source>, project: Option<Source>, dirs: &[PathB
         c.max_rows = cfg.max_rows;
         c.defaults = cfg.defaults.clone();
         c.budgets = cfg.budgets;
+        c.usage_api = cfg.usage_api;
     }
     for e in parsed.config.err().unwrap_or_default() {
         c.layer = e.layer;

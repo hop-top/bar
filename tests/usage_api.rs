@@ -108,6 +108,39 @@ fn config_values_and_project_refusal() {
 }
 
 #[test]
+fn check_warns_when_the_usage_api_is_off() {
+    let warn = "no `set usage-api on`";
+    for (src, warns) in [
+        ("#{extra}", true),
+        ("#{usage[model=opus]}", true),
+        ("#{usage[type=7d]}", false),
+        ("#{spend}", false),
+    ] {
+        let off = hop_bar::check::check_text(&format!("set left \"{src}\"\n"), None, &[]);
+        assert_eq!(
+            off.to_text().contains(warn),
+            warns,
+            "{src}: {}",
+            off.to_text()
+        );
+        assert!(!off.has_errors());
+        let on = hop_bar::check::check_text(
+            &format!("set usage-api on\nset left \"{src}\"\n"),
+            None,
+            &[],
+        );
+        assert!(!on.to_text().contains(warn), "{src}: {}", on.to_text());
+    }
+    // a model from a default line counts too
+    let r = hop_bar::check::check_text(
+        "default usage model=opus\nset left \"#{usage}\"\n",
+        None,
+        &[],
+    );
+    assert!(r.to_text().contains(warn), "{}", r.to_text());
+}
+
+#[test]
 fn off_renders_nothing_and_starts_nothing() {
     let t = Tmp::new();
     let cache = Cache::with_exe(t.path(), "/nonexistent/bar".into());
