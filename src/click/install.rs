@@ -32,7 +32,10 @@ impl InstallCfg {
         Ok(InstallCfg {
             bar: std::env::current_exe().map_or_else(
                 |_| PathBuf::from("bar"),
-                |e| crate::install::stable_exe(&e, std::env::var_os("PATH").as_deref()),
+                |e| {
+                    let path = std::env::var_os("PATH");
+                    crate::install::command_bar(&e, path.as_deref(), cfg!(windows))
+                },
             ),
             state_dir: state_dir(),
             app: apps.join("bar-click.app"),
