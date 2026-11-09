@@ -4,7 +4,7 @@ bar next to the three status lines its [benchmark](../bench/README.md) measures,
 
 | Tool | Version | Source |
 |---|---|---|
-| bar | 0.1 | this repository |
+| bar | 0.1.0-beta.0 <!-- x-release-please-version --> | this repository |
 | [ccstatusline](https://github.com/sirmalloc/ccstatusline/tree/v2.2.34) | 2.2.34 | `v2.2.34`: README, [docs/USAGE.md](https://github.com/sirmalloc/ccstatusline/blob/v2.2.34/docs/USAGE.md), [docs/WINDOWS.md](https://github.com/sirmalloc/ccstatusline/blob/v2.2.34/docs/WINDOWS.md) |
 | [claude-powerline](https://github.com/Owloops/claude-powerline/tree/v1.32.8) | 1.32.8 | `v1.32.8`: README, [setup wizard](https://github.com/Owloops/claude-powerline/blob/v1.32.8/plugin/commands/powerline.md) |
 | [CCometixLine](https://github.com/Haleclipse/CCometixLine/tree/v2.0.1) (`ccline`) | 2.0.1 | `v2.0.1`: README |

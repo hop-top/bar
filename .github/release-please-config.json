@@ -73,7 +73,18 @@
       "x-channel": {
         "line": "0.1.0",
         "channel": "rc"
-      }
+      },
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "claude-plugin/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "generic",
+          "path": "docs/comparison.md"
+        }
+      ]
     }
   }
 }
