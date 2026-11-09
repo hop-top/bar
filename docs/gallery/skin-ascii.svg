@@ -2,10 +2,10 @@
 <title>Powerline skin with skin-glyphs ascii: > and &lt; instead of Nerd Font arrows, default palette.</title>
 <rect width="100%" height="100%" rx="6" fill="#1c1c1c"/>
 <rect x="10" y="10" width="144" height="17.4" fill="#444444"/>
-<rect x="154" y="10" width="90" height="17.4" fill="#005f87"/>
+<rect x="154" y="10" width="90" height="17.4" fill="#000087"/>
 <rect x="244" y="10" width="99" height="17.4" fill="#303030"/>
-<rect x="469" y="10" width="117" height="17.4" fill="#5f5f87"/>
-<rect x="586" y="10" width="99" height="17.4" fill="#005f5f"/>
+<rect x="469" y="10" width="117" height="17.4" fill="#5f0087"/>
+<rect x="586" y="10" width="99" height="17.4" fill="#262626"/>
 <rect x="820" y="10" width="54" height="17.4" fill="#444444"/>
 <rect x="532" y="10" width="45" height="17.4" fill="#00ff00"/>
 <rect x="631" y="10" width="36" height="17.4" fill="#00ff00"/>
@@ -50,14 +50,14 @@
 <g fill="#444444"><use href="#g12" x="21098" y="-3271"/></g>
 <g fill="#bcbcbc"><use href="#g13" x="23564" y="-3271"/><use href="#g14" x="24797" y="-3271"/><use href="#g15" x="26030" y="-3271"/></g>
 <g fill="#d7ff00"><use href="#g16" x="28496" y="-3271"/><use href="#g17" x="29729" y="-3271"/><use href="#g18" x="30962" y="-3271"/></g>
-<g fill="#005f87"><use href="#g12" x="33428" y="-3271"/></g>
+<g fill="#000087"><use href="#g12" x="33428" y="-3271"/></g>
 <g fill="#5fafff"><use href="#g19" x="35894" y="-3271"/><use href="#g20" x="37127" y="-3271"/><use href="#g21" x="38360" y="-3271"/></g>
 <g fill="#bcbcbc"><use href="#g22" x="39593" y="-3271"/><use href="#g23" x="40826" y="-3271"/><use href="#g24" x="42059" y="-3271"/><use href="#g9" x="43292" y="-3271"/><use href="#g25" x="44525" y="-3271"/></g>
 <g fill="#303030"><use href="#g12" x="46991" y="-3271"/></g>
 <g fill="#bcbcbc"><use href="#g4" x="65486" y="-3271"/><use href="#g8" x="66719" y="-3271"/><use href="#g4" x="67952" y="-3271"/><use href="#g26" x="69185" y="-3271"/><use href="#g23" x="70418" y="-3271"/></g>
-<g fill="#5f5f87"><use href="#g12" x="80282" y="-3271"/></g>
+<g fill="#5f0087"><use href="#g12" x="80282" y="-3271"/></g>
 <g fill="#bcbcbc"><use href="#g27" x="82748" y="-3271"/><use href="#g28" x="83981" y="-3271"/><use href="#g29" x="91379" y="-3271"/></g>
-<g fill="#005f5f"><use href="#g12" x="93845" y="-3271"/></g>
+<g fill="#262626"><use href="#g12" x="93845" y="-3271"/></g>
 <g fill="#444444"><use href="#g30" x="111107" y="-3271"/></g>
 <g fill="#5fafff"><use href="#g31" x="113573" y="-3271"/><use href="#g32" x="114806" y="-3271"/><use href="#g21" x="116039" y="-3271"/><use href="#g33" x="117272" y="-3271"/></g>
 </g>
