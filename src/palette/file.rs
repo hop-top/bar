@@ -44,14 +44,26 @@ pub fn dir() -> Option<PathBuf> {
 }
 
 /// A name a palette file may have: ASCII letters, digits, `-` and `_`,
-/// starting with a letter or digit, at most 64 bytes. Nothing that could
-/// leave the palette directory.
+/// starting with a letter or digit, at most 64 bytes, and not a Windows
+/// device name (`con`, `prn`, `aux`, `nul`, `com1`-`com9`, `lpt1`-`lpt9`,
+/// any case), on every platform, so a config means the same everywhere.
+/// Nothing that could leave the palette directory.
 pub fn valid_name(name: &str) -> bool {
     let b = name.as_bytes();
     (1..=64).contains(&b.len())
         && b[0].is_ascii_alphanumeric()
         && b.iter()
             .all(|c| c.is_ascii_alphanumeric() || *c == b'-' || *c == b'_')
+        && !windows_device(name)
+}
+
+fn windows_device(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    matches!(n.as_str(), "con" | "prn" | "aux" | "nul")
+        || matches!(
+            n.as_bytes(),
+            [b'c', b'o', b'm', b'1'..=b'9'] | [b'l', b'p', b't', b'1'..=b'9']
+        )
 }
 
 /// Where the file for palette `name` would be, under the directory in effect.

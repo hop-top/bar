@@ -826,7 +826,7 @@ set backgrounds "#202030 236 #303048"
 | `ramp` | Exactly 11 colours; optional, defaults to the three-step ramp from `bad`, `warn` and `good` |
 
 - Hex colours are quoted, as in `bar.conf`; `#` outside quotes starts a comment.
-- Names are ASCII letters, digits, `-` and `_`, starting with a letter or digit, at most 64 bytes; the file is read only from the palettes directory, at most 16 KiB.
+- Names are ASCII letters, digits, `-` and `_`, starting with a letter or digit, at most 64 bytes, and not a Windows device name (`con`, `prn`, `aux`, `nul`, `com1` to `com9`, `lpt1` to `lpt9`, any case) on any platform; the file is read only from the palettes directory, at most 16 KiB.
 - A built-in name always means the built-in palette: `palettes/nord.conf` is never read, and `bar check` warns about it. Copy a palette under a new name to change it.
 - A palette file is drawn like the built-in hex palettes (no ANSI 16-colour mode), and its contrast is up to you.
 - A missing file, an unknown key, a bad colour or a missing key is an error on the `set palette` line; `bar check` names the palette file line. In a [project config](#project-config) the line is dropped instead, as any invalid line is. A project config may name your palette files in any `project-config` mode; it cannot add its own.

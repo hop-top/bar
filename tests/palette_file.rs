@@ -132,7 +132,24 @@ fn names_cannot_leave_the_directory() {
     for bad in ["", "../x", "a/b", ".hidden", "-x", "a b", "a.conf", "x\\y"] {
         assert!(!file::valid_name(bad), "{bad:?}");
     }
-    for good in ["harbour", "my-theme_2", "A1"] {
+    for reserved in [
+        "con", "CON", "Prn", "aux", "nul", "com1", "COM9", "lpt1", "Lpt9",
+    ] {
+        assert!(
+            !file::valid_name(reserved),
+            "Windows device name {reserved:?}"
+        );
+    }
+    for good in [
+        "harbour",
+        "my-theme_2",
+        "A1",
+        "com",
+        "com0",
+        "console",
+        "nul-x",
+        "lpt10",
+    ] {
         assert!(file::valid_name(good), "{good}");
     }
     let _d = palette::use_dir(Some(PathBuf::from("/tmp/p")));
