@@ -173,6 +173,19 @@ pub fn local_offset(ts: i64) -> i64 {
     }
 }
 
+/// This machine's host name (`gethostname`), as `hostname` prints it.
+pub fn hostname() -> Option<String> {
+    let mut buf = [0u8; 256];
+    // SAFETY: the buffer and its length are passed together; the result is
+    // read up to the first NUL inside the buffer only
+    let rc = unsafe { libc::gethostname(buf.as_mut_ptr().cast(), buf.len()) };
+    if rc != 0 {
+        return None;
+    }
+    let end = buf.iter().position(|&b| b == 0)?;
+    String::from_utf8(buf[..end].to_vec()).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

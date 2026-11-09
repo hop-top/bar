@@ -5,7 +5,8 @@ use crate::options::Options;
 use crate::style::{dim, sanitize};
 use std::path::Path;
 
-/// Session directory, home shown as `~`; `base=1` for the last component.
+/// Session directory, home shown as `~`; `base=1` for the last component;
+/// `open` links it to the file manager or an editor.
 pub struct Cwd;
 /// Git top-level directory of the session directory (a Jujutsu workspace
 /// root when that is nearer), no process spawned; hidden outside a
@@ -70,7 +71,8 @@ fn home() -> String {
 
 impl Placeholder for Cwd {
     fn render(&self, ctx: &Ctx, opts: &Options) -> Option<String> {
-        shown(&ctx.session.cwd, opts, &home())
+        let text = shown(&ctx.session.cwd, opts, &home())?;
+        Some(super::open::wrap(text, &ctx.session.cwd, opts))
     }
 }
 
@@ -82,7 +84,9 @@ impl Placeholder for Root {
             _ => None,
         };
         let root = super::jj::nearer_than(&dir, top.as_deref()).or(top)?;
-        shown(&path_str(&root)?, opts, &home())
+        let root = path_str(&root)?;
+        let text = shown(&root, opts, &home())?;
+        Some(super::open::wrap(text, &root, opts))
     }
 }
 

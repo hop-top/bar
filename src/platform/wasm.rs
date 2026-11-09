@@ -107,3 +107,8 @@ pub fn parent_pid() -> Option<u32> {
 pub fn local_offset(_ts: i64) -> i64 {
     0
 }
+
+/// No host.
+pub fn hostname() -> Option<String> {
+    None
+}

@@ -83,6 +83,8 @@ Measured on macOS 15 with Apple git 2.39.5 (`/usr/bin/git`), release build, temp
 
 Wall time is not reported: it depends on machine load.
 
+Directory links (`src/placeholders/open.rs`, option `open` on `cwd`, `root`, `repo`): the URL is built from the path already in hand, percent-encoded in process; `files` adds the host name from one `gethostname` (`GetComputerNameExW` on Windows) per process, and only when a placeholder asks for it. No process, no file read. Scheme forms: VS Code's documented `vscode://file/<path>` (a folder ends in `/`; Windows `vscode://file/c:/...`); Cursor answers the same `cursor://file/` form as the VS Code base it builds on; Zed's URL handler takes `zed://file<path>` and `file://<path>`, percent-decodes the path and drops the `/` before a Windows drive.
+
 ## Platforms
 
 Unix (macOS, Linux) and Windows; the crate fails to compile elsewhere. Every OS difference lives in `src/platform/` (`unix.rs`, `windows.rs`, same function set): home dir, private dirs and files, file identity and mtime, executables and `PATHEXT`, the shell for `%command%`, child process groups and tree kill, detached spawn, process liveness, local zone offset. macOS and Linux build and pass `make check`.

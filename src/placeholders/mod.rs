@@ -21,6 +21,7 @@ pub mod model;
 pub mod modes;
 pub mod money;
 pub mod niche;
+pub mod open;
 pub mod remotes;
 pub mod repo;
 pub mod sessions;
