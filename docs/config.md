@@ -644,7 +644,7 @@ Skin separators, `set skin-glyphs`: `nerd` (default) uses the Nerd Font / Powerl
 | `256` | 256-colour SGR (`38;5;n`); `#rrggbb` becomes the nearest code from the colour cube or the grey ramp (16-255) |
 | `truecolor` | `#rrggbb` as 24-bit SGR (`38;2;r;g;b`); codes stay `38;5;n` |
 | `16` | Every colour as the nearest of the 16 ANSI colours (`30`-`37`, `90`-`97`; backgrounds `40`-`47`, `100`-`107`), measured against xterm's default values |
-| `none` | No colour: colour SGR is left out; bold, links and text stay |
+| `none` | No colour: colour SGR is left out; bold, links and text stay. A `powerline` or `capsule` skin is drawn as `plain`, since its shapes are made of background colour |
 | `auto` | From the environment, below |
 
 `auto` reads the environment (a variable set to an empty value counts as unset):
