@@ -1,103 +1,124 @@
-//! Line diff in unified format, for the changes `bar install` shows
-//! before it writes. Settings files are small, so a plain LCS table is
-//! enough.
+//! Line diff in unified format, for the changes `bar install` and `bar
+//! config import` show before they write.
 
-/// Lines of context around each change.
-const CONTEXT: usize = 3;
+/// Most cells of the line table; a larger change shows as removed and
+/// added whole.
+const MAX_CELLS: usize = 1 << 22;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Op {
     Keep,
     Del,
     Add,
 }
 
-/// Unified diff of `old` and `new` under `---`/`+++` headers named
-/// `old_name` and `new_name`; empty when the texts are equal.
-pub fn unified(old: &str, new: &str, old_name: &str, new_name: &str) -> String {
+/// Edit script from `a` to `b`: (op, index into `a` or `b`).
+fn script(a: &[&str], b: &[&str]) -> Vec<(Op, usize)> {
+    let pre = a.iter().zip(b).take_while(|(x, y)| x == y).count();
+    let suf = a[pre..]
+        .iter()
+        .rev()
+        .zip(b[pre..].iter().rev())
+        .take_while(|(x, y)| x == y)
+        .count();
+    let (ma, mb) = (&a[pre..a.len() - suf], &b[pre..b.len() - suf]);
+    let mut out: Vec<(Op, usize)> = (0..pre).map(|i| (Op::Keep, i)).collect();
+    let (n, m) = (ma.len(), mb.len());
+    if (n + 1).saturating_mul(m + 1) > MAX_CELLS {
+        out.extend((0..n).map(|i| (Op::Del, pre + i)));
+        out.extend((0..m).map(|j| (Op::Add, pre + j)));
+    } else {
+        // lcs[i][j]: longest common subsequence of ma[i..] and mb[j..]
+        let w = m + 1;
+        let mut lcs = vec![0u32; (n + 1) * w];
+        for i in (0..n).rev() {
+            for j in (0..m).rev() {
+                lcs[i * w + j] = if ma[i] == mb[j] {
+                    lcs[(i + 1) * w + j + 1] + 1
+                } else {
+                    lcs[(i + 1) * w + j].max(lcs[i * w + j + 1])
+                };
+            }
+        }
+        let (mut i, mut j) = (0, 0);
+        while i < n || j < m {
+            if i < n && j < m && ma[i] == mb[j] {
+                out.push((Op::Keep, pre + i));
+                i += 1;
+                j += 1;
+            } else if i < n && (j == m || lcs[(i + 1) * w + j] >= lcs[i * w + j + 1]) {
+                // removals before additions, as `diff -u` prints them
+                out.push((Op::Del, pre + i));
+                i += 1;
+            } else {
+                out.push((Op::Add, pre + j));
+                j += 1;
+            }
+        }
+    }
+    out.extend((0..suf).map(|k| (Op::Keep, a.len() - suf + k)));
+    out
+}
+
+/// Unified diff of `old` to `new` with three lines of context, headed
+/// `--- from` / `+++ to`; empty when they have the same lines.
+pub fn unified(old: &str, new: &str, from: &str, to: &str) -> String {
     let a: Vec<&str> = old.lines().collect();
     let b: Vec<&str> = new.lines().collect();
     let ops = script(&a, &b);
-    if ops.iter().all(|(op, _, _)| *op == Op::Keep) {
+    let changed: Vec<usize> = (0..ops.len()).filter(|&k| ops[k].0 != Op::Keep).collect();
+    if changed.is_empty() {
         return String::new();
     }
-    let mut out = format!("--- {old_name}\n+++ {new_name}\n");
-    let mut i = 0;
-    while i < ops.len() {
-        if ops[i].0 == Op::Keep {
-            i += 1;
-            continue;
+    const CTX: usize = 3;
+    let mut out = format!("--- {from}\n+++ {to}\n");
+    let mut k = 0;
+    while k < changed.len() {
+        let start = changed[k].saturating_sub(CTX);
+        let mut end = changed[k];
+        while k < changed.len() && changed[k] <= end + 2 * CTX {
+            end = changed[k];
+            k += 1;
         }
-        // a hunk: back up for context, run until CONTEXT*2 unchanged lines
-        let start = i.saturating_sub(CONTEXT);
-        let mut end = i;
-        let mut keep_run = 0;
-        while end < ops.len() && keep_run <= CONTEXT * 2 {
-            keep_run = if ops[end].0 == Op::Keep {
-                keep_run + 1
-            } else {
-                0
-            };
-            end += 1;
-        }
-        let end = end - keep_run.saturating_sub(CONTEXT);
-        let hunk = &ops[start..end];
-        let (a0, b0) = (hunk[0].1, hunk[0].2);
-        let a_len = hunk.iter().filter(|o| o.0 != Op::Add).count();
-        let b_len = hunk.iter().filter(|o| o.0 != Op::Del).count();
-        let pos = |s: usize, n: usize| if n == 0 { s } else { s + 1 };
-        out += &format!(
-            "@@ -{},{a_len} +{},{b_len} @@\n",
-            pos(a0, a_len),
-            pos(b0, b_len)
-        );
-        for (op, ai, bi) in hunk {
+        let end = (end + CTX + 1).min(ops.len());
+        // 1-based start lines of the hunk in `a` and `b`
+        let (mut la, mut lb) = (1, 1);
+        for &(op, _) in &ops[..start] {
             match op {
-                Op::Keep => out += &format!(" {}\n", a[*ai]),
-                Op::Del => out += &format!("-{}\n", a[*ai]),
-                Op::Add => out += &format!("+{}\n", b[*bi]),
+                Op::Keep => {
+                    la += 1;
+                    lb += 1;
+                }
+                Op::Del => la += 1,
+                Op::Add => lb += 1,
             }
         }
-        i = end;
+        let hunk = &ops[start..end];
+        let na = hunk.iter().filter(|(op, _)| *op != Op::Add).count();
+        let nb = hunk.iter().filter(|(op, _)| *op != Op::Del).count();
+        let at = |l: usize, n: usize| if n == 0 { l - 1 } else { l };
+        out.push_str(&format!(
+            "@@ -{},{na} +{},{nb} @@\n",
+            at(la, na),
+            at(lb, nb)
+        ));
+        for &(op, i) in hunk {
+            let (mark, line) = match op {
+                Op::Keep => (' ', a[i]),
+                Op::Del => ('-', a[i]),
+                Op::Add => ('+', b[i]),
+            };
+            out.push(mark);
+            out.push_str(line);
+            out.push('\n');
+        }
     }
     out
 }
 
-/// Edit script: each op with the line index into `a` and `b` it sits at.
-fn script(a: &[&str], b: &[&str]) -> Vec<(Op, usize, usize)> {
-    let (n, m) = (a.len(), b.len());
-    // lcs[i][j]: LCS length of a[i..] and b[j..]
-    let mut lcs = vec![vec![0u32; m + 1]; n + 1];
-    for i in (0..n).rev() {
-        for j in (0..m).rev() {
-            lcs[i][j] = if a[i] == b[j] {
-                lcs[i + 1][j + 1] + 1
-            } else {
-                lcs[i + 1][j].max(lcs[i][j + 1])
-            };
-        }
-    }
-    let (mut i, mut j) = (0, 0);
-    let mut ops = Vec::with_capacity(n + m);
-    while i < n || j < m {
-        if i < n && j < m && a[i] == b[j] {
-            ops.push((Op::Keep, i, j));
-            i += 1;
-            j += 1;
-        } else if i < n && (j == m || lcs[i + 1][j] >= lcs[i][j + 1]) {
-            ops.push((Op::Del, i, j));
-            i += 1;
-        } else {
-            ops.push((Op::Add, i, j));
-            j += 1;
-        }
-    }
-    ops
-}
-
 #[cfg(test)]
 mod tests {
-    use super::unified;
+    use super::{unified, MAX_CELLS};
 
     #[test]
     fn equal_texts_have_no_diff() {
@@ -134,5 +155,21 @@ mod tests {
             .collect();
         let d = unified(&old, &new, "a", "b");
         assert_eq!(d.matches("@@ ").count(), 2, "{d}");
+    }
+
+    #[test]
+    fn huge_change_shows_as_removed_and_added_whole() {
+        let n = 3000;
+        assert!((n + 1) * (n + 1) > MAX_CELLS);
+        let old: String = (0..n).map(|i| format!("a{i}\n")).collect();
+        let new: String = (0..n).map(|i| format!("b{i}\n")).collect();
+        let d = unified(&format!("same\n{old}"), &format!("same\n{new}"), "a", "b");
+        assert!(
+            d.starts_with("--- a\n+++ b\n@@ -1,3001 +1,3001 @@\n same\n-a0\n"),
+            "{}",
+            &d[..80]
+        );
+        assert_eq!(d.matches("\n-").count(), n);
+        assert_eq!(d.matches("\n+").count(), n + 1);
     }
 }

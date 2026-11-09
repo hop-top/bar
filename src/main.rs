@@ -1,5 +1,7 @@
 use std::io::Write;
 
+mod config_cmd;
+
 use clap::{ArgMatches, Command, CommandFactory, Parser, Subcommand};
 use hop_bar::cache::{refresh_timeout, Cache, CachedRunner, Request};
 use hop_bar::{check, click, conf, plugin, session};
@@ -33,6 +35,11 @@ enum SubCmd {
         /// Render a built-in preset instead of your config; bare, every preset in turn.
         #[arg(long, num_args = 0..=1, value_name = "NAME", value_parser = hop_bar::presets::NAMES)]
         preset: Option<Option<String>>,
+    },
+    /// Export the config, or import a file into it.
+    Config {
+        #[command(subcommand)]
+        cmd: config_cmd::ConfigCmd,
     },
     /// Write a preset as your config; refuses when a config exists.
     Init {
@@ -157,6 +164,7 @@ fn main() {
         Some(("init", m)) => init(m),
         Some(("install", m)) => install(m),
         Some(("update", _)) => update(),
+        Some(("config", m)) => config_cmd::run(m),
         Some(("toggle", m)) => {
             let key = m.get_one::<String>("key").map_or("", String::as_str);
             match click::toggle(&click::state_dir(), key) {

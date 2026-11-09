@@ -279,7 +279,7 @@ pub fn run(
         let body = json!({"settings": plan.path.display().to_string(), "statusLine": prev});
         crate::click::write_atomic(&rec, &(body.to_string() + "\n")).map_err(io)?;
     }
-    let backup = write_settings(&plan.path, plan.text.is_some(), &plan.after).map_err(io)?;
+    let backup = write_settings(&plan.path, &plan.after).map_err(io)?;
     if let Record::Remove = plan.record {
         let _ = std::fs::remove_file(&rec);
     }

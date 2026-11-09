@@ -1,0 +1,89 @@
+//! `bar config export` / `bar config import`: the effective config as one
+//! file, and merging or replacing the user config with a file.
+
+use crate::conf::{layout_key, tokenize};
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+
+/// What a line sets, when a later line with the same key replaces it:
+/// a `set` key (`left` and `left@1` are one), a `set price` prefix, a
+/// `plugin` name, a `rule` target or an `account` glob. `default` lines
+/// merge and have none.
+fn line_key(raw: &str) -> Option<String> {
+    let t = tokenize(raw).ok()?;
+    let (head, arg) = (t.first()?.as_str(), t.get(1)?.as_str());
+    Some(match head {
+        "set" if arg == "price" => format!("price {}", t.get(2)?),
+        "set" => match layout_key(arg) {
+            Some(Ok((group, line))) => format!("set {group}@{line}"),
+            _ => format!("set {arg}"),
+        },
+        "plugin" | "rule" | "account" => format!("{head} {arg}"),
+        _ => return None,
+    })
+}
+
+fn with_newline(s: &str) -> String {
+    if s.is_empty() || s.ends_with('\n') {
+        s.to_string()
+    } else {
+        format!("{s}\n")
+    }
+}
+
+/// `over` applied over `base`, as one file: the lines of `base` that a
+/// line of `over` replaces are dropped, then `over` follows. Reads the same
+/// as `base` then `over` layered.
+pub fn merge(base: &str, over: &str) -> String {
+    let keys: HashSet<String> = over.lines().filter_map(line_key).collect();
+    let kept: String = base
+        .lines()
+        .filter(|l| line_key(l).is_none_or(|k| !keys.contains(&k)))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    format!("{kept}{}", with_newline(over))
+}
+
+/// The effective config as one file: the user config (`None`: the
+/// built-in layout) and, when given, the project config merged over it,
+/// each under a comment naming its source.
+pub fn effective(user: Option<(&Path, &str)>, project: Option<(&Path, &str)>) -> String {
+    let base = match user {
+        Some((p, text)) => format!("# bar config: {}\n{}", p.display(), with_newline(text)),
+        None => format!(
+            "# bar config: built-in layout\n{}",
+            crate::render::BUILTIN_CONF
+        ),
+    };
+    match project {
+        None => base,
+        Some((p, text)) => merge(
+            &base,
+            &format!("# project config: {}\n{}", p.display(), with_newline(text)),
+        ),
+    }
+}
+
+/// How an import changes the user config.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    Merge,
+    Replace,
+}
+
+/// The user config after importing `text`: `old` is the current file,
+/// `None` when there is none.
+pub fn imported(old: Option<&str>, text: &str, mode: Mode) -> String {
+    match (mode, old) {
+        (Mode::Merge, Some(old)) => merge(old, text),
+        _ => with_newline(text),
+    }
+}
+
+/// Writes `body` to `path` through [`crate::rewrite`]: through a symlink,
+/// old file backed up, atomic, mode kept. Returns the backup path when
+/// there was a file.
+pub fn write_config(path: &Path, body: &str) -> Result<Option<PathBuf>, String> {
+    let target = crate::rewrite::target(path)?;
+    crate::rewrite::replace(&target, body).map_err(|e| format!("{}: {e}", path.display()))
+}

@@ -6,7 +6,7 @@ How to write `bar.conf`: where it lives, the directives, every placeholder and i
 - [Placeholders](#placeholders): [session](#session), [ctx](#ctx), [usage](#usage), [tokens, cache, cachettl](#tokens-cache-cachettl), [ttft, tps, misses](#ttft-tps-misses), [spendhist](#spendhist), [git and directories](#git-and-directories), [prs and issues](#prs-and-issues), [account, agents, sessions, tmux](#account-agents-sessions-tmux), [update](#update), [every placeholder](#options-on-every-placeholder), [values](#values)
 - [Styling](#styling): [skins](#skins), [palettes](#palettes), [icons](#icons), [glyphs](#glyphs), [colours](#colours)
 - [Layout](#layout): [lines and wrapping](#lines-and-wrapping)
-- [Commands](#commands): [bar install](#bar-install), [bar update](#update), [bar check](#bar-check), [bar preview](#bar-preview), [presets and bar init](#presets), [click handler](#click-handler-macos), [clickable commands](#clickable-commands), [hooks](#hooks)
+- [Commands](#commands): [bar install](#bar-install), [bar update](#update), [bar check](#bar-check), [bar config](#bar-config), [bar preview](#bar-preview), [presets and bar init](#presets), [click handler](#click-handler-macos), [clickable commands](#clickable-commands), [hooks](#hooks)
 - [Files and environment](#files-and-environment)
 
 ## Overview
@@ -647,6 +647,8 @@ A render prints at most 4 rows, all lines together. Rows past the fourth are dro
 | `bar install [--project\|--local] [--refresh <secs>] [--hooks] [--uninstall] [--yes]` | Sets bar as Claude Code's status line ([bar install](#bar-install)) | 0, 2 without a terminal and `--yes` or with a bad home, 1 declined or on failure |
 | `bar update` | Version, newest release the [update check](#update) found, how to upgrade; never downloads | 0 |
 | `bar check` | Lints the config ([bar check](#bar-check)) | 0, 2 on a config error |
+| `bar config export [<file>\|-] [--user] [--force]` | Writes the effective config ([bar config](#bar-config)) | 0, 2 on a config error, an existing file or a write error |
+| `bar config import <file>\|- --merge\|--replace [--yes]` | Merges a file into your config or replaces it, after a preview ([bar config](#bar-config)) | 0, 2 on an invalid file or when it cannot ask, 1 when declined or the write fails |
 | `bar preview [--state early\|burning\|final] [--preset [<name>]]` | Layout with sample data ([bar preview](#bar-preview)) | 0 |
 | `bar init [--preset <name>]` | Writes a preset as your config ([presets](#presets)) | 0, 2 when a config exists or the path is unusable |
 | `bar toggle <key>` | Flips `5h`, `7d`, `<plugin>` or `<plugin>.<toggle>` ([usage](#usage)) | 0, 2 on an unknown key |
@@ -694,6 +696,24 @@ A render prints at most 4 rows, all lines together. Rows past the fourth are dro
 - It also prints the models.dev snapshot state: its date and path, `not fetched`, or why the file was ignored.
 
 Exit 0 when there are no errors (warnings allowed), 2 on a config error. `--format json` prints `{path, project: {path, mode, applied}, prices: {path, fetched, ignored}, ok, issues: [{level, file, line, message}]}`; `path` (top level) is `null` when no config file is in use, `project` is `null` when no project file was found, an issue's `file` is the file it is in (`null` for the built-in layout), `prices.fetched` is the snapshot date or `null` when there is no usable file, and `line` is 0 when an issue has no line. `--format yaml`, `csv` and `text` give the same data in that format; the default, `table`, is the plain report.
+
+### bar config
+
+`bar config export [<file>|-]` writes the effective config: your config file (or the built-in layout) with the [project config](#project-config) for the working directory merged over it, as one file that renders the same. Each part starts with a comment naming its source (`# bar config: <path>`, `# project config: <path>`). Lines of yours that a project line replaces (the same `set` key, `set price` prefix, `plugin` name, `rule` target or `account` glob) are left out; `default` lines are all kept, since they merge.
+
+- No file or `-`: stdout. A file is written atomically (mode 0600) and refused when it exists, unless `--force`.
+- `--user`: your config file as it is, without the project config; exit 2 when you have none.
+- A config with errors is not exported (exit 2; run `bar check`). `--user` exports the file as it is.
+
+`bar config import <file>|- --merge|--replace [--yes]` changes your config file:
+
+- `--merge`: your file, minus the lines the imported file replaces (same keys as above), then the imported file. The result reads as the imported file applied over yours.
+- `--replace`: the imported file becomes your config.
+- One of the two is required. Without a config file the import is written where `bar init` writes.
+- The imported file is checked first, the same way as [bar check](#bar-check) checks a config (a plugin not on `PATH` is an error); with errors nothing is written, the report goes to stderr and the exit is 2. A merge result is checked the same way.
+- A unified diff of the change goes to stdout, then `write <path>? [y/N]` on stderr. Only `y` or `yes` writes; anything else exits 1. `--yes` writes without asking; without it, a file read from stdin (`-`) or a stdin that is not a terminal exits 2 after the diff, writing nothing.
+- An import that changes nothing writes nothing.
+- The old file is copied to `bar.conf.bak-<time>-<pid>` beside it, then the new one is written atomically, keeping the old file's permissions. A symlinked config is written through to its target.
 
 ### bar preview
 

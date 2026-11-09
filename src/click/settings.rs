@@ -1,7 +1,6 @@
-//! Wires `bar click hook` into Claude Code's `settings.json`: plan the
-//! change, list it, then back up and write atomically.
+//! Claude Code's `settings.json`: reading it, the `bar click hook`
+//! entries and the command strings bar writes into it.
 
-use super::write_atomic;
 use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
 
@@ -53,8 +52,6 @@ pub fn command_for(bar: &str, args: &str, windows: bool) -> String {
 pub struct SettingsPlan {
     /// The file written: `settings.json`, or its target when it is a symlink.
     pub path: PathBuf,
-    /// The file existed (so it gets a backup).
-    pub existed: bool,
     pub command: String,
     /// Events that gain a hook entry; empty means nothing to write.
     pub added: Vec<&'static str>,
@@ -96,7 +93,7 @@ pub(crate) struct Loaded {
 /// Reads `path` (missing counts as `{}`); a file that is not a JSON
 /// object is an error, so a file we do not understand is never rewritten.
 pub(crate) fn load(path: &Path) -> Result<Loaded, String> {
-    let path = write_target(path)?;
+    let path = crate::rewrite::target(path)?;
     let shown = path.display();
     let (text, root) = match std::fs::read_to_string(&path) {
         Ok(s) => {
@@ -179,30 +176,15 @@ pub(crate) fn remove_hooks(root: &mut Value, command: &str) -> Vec<&'static str>
 /// Reads `path` (missing counts as `{}`) and adds a hook entry for every
 /// event lacking one.
 pub fn plan_settings(path: &Path, bar: &Path) -> Result<SettingsPlan, String> {
-    let Loaded {
-        path,
-        text,
-        mut root,
-    } = load(path)?;
+    let Loaded { path, mut root, .. } = load(path)?;
     let command = hook_command(bar);
     let added = add_hooks(&mut root, &command, &path.display().to_string())?;
     Ok(SettingsPlan {
         path,
-        existed: text.is_some(),
         command,
         added,
         after: root,
     })
-}
-
-/// A symlinked `settings.json` is written through to its target, never
-/// replaced; a link whose target is missing is refused.
-fn write_target(path: &Path) -> Result<PathBuf, String> {
-    match std::fs::symlink_metadata(path) {
-        Ok(m) if m.file_type().is_symlink() => std::fs::canonicalize(path)
-            .map_err(|e| format!("{}: symlink target unusable: {e}", path.display())),
-        _ => Ok(path.to_path_buf()),
-    }
 }
 
 /// Writes the plan; returns the backup path when an existing file changed.
@@ -210,38 +192,13 @@ pub(crate) fn apply_settings(plan: &SettingsPlan) -> std::io::Result<Option<Path
     if plan.added.is_empty() {
         return Ok(None);
     }
-    write_settings(&plan.path, plan.existed, &plan.after)
+    write_settings(&plan.path, &plan.after)
 }
 
-/// Copies an existing `path` to a unique `<name>.bak-<time>-<pid>`, then
-/// writes `after` atomically, keeping the file's mode; returns the backup.
-pub(crate) fn write_settings(
-    path: &Path,
-    existed: bool,
-    after: &Value,
-) -> std::io::Result<Option<PathBuf>> {
-    let backup = if existed {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default();
-        let name = path.file_name().unwrap_or_default().to_string_lossy();
-        let b = path.with_file_name(format!(
-            "{name}.bak-{}-{:09}-{}",
-            now.as_secs(),
-            now.subsec_nanos(),
-            std::process::id()
-        ));
-        std::fs::copy(path, &b)?;
-        Some(b)
-    } else {
-        None
-    };
-    let mode = std::fs::metadata(path).map(|m| m.permissions()).ok();
-    write_atomic(path, &render(after))?;
-    if let Some(m) = mode {
-        std::fs::set_permissions(path, m)?;
-    }
-    Ok(backup)
+/// Writes `after` over `path` (backup, atomic, mode kept); returns the
+/// backup when there was a file.
+pub(crate) fn write_settings(path: &Path, after: &Value) -> std::io::Result<Option<PathBuf>> {
+    crate::rewrite::replace(path, &render(after))
 }
 
 /// The text written for `v`: pretty JSON and a trailing newline.

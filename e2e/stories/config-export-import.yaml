@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: bar.config.export-import
+title: Export the effective config and import a config file
+binary: bar
+intent: |
+  A user wants to copy their status line setup to another machine. They
+  export the config bar actually renders, including the project config of
+  the repository they are in, then import a shared file into their own
+  config, reviewing the change before it is written.
+preconditions:
+  - bar binary is on PATH
+  - a valid bar config file named shared.conf in the working directory
+steps:
+  - id: export_stdout
+    intent: |
+      Print the effective config as one file, each part under a comment
+      naming its source.
+    invoke: ["bar", "config", "export"]
+    capture: [exit_code, stdout]
+  - id: export_user
+    intent: |
+      Print only the user's own config file, without the project config.
+    invoke: ["bar", "config", "export", "--user"]
+    capture: [exit_code, stdout]
+  - id: import_merge
+    intent: |
+      Merge the shared file into the user's config: show the diff, back
+      up the old file and write the new one without asking.
+    invoke: ["bar", "config", "import", "--merge", "--yes", "shared.conf"]
+    capture: [exit_code, stdout]
