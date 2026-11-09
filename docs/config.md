@@ -677,7 +677,7 @@ A render prints at most 4 rows, all lines together. Rows past the fourth are dro
 - `<path>` is the absolute path of the running binary, quoted as for the [hooks](#hooks): on Windows with forward slashes and unquoted when it has no spaces or shell characters.
 - It prints a unified diff of the file first, then asks `write <file>? [y/N]`. `--yes` skips the question; without a terminal on stdin and without `--yes` it prints the diff, writes nothing and exits 2. Any answer but `y` or `yes` writes nothing and exits 1.
 - Other keys and their order are kept, as are other fields of an existing `statusLine` (`padding`, `hideVimModeIndicator`, `refreshInterval`). `--refresh <secs>` (1 or more) sets `refreshInterval`, which re-runs the status line on a timer as well as on Claude Code's events.
-- An existing file is copied to `settings.json.bak-<time>-<pid>` (likewise for the other files) and written atomically, keeping its mode; a symlink is written through to its target. A file that does not parse as a JSON object is left untouched (exit 1). Nothing is written when the file already says the same.
+- An existing file is first copied to `backups/<name>-<hash>.bak-<time>-<pid>` in the state directory (mode 0600), never beside it: `.claude/` may be committed and a settings file may hold keys. The path is printed; the newest 5 backups of each file are kept. The file is then written atomically, keeping its mode; a symlink is written through to its target. A file that does not parse as a JSON object is left untouched (exit 1). Nothing is written when the file already says the same.
 - A status line that does not run bar is kept in `install/<hash>.json` in the state directory before it is replaced.
 - `--hooks` also adds the `bar click hook` entries to the same file, as `bar click install --hooks-only` does ([Hooks](#hooks)).
 - `bar install --uninstall` puts back the status line bar replaced, or removes `statusLine` when there was none, again after a diff and confirmation. A `statusLine` that does not run `bar render` is left as is. With `--hooks` it also removes hook entries that run only `bar click hook`, and event lists or a `hooks` object left empty by that.
@@ -704,7 +704,7 @@ Exit 0 when there are no errors (warnings allowed), 2 on a config error. `--form
 
 `bar config export [<file>|-]` writes the effective config: your config file (or the built-in layout) with the [project config](#project-config) for the working directory merged over it, as one file that renders the same. Each part starts with a comment naming its source (`# bar config: <path>`, `# project config: <path>`). Lines of yours that a project line replaces (the same `set` key, `set price` prefix, `plugin` name, `rule` target or `account` glob) are left out; `default` lines are all kept, since they merge.
 
-- No file or `-`: stdout. A file is written atomically (mode 0600) and refused when it exists, unless `--force`.
+- No file or `-`: stdout. A new file is written atomically (mode 0600). An existing file is refused unless `--force`, which copies it to `<file>.bak-<time>-<pid>` beside it first (the newest 5 backups are kept) and keeps its mode.
 - `--user`: your config file as it is, without the project config; exit 2 when you have none.
 - A config with errors is not exported (exit 2; run `bar check`). `--user` exports the file as it is.
 
@@ -716,7 +716,7 @@ Exit 0 when there are no errors (warnings allowed), 2 on a config error. `--form
 - The imported file is checked first, the same way as [bar check](#bar-check) checks a config (a plugin not on `PATH` is an error); with errors nothing is written, the report goes to stderr and the exit is 2. A merge result is checked the same way.
 - A unified diff of the change goes to stdout, then `write <path>? [y/N]` on stderr. Only `y` or `yes` writes; anything else exits 1. `--yes` writes without asking; without it, a file read from stdin (`-`) or a stdin that is not a terminal exits 2 after the diff, writing nothing.
 - An import that changes nothing writes nothing.
-- The old file is copied to `bar.conf.bak-<time>-<pid>` beside it, then the new one is written atomically, keeping the old file's permissions. A symlinked config is written through to its target.
+- The old file is copied to `bar.conf.bak-<time>-<pid>` beside it (the newest 5 backups are kept), then the new one is written atomically, keeping the old file's permissions. A symlinked config is written through to its target.
 
 ### bar preview
 
@@ -746,7 +746,7 @@ Width comes from `COLUMNS`, else 120.
 - Style: `p` preset, `s` skin, `c` palette, `i` icons; the preview follows the highlighted value before `enter` applies it. A preset sets its layout (its segments joined with your `separator`) and its `skin`, `skin-glyphs`, `palette`, `icons` and `gap`, and drops those keys where it sets none; every other line stays.
 - `u` / `ctrl+z` undo, `U` / `ctrl+y` redo, `w` / `ctrl+s` save, `q` / `esc` quit; with unsaved changes quitting asks to save (`y`), discard (`n`) or stay (`esc`).
 
-Saving changes only the lines an edit touched: a change rewrites the value of the `set` line in effect for that key (the last one), keeping its quoting, the comment after it and the line ending; a key the file does not set yet gets one `set` line at the end. Comments, blank lines, `rule`, `default`, `account` and `plugin` lines and anything the editor does not know are kept as written. The first save of a session copies the old file to `bar.conf.bak-<time>-<pid>`; every save writes a temp file beside it and renames it into place, keeping its permissions; a symlinked config is written through to its target. Segments an edit rewrites are joined with ` <separator> `. An option value cannot hold `"`, and only `show`, `alt` and `checks` take commas.
+Saving changes only the lines an edit touched: a change rewrites the value of the `set` line in effect for that key (the last one), keeping its quoting, the comment after it and the line ending; a key the file does not set yet gets one `set` line at the end. Comments, blank lines, `rule`, `default`, `account` and `plugin` lines and anything the editor does not know are kept as written. The first save of a session copies the old file to `bar.conf.bak-<time>-<pid>` (the newest 5 backups are kept); every save writes a temp file beside it and renames it into place, keeping its permissions; a symlinked config is written through to its target. Segments an edit rewrites are joined with ` <separator> `. An option value cannot hold `"`, and only `show`, `alt` and `checks` take commas.
 
 `bar edit` is built by the default `edit` cargo feature; `cargo install --path . --locked --no-default-features` leaves it out (and its terminal libraries) for a smaller binary.
 
@@ -862,7 +862,7 @@ Registering the hooks:
 
 - `bar click install` and `bar click install --hooks-only` add a `'<bar>' click hook` command entry under `hooks` in `<claude dir>/settings.json` (`CLAUDE_CONFIG_DIR`, else `~/.claude`) for each of the 12 events above that lacks one, and print every addition before writing. `<bar>` is the absolute path of the running binary.
 - They refuse (exit 2) when the home dir (`HOME`; on Windows `USERPROFILE`, else `HOME`) is unset or relative, or `CLAUDE_CONFIG_DIR` is relative.
-- The file is re-read right before writing (after the app is built) so a concurrent edit is kept, copied to a unique `settings.json.bak-<time>-<pid>`, and written atomically, keeping its mode.
+- The file is re-read right before writing (after the app is built) so a concurrent edit is kept, backed up to `backups/` in the state directory as `bar install` does, and written atomically, keeping its mode.
 - A symlinked `settings.json` is written through to its target; a link to a missing file is refused.
 - A file that does not parse as Claude Code settings is left untouched and the install stops (exit 1).
 - `--dry-run` prints the additions and writes nothing.

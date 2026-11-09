@@ -187,18 +187,33 @@ pub fn plan_settings(path: &Path, bar: &Path) -> Result<SettingsPlan, String> {
     })
 }
 
+/// Where backups of settings files go: `backups/` in the state dir, never
+/// beside the file, since `.claude/` may be committed and the file may
+/// hold keys.
+pub fn backup_dir(state_dir: &Path) -> PathBuf {
+    state_dir.join("backups")
+}
+
 /// Writes the plan; returns the backup path when an existing file changed.
-pub(crate) fn apply_settings(plan: &SettingsPlan) -> std::io::Result<Option<PathBuf>> {
+pub(crate) fn apply_settings(
+    plan: &SettingsPlan,
+    state_dir: &Path,
+) -> std::io::Result<Option<PathBuf>> {
     if plan.added.is_empty() {
         return Ok(None);
     }
-    write_settings(&plan.path, &plan.after)
+    write_settings(&plan.path, &plan.after, state_dir)
 }
 
-/// Writes `after` over `path` (backup, atomic, mode kept); returns the
-/// backup when there was a file.
-pub(crate) fn write_settings(path: &Path, after: &Value) -> std::io::Result<Option<PathBuf>> {
-    crate::rewrite::replace(path, &render(after))
+/// Writes `after` over `path` (backup in [`backup_dir`], atomic, mode
+/// kept); returns the backup when there was a file.
+pub(crate) fn write_settings(
+    path: &Path,
+    after: &Value,
+    state_dir: &Path,
+) -> std::io::Result<Option<PathBuf>> {
+    let dir = backup_dir(state_dir);
+    crate::rewrite::replace(path, &render(after), crate::rewrite::Backups::In(&dir))
 }
 
 /// The text written for `v`: pretty JSON and a trailing newline.

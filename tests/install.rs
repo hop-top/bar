@@ -39,12 +39,17 @@ fn read(p: &Path) -> Value {
     serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap()
 }
 
-fn backups(dir: &Path) -> usize {
-    std::fs::read_dir(dir)
-        .unwrap()
-        .flatten()
-        .filter(|e| e.file_name().to_string_lossy().contains(".bak-"))
-        .count()
+/// Backups of settings files: in the state dir; none beside `dir`.
+fn backups(t: &Tmp, dir: &Path) -> usize {
+    let count = |d: &Path| {
+        std::fs::read_dir(d).map_or(0, |rd| {
+            rd.flatten()
+                .filter(|e| e.file_name().to_string_lossy().contains(".bak-"))
+                .count()
+        })
+    };
+    assert_eq!(count(dir), 0, "backup beside {}", dir.display());
+    count(&t.path().join("state/backups"))
 }
 
 const EXISTING: &str = r#"{
@@ -85,12 +90,12 @@ fn install_replaces_status_line_keeps_other_keys_and_backs_up() {
     // key order kept
     let keys: Vec<_> = v.as_object().unwrap().keys().cloned().collect();
     assert_eq!(keys, ["theme", "statusLine", "permissions"]);
-    assert_eq!(backups(&t.path().join("claude")), 1);
+    assert_eq!(backups(&t, &t.path().join("claude")), 1);
     // second run: nothing to do, no new backup
     let (r, out) = run(&e, &opts(), false, "");
     r.unwrap();
     assert!(out.contains("already up to date"), "{out}");
-    assert_eq!(backups(&t.path().join("claude")), 1);
+    assert_eq!(backups(&t, &t.path().join("claude")), 1);
 }
 
 #[test]
@@ -121,7 +126,7 @@ fn uninstall_removes_status_line_when_none_was_replaced() {
     let (r, out) = run(&e, &opts(), false, "");
     r.unwrap();
     assert!(out.starts_with("--- /dev/null\n"), "{out}");
-    assert_eq!(backups(&t.path().join("claude")), 0);
+    assert_eq!(backups(&t, &t.path().join("claude")), 0);
     let un = Opts {
         uninstall: true,
         ..opts()
@@ -310,4 +315,23 @@ fn cli_project_and_local_scopes_write_under_cwd() {
     assert!(!t.path().join("claude/settings.json").exists());
     let o = cli(&t, &["--project", "--local", "--yes"]);
     assert_eq!(o.status.code(), Some(2));
+}
+
+#[test]
+fn local_scope_backup_stays_out_of_the_project() {
+    let t = Tmp::new();
+    t.write(
+        "proj/.claude/settings.local.json",
+        "{\"env\": {\"K\": \"v\"}}\n",
+    );
+    let dir = t.path().join("proj/.claude");
+    let e = env(&t, dir.join("settings.local.json"));
+    let (r, out) = run(&e, &opts(), false, "");
+    r.unwrap();
+    assert_eq!(backups(&t, &dir), 1);
+    let store = t.path().join("state/backups");
+    assert!(
+        out.contains(&format!("backup {}", store.display())),
+        "{out}"
+    );
 }

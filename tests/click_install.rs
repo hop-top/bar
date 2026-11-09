@@ -207,19 +207,21 @@ fn applescript_routes_cmd_urls_to_click_run() {
     assert!(s.contains("try"), "a refusal must not raise a dialog");
 }
 
-fn backups(dir: &Path) -> Vec<PathBuf> {
-    let mut v: Vec<PathBuf> = std::fs::read_dir(dir)
-        .unwrap()
-        .map(|e| e.unwrap().path())
-        .filter(|p| {
-            p.file_name()
-                .unwrap()
-                .to_string_lossy()
-                .starts_with("settings.json.bak-")
-        })
-        .collect();
-    v.sort();
-    v
+/// Backups of `c.settings`: in the state dir, none beside the file.
+fn backups(c: &InstallCfg) -> Vec<PathBuf> {
+    let list = |dir: &Path, head: &str| -> Vec<PathBuf> {
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return Vec::new();
+        };
+        let mut v: Vec<PathBuf> = rd
+            .map(|e| e.unwrap().path())
+            .filter(|p| p.file_name().unwrap().to_string_lossy().starts_with(head))
+            .collect();
+        v.sort();
+        v
+    };
+    assert!(list(c.settings.parent().unwrap(), "settings.json.bak-").is_empty());
+    list(&c.state_dir.join("backups"), "settings.json-")
 }
 
 const ORIGINAL: &str = r#"{
@@ -291,7 +293,7 @@ fn install_lists_settings_change_then_writes_with_backup() {
         "command"
     );
 
-    let b = backups(c.settings.parent().unwrap());
+    let b = backups(&c);
     assert_eq!(b.len(), 1);
     assert_eq!(std::fs::read_to_string(&b[0]).unwrap(), ORIGINAL);
     assert!(
@@ -323,7 +325,7 @@ fn install_settings_is_idempotent() {
     r.unwrap();
     assert_eq!(std::fs::read_to_string(&c.settings).unwrap(), once);
     assert!(out.contains("hooks already wired"), "{out}");
-    assert_eq!(backups(c.settings.parent().unwrap()).len(), 1);
+    assert_eq!(backups(&c).len(), 1);
 }
 
 #[test]
@@ -334,7 +336,7 @@ fn install_creates_missing_settings_without_backup() {
     let v: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&c.settings).unwrap()).unwrap();
     assert!(v["hooks"]["PermissionRequest"].is_array());
-    assert!(backups(c.settings.parent().unwrap()).is_empty());
+    assert!(backups(&c).is_empty());
 }
 
 #[test]
@@ -355,7 +357,7 @@ fn install_refuses_invalid_settings_untouched() {
         assert_eq!(std::fs::read_to_string(&c.settings).unwrap(), bad);
         assert!(!c.state_dir.join("click-installed").exists());
     }
-    assert!(backups(c.settings.parent().unwrap()).is_empty());
+    assert!(backups(&c).is_empty());
 }
 
 #[test]
@@ -369,7 +371,7 @@ fn install_dry_run_lists_settings_change_without_writing() {
     assert_eq!(ran, 0);
     assert!(out.contains("add PermissionRequest hook"));
     assert_eq!(std::fs::read_to_string(&c.settings).unwrap(), ORIGINAL);
-    assert!(backups(c.settings.parent().unwrap()).is_empty());
+    assert!(backups(&c).is_empty());
 }
 
 #[test]
@@ -401,7 +403,7 @@ fn install_replans_settings_after_concurrent_edit() {
         serde_json::from_str(&std::fs::read_to_string(&c.settings).unwrap()).unwrap();
     assert_eq!(v["model"], "sonnet", "concurrent edit kept");
     assert!(v["hooks"]["PermissionRequest"].is_array());
-    let b = backups(c.settings.parent().unwrap());
+    let b = backups(&c);
     assert!(std::fs::read_to_string(&b[0]).unwrap().contains("sonnet"));
 }
 
@@ -414,7 +416,7 @@ fn install_backups_are_unique() {
         std::fs::write(&c.settings, ORIGINAL).unwrap();
         install(&c, false).0.unwrap();
     }
-    assert_eq!(backups(c.settings.parent().unwrap()).len(), 3);
+    assert_eq!(backups(&c).len(), 3);
 }
 
 #[test]
@@ -469,7 +471,13 @@ fn hooks_only_writes_hooks_idempotently_and_no_app() {
         );
     }
     assert_eq!(v["hooks"]["Stop"].as_array().unwrap().len(), 2);
-    assert!(!c.app.exists() && !c.state_dir.exists());
+    assert!(!c.app.exists());
+    // the state dir only holds the settings backup
+    let state: Vec<_> = std::fs::read_dir(&c.state_dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert_eq!(state, ["backups"]);
     let first = std::fs::read_to_string(&c.settings).unwrap();
     hop_bar::click::run_hooks_only(&c, false, &mut out).unwrap();
     assert_eq!(std::fs::read_to_string(&c.settings).unwrap(), first);

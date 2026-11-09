@@ -85,5 +85,6 @@ pub fn imported(old: Option<&str>, text: &str, mode: Mode) -> String {
 /// there was a file.
 pub fn write_config(path: &Path, body: &str) -> Result<Option<PathBuf>, String> {
     let target = crate::rewrite::target(path)?;
-    crate::rewrite::replace(&target, body).map_err(|e| format!("{}: {e}", path.display()))
+    crate::rewrite::replace(&target, body, crate::rewrite::Backups::Beside)
+        .map_err(|e| format!("{}: {e}", path.display()))
 }
