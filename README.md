@@ -86,6 +86,8 @@ set right "#{usage[type=5h]} │ #{usage[type=7d]}"
 
 Skins, palettes, icons and multi-line layouts: [configuration](docs/config.md), [gallery](docs/gallery.md).
 
+Compose a config in the browser with a live preview: run `make web`, open `web/index.html` ([web configurator](docs/web.md)).
+
 ## Write a plugin
 
 ```sh

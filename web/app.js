@@ -1,0 +1,187 @@
+// Page wiring: bar.conf text is the state; every change re-renders the
+// preview with bar's renderer (web/pkg, built by `make web`).
+"use strict";
+
+(async () => {
+  const $ = (id) => document.getElementById(id);
+  if (typeof wasm_bindgen === "undefined" || typeof BAR_WASM_BASE64 === "undefined") {
+    $("missing").hidden = false;
+    return;
+  }
+  const bytes = Uint8Array.from(atob(BAR_WASM_BASE64), (c) => c.charCodeAt(0));
+  await wasm_bindgen({ module_or_path: bytes });
+  const bar = wasm_bindgen;
+  const schema = JSON.parse(bar.schema());
+  const STORE = "bar-configurator";
+
+  // A sample statusLine payload; only fields bar reads, resets relative to now.
+  function sampleSession() {
+    const now = Math.floor(Date.now() / 1000);
+    return {
+      session_id: "3b8f2c1e-0000-4000-8000-000000000000",
+      cwd: "/home/you/src/bar",
+      workspace: { current_dir: "/home/you/src/bar", project_dir: "/home/you/src/bar" },
+      model: { id: "claude-opus-4-7", display_name: "Claude Opus 4.7" },
+      version: "2.1.0",
+      output_style: { name: "Explanatory" },
+      effort: { level: "high" },
+      thinking: { enabled: true },
+      fast_mode: false,
+      vim: { mode: "NORMAL" },
+      agent: { name: "reviewer" },
+      cost: { total_cost_usd: 1.84, total_duration_ms: 1620000, total_lines_added: 120, total_lines_removed: 14 },
+      context_window: { used_percentage: 38 },
+      rate_limits: {
+        five_hour: { used_percentage: 10, resets_at: now + 4 * 3600 + 40 * 60 },
+        seven_day: { used_percentage: 12, resets_at: now + 6 * 86400 },
+      },
+    };
+  }
+
+  const ui = {
+    conf: $("conf"),
+    session: $("session"),
+    term: $("term"),
+    columns: $("columns"),
+    issues: $("issues"),
+    status: $("status"),
+  };
+
+  let text = "";
+  let lastInspect = null;
+
+  function store() {
+    try {
+      localStorage.setItem(STORE, JSON.stringify({ text, columns: ui.columns.value }));
+    } catch (_) {
+      /* storage unavailable: nothing kept between visits */
+    }
+  }
+
+  function restore() {
+    try {
+      return JSON.parse(localStorage.getItem(STORE) || "null");
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function renderPreview() {
+    const cols = parseInt(ui.columns.value, 10);
+    $("columns-out").value = cols;
+    const out = bar.render(text, ui.session.value, cols, Date.now() / 1000);
+    const rows = Ansi.toHtml(out).map((h) => `<span class="row">${h || " "}</span>`);
+    ui.term.innerHTML = rows.join("") + `<span class="cols" style="width:${cols}ch"></span>`;
+  }
+
+  function renderIssues() {
+    const report = JSON.parse(bar.check(text));
+    ui.issues.replaceChildren(
+      ...report.issues.map((i) => {
+        const li = document.createElement("li");
+        li.className = i.level;
+        li.textContent = `${i.line ? "line " + i.line + ": " : ""}${i.level}: ${i.message}`;
+        return li;
+      }),
+    );
+    const errors = report.issues.filter((i) => i.level === "error").length;
+    ui.status.textContent = errors ? `${errors} error${errors > 1 ? "s" : ""}` : "valid";
+    ui.status.classList.toggle("bad", errors > 0);
+  }
+
+  function syncControls(inspect) {
+    if (!inspect.ok) return;
+    for (const s of schema.settings) $("set-" + s.key).value = inspect.set[s.key];
+    $("separator").value = inspect.set.separator;
+    $("gap").value = inspect.set.gap;
+  }
+
+  // `from` is the control that made the change; it is not redrawn.
+  function setText(next, from) {
+    text = next;
+    if (from !== ui.conf) ui.conf.value = text;
+    const inspect = JSON.parse(bar.inspect(text));
+    lastInspect = inspect;
+    syncControls(inspect);
+    Compose.update(inspect.ok ? inspect : null);
+    renderIssues();
+    renderPreview();
+    store();
+  }
+
+  // Look controls
+  const settingsBox = $("settings");
+  for (const s of schema.settings) {
+    const sel = document.createElement("select");
+    sel.id = "set-" + s.key;
+    for (const v of s.values) sel.append(new Option(v, v));
+    sel.onchange = () => setText(Conf.set(text, s.key, sel.value));
+    const label = document.createElement("label");
+    label.append(s.key, sel);
+    settingsBox.append(label);
+  }
+  $("separator").onchange = (e) => setText(Conf.set(text, "separator", e.target.value || null));
+  $("gap").onchange = (e) => setText(Conf.set(text, "gap", e.target.value === "" ? null : e.target.value));
+
+  const presetSel = $("preset");
+  for (const p of schema.presets) presetSel.append(new Option(p, p));
+  presetSel.value = "full";
+  $("preset-apply").onclick = () => {
+    const body = bar.preset(presetSel.value);
+    if (body && (text.trim() === "" || confirm(`Replace bar.conf with the ${presetSel.value} preset?`))) setText(body);
+  };
+
+  Compose.init({
+    schema,
+    groups: $("groups"),
+    tabs: $("line-tabs"),
+    off: $("compose-off"),
+    tokens: (src) => JSON.parse(bar.tokens(src)),
+    separator: () => (lastInspect && lastInspect.ok ? lastInspect.set.separator : "│"),
+    onGroup: (side, line, src) => setText(Conf.setGroup(text, side, line, src)),
+  });
+
+  // Source, session, columns
+  ui.conf.oninput = () => setText(ui.conf.value, ui.conf);
+  ui.session.oninput = renderPreview;
+  $("session-reset").onclick = () => {
+    ui.session.value = JSON.stringify(sampleSession(), null, 2);
+    renderPreview();
+  };
+  ui.columns.oninput = () => {
+    renderPreview();
+    store();
+  };
+
+  // Load, copy, download
+  $("load").onchange = async (e) => {
+    const f = e.target.files[0];
+    if (f) setText(await f.text());
+    e.target.value = "";
+  };
+  $("copy").onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      $("copy").textContent = "Copied";
+    } catch (_) {
+      ui.conf.select();
+      $("copy").textContent = "Press ⌘C / Ctrl+C";
+    }
+    setTimeout(() => ($("copy").textContent = "Copy"), 1500);
+  };
+  $("download").onclick = () => {
+    const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+    const a = Object.assign(document.createElement("a"), { href: url, download: "bar.conf" });
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Start: last session's config, else the full preset
+  const saved = restore();
+  if (saved && saved.columns) ui.columns.value = saved.columns;
+  ui.session.value = JSON.stringify(sampleSession(), null, 2);
+  $("app").hidden = false;
+  setText(saved && typeof saved.text === "string" ? saved.text : bar.preset("full"));
+  // countdowns move: redraw once a minute
+  setInterval(renderPreview, 60000);
+})();

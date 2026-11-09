@@ -98,3 +98,22 @@ Binary size: the release `bar` grows by about 390 KB (2.11 MB to 2.50 MB on macO
 - ccstatusline 2.2.34 and claude-powerline 1.32.8 (both 2026-11-06) were under the age gate when the image was pinned, so the newest releases older than 14 days are used.
 - ben depends on `hop.top/uri`, a private module: building the image needs a GitHub token with read access to `hop-top/uri`, passed as a build secret (`scripts/bench`).
 - The rival tools run in the container with the repository snapshot from `git archive`, never the working tree; results leave through one output directory.
+
+## Web configurator (`web/`, not built into bar)
+
+`web/wasm` compiles bar's renderer to WebAssembly for the [web configurator](web.md). It is its own Cargo workspace with its own `Cargo.lock`, seeded from bar's so shared crates resolve to the same versions; the `bar` binary and release archives do not include it.
+
+### wasm-bindgen =0.2.121
+
+- Use: JavaScript bindings for the six exported functions (`render`, `check`, `inspect`, `tokens`, `schema`, `preset`); `wasm-bindgen-cli` at the same version writes the glue in `web/pkg/`.
+- Source: `wasm-bindgen/wasm-bindgen`; crates.io release 2026-05-07, over 14 days old.
+- Adds, in `web/wasm/Cargo.lock` only: `wasm-bindgen-macro`, `wasm-bindgen-macro-support`, `wasm-bindgen-shared` (all 0.2.121), `bumpalo` 3.20.3 (2026-05-22), `cfg-if` 1.0.5 (2026-09-16), `once_cell` 1.21.4 (2026-03-12), `rustversion` 1.0.23 (2026-07-07), `syn` 2.0.119 (2026-07-15); each over 14 days old.
+- Alternatives: hand-written `extern "C"` exports with manual string passing through linear memory (more unsafe code for the same six calls); `wasm-pack` (wraps the same `wasm-bindgen`, adds an npm package layout the page does not need).
+- License: MIT OR Apache-2.0 (the added crates too).
+- `rsx analyze wasm-bindgen/wasm-bindgen`: PASS, score 7.3/10, policy balanced.
+- Advisories: OSV queries for crates.io `wasm-bindgen` 0.2.121 and `bumpalo` 3.20.3 return none.
+
+### Font: Hack Nerd Font Mono (loaded by the page)
+
+- Use: icons and skin separators in the preview. The page uses an installed copy, else fetches `HackNerdFontMono-Regular.ttf` and `-Bold.ttf` from jsDelivr (`cdn.jsdelivr.net/gh/ryanoasis/nerd-fonts@v3.4.0`), else the system monospace font. Nothing is committed or redistributed.
+- Source: Nerd Fonts v3.4.0, released 2025-04-24. Licences as under [Gallery tooling](#font-hack-nerd-font-mono).

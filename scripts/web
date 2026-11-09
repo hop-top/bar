@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Builds the web configurator's renderer: bar's real renderer (web/wasm)
+# compiled to WebAssembly, bound with wasm-bindgen into web/pkg/.
+#
+#   scripts/web           build web/pkg/ (then open web/index.html)
+#   scripts/web --check   build and lint web/wasm for wasm32; skips, exit 0,
+#                         when the toolchain has no wasm32-unknown-unknown
+#
+# Needs the wasm32-unknown-unknown target (`rustup target add
+# wasm32-unknown-unknown`) and, to build, wasm-bindgen-cli at the version
+# web/wasm pins. wasm-opt (binaryen) shrinks the module when on PATH.
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+CRATE="$ROOT/web/wasm"
+PKG="$ROOT/web/pkg"
+TARGET=wasm32-unknown-unknown
+CARGO=${CARGO:-cargo}
+export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$ROOT/target}
+
+has_target() {
+	local dir
+	dir=$(rustc --print target-libdir --target "$TARGET" 2>/dev/null) && [ -d "$dir" ]
+}
+
+if [ "${1:-}" = "--check" ]; then
+	if ! has_target; then
+		echo "web-check: skipped, no $TARGET target for $(rustc --version 2>/dev/null || echo rustc)"
+		exit 0
+	fi
+	"$CARGO" fmt --manifest-path "$CRATE/Cargo.toml" -- --check
+	"$CARGO" clippy --locked --target "$TARGET" --manifest-path "$CRATE/Cargo.toml" -- -D warnings
+	"$CARGO" build --locked --target "$TARGET" --manifest-path "$CRATE/Cargo.toml"
+	exit 0
+fi
+
+if ! has_target; then
+	echo "scripts/web: no $TARGET target; run: rustup target add $TARGET" >&2
+	exit 1
+fi
+want=$(sed -n 's/^wasm-bindgen = "=\(.*\)"/\1/p' "$CRATE/Cargo.toml")
+have=$(wasm-bindgen --version 2>/dev/null | awk '{print $2}' || true)
+if [ "$have" != "$want" ]; then
+	echo "scripts/web: needs wasm-bindgen-cli $want (found: ${have:-none});" \
+		"run: cargo install wasm-bindgen-cli --version $want --locked" >&2
+	exit 1
+fi
+
+"$CARGO" build --locked --release --target "$TARGET" --manifest-path "$CRATE/Cargo.toml"
+wasm="$CARGO_TARGET_DIR/$TARGET/release/bar_web.wasm"
+rm -rf "$PKG"
+wasm-bindgen --target no-modules --no-typescript --out-dir "$PKG" "$wasm"
+if command -v wasm-opt >/dev/null; then
+	wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int \
+		-o "$PKG/bar_web_bg.wasm" "$PKG/bar_web_bg.wasm"
+fi
+
+# The module as base64 in a classic script, so the page also runs from
+# file://, where browsers refuse to fetch a .wasm file.
+python3 - "$PKG/bar_web_bg.wasm" "$PKG/bar_web_wasm.js" <<'PY'
+import base64, gzip, sys
+raw = open(sys.argv[1], "rb").read()
+with open(sys.argv[2], "w") as f:
+    f.write("var BAR_WASM_BASE64 = \"%s\";\n" % base64.b64encode(raw).decode())
+print("web/pkg: wasm %d bytes (%d gzipped)" % (len(raw), len(gzip.compress(raw, 9))))
+PY

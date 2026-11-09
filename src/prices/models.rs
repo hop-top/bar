@@ -152,7 +152,7 @@ fn empty() -> Snapshot {
 
 /// `models.json` in bar's data dir (`XDG_DATA_HOME/bar`).
 pub fn user_path() -> PathBuf {
-    hop_top_kit::xdg::raw_data_dir("bar").join("models.json")
+    crate::platform::dirs::data().join("models.json")
 }
 
 pub struct Active {

@@ -293,7 +293,7 @@ fn init(m: &ArgMatches) {
         name,
         &|k| std::env::var(k).ok(),
         &home,
-        &hop_top_kit::xdg::raw_config_dir("bar"),
+        &hop_bar::platform::dirs::config(),
     );
     match r {
         Ok(p) => println!("wrote {} (preset {name})", p.display()),

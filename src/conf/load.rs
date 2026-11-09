@@ -72,7 +72,7 @@ pub fn find_path_default() -> Option<PathBuf> {
     find_path(
         &|k| std::env::var(k).ok(),
         &home,
-        &hop_top_kit::xdg::raw_config_dir("bar"),
+        &crate::platform::dirs::config(),
     )
 }
 
@@ -82,7 +82,7 @@ pub fn load(cwd: Option<&Path>) -> LoadResult {
     load_layered(
         &|k| std::env::var(k).ok(),
         &home,
-        &hop_top_kit::xdg::raw_config_dir("bar"),
+        &crate::platform::dirs::config(),
         cwd,
     )
 }

@@ -30,7 +30,7 @@ pub fn state_dir() -> PathBuf {
     std::env::var_os("BAR_STATE_DIR")
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)
-        .unwrap_or_else(|| hop_top_kit::xdg::raw_state_dir("bar"))
+        .unwrap_or_else(crate::platform::dirs::state)
 }
 
 /// Claude Code's config dir: `CLAUDE_CONFIG_DIR`, else `~/.claude`.
