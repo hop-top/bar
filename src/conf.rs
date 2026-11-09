@@ -104,6 +104,8 @@ pub struct Config {
     /// `set subagent`: layout of a `bar subagent` row; `None` uses
     /// [`crate::subagent::DEFAULT_LAYOUT`].
     pub subagent: Option<String>,
+    /// `set subagent-hide`: statuses whose rows are hidden (lower case).
+    pub subagent_hide: Vec<String>,
     pub separator: String,
     pub gap: usize,
     pub wrap: Wrap,
@@ -147,6 +149,7 @@ impl Default for Config {
             right: String::new(),
             more_lines: Default::default(),
             subagent: None,
+            subagent_hide: Vec::new(),
             separator: "│".into(),
             gap: 3,
             wrap: Wrap::Off,

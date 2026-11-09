@@ -420,6 +420,17 @@ impl Checker<'_> {
                 Some("set") if t.len() == 3 && matches!(layout_key(&t[1]), Some(Ok(_))) => {
                     self.layout(&t[2], i + 1);
                 }
+                Some("set") if t.len() == 3 && t[1] == "subagent-hide" => {
+                    for s in t[2].split(',').map(|s| s.trim().to_ascii_lowercase()) {
+                        if !s.is_empty() && !crate::subagent::STATUSES.contains(&s.as_str()) {
+                            let msg = format!(
+                                "subagent-hide: `{s}` is not a status Claude Code documents ({})",
+                                crate::subagent::STATUSES.join(", ")
+                            );
+                            self.add(Level::Warning, i + 1, msg);
+                        }
+                    }
+                }
                 Some("set") if t.len() == 3 && t[1] == "subagent" => {
                     self.row = true;
                     self.layout(&t[2], i + 1);

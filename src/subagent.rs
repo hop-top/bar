@@ -11,6 +11,9 @@ use serde_json::{json, Value};
 /// Layout of a row when the config sets no `subagent`.
 pub const DEFAULT_LAYOUT: &str = "#{task.status} #{task.name[max=24]} │ #{task.label[max=50]} │ #{model}#{effort} │ #{task.tokens} │ #{task.elapsed}";
 
+/// The task statuses Claude Code documents.
+pub const STATUSES: [&str; 4] = ["running", "completed", "failed", "killed"];
+
 /// Most rows drawn; Claude Code shows far fewer.
 pub const MAX_TASKS: usize = 64;
 /// Token samples kept per task (Claude Code sends up to 16).
@@ -205,7 +208,8 @@ pub fn session(p: &Payload, t: &Task) -> Session {
     }
 }
 
-/// `(id, content)` per task whose row renders non-empty, in input order.
+/// `(id, content)` per task whose row renders non-empty, and `(id, "")`
+/// per task `set subagent-hide` hides, in input order.
 pub fn rows(
     p: &Payload,
     config: &Config,
@@ -214,12 +218,25 @@ pub fn rows(
     cache: Option<&Cache>,
 ) -> Vec<(String, String)> {
     let layout = config.subagent.as_deref().unwrap_or(DEFAULT_LAYOUT);
-    if layout.is_empty() {
-        return Vec::new();
-    }
     p.tasks
         .iter()
         .filter_map(|t| {
+            let status = if t.status.is_empty() {
+                "running"
+            } else {
+                &t.status
+            };
+            if config
+                .subagent_hide
+                .iter()
+                .any(|h| h.eq_ignore_ascii_case(status))
+            {
+                // an empty content hides the row
+                return Some((t.id.clone(), String::new()));
+            }
+            if layout.is_empty() {
+                return None;
+            }
             let s = session(p, t);
             let row = crate::render::render_row(&s, config, layout, p.columns, now, runner, cache);
             (!row.is_empty()).then(|| (t.id.clone(), row))

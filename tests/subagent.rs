@@ -362,3 +362,36 @@ fn a_whole_number_effort_has_no_fraction() {
     assert_eq!(e("2.5"), "2.5");
     assert_eq!(e("-1"), "", "not a budget");
 }
+
+#[test]
+fn subagent_hide_empties_matching_rows() {
+    let p = subagent::parse(&input());
+    let r = rows(&p, &cfg("set subagent-hide completed,killed,failed\n"));
+    let got: Vec<(&str, bool)> = r
+        .iter()
+        .map(|(id, c)| (id.as_str(), c.is_empty()))
+        .collect();
+    assert_eq!(got, [("a1", false), ("a2", true), ("a3", true)]);
+    // hidden even when the layout leaves rows to Claude Code
+    let r = rows(&p, &cfg("set subagent \"\"\nset subagent-hide completed\n"));
+    assert_eq!(r, [("a2".to_string(), String::new())]);
+    let out = subagent::lines(&r);
+    assert_eq!(out, "{\"id\":\"a2\",\"content\":\"\"}\n");
+}
+
+#[test]
+fn subagent_hide_values() {
+    let c = cfg("set subagent-hide \" Completed , killed\"\n");
+    assert_eq!(c.subagent_hide, ["completed", "killed"]);
+    assert!(conf::parse("set subagent-hide \"\"\n")
+        .unwrap()
+        .subagent_hide
+        .is_empty());
+    for bad in [
+        "set subagent-hide \"a b\"",
+        "set subagent-hide x,,y",
+        "set subagent-hide \"don't\"",
+    ] {
+        assert!(conf::parse(bad).is_err(), "{bad}");
+    }
+}

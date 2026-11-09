@@ -59,7 +59,7 @@ A project file comes with the repository, so what it may do is set in your confi
 
 | Directive | Form |
 |-----------|------|
-| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-4) `subagent separator gap wrap refresh icons icon-width skin skin-glyphs palette claude-dir compact-at project-config update-check color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
+| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-4) `subagent subagent-hide separator gap wrap refresh icons icon-width skin skin-glyphs palette claude-dir compact-at project-config update-check color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
 | `default` | `default <placeholder> key=value ...` |
 | `account` | `account "<glob>" <label> <color>` |
 | `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%`; see [Rules](#rules) |
@@ -71,6 +71,7 @@ Quote values with spaces (double quotes; a value is one token). `#` outside quot
 |---|---|
 | `left`, `center`, `right` | Layout of line 1; `left@N`, `center@N`, `right@N` for lines 2-4. See [Lines and wrapping](#lines-and-wrapping) |
 | `subagent` | Layout of each subagent row below the prompt; see [Subagent rows](#subagent-rows) |
+| `subagent-hide` | Statuses whose subagent rows are hidden, a comma list (`completed,failed,killed`); default none. See [Subagent rows](#subagent-rows) |
 | `separator` | Changes only where segments split (the text a layout is cut at). Output between segments stays ` │ `. Default `│` |
 | `gap` | Fewest spaces between the left and right groups (and around a centred group) on one row, default `3`; with less room the groups are joined by ` │ ` or the centre group moves to its own row. See [Lines and wrapping](#lines-and-wrapping) |
 | `wrap` | `off` (default) or `on`; see [Lines and wrapping](#lines-and-wrapping). `auto` is read as `off` |
@@ -659,6 +660,8 @@ set subagent "#{task.status} #{task.name[max=24]} │ #{task.label[max=50]} │ 
 ```
 
 which reads `● Explore │ Reading src/conf.rs │ Sonnet 5 │ 41.3k │ 1m`. `set subagent ""` leaves every row to Claude Code.
+
+`set subagent-hide completed,failed,killed` hides the rows of subagents in those states (bar answers them with an empty `content`, which Claude Code reads as hide), with or without a `subagent` layout. The value is a comma list of statuses, any case; an empty value hides none. Claude Code documents `running`, `completed`, `failed` and `killed`; `bar check` warns about any other.
 
 Row placeholders (they render nothing in the status line; `bar check` reports them there):
 
