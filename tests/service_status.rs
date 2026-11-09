@@ -466,3 +466,23 @@ mod fake_curl {
         assert!(!cache.path_for(status::cache_key(false)).exists());
     }
 }
+
+#[test]
+fn incident_times_with_a_zone_offset() {
+    // Statuspage writes times with the page's zone offset
+    let utc = iso(NOW - 2 * H).replace(".000Z", "");
+    let (date, time) = utc.split_once('T').unwrap();
+    let hh: i64 = time[..2].parse().unwrap();
+    let shifted = format!("{date}T{:02}{}.000-00:00", hh, &time[2..]);
+    let east = format!("{date}T{:02}{}.000+02:00", (hh + 2) % 24, &time[2..]);
+    for start in [shifted, east] {
+        if start.contains("+02:00") && hh + 2 >= 24 {
+            continue;
+        }
+        let inc = format!(
+            r#"{{"name":"x","impact":"minor","started_at":"{start}","resolved_at":null,"components":[]}}"#
+        );
+        let s = snap("minor", &COMPS, &[inc]);
+        assert_eq!(s.incidents[0].start, NOW - 2 * H, "{start}");
+    }
+}

@@ -172,27 +172,7 @@ fn timestamp(v: &Value) -> Option<i64> {
     if let Some(n) = v.as_i64() {
         return Some(n);
     }
-    let s = v.as_str()?;
-    let base = crate::transcript::parse_ts(s)?;
-    let tail = &s[19..];
-    let tail = tail.trim_start_matches(|c: char| c == '.' || c.is_ascii_digit());
-    let off = match tail.as_bytes() {
-        [] | [b'Z'] => 0,
-        [sign @ (b'+' | b'-'), h1, h2, b':', m1, m2] => {
-            let d = |a: &u8, b: &u8| -> Option<i64> {
-                (a.is_ascii_digit() && b.is_ascii_digit())
-                    .then(|| i64::from((a - b'0') * 10 + (b - b'0')))
-            };
-            let o = d(h1, h2)? * 3600 + d(m1, m2)? * 60;
-            if *sign == b'+' {
-                o
-            } else {
-                -o
-            }
-        }
-        _ => return None,
-    };
-    Some(base - off)
+    tz::rfc3339(v.as_str()?)
 }
 
 /// A model name as kept: lowercase letters, digits, spaces, `.` and `-`.
