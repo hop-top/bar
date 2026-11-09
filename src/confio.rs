@@ -73,6 +73,41 @@ pub fn effective(user: Option<(&Path, &str)>, project: Option<(&Path, &str)>) ->
     }
 }
 
+/// Lines of `text` worth a look before importing it, with their 1-based
+/// numbers and what they do: `%…%` values (run a command or read an
+/// environment variable), `plugin` lines and `set project-config`. Each
+/// description is shown through [`crate::diff::visible`].
+pub fn notable(text: &str) -> Vec<(usize, String)> {
+    let mut out = Vec::new();
+    for (i, raw) in text.lines().enumerate() {
+        let Ok(t) = tokenize(raw) else { continue };
+        let what = match t.first().map(String::as_str) {
+            Some("plugin") => Some(format!("{} (runs a plugin)", t.join(" "))),
+            Some("set") if t.get(1).map(String::as_str) == Some("project-config") => {
+                Some(format!("{} (what project configs may do)", t.join(" ")))
+            }
+            _ => {
+                let vals: Vec<&str> = t
+                    .iter()
+                    .skip(1)
+                    .map(String::as_str)
+                    .filter(|v| crate::expand::has_expansion(v))
+                    .collect();
+                (!vals.is_empty()).then(|| {
+                    format!(
+                        "{} (runs a command or reads the environment)",
+                        vals.join(" ")
+                    )
+                })
+            }
+        };
+        if let Some(w) = what {
+            out.push((i + 1, crate::diff::visible(&w)));
+        }
+    }
+    out
+}
+
 /// How an import changes the user config.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {

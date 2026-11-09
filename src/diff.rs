@@ -60,8 +60,28 @@ fn script(a: &[&str], b: &[&str]) -> Vec<(Op, usize)> {
     out
 }
 
+/// `s` with what a terminal would act on instead of print made visible:
+/// C0 controls but tab, and DEL, as `\x1b`; C1 controls and bidi
+/// overrides as `\u{9b}`. A diff of a file shown before a write cannot
+/// then hide or redraw lines.
+pub fn visible(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\t' => out.push(c),
+            '\0'..='\x1f' | '\x7f' => out.push_str(&format!("\\x{:02x}", c as u32)),
+            '\u{80}'..='\u{9f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' => {
+                out.push_str(&format!("\\u{{{:x}}}", c as u32))
+            }
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 /// Unified diff of `old` to `new` with three lines of context, headed
-/// `--- from` / `+++ to`; empty when they have the same lines.
+/// `--- from` / `+++ to`; empty when they have the same lines. Every line
+/// and name is shown through [`visible`].
 pub fn unified(old: &str, new: &str, from: &str, to: &str) -> String {
     let a: Vec<&str> = old.lines().collect();
     let b: Vec<&str> = new.lines().collect();
@@ -71,7 +91,7 @@ pub fn unified(old: &str, new: &str, from: &str, to: &str) -> String {
         return String::new();
     }
     const CTX: usize = 3;
-    let mut out = format!("--- {from}\n+++ {to}\n");
+    let mut out = format!("--- {}\n+++ {}\n", visible(from), visible(to));
     let mut k = 0;
     while k < changed.len() {
         let start = changed[k].saturating_sub(CTX);
@@ -109,7 +129,7 @@ pub fn unified(old: &str, new: &str, from: &str, to: &str) -> String {
                 Op::Add => ('+', b[i]),
             };
             out.push(mark);
-            out.push_str(line);
+            out.push_str(&visible(line));
             out.push('\n');
         }
     }
@@ -118,7 +138,7 @@ pub fn unified(old: &str, new: &str, from: &str, to: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{unified, MAX_CELLS};
+    use super::{unified, visible, MAX_CELLS};
 
     #[test]
     fn equal_texts_have_no_diff() {
@@ -171,5 +191,17 @@ mod tests {
         );
         assert_eq!(d.matches("\n-").count(), n);
         assert_eq!(d.matches("\n+").count(), n + 1);
+    }
+
+    #[test]
+    fn control_characters_are_shown_escaped() {
+        let d = unified("a\n", "a\rset gap 1\x1b[2K\u{9b}x\tb\n", "f\x1b", "f");
+        assert!(
+            !d.contains('\r') && !d.contains('\x1b') && !d.contains('\u{9b}'),
+            "{d:?}"
+        );
+        assert!(d.contains("+a\\x0dset gap 1\\x1b[2K\\u{9b}x\tb\n"), "{d}");
+        assert!(d.starts_with("--- f\\x1b\n"), "{d}");
+        assert_eq!(visible("plain ünï\tcode"), "plain ünï\tcode");
     }
 }
