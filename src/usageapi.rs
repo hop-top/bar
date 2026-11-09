@@ -28,6 +28,16 @@ pub const RATE_LIMIT_WAIT: i64 = 600;
 const MAX_WAIT: i64 = 86_400;
 /// Wait after the token is refused (401, 403), seconds.
 const AUTH_WAIT: i64 = 900;
+/// Wait after the first failed fetch, doubling with each one after it.
+const FAIL_WAIT: i64 = 300;
+/// Longest wait after failures, seconds.
+const MAX_FAIL_WAIT: i64 = 3600;
+
+/// Wait after `fails` failed fetches in a row (at least 1).
+pub fn fail_wait(fails: u32) -> i64 {
+    let doublings = fails.saturating_sub(1).min(12);
+    (FAIL_WAIT << doublings).min(MAX_FAIL_WAIT)
+}
 /// Older results are not shown, seconds.
 pub const STALE: i64 = 3600;
 /// Far larger than the endpoint's JSON.
@@ -65,8 +75,10 @@ pub struct Data {
     /// Extra usage used when the day began, as far as seen; `None` until
     /// a fetch on the day before was seen.
     pub base: Option<i64>,
-    /// No request before this time (rate limit or refused token).
+    /// No request before this time (rate limit, refused token, failures).
     pub retry_at: i64,
+    /// Failed fetches in a row (server errors, curl failures, bad JSON).
+    pub fails: u32,
 }
 
 impl Data {
@@ -81,7 +93,8 @@ impl Data {
                    "util": e.util, "currency": e.currency})
         });
         json!({"v": 1, "at": self.at, "models": models, "extra": extra,
-               "day": self.day, "base": self.base, "retry_at": self.retry_at})
+               "day": self.day, "base": self.base, "retry_at": self.retry_at,
+               "fails": self.fails})
         .to_string()
     }
 
@@ -115,6 +128,10 @@ impl Data {
             day: v["day"].as_i64().unwrap_or(0),
             base: v["base"].as_i64(),
             retry_at: v["retry_at"].as_i64().unwrap_or(0),
+            fails: v["fails"]
+                .as_u64()
+                .and_then(|n| u32::try_from(n).ok())
+                .unwrap_or(0),
         })
     }
 
@@ -281,9 +298,11 @@ pub fn merge(prev: Option<&Data>, mut fresh: Data, now: i64, tz: Tz) -> Data {
     fresh
 }
 
-/// Body of the background job: the new cache value, or `None` to keep
-/// the old one and back off. `prev` is the cache file of the last value.
-/// A 429 or a refused token keeps the last numbers and sets `retry_at`.
+/// Body of the background job: the new cache value, or `None` (no token)
+/// to keep the old one and retry after the cache's 60 s backoff. `prev` is
+/// the cache file of the last value. A 429, a refused token or a failed
+/// fetch keeps the last numbers and sets `retry_at`; failures in a row
+/// wait 5 minutes, doubling up to an hour.
 pub fn fetch(dir: &Path, hashed: bool, prev: &Path, now: i64, limit: Duration) -> Option<String> {
     let old = std::fs::read_to_string(prev)
         .ok()
@@ -302,15 +321,24 @@ pub fn fetch(dir: &Path, hashed: bool, prev: &Path, now: i64, limit: Duration) -
     }
     let r = crate::net::request(URL, &HEADERS, &config, left, MAX_BYTES);
     drop(config);
-    let r = r.ok()?;
-    let wait = |secs: i64| {
+    let wait = |secs: i64, failed: bool| {
         let mut d = old.clone().unwrap_or_default();
         d.retry_at = now + secs;
+        if failed {
+            d.fails = d.fails.saturating_add(1);
+            d.retry_at = now + fail_wait(d.fails);
+        }
         Some(d.to_json())
+    };
+    let failed = || wait(0, true);
+    let Ok(r) = r else {
+        return failed();
     };
     match r.status {
         200 => {
-            let (models, extra) = parse(&r.body)?;
+            let Some((models, extra)) = parse(&r.body) else {
+                return failed();
+            };
             let fresh = Data {
                 models,
                 extra,
@@ -323,9 +351,10 @@ pub fn fetch(dir: &Path, hashed: bool, prev: &Path, now: i64, limit: Duration) -
                 .and_then(|s| i64::try_from(s).ok())
                 .filter(|s| *s > 0)
                 .map_or(RATE_LIMIT_WAIT, |s| s.min(MAX_WAIT)),
+            false,
         ),
-        401 | 403 => wait(AUTH_WAIT),
-        _ => None,
+        401 | 403 => wait(AUTH_WAIT, false),
+        _ => failed(),
     }
 }
 
@@ -400,6 +429,7 @@ mod tests {
             day: 3,
             base: Some(1000),
             retry_at: 0,
+            fails: 2,
         };
         assert_eq!(Data::from_json(&d.to_json()), Some(d));
         assert_eq!(Data::from_json("{}"), None);
