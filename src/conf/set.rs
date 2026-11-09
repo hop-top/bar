@@ -31,6 +31,7 @@ pub(super) fn apply_set(c: &mut Config, key: &str, val: &str) -> Result<(), Stri
     }
     match key {
         "subagent" => c.subagent = Some(val.into()),
+        "subagent-hide" => c.subagent_hide = statuses(val)?,
         "separator" => c.separator = val.into(),
         "gap" => c.gap = val.parse().map_err(|_| format!("invalid gap `{val}`"))?,
         "wrap" => {
@@ -110,6 +111,22 @@ pub(super) fn apply_set(c: &mut Config, key: &str, val: &str) -> Result<(), Stri
         _ => return Err(format!("unknown set key `{key}`")),
     }
     Ok(())
+}
+
+/// `completed,failed`: a comma list of statuses, lower-cased; empty for
+/// an empty value.
+fn statuses(val: &str) -> Result<Vec<String>, String> {
+    if val.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    val.split(',')
+        .map(|s| {
+            let s = s.trim().to_ascii_lowercase();
+            let ok = !s.is_empty() && s.bytes().all(|b| b.is_ascii_lowercase() || b == b'_');
+            ok.then_some(s)
+                .ok_or_else(|| format!("invalid subagent-hide `{val}` (comma list of statuses)"))
+        })
+        .collect()
 }
 
 pub(super) fn apply_price(c: &mut Config, a: &[String]) -> Result<(), String> {

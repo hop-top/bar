@@ -61,3 +61,17 @@ fn project_subagent_layout_is_safe_without_commands() {
     assert_eq!(l.dropped.len(), 1);
     assert_eq!(l.dropped[0].line, 2);
 }
+
+#[test]
+fn check_warns_on_undocumented_hide_statuses() {
+    let r = check::check_text("set subagent-hide completed,done\n", None, &[]);
+    let w: Vec<(Level, String)> = r.issues.into_iter().map(|i| (i.level, i.message)).collect();
+    assert_eq!(
+        w,
+        [(
+            Level::Warning,
+            "subagent-hide: `done` is not a status Claude Code documents (running, completed, failed, killed)".to_string()
+        )]
+    );
+    assert!(check::check_text("set subagent-hide a,,b\n", None, &[]).has_errors());
+}
