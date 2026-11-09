@@ -9,7 +9,7 @@ use crate::session::Session;
 use serde_json::{json, Value};
 
 /// Layout of a row when the config sets no `subagent`.
-pub const DEFAULT_LAYOUT: &str = "#{task.status} #{task.name} │ #{task.label[max=50]} │ #{model}#{effort} │ #{task.tokens} │ #{task.elapsed}";
+pub const DEFAULT_LAYOUT: &str = "#{task.status} #{task.name[max=24]} │ #{task.label[max=50]} │ #{model}#{effort} │ #{task.tokens} │ #{task.elapsed}";
 
 /// Most rows drawn; Claude Code shows far fewer.
 pub const MAX_TASKS: usize = 64;

@@ -655,7 +655,7 @@ While Claude runs [subagents](https://code.claude.com/docs/en/sub-agents), Claud
 `set subagent` is the layout of one row, one group; unset, it is
 
 ```text
-set subagent "#{task.status} #{task.name} │ #{task.label[max=50]} │ #{model}#{effort} │ #{task.tokens} │ #{task.elapsed}"
+set subagent "#{task.status} #{task.name[max=24]} │ #{task.label[max=50]} │ #{model}#{effort} │ #{task.tokens} │ #{task.elapsed}"
 ```
 
 which reads `● Explore │ Reading src/conf.rs │ Sonnet 5 │ 41.3k │ 1m`. `set subagent ""` leaves every row to Claude Code.
@@ -685,7 +685,7 @@ Core placeholders read the subagent, not the main session:
 
 Plugins are not drawn in a row (`bar check` reports them), and click links are off.
 
-Each row is laid out like the status line, with the same skin, palette, icons and separator: one left group, at most one row. Claude Code sends the usable width of a row (`columns`); while the row is wider, its last segment is dropped, but never its first. A row that renders empty keeps Claude Code's own text, and so does every row when the config has an error.
+Each row is laid out like the status line, with the same skin, palette, icons and separator: one left group, at most one row. Claude Code sends the usable width of a row (`columns`); while the row is wider, its last segment is dropped, and a first segment that is still too wide is cut to the width, ending in `…` (colours and links kept, and closed). A row that renders empty keeps Claude Code's own text, and so does every row when the config has an error.
 
 `bar subagent` reads at most 4 MiB of input and draws at most 64 rows. Claude Code runs it on each refresh of the agent panel. It runs no process in the foreground: the default layout reads only the input; git placeholders in a row read git's files and the background cache, and where `bar render` would run `git` itself (a repository the file reader does not support) a row shows no repository, branch or PRs instead. The [project config](#project-config) is found from the session's directory, as for `bar render`; under `safe` a project `set subagent` may not hold `%…%` values.
 
