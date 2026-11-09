@@ -156,3 +156,43 @@ fn a_block_that_may_have_opened_before_the_kept_hours_is_uncertain() {
     assert_eq!(with_hours(&[H - 2, H]).block(NOW), Some((H - 2, false)));
     assert_eq!(with_hours(&every3).block_start(NOW), Some(H - 4));
 }
+
+/// The state file of `fx`, as JSON.
+fn state_file(fx: &Fx) -> PathBuf {
+    let dir = fx.0.join("state/spendhist");
+    let mut files: Vec<PathBuf> = fs::read_dir(&dir)
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .collect();
+    assert_eq!(files.len(), 1, "{files:?}");
+    files.pop().unwrap()
+}
+
+#[test]
+fn a_state_from_before_hourly_totals_fills_them_without_double_counting() {
+    let fx = Fx::new("upgrade");
+    // one line with an id, one without (not deduplicated by hash)
+    fx.append(
+        &(line("a", "2026-11-07T10:00:00Z", 1_000_000)
+            + "{\"timestamp\":\"2026-11-07T11:00:00Z\",\"message\":{\"model\":\"claude-opus-4-5-20251101\",\"usage\":{\"input_tokens\":2000000,\"output_tokens\":0}}}\n"),
+    );
+    let first = fx.run(NOW);
+    let day = first.days["2026-11-07"][OPUS][0];
+    assert_eq!(day, 3_000_000);
+    // the state as an older bar wrote it: no `hours`
+    let p = state_file(&fx);
+    let mut v: serde_json::Value = serde_json::from_str(&fs::read_to_string(&p).unwrap()).unwrap();
+    v.as_object_mut().unwrap().remove("hours");
+    fs::write(&p, v.to_string()).unwrap();
+    // a new line after the upgrade
+    fx.append(&line("c", "2026-11-07T11:30:00Z", 4_000_000));
+    let s = fx.run(NOW);
+    assert_eq!(s.days["2026-11-07"][OPUS][0], 7_000_000);
+    assert_eq!(s.hours[&(H - 2)][OPUS][0], 1_000_000);
+    assert_eq!(s.hours[&(H - 1)][OPUS][0], 6_000_000);
+    // and once filled, it stays filled without another pass
+    let again = fx.run(NOW);
+    assert_eq!(again.hours, s.hours);
+    assert_eq!(again.days, s.days);
+}
