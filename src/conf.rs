@@ -32,7 +32,7 @@ pub enum Wrap {
 pub const MAX_LINES: usize = 64;
 
 /// Most rows a render prints unless `set max-rows` says otherwise.
-pub const DEFAULT_MAX_ROWS: usize = 16;
+pub const DEFAULT_MAX_ROWS: usize = 4;
 
 /// The three groups of one status line.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

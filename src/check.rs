@@ -200,6 +200,8 @@ fn val_ok(v: Val, raw: &str) -> bool {
 struct Checker<'a> {
     dirs: &'a [PathBuf],
     icon_width: usize,
+    /// `set max-rows` of the config as applied.
+    max_rows: usize,
     defaults: BTreeMap<String, Options>,
     gh_missing: bool,
     gh_warned: Cell<bool>,
@@ -417,6 +419,21 @@ impl Checker<'_> {
 }
 
 impl Checker<'_> {
+    /// A layout for line `n` past `set max-rows`: it prints only when fewer
+    /// rows come before it.
+    fn past_max_rows(&mut self, key: &str, n: usize, src: &str, line: usize) {
+        if n > self.max_rows && !src.trim().is_empty() {
+            let max = self.max_rows;
+            self.add(
+                Level::Warning,
+                line,
+                format!(
+                    "`{key}` is line {n}, past max-rows {max}: rows after the first {max} are dropped, so it shows only when lines before it render empty (`set max-rows {n}` to keep it)"
+                ),
+            );
+        }
+    }
+
     /// Lints every line of `text`, a config file's contents.
     fn lint(&mut self, text: &str) {
         for (i, raw) in text.lines().enumerate() {
@@ -425,6 +442,9 @@ impl Checker<'_> {
                 // a bad line number is already a parse error
                 Some("set") if t.len() == 3 && matches!(layout_key(&t[1]), Some(Ok(_))) => {
                     self.layout(&t[2], i + 1);
+                    if let Some(Ok((_, n))) = layout_key(&t[1]) {
+                        self.past_max_rows(&t[1], n, &t[2], i + 1);
+                    }
                 }
                 Some("set") if t.len() == 3 && t[1] == "subagent-hide" => {
                     for s in t[2].split(',').map(|s| s.trim().to_ascii_lowercase()) {
@@ -480,6 +500,7 @@ pub fn check_layers(user: Option<Source>, project: Option<Source>, dirs: &[PathB
     let mut c = Checker {
         dirs,
         icon_width: 1,
+        max_rows: crate::conf::DEFAULT_MAX_ROWS,
         defaults: BTreeMap::new(),
         gh_missing: !dirs
             .iter()
@@ -512,6 +533,7 @@ pub fn check_layers(user: Option<Source>, project: Option<Source>, dirs: &[PathB
     });
     if let Ok(cfg) = &parsed.config {
         c.icon_width = cfg.icon_width;
+        c.max_rows = cfg.max_rows;
         c.defaults = cfg.defaults.clone();
     }
     for e in parsed.config.err().unwrap_or_default() {

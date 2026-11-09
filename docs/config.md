@@ -74,7 +74,7 @@ Quote values with spaces (double quotes; a value is one token). `#` outside quot
 | `subagent-hide` | Statuses whose subagent rows are hidden, a comma list (`completed,failed,killed`); default none. See [Subagent rows](#subagent-rows) |
 | `separator` | Changes only where segments split (the text a layout is cut at). Output between segments stays ` │ `. Default `│` |
 | `gap` | Fewest spaces between the left and right groups (and around a centred group) on one row, default `3`; with less room the groups are joined by ` │ ` or the centre group moves to its own row. See [Lines and wrapping](#lines-and-wrapping) |
-| `max-rows` | most rows a render prints, 1-64 (default 16); see [Lines and wrapping](#lines-and-wrapping) |
+| `max-rows` | Most rows a render prints, 1-64, default `4`; see [Lines and wrapping](#lines-and-wrapping) |
 | `wrap` | `off` (default) or `on`; see [Lines and wrapping](#lines-and-wrapping). `auto` is read as `off` |
 | `refresh` | Default ttl floor for plugins, default `5s`. A number with a unit: `s`, `m`, `h` or `d` (`30s`, `2m`). `gh` lists use 120 s and `%cmd%` values 1 h, whatever this says |
 | `icons` | `none` (default, output unchanged), `nerdfont` or `emoji`. See [Icons](#icons) |
@@ -695,7 +695,7 @@ Each line is laid out on its own, with the same `COLUMNS`, margin, gap and skin,
 - Wrapped rows are left-aligned (centre and right alignment are dropped) and keep the skin: backgrounds keep cycling, and Powerline arrows point right.
 - Without `COLUMNS` nothing is measured, so wrapping never starts.
 
-A render prints at most `max-rows` rows (default 16, `set max-rows N`, N from 1 to 64), all lines and wrapped rows together. Rows past the limit are dropped. With `wrap on`, the last allowed row is filled like any other, whole segments while they fit, and the segments after it are dropped; segments are never cut. The limit only guards against a runaway config: Claude Code states no maximum for the number of lines a status line prints, and each extra row takes a row of the terminal.
+A render prints at most `max-rows` rows (default 4, `set max-rows N`, N from 1 to 64), all lines and wrapped rows together. Rows past the limit are dropped, so a config with more than four lines, or a wrapped line that needs more rows, sets `max-rows` to match; `bar check` warns about a `left@N`, `center@N` or `right@N` with N above `max-rows`. With `wrap on`, the last allowed row is filled like any other, whole segments while they fit, and the segments after it are dropped; segments are never cut. Claude Code states no maximum for the number of lines a status line prints, and each extra row takes a row of the terminal.
 
 ### Subagent rows
 

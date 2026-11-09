@@ -112,15 +112,15 @@ fn many_lines_print_every_row_up_to_max_rows() {
     for n in 1..=12 {
         src.push_str(&format!("set left@{n} \"l{n}\"\n"));
     }
-    let got = rows(&src, Some(80));
+    let got = rows(&format!("{src}set max-rows 16\n"), Some(80));
     assert_eq!(got.len(), 12);
     assert_eq!(got[11], "l12");
-    // the default cap is 16 rows
+    // the default cap is 4 rows
     let mut src = String::new();
     for n in 1..=30 {
         src.push_str(&format!("set left@{n} \"l{n}\"\n"));
     }
-    assert_eq!(rows(&src, Some(80)).len(), 16);
+    assert_eq!(rows(&src, Some(80)), ["l1", "l2", "l3", "l4"]);
     assert_eq!(rows(&format!("{src}set max-rows 20\n"), Some(80)).len(), 20);
     assert_eq!(
         rows(&format!("{src}set max-rows 2\n"), Some(80)),
@@ -130,7 +130,7 @@ fn many_lines_print_every_row_up_to_max_rows() {
 
 #[test]
 fn max_rows_parses_within_bounds() {
-    assert_eq!(Config::default().max_rows, 16);
+    assert_eq!(Config::default().max_rows, 4);
     assert_eq!(cfg("set max-rows 64").max_rows, 64);
     for bad in ["0", "65", "x", "-1", ""] {
         assert!(parse(&format!("set max-rows {bad}")).is_err(), "{bad:?}");
@@ -140,7 +140,10 @@ fn max_rows_parses_within_bounds() {
 #[test]
 fn wrap_on_flows_past_four_rows() {
     let segs: Vec<String> = (0..10).map(|i| format!("s{i:02}")).collect();
-    let src = format!("set left \"{}\"\nset wrap on\n", segs.join(" │ "));
+    let src = format!(
+        "set left \"{}\"\nset wrap on\nset max-rows 16\n",
+        segs.join(" │ ")
+    );
     let got = rows(&src, Some(8));
     assert_eq!(got, segs);
     // max-rows still bounds the flow
@@ -214,11 +217,11 @@ fn wrap_on_breaks_at_segment_boundaries() {
     let cases: [(usize, Vec<Vec<&str>>); 5] = [
         (40, vec![vec![A, B, C], vec![D, E]]),
         (30, vec![vec![A, B], vec![C, D], vec![E]]),
-        // five rows, none dropped
-        (20, vec![vec![A], vec![B], vec![C], vec![D], vec![E]]),
-        (14, vec![vec![A], vec![B], vec![C], vec![D], vec![E]]),
+        // five rows needed: four printed (default max-rows), the last segment dropped
+        (20, vec![vec![A], vec![B], vec![C], vec![D]]),
+        (14, vec![vec![A], vec![B], vec![C], vec![D]]),
         // a segment wider than the row stands alone
-        (8, vec![vec![A], vec![B], vec![C], vec![D], vec![E]]),
+        (8, vec![vec![A], vec![B], vec![C], vec![D]]),
     ];
     for (cols, want) in cases {
         let want: Vec<String> = want.iter().map(|r| joined(r)).collect();
@@ -404,6 +407,30 @@ fn check_validates_line_keys() {
         &[],
     );
     assert!(r.issues.is_empty(), "{:?}", r.issues);
+}
+
+#[test]
+fn check_warns_about_lines_past_max_rows() {
+    let warned = |src: &str| -> Vec<(usize, String)> {
+        check_text(src, None, &[])
+            .issues
+            .into_iter()
+            .filter(|i| i.level == Level::Warning && i.message.contains("max-rows"))
+            .map(|i| (i.line, i.message))
+            .collect()
+    };
+    // default max-rows 4
+    let w = warned("set left \"#{ctx}\"\nset center@6 \"#{model}\"\n");
+    assert_eq!(w.len(), 1, "{w:?}");
+    assert_eq!(w[0].0, 2);
+    assert!(w[0].1.contains("center@6") && w[0].1.contains('4'), "{w:?}");
+    // set later in the file still counts
+    let w = warned("set right@6 \"#{model}\"\nset max-rows 3\n");
+    assert_eq!(w.len(), 1, "{w:?}");
+    assert!(w[0].1.contains('3'), "{w:?}");
+    assert!(warned("set right@6 \"#{model}\"\nset max-rows 6\n").is_empty());
+    assert!(warned("set max-rows 2\nset left@3 x\n")[0].1.contains('2'));
+    assert!(warned("set left@4 x\n").is_empty());
 }
 
 #[test]
