@@ -75,6 +75,9 @@ enum SubCmd {
         /// Also set bar as the subagentStatusLine (with --uninstall, remove it).
         #[arg(long)]
         subagent: bool,
+        /// Set (with --uninstall, remove) only the subagentStatusLine; statusLine is left as is.
+        #[arg(long, conflicts_with_all = ["subagent", "refresh"])]
+        subagent_only: bool,
         /// Write without asking.
         #[arg(short, long)]
         yes: bool,
@@ -393,6 +396,7 @@ fn install(m: &ArgMatches) {
         refresh: m.get_one::<u64>("refresh").copied(),
         hooks: m.get_flag("hooks"),
         subagent: m.get_flag("subagent"),
+        subagent_only: m.get_flag("subagent_only"),
         yes: m.get_flag("yes"),
     };
     let tty = std::io::IsTerminal::is_terminal(&std::io::stdin());

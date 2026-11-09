@@ -25,7 +25,16 @@ fn opts(subagent: bool, uninstall: bool) -> Opts {
         refresh: None,
         hooks: false,
         subagent,
+        subagent_only: false,
         yes: true,
+    }
+}
+
+fn only(uninstall: bool) -> Opts {
+    Opts {
+        subagent: false,
+        subagent_only: true,
+        ..opts(false, uninstall)
     }
 }
 
@@ -172,4 +181,45 @@ fn subagent_command_quotes_per_platform() {
         "C:/Users/me/bin/bar.exe subagent"
     );
     assert_eq!(install::subagent_command("bar", false), "bar subagent");
+}
+
+#[test]
+fn subagent_only_install_leaves_the_status_line() {
+    let t = Tmp::new();
+    t.write("claude/settings.json", FOREIGN);
+    let s = t.path().join("claude/settings.json");
+    let e = env(&t, s.clone());
+    let (r, out) = run(&e, &only(false));
+    r.unwrap();
+    assert!(!out.contains("the current status line is kept"), "{out}");
+    let v = read(&s);
+    assert_eq!(v["statusLine"]["command"], json!("~/.claude/statusline.sh"));
+    assert_eq!(
+        v["subagentStatusLine"]["command"],
+        json!(format!("'{}' subagent", e.bar.display()))
+    );
+    let (r, out) = run(&e, &only(true));
+    r.unwrap();
+    assert!(out.contains("restores the subagent status line"), "{out}");
+    assert_eq!(read(&s), serde_json::from_str::<Value>(FOREIGN).unwrap());
+}
+
+#[test]
+fn subagent_only_uninstall_keeps_bars_status_line() {
+    let t = Tmp::new();
+    let s = t.path().join("claude/settings.json");
+    let e = env(&t, s.clone());
+    run(&e, &opts(true, false)).0.unwrap();
+    let (r, out) = run(&e, &only(true));
+    r.unwrap();
+    assert!(!out.contains("still runs bar"), "{out}");
+    let v = read(&s);
+    assert!(v.get("subagentStatusLine").is_none(), "{v}");
+    assert!(v["statusLine"]["command"]
+        .as_str()
+        .unwrap()
+        .ends_with("' render"));
+    // the status line uninstalls on its own afterwards
+    run(&e, &opts(false, true)).0.unwrap();
+    assert_eq!(read(&s), json!({}));
 }
