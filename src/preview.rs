@@ -5,7 +5,7 @@ use crate::click::Term;
 use crate::conf::{Config, LoadResult};
 use crate::options::Options;
 use crate::placeholders::ctx as ctxp;
-use crate::placeholders::{dirs, gh, lookup, niche, speed, spendhist, tokens, usage, Ctx};
+use crate::placeholders::{dirs, gh, lookup, modes, niche, speed, spendhist, tokens, usage, Ctx};
 use crate::render::{builtin_config, render_sample};
 use crate::session::{CtxUsage, Session, SpendLimit, Window};
 use crate::style::{accent, bold, dim, fg};
@@ -53,6 +53,7 @@ fn session(state: &str, now: i64) -> Session {
         model_id: "sample".into(),
         effort: "high".into(),
         session_id: String::new(),
+        name: "fix-login-bug".into(),
         transcript_path: String::new(),
         context_used: Some(38.0),
         context_size: Some(200_000),
@@ -70,6 +71,7 @@ fn session(state: &str, now: i64) -> Session {
         }),
         cost_usd: Some(1.84),
         duration_ms: Some(27.0 * 60_000.0),
+        api_duration_ms: Some(9.0 * 60_000.0),
         lines_added: 120,
         lines_removed: 14,
         version: "2.1.0".into(),
@@ -163,7 +165,8 @@ fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Op
         "worktree" => Some(dim("bar-feat")),
         "sid" => Some(dim("a1b2c3d4")),
         "tmux" => Some(dim("work:1")),
-        "compactions" | "skills" => niche::sample(name, label),
+        "compactions" | "skills" | "msgs" => niche::sample(name, opts, label),
+        "modes" => Some(dim(&modes::sample(opts).join(" "))),
         "sessions" => Some(format!(
             "{} {} {}",
             fg(c.warn, ">1"),
@@ -183,7 +186,7 @@ fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Op
             ctxp::render_parts(ctx, opts, &src, label, || Term::current().clone())
         }
         "model" | "effort" | "spend" | "cost" | "burn" | "duration" | "lines" | "version"
-        | "style" | "vim" | "agent" | "thinking" | "fast" => {
+        | "style" | "vim" | "agent" | "thinking" | "fast" | "name" | "api" => {
             lookup(name)?.render_labeled(ctx, opts, label)
         }
         _ => None,

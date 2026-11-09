@@ -230,3 +230,49 @@ fn root_from_gitfs_and_hidden_outside_repo() {
     let s = p(&format!(r#"{{"cwd":{:?}}}"#, out.to_str().unwrap()));
     assert_eq!(run("root", &s, ""), None);
 }
+
+fn named(name: &str) -> Session {
+    p(&format!(r#"{{"session_name":{name}}}"#))
+}
+
+#[test]
+fn name_shows_session_name_truncated_and_sanitized() {
+    assert_eq!(
+        run("name", &named("\"fix-login\""), "").unwrap(),
+        "fix-login"
+    );
+    assert_eq!(
+        run("name", &named("\"fix-login-bug\""), "max=6").unwrap(),
+        "fix-l…"
+    );
+    assert_eq!(
+        run("name", &named("\"a\\u001b[31mb\""), "").unwrap(),
+        "a[31mb"
+    );
+}
+
+#[test]
+fn name_hidden_when_absent_empty_or_mistyped() {
+    assert_eq!(run("name", &Session::default(), ""), None);
+    assert_eq!(run("name", &named("\"\""), ""), None);
+    assert_eq!(run("name", &named("7"), ""), None);
+}
+
+#[test]
+fn api_duration_formats_like_duration() {
+    let a = |ms: &str| {
+        run(
+            "api",
+            &p(&format!(r#"{{"cost":{{"total_api_duration_ms":{ms}}}}}"#)),
+            "",
+        )
+    };
+    assert_eq!(a("45000").unwrap(), "45s");
+    assert_eq!(a("720000").unwrap(), "12m");
+    assert_eq!(a("3900000").unwrap(), "1h05m");
+    assert_eq!(a("-1"), None);
+    assert_eq!(a("\"x\""), None);
+    // the wall-time field is not the API time
+    assert_eq!(run("api", &cost("0", "5000"), ""), None);
+    assert_eq!(run("api", &Session::default(), ""), None);
+}

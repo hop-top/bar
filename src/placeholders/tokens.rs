@@ -138,6 +138,8 @@ pub fn sample_stats(now: i64) -> Stats {
         ctx_prev: 72_800,
         ctx_last: 76_000,
         ctx_reqs: 15,
+        user_msgs: 0,
+        assistant_msgs: 0,
         last_ts: Some(now - 48),
         mtime: now,
         partial: false,

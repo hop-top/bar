@@ -7,6 +7,8 @@ fn text(s: &str) -> Option<String> {
     (!s.is_empty()).then(|| dim(&s))
 }
 
+/// Session name; the custom name or the generated title.
+pub struct Name;
 /// Claude Code version.
 pub struct Version;
 /// Output style name; hidden for `default`.
@@ -19,6 +21,13 @@ pub struct Agent;
 pub struct Thinking;
 /// `fast` while fast mode is enabled.
 pub struct Fast;
+
+impl Placeholder for Name {
+    fn render(&self, ctx: &Ctx, opts: &Options) -> Option<String> {
+        let s = sanitize(&ctx.session.name);
+        (!s.is_empty()).then(|| dim(&super::truncate(s, opts)))
+    }
+}
 
 impl Placeholder for Version {
     fn render(&self, ctx: &Ctx, _: &Options) -> Option<String> {

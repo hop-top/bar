@@ -45,6 +45,11 @@ pub struct Stats {
     pub ctx_prev: u64,
     pub ctx_last: u64,
     pub ctx_reqs: u64,
+    /// Main-conversation user prompts (tool results, meta entries and
+    /// compaction summaries excluded).
+    pub user_msgs: u64,
+    /// Main-conversation assistant messages, one per message id.
+    pub assistant_msgs: u64,
     /// Unix seconds of the last assistant message.
     pub last_ts: Option<i64>,
     /// Transcript mtime, unix seconds.
@@ -78,6 +83,7 @@ impl State {
             "cc": s.cache_creation, "cr": s.cache_read, "out": s.output,
             "comp": s.compactions, "skl": s.skills,
             "cf": s.ctx_first, "cp": s.ctx_prev, "cl": s.ctx_last, "cn": s.ctx_reqs,
+            "usr": s.user_msgs, "asst": s.assistant_msgs,
             "last_ts": s.last_ts, "last_id": self.last_id,
             "turns": s.turns.to_json(),
         })
@@ -107,6 +113,8 @@ impl State {
                 ctx_prev: n("cp"),
                 ctx_last: n("cl"),
                 ctx_reqs: n("cn"),
+                user_msgs: n("usr"),
+                assistant_msgs: n("asst"),
                 last_ts: v["last_ts"].as_i64(),
                 mtime: 0,
                 partial: false,
@@ -187,7 +195,10 @@ fn apply(st: &mut State, line: &[u8]) {
     st.stats.skills = st.stats.skills.saturating_add(f.skills);
     let turns = &mut st.stats.turns;
     match (f.rec, &f.usage, f.ts_ms) {
-        (Rec::Prompt, _, ts) => turns.prompt(ts),
+        (Rec::Prompt, _, ts) => {
+            turns.prompt(ts);
+            st.stats.user_msgs = st.stats.user_msgs.saturating_add(1);
+        }
         (Rec::ToolResult, _, ts) => turns.tool_result(ts),
         (Rec::Assistant, Some(u), Some(ts_ms)) => turns.assistant(&turns::Req {
             id: &u.id,
@@ -230,6 +241,7 @@ fn apply(st: &mut State, line: &[u8]) {
         }
         (s.ctx_prev, s.ctx_last) = (s.ctx_last, size);
         s.ctx_reqs = s.ctx_reqs.saturating_add(1);
+        s.assistant_msgs = s.assistant_msgs.saturating_add(1);
     }
 }
 

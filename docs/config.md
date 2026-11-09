@@ -110,7 +110,9 @@ Fields of the session: model, effort, context, cost and the rest of the statusli
 | `cost` | `fmt` | `usd` | Session cost, `$1.23`; `<$0.01` under a cent. Hidden when absent. `usd` is the only value |
 | `burn` | none | | Cost per hour, `$4.10/h`; hidden for the first 60 s of the session |
 | `duration` | none | | Session time: `45s`, `12m`, `1h05m` |
+| `api` | none | | Time spent waiting on API responses, formatted like `duration`; hidden when absent |
 | `lines` | none | | `+120 -14`; hidden when both are 0 |
+| `name` | `max` | | Session name, muted; truncated with `…` past `max` characters. Hidden when absent |
 | `version`, `vim`, `agent` | none | | Claude Code version, vim mode, agent name; hidden when absent |
 | `style` | none | | Output style; hidden when `default` |
 | `thinking`, `fast` | none | | `think` / `fast` while enabled; hidden otherwise |
@@ -118,6 +120,8 @@ Fields of the session: model, effort, context, cost and the rest of the statusli
 | `sid` | `len` | `8` | First `len` chars of the session id; hidden when absent or `len=0` |
 | `compactions` | none | | `compact 2`: context compactions in this session's transcript; hidden at 0 |
 | `skills` | none | | `skills 3`: Skill tool calls on the main conversation in the transcript; hidden at 0 |
+| `msgs` | `show` | `user` | `msgs 12`: user prompts in the transcript; `show=total` adds the assistant messages. Hidden at 0 |
+| `modes` | `show` | all | `voice sandbox remote`: the modes that are on, muted; hidden when none is. `show` is a comma list of `voice`, `sandbox`, `remote` |
 
 - `model`: `model.display_name` (else `model.id`) without a leading `Claude `, muted, e.g. `Opus 4.7`.
 - `effort`: `effort.level` as `[high]`, muted. When the session JSON has none, it reads `effortLevel` from `<claude dir>/settings.json` (`modelSettings.<model id>.effortLevel` first); hidden when neither is set.
@@ -126,7 +130,10 @@ Fields of the session: model, effort, context, cost and the rest of the statusli
 - `cost` is the session's own cost; `spend` is the account spend-limit window.
 - `sid` reads `session_id`; a non-numeric `len` renders as 8 and `bar check` rejects it.
 - `compactions` counts `system` transcript entries with subtype `compact_boundary`; `skills` counts `Skill` tool calls in non-sidechain assistant entries (skills a user starts with a slash command are not counted). Both share the transcript scan of [`tokens`](#tokens-cache-cachettl), so they are empty without a readable `transcript_path`.
-- The statusline JSON carries no voice-mode, sandbox or skill field, so there are no placeholders for them.
+- `name` reads `session_name`: the name set with `--name` or `/rename`, else the generated session title. Claude Code leaves it out when the session has neither, and bar does not look further, so older Claude Code versions show nothing.
+- `api` reads `cost.total_api_duration_ms`, time spent waiting for responses; `duration` is the session's wall time.
+- `msgs` counts main-conversation `user` transcript entries that are prompts: tool results, meta entries, compaction summaries and sidechains are left out. `show=total` also counts each main-conversation assistant message once. It shares the transcript scan of [`tokens`](#tokens-cache-cachettl), so it is empty without a readable `transcript_path`.
+- `modes` reads Claude Code settings, since the statusline JSON carries none of these: `voice.enabled` (or the older `voiceEnabled`), `sandbox.enabled` and `remoteControlAtStartup`. Files are read in order, the later overriding the earlier: `<claude dir>/settings.json`, then `.claude/settings.json` and `.claude/settings.local.json` in the session's directory. `remote` means Remote Control is set to connect at startup; a session started with `--remote-control` or connected with `/remote-control` is not detected. Settings that managed policy or the command line change are not seen either.
 
 ### ctx
 
@@ -280,7 +287,7 @@ What the timestamps measure:
 `ttft`:
 
 - From the prompt's user entry to the first assistant entry after it. Since that entry is written when its first block is complete, the time includes generating that whole block (for example the full thinking block), not just the first token.
-- A prompt is a `user` entry whose content holds no `tool_result` block and that is not marked `isMeta`.
+- A prompt is a main-conversation `user` entry whose content is text or blocks with no `tool_result`, and that is not marked `isMeta` or `isCompactSummary`. `msgs` counts the same entries.
 - `last` is the most recent answered prompt; a prompt still waiting for its first entry leaves the previous value shown. `avg` is the mean over every answered prompt in the transcript.
 
 `tps`:
@@ -534,7 +541,11 @@ Colours and width:
 | `cost` | `nf-fa-credit_card` U+F09D | 💳 |
 | `burn` | `nf-fa-fire` U+F06D | 🔥 |
 | `duration` | `nf-fa-history` U+F1DA | ⌚ |
+| `api` | `nf-fa-hourglass` U+F254 | 📡 |
 | `lines` | `nf-fa-code` U+F121 | 📝 |
+| `name` | `nf-fa-book` U+F02D | 📛 |
+| `msgs` | `nf-fa-comment` U+F075 | ✉️ |
+| `modes` | `nf-fa-cogs` U+F085 | 🎛️ |
 | `version` | `nf-fa-tag` U+F02B | 🔖 |
 | `style` | `nf-fa-paint_brush` U+F1FC | 🎨 |
 | `vim` | `nf-dev-vim` U+E7C5 | ⌨️ |

@@ -95,7 +95,11 @@ pub fn builtin(set: Icons, name: &str, opts: &Options) -> Option<&'static str> {
         "cost" => ("\u{f09d}", "💳"),              // nf-fa-credit_card
         "burn" => ("\u{f06d}", "🔥"),              // nf-fa-fire
         "duration" => ("\u{f1da}", "⌚"),          // nf-fa-history
+        "api" => ("\u{f254}", "📡"),               // nf-fa-hourglass
         "lines" => ("\u{f121}", "📝"),             // nf-fa-code
+        "name" => ("\u{f02d}", "📛"),              // nf-fa-book
+        "msgs" => ("\u{f075}", "✉️"),              // nf-fa-comment
+        "modes" => ("\u{f085}", "🎛️"),             // nf-fa-cogs
         "version" => ("\u{f02b}", "🔖"),           // nf-fa-tag
         "style" => ("\u{f1fc}", "🎨"),             // nf-fa-paint_brush
         "vim" => ("\u{e7c5}", "⌨️"),               // nf-dev-vim
