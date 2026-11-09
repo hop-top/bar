@@ -2,7 +2,7 @@
 
 ## Flow
 
-`bar render`: stdin session JSON, config, `COLUMNS` in; at most `max-rows` (16) rows out; always exit 0.
+`bar render`: stdin session JSON, config, `COLUMNS` in; at most `max-rows` (default 4) rows out; always exit 0.
 
 1. `session::parse` (lenient) and `conf::load` with the session's directory: the user config, then the project `.bar.conf` (`conf::project::find`, stats only) applied over it by `conf::parse_layers`.
 2. Per group (`left`, `center`, `right`): `format::parse` into tokens, split into segments at the separator, render each placeholder, drop empty segments.
