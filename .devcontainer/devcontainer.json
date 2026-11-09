@@ -1,0 +1,28 @@
+{
+  "name": "bar",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "CLAUDE_CODE_VERSION": "latest"
+    }
+  },
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/bar,type=bind",
+  "workspaceFolder": "/workspaces/bar",
+  "remoteUser": "dev",
+  "containerUser": "dev",
+  "mounts": [
+    "source=bar-devcontainer-claude,target=/home/dev/.claude,type=volume",
+    "source=bar-devcontainer-bar-config,target=/home/dev/.config/bar,type=volume",
+    "source=bar-devcontainer-bar-state,target=/home/dev/.local/state/bar,type=volume",
+    "source=bar-devcontainer-bar-data,target=/home/dev/.local/share/bar,type=volume",
+    "source=bar-devcontainer-cargo-registry,target=/usr/local/cargo/registry,type=volume",
+    "source=bar-devcontainer-cargo-git,target=/usr/local/cargo/git,type=volume",
+    "source=bar-devcontainer-target-${devcontainerId},target=/home/dev/target,type=volume"
+  ],
+  "postCreateCommand": "cargo fetch --locked && cargo install --path . --locked && echo 'bar installed; run: bar install'",
+  "customizations": {
+    "vscode": {
+      "extensions": ["rust-lang.rust-analyzer"]
+    }
+  }
+}
