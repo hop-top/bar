@@ -30,8 +30,8 @@ impl std::fmt::Display for Color {
     }
 }
 
-/// How many colours the output uses.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// How many colours the output uses, fewest first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Depth {
     /// No colour at all (`NO_COLOR`): SGR colours are left out.
     None,
@@ -40,17 +40,15 @@ pub enum Depth {
     True,
 }
 
-/// `set color-depth`: a fixed depth, or `auto` from the environment.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// `set color-depth`: unset, a fixed depth, or `auto` from the environment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ColorDepth {
+    /// No `set color-depth`: 256 colours, unless the environment turns
+    /// colour off (`NO_COLOR`, `TERM=dumb`, `FORCE_COLOR=0`).
+    #[default]
+    Unset,
     Auto,
     Fixed(Depth),
-}
-
-impl Default for ColorDepth {
-    fn default() -> Self {
-        ColorDepth::Fixed(Depth::Ansi256)
-    }
 }
 
 impl ColorDepth {
@@ -67,43 +65,50 @@ impl ColorDepth {
         })
     }
 
+    /// The value as written; unset reads as `256`, the depth it draws at.
     pub fn name(self) -> &'static str {
         match self {
             ColorDepth::Auto => "auto",
             ColorDepth::Fixed(Depth::None) => "none",
             ColorDepth::Fixed(Depth::Ansi16) => "16",
-            ColorDepth::Fixed(Depth::Ansi256) => "256",
+            ColorDepth::Unset | ColorDepth::Fixed(Depth::Ansi256) => "256",
             ColorDepth::Fixed(Depth::True) => "truecolor",
         }
     }
 
-    /// The depth to draw at; `auto` reads `env`.
+    /// The depth to draw at; `auto` and unset read `env`.
     pub fn resolve(self, env: impl Fn(&str) -> Option<String>) -> Depth {
         match self {
             ColorDepth::Fixed(d) => d,
             ColorDepth::Auto => detect(env),
+            ColorDepth::Unset => detect(env).min(Depth::Ansi256),
         }
     }
 }
 
-/// `FORCE_COLOR` (`0`/`false` off, `1` 16, `2` 256, `3` truecolor, any
-/// other value on) beats `NO_COLOR`; otherwise `COLORTERM` `truecolor` or
-/// `24bit` gives truecolor, anything else 256.
+/// What the environment asks for. `NO_COLOR` set or `TERM=dumb`: none;
+/// otherwise `COLORTERM` `truecolor` or `24bit` gives truecolor, anything
+/// else 256. `FORCE_COLOR` is a floor over that, so it turns colour back on
+/// but never lowers it: `1` at least 16, `2` at least 256, `3` truecolor,
+/// any other value at least the `COLORTERM` depth; `0` or `false` turns
+/// colour off.
 fn detect(env: impl Fn(&str) -> Option<String>) -> Depth {
     let set = |k: &str| env(k).filter(|v| !v.is_empty());
-    let rich = || match set("COLORTERM").as_deref() {
+    let rich = match set("COLORTERM").as_deref() {
         Some("truecolor" | "24bit") => Depth::True,
         _ => Depth::Ansi256,
     };
-    match set("FORCE_COLOR").as_deref() {
-        Some("0" | "false") => Depth::None,
+    let off = set("NO_COLOR").is_some() || set("TERM").as_deref() == Some("dumb");
+    let found = if off { Depth::None } else { rich };
+    let floor = match set("FORCE_COLOR").as_deref() {
+        None => return found,
+        Some("0" | "false") => return Depth::None,
         Some("1") => Depth::Ansi16,
         Some("2") => Depth::Ansi256,
         Some("3") => Depth::True,
-        Some(_) => rich(),
-        None if set("NO_COLOR").is_some() => Depth::None,
-        None => rich(),
-    }
+        Some(_) => rich,
+    };
+    found.max(floor)
 }
 
 /// The 16 ANSI colours as xterm draws them by default; terminal themes

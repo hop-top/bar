@@ -43,6 +43,10 @@ pub fn isolation(root: &Path) -> (Vec<(&'static str, OsString)>, PathBuf) {
         ("ANTHROPIC_API_KEY", OsString::new()),
         ("GIT_CONFIG_GLOBAL", NULL_DEVICE.into()),
         ("GIT_CONFIG_NOSYSTEM", "1".into()),
+        // the colour depth reads these; empty counts as unset
+        ("NO_COLOR", OsString::new()),
+        ("FORCE_COLOR", OsString::new()),
+        ("TERM", "xterm-256color".into()),
     ];
     #[cfg(windows)]
     let env = {

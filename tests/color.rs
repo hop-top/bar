@@ -73,10 +73,26 @@ fn auto_depth_follows_the_environment() {
         auto(&[("FORCE_COLOR", "1"), ("NO_COLOR", "1")]),
         Depth::Ansi16
     );
+    // FORCE_COLOR is a floor: it never lowers what the terminal reports
     assert_eq!(
         auto(&[("FORCE_COLOR", "2"), ("COLORTERM", "truecolor")]),
+        Depth::True
+    );
+    assert_eq!(auto(&[("FORCE_COLOR", "1")]), Depth::Ansi256);
+    assert_eq!(
+        auto(&[("FORCE_COLOR", "2"), ("NO_COLOR", "1")]),
         Depth::Ansi256
     );
+    // TERM=dumb: no colour unless forced
+    assert_eq!(
+        auto(&[("TERM", "dumb"), ("COLORTERM", "truecolor")]),
+        Depth::None
+    );
+    assert_eq!(
+        auto(&[("TERM", "dumb"), ("FORCE_COLOR", "1")]),
+        Depth::Ansi16
+    );
+    assert_eq!(auto(&[("TERM", "xterm")]), Depth::Ansi256);
     assert_eq!(auto(&[("FORCE_COLOR", "3")]), Depth::True);
     assert_eq!(
         auto(&[
@@ -90,14 +106,37 @@ fn auto_depth_follows_the_environment() {
     // a fixed depth ignores the environment
     let fixed = ColorDepth::Fixed(Depth::Ansi256);
     assert_eq!(fixed.resolve(env(&[("NO_COLOR", "1")])), Depth::Ansi256);
+    assert_eq!(fixed.resolve(env(&[("TERM", "dumb")])), Depth::Ansi256);
+}
+
+#[test]
+fn unset_depth_is_256_unless_colour_is_off() {
+    let unset = |vars: &[(&str, &str)]| ColorDepth::default().resolve(env(vars));
+    assert_eq!(unset(&[]), Depth::Ansi256);
+    // never above 256 on its own
+    assert_eq!(unset(&[("COLORTERM", "truecolor")]), Depth::Ansi256);
+    assert_eq!(unset(&[("FORCE_COLOR", "3")]), Depth::Ansi256);
+    // the environment turns colour off
+    assert_eq!(unset(&[("NO_COLOR", "1")]), Depth::None);
+    assert_eq!(unset(&[("NO_COLOR", "")]), Depth::Ansi256);
+    assert_eq!(unset(&[("TERM", "dumb")]), Depth::None);
+    assert_eq!(unset(&[("FORCE_COLOR", "0")]), Depth::None);
+    // and FORCE_COLOR back on
+    assert_eq!(
+        unset(&[("NO_COLOR", "1"), ("FORCE_COLOR", "1")]),
+        Depth::Ansi16
+    );
+    assert_eq!(
+        unset(&[("TERM", "dumb"), ("FORCE_COLOR", "2")]),
+        Depth::Ansi256
+    );
 }
 
 #[test]
 fn color_depth_key_parses() {
-    assert_eq!(
-        parse("").unwrap().color_depth,
-        ColorDepth::Fixed(Depth::Ansi256)
-    );
+    assert_eq!(parse("").unwrap().color_depth, ColorDepth::default());
+    assert_ne!(ColorDepth::default(), ColorDepth::Fixed(Depth::Ansi256));
+    assert_eq!(ColorDepth::default().name(), "256");
     for (v, want) in [
         ("auto", ColorDepth::Auto),
         ("none", ColorDepth::Fixed(Depth::None)),

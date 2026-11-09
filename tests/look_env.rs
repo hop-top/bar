@@ -15,7 +15,7 @@ const STDIN: &str = r#"{"model":{"display_name":"Opus"}}"#;
 fn render(vars: &[(&'static str, &str)]) -> String {
     let t = Tmp::new();
     let mut r = run(&t).conf(CONF).stdin(STDIN);
-    for k in ["COLORTERM", "NO_COLOR", "FORCE_COLOR"] {
+    for k in ["COLORTERM", "NO_COLOR", "FORCE_COLOR", "TERM"] {
         r = match vars.iter().find(|(n, _)| *n == k) {
             Some((k, v)) => r.env(k, v),
             None => r.unset(k),
@@ -51,11 +51,29 @@ fn auto_depth_reads_colorterm_no_color_and_force_color() {
 fn fixed_depth_ignores_no_color() {
     let t = Tmp::new();
     let o = run(&t)
-        .conf("set left \"#{model[fg=75]}\"")
+        .conf("set color-depth 256\nset left \"#{model[fg=75]}\"")
         .stdin(STDIN)
         .env("NO_COLOR", "1")
+        .env("TERM", "dumb")
         .go();
     assert!(o.raw.contains("\x1b[38;5;75m"), "{:?}", o.raw);
+}
+
+#[test]
+fn default_depth_honours_no_color_and_dumb_terminals() {
+    let go = |k: &'static str, v: &str| {
+        let t = Tmp::new();
+        run(&t)
+            .conf("set left \"#{model[fg=75,bold]}\"")
+            .stdin(STDIN)
+            .env(k, v)
+            .go()
+            .raw
+    };
+    assert!(go("COLORTERM", "truecolor").contains("\x1b[38;5;75m"));
+    for (k, v) in [("NO_COLOR", "1"), ("TERM", "dumb")] {
+        assert_eq!(go(k, v).trim_end(), "\x1b[1mOpus\x1b[22m", "{k}={v}");
+    }
 }
 
 fn errors(conf: &str) -> Vec<String> {
