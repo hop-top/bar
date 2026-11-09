@@ -10,7 +10,17 @@
 #      bench/results/ben-meta.json, redraws the generated sections of
 #      bench/README.md and README.md and the badge, and stages the lot
 #
-# Env: BENCH_ENGINE (docker or podman; default: whichever answers `info`).
+# BENCH_RUNNER=native skips the image: step 3 runs in a prepared Linux
+# environment (the image's layout under $SLB, default /opt/slbench, and its
+# tools on PATH) reached through BENCH_EXEC, a command prefix that runs a
+# command there with stdin and stdout attached (default: none, this machine).
+# The tree goes to $SLB/bar, bench/image/entry.sh runs from it, the results
+# come back as a tar on stdout. Step 4 is the same.
+#
+# Env: BENCH_RUNNER (docker, the default, or native);
+#      BENCH_ENGINE (docker or podman; default: whichever answers `info`);
+#      BENCH_EXEC (native: command prefix to reach the environment);
+#      BENCH_CPU (native: CPU model, when the environment does not expose it).
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -29,7 +39,12 @@ if [ -n "$dirty" ]; then
   die "uncommitted changes in benchmark inputs or outputs; commit or stash them first"
 fi
 
+runner=${BENCH_RUNNER:-docker}
+case $runner in docker|native) ;; *) die "BENCH_RUNNER must be docker or native, not $runner" ;; esac
+
 # 2. engine and image
+engine=
+if [ "$runner" = docker ]; then
 engine=${BENCH_ENGINE:-}
 if [ -z "$engine" ]; then
   for e in docker podman; do
@@ -55,24 +70,56 @@ if ! "$engine" image inspect "$tag" > /dev/null 2>&1; then
     || die "image build failed (ben needs read access to github.com/hop-top/uri: set GITHUB_TOKEN or log in with gh)"
   [ -z "${tokfile:-}" ] || rm -f "$tokfile"
 fi
+fi
 
 # 3. run
 commit=$(git rev-parse HEAD)
 inputs_hash=$(python3 scripts/bench-inputs)
 out=$(mktemp -d "${TMPDIR:-/tmp}/bar-bench.XXXXXX")
 trap 'rm -rf "$out"' EXIT
-echo "== benchmarking ${commit:0:12} (inputs ${inputs_hash:0:19}) with $engine"
-if ! git archive --format=tar HEAD \
-  | "$engine" run --rm -i --hostname container \
-      -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" -v "$out:/out" "$tag"; then
-  die "benchmark run failed; bench/results left unchanged"
+if [ "$runner" = docker ]; then
+  echo "== benchmarking ${commit:0:12} (inputs ${inputs_hash:0:19}) with $engine"
+  if ! git archive --format=tar HEAD \
+    | "$engine" run --rm -i --hostname container \
+        -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" -v "$out:/out" "$tag"; then
+    die "benchmark run failed; bench/results left unchanged"
+  fi
+else
+  echo "== benchmarking ${commit:0:12} (inputs ${inputs_hash:0:19}) natively${BENCH_EXEC:+ via BENCH_EXEC}"
+  # Sent to `bash -s` ahead of the archive: bash reads a pipe byte by byte, so
+  # the one-line `native; exit` runs before tar reads the archive that follows.
+  # Logs go to stderr, the results tar to stdout.
+  native=$(cat <<'SH'
+native() {
+  set -euo pipefail
+  local SLB=${SLB:-/opt/slbench} out
+  if [ -e "$SLB/bar" ] && [ ! -e "$SLB/bar/.bench-native" ]; then
+    echo "make bench: $SLB/bar exists and is not from a native run; move it away" >&2; return 1
+  fi
+  if [ -e "$SLB/bench" ] && [ ! -L "$SLB/bench" ]; then
+    echo "make bench: $SLB/bench exists and is not a link; move it away" >&2; return 1
+  fi
+  rm -rf "$SLB/bar" "$SLB/bench"   # the previous native run's tree and link
+  mkdir -p "$SLB/bar" && tar -x -C "$SLB/bar" && touch "$SLB/bar/.bench-native"
+  out=$(mktemp -d "${TMPDIR:-/tmp}/bar-bench.XXXXXX")
+  SLB=$SLB OUT=$out bash "$SLB/bar/bench/image/entry.sh" --extracted >&2 || { rm -rf "$out"; return 1; }
+  tar -c -C "$out" . && rm -rf "$out"
+}
+SH
+)
+  # shellcheck disable=SC2086 # BENCH_EXEC is a command prefix, split on purpose
+  if ! { printf '%s\nnative; exit\n' "$native"; git archive --format=tar HEAD; } \
+    | ${BENCH_EXEC:-} bash -s | tar -x -C "$out"; then
+    die "benchmark run failed; bench/results left unchanged"
+  fi
 fi
 
 [ -s "$out/ben-warm.json" ] && [ -s "$out/ben-env.json" ] || die "run produced no results"
 
 # 4. results, metadata, docs, badge
 host_cpu=unknown
-case $(uname -s) in
+[ "$runner" = docker ] || host_cpu=${BENCH_CPU:-}
+[ "$runner" = native ] || case $(uname -s) in
   Darwin) host_cpu=$(sysctl -n machdep.cpu.brand_string 2> /dev/null || echo unknown) ;;
   Linux) host_cpu=$(sed -n 's/^model name[[:space:]]*: //p' /proc/cpuinfo | head -n1)
          [ -n "$host_cpu" ] || host_cpu=$(LC_ALL=C lscpu 2> /dev/null | sed -n 's/^Model name:[[:space:]]*//p' | head -n1)
@@ -80,15 +127,20 @@ case $(uname -s) in
 esac
 find "$RESULTS" -maxdepth 1 -name 'ben-*' -type f -delete
 find "$out" -maxdepth 1 -name 'ben-*' ! -name ben-env.json -type f -exec cp {} "$RESULTS/" \;
-python3 - "$out/ben-env.json" "$RESULTS/ben-meta.json" "$commit" "$inputs_hash" "$(uname -s)" "$host_cpu" "$engine" <<'PY'
+python3 - "$out/ben-env.json" "$RESULTS/ben-meta.json" "$commit" "$inputs_hash" "$(uname -s)" "$host_cpu" "$runner" "$engine" <<'PY'
 import datetime, json, sys
-env_path, meta_path, commit, inputs, host_os, host_cpu, engine = sys.argv[1:]
+env_path, meta_path, commit, inputs, host_os, host_cpu, runner, engine = sys.argv[1:]
 env = json.load(open(env_path))
+if runner == "docker":
+    host = {"os": {"Darwin": "macOS"}.get(host_os, host_os), "cpu": host_cpu, "engine": engine}
+else:  # the environment is the machine: its CPU as it reports it, or BENCH_CPU
+    host = {"cpu": host_cpu or env["container"].get("cpu") or "unknown"}
 meta = {
     "bar_commit": commit,
     "inputs": inputs,
     "date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d"),
-    "host": {"os": {"Darwin": "macOS"}.get(host_os, host_os), "cpu": host_cpu, "engine": engine},
+    "runner": runner,
+    "host": host,
     **env,
 }
 with open(meta_path, "w") as f:
