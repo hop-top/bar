@@ -241,6 +241,8 @@ fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Op
             dim("?1")
         )),
         "ahead" => Some(format!("{} {}", fg(c.good, "↑2"), fg(c.warn, "↓1"))),
+        "diff" if state == "final" => None,
+        "diff" => Some(format!("{} {}", fg(c.good, "+42"), fg(c.bad, "-7"))),
         "prs" => list(
             sample_prs()
                 .iter()
