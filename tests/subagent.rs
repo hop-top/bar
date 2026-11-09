@@ -227,12 +227,12 @@ fn run_writes_json_lines_and_nothing_on_config_error() {
     assert_eq!(none, "", "no tasks: no config read");
 }
 
+static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// `bar <args>` with state, PATH and cwd in a temp dir of its own.
 fn isolated(args: &[&str]) -> (Command, std::path::PathBuf) {
-    let home = std::env::temp_dir().join(format!(
-        "bar-subagent-{}-{}",
-        std::process::id(),
-        args.join("-").replace('/', "_")
-    ));
+    let n = N.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let home = std::env::temp_dir().join(format!("bar-subagent-{}-{n}", std::process::id()));
     let (iso, cwd) = common::isolation(&home);
     let mut c = Command::cargo_bin("bar").unwrap();
     c.args(args)
@@ -263,9 +263,9 @@ fn cli_subagent_prints_one_line_per_row() {
 
 #[test]
 fn cli_subagent_with_bad_input_prints_nothing() {
-    for (i, bad) in ["", "not json", "{\"tasks\":[]}"].iter().enumerate() {
-        let (mut c, home) = isolated(&["subagent", &i.to_string()][..1]);
-        c.write_stdin(*bad).assert().success().stdout("");
+    for bad in ["", "not json", "{\"tasks\":[]}"] {
+        let (mut c, home) = isolated(&["subagent"]);
+        c.write_stdin(bad).assert().success().stdout("");
         let _ = std::fs::remove_dir_all(&home);
     }
 }
