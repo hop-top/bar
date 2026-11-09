@@ -12,7 +12,7 @@ use crate::placeholders::ctx::parts::SHOW_ITEMS as CTX_ITEMS;
 use crate::placeholders::gh::{self, Kind};
 use crate::placeholders::money::SHOW as MONEY_ITEMS;
 use crate::placeholders::usage::glyphs::{GLYPH_SETS, SHOW_ITEMS};
-use crate::placeholders::{gitdiff, gitst, jj, modes, remotes, speed, task};
+use crate::placeholders::{gitdiff, gitst, jj, modes, open, remotes, speed, task};
 use crate::plugin;
 use crate::render::builtin_config;
 use serde_json::{json, Value};
@@ -68,6 +68,7 @@ pub fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
             ("fish", Int),
             ("full", Int),
             ("depth", Int),
+            ("open", OneOf(&open::VALUES)),
         ],
         "spendhist" => &[
             ("period", OneOf(&["today", "month", "both"])),
@@ -97,7 +98,7 @@ pub fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
             ("color", OneOf(&["solid", "gradient"])),
             ("width", Int),
         ],
-        "repo" => &[("max", Int), ("link", Any)],
+        "repo" => &[("max", Int), ("link", Any), ("open", OneOf(&open::VALUES))],
         "branch" => &[("max", Int), ("link", Any), ("fish", Int), ("full", Int)],
         "origin" | "fork" => &[("show", List(remotes::SHOW)), ("max", Int), ("link", Any)],
         "upstream" => &[("max", Int), ("link", Any)],
@@ -166,6 +167,14 @@ pub fn option_help(name: &str, key: &str) -> Option<(&'static str, &'static str)
         ),
         ("cwd" | "root" | "branch", "full") => ("1", "trailing components fish leaves whole"),
         ("cwd" | "root", "depth") => ("0", "show only the last this many components; 0 shows all"),
+        ("cwd" | "root", "open") => (
+            "none",
+            "link the directory: files (file manager), vscode, cursor or zed",
+        ),
+        ("repo", "open") => (
+            "none",
+            "without a web address, link the directory: files, vscode, cursor or zed",
+        ),
         ("spendhist", "period") => ("both", "today, this month, or both"),
         ("spendhist", "tz") => ("local", "bucket days by local or UTC date"),
         ("budget", "type") => (

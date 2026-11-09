@@ -263,3 +263,19 @@ pub fn local_offset(ts: i64) -> i64 {
         (l - ticks) / TICKS
     }
 }
+
+/// This machine's DNS host name (`GetComputerNameExW`).
+pub fn hostname() -> Option<String> {
+    use windows_sys::Win32::System::SystemInformation::{
+        ComputerNameDnsHostname, GetComputerNameExW,
+    };
+    let mut buf = [0u16; 256];
+    let mut len = buf.len() as u32;
+    // SAFETY: the buffer and its length in u16 units are passed together;
+    // on success `len` holds the characters written, without the NUL
+    let ok = unsafe { GetComputerNameExW(ComputerNameDnsHostname, buf.as_mut_ptr(), &mut len) };
+    if ok == 0 || len as usize > buf.len() {
+        return None;
+    }
+    String::from_utf16(&buf[..len as usize]).ok()
+}

@@ -9,7 +9,7 @@ use crate::options::Options;
 use crate::placeholders::ctx as ctxp;
 use crate::placeholders::money::Budget;
 use crate::placeholders::{
-    budget, dirs, extra, gh, gitst, jj, lookup, model, modes, niche, remotes, repo, speed,
+    budget, dirs, extra, gh, gitst, jj, lookup, model, modes, niche, open, remotes, repo, speed,
     spendhist, status, task, tokens, update, usage, Ctx,
 };
 use crate::plugin::{self, ExtInfo};
@@ -307,7 +307,10 @@ fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Op
             bold(&fg(c.bad, "?1")),
             fg(c.good, "v2")
         )),
-        "cwd" | "root" => dirs::shown("~/src/bar", opts, ""),
+        "cwd" | "root" => {
+            let text = dirs::shown("~/src/bar", opts, "")?;
+            Some(open::sample(text, "/home/you/src/bar", opts))
+        }
         // fields of the session, read without state or settings
         "model" => model::model_with(ctx, opts, Path::new(NO_STATE), no_term),
         "effort" if ctx.session.effort.is_empty() => None,

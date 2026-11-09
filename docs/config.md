@@ -515,8 +515,9 @@ Links point at the `origin` remote's web address: ssh and scp remotes become `ht
 
 | Placeholder | Option | Default | Meaning |
 |---|---|---|---|
-| `repo`, `branch` | `link` | on | Link to the repository / branch page |
+| `repo`, `branch` | `link` | on | Link to the repository / branch page; `false`, `no`, `off`, `0` give plain text |
 | | `max` | none | Truncate to this many characters with `…` |
+| `repo` | `open` | `none` | Without a web address: link to the directory it names in the file manager or an editor ([Opening directories](#opening-directories)) |
 | `branch` | `fish` | `0` | [Abbreviate](#abbreviated-branches-and-paths) each `/`-separated part but the last to this many cells: `feature/very-long` → `f/very-long`; `0` keeps them whole. The link keeps the full name |
 | | `full` | `1` | Trailing parts `fish` leaves whole |
 | `origin` | `show` | `owner,repo` | The `origin` remote: comma list of `host`, `owner`, `repo`, drawn in that order and joined with `/` (`github.com/o/proj`). Links to the repository page; hidden without an `origin` remote. See [Remotes and upstream](#remotes-and-upstream) |
@@ -544,11 +545,13 @@ Links point at the `origin` remote's web address: ssh and scp remotes become `ht
 | | `fish` | `0` | [Abbreviate](#abbreviated-branches-and-paths) each directory but the last to this many cells: `~/src/bar/docs` → `~/s/b/docs`; `0` keeps them whole |
 | | `full` | `1` | Trailing directories `fish` leaves whole |
 | | `depth` | `0` | Show only the last this many directories, after `…`: `depth=2` gives `…/bar/docs`; `0` shows all |
+| | `open` | `none` | Link to the directory: `files`, `vscode`, `cursor`, `zed` ([Opening directories](#opening-directories)) |
 | `jj` | `show` | `change,bookmarks,state` | Comma list of `change`, `commit`, `bookmarks`, `workspace`, `state`, `desc`, drawn in that order ([Jujutsu](#jujutsu)) |
 | | `ttl` | `10` | Seconds before the cached `jj log` is refreshed in the background (minimum 1) |
 | | `max` | none | Truncate the description to this many characters with `…` |
 | `root` | `base` | `0` | Git top-level directory of the session directory, read without running `git`, or the Jujutsu workspace root when that is nearer; hidden outside a repository |
 | | `fish`, `full`, `depth` | `0`, `1`, `0` | As `cwd` |
+| | `open` | `none` | As `cwd` |
 
 #### Remotes and upstream
 
@@ -566,6 +569,25 @@ Links point at the `origin` remote's web address: ssh and scp remotes become `ht
 - A leading `.` is kept in addition (`.config` → `.c`), as are `~` and a Windows drive (`C:`). Separators stay as written (`\` on Windows).
 - `depth` (paths only) drops leading directories first, then `fish` applies to what is left: `#{cwd[depth=3,fish=1]}` gives `…/b/d/x` for `~/src/bar/docs/x`.
 - `max` on `branch` applies after `fish`.
+
+#### Opening directories
+
+`open` makes `cwd`, `root` and `repo` a link that opens the directory, shown in full or not (`base=1`), in the file manager or an editor:
+
+| Value | Link | Opens in |
+|---|---|---|
+| `none` (default) | none | |
+| `files` | `file://<host>/<path>/` | The terminal's handler for `file://` URLs, usually the file manager (Finder, Explorer, the desktop's default) |
+| `vscode` | `vscode://file/<path>/` | VS Code |
+| `cursor` | `cursor://file/<path>/` | Cursor |
+| `zed` | `zed://file/<path>/` | Zed |
+
+- `<path>` is the absolute path with `/` separators and a closing `/`, percent-encoded as UTF-8: letters, digits, `-`, `.`, `_`, `~` and `/` stay, everything else (spaces, `%`, `#`, `?`, `:`, non-ASCII letters) is encoded, e.g. `/home/me/My%20Project/caf%C3%A9/`.
+- Windows: a drive path keeps its colon (`vscode://file/C:/Users/me/src/`, `file://<host>/C:/Users/me/src/`); a `\\?\` prefix is dropped. A UNC path (`\\server\share\dir`) links to `file://server/share/dir/` with `files` and is not linked in an editor.
+- `<host>` is this machine's host name, read once per render (`gethostname`, `GetComputerNameExW` on Windows), so a terminal can tell a local directory from one on a machine reached over ssh; a name with characters a URL host cannot hold is left out (`file:///<path>/`).
+- `repo` links to its web address when it has one, whatever `open` says; `open` applies when it names a directory (no `origin` remote, a Jujutsu workspace, a hop hub): the hub, the workspace root, the main repository of a linked worktree, the work tree, else the session directory. `link=off` turns every `repo` link off.
+- A relative session directory is shown without a link. The link needs no [click handler](#click-handler-macos), so it is emitted on every platform and in [subagent rows](#subagent-rows); whether a click opens it is up to the terminal (see the notes on link rendering under [Click handler](#click-handler-macos)) and the editor registering its URL scheme.
+- Values outside the list are a `bar check` error.
 
 #### Jujutsu
 
@@ -1015,7 +1037,7 @@ Core placeholders read the subagent, not the main session:
 - `cwd`, `root`, `repo`, `branch`, `dirty`, `ahead`, `worktree`, `diff`, `age`: the subagent's directory (its own worktree when it runs in one).
 - The rest have no subagent data (session cost, usage windows, transcript totals, ...) and render empty or read as for the status line. `prs`, `issues`, `usage` and the like add the same text to every row, so they are best left out.
 
-Plugins are not drawn in a row (`bar check` reports them), and click links are off.
+Plugins are not drawn in a row (`bar check` reports them), and click links are off; [`open`](#opening-directories) links stay.
 
 Each row is laid out like the status line, with the same skin, palette, icons and separator: one left group, at most one row. Claude Code sends the usable width of a row (`columns`); while the row is wider, its last segment is dropped, and a first segment that is still too wide is cut to the width, ending in `…` (colours and links kept, and closed). A row that renders empty keeps Claude Code's own text, and so does every row when the config has an error.
 

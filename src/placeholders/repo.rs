@@ -193,12 +193,15 @@ fn jj_only(dir: &Path, spawn: bool) -> Option<PathBuf> {
     super::jj::nearer_than(dir, toplevel(dir, spawn).as_deref())
 }
 
-fn project_name(dir: &Path, spawn: bool) -> String {
+/// The directory `repo` names when there is no web address: a hop hub,
+/// a Jujutsu-only workspace, the main repository of a linked worktree, the
+/// work tree, else the session directory.
+fn project_dir(dir: &Path, spawn: bool) -> PathBuf {
     if let Some(root) = hop_root(dir) {
-        return basename(root);
+        return root.to_path_buf();
     }
     if let Some(root) = jj_only(dir, spawn) {
-        return basename(&root);
+        return root;
     }
     if let Some(top) = toplevel(dir, spawn) {
         if top.join(".git").is_file() {
@@ -213,12 +216,12 @@ fn project_name(dir: &Path, spawn: bool) -> String {
                             || (d.join("HEAD").is_file() && d.join("refs").is_dir()))
                 });
             if let Some(p) = parent {
-                return basename(p);
+                return p.to_path_buf();
             }
         }
-        return basename(&top);
+        return top;
     }
-    basename(dir)
+    dir.to_path_buf()
 }
 
 impl Placeholder for Repo {
@@ -229,18 +232,25 @@ impl Placeholder for Repo {
             Some(_) => None,
             None => remote_url_with(&dir, spawn),
         };
-        let name = match &url {
-            Some(u) => u.rsplit('/').next().unwrap_or_default().to_string(),
-            None => project_name(&dir, spawn),
+        let (name, named) = match &url {
+            Some(u) => (u.rsplit('/').next().unwrap_or_default().to_string(), None),
+            None => {
+                let d = project_dir(&dir, spawn);
+                (basename(&d), Some(d))
+            }
         };
         let name = truncate(sanitize(&name), opts);
         if name.is_empty() {
             return None;
         }
         let text = bold(&fg(accent(), &name));
-        Some(match url {
-            Some(u) if link_enabled(opts) => link(&sanitize(&u), &text),
-            _ => text,
+        if !link_enabled(opts) {
+            return Some(text);
+        }
+        Some(match (url, named.as_deref().and_then(Path::to_str)) {
+            (Some(u), _) => link(&sanitize(&u), &text),
+            (None, Some(d)) => super::open::wrap(text, d, opts),
+            (None, None) => text,
         })
     }
 }
