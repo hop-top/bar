@@ -480,7 +480,7 @@ Components, joined by a space; `limit` right after `used` joins it with `/`:
 - `time`: time to the end of the month, muted.
 - Amounts are in the account's currency: `$` for USD, else `12.34 EUR`.
 - Colour (`used`, `left`, `pct`, `bar`, `gauge`): the pace score of what is left over the calendar month, by `rule extra`, else amber at 20% left and red at 5%, rising with the time left. No final stretch: money left at the end of the month is not lost.
-- Hidden when the endpoint reports no extra usage or no limit, and when the numbers are older than an hour.
+- Hidden when the endpoint reports no extra usage, extra usage turned off (`is_enabled` false) or no limit, and when the numbers are older than an hour.
 - The month is the local calendar month; `today` and `daily` use the local date.
 
 `today` is not reported by the endpoint. Each fetch stores the month's spent amount; the first fetch of a day takes the last amount fetched the day before as the day's start, and `today` is the difference. When the day before was not fetched (the first day, or after a day without Claude Code), `today` stays empty for that day. An amount lower than the day's start (a new month) starts the day at zero.
