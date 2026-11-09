@@ -12,7 +12,7 @@ use crate::placeholders::ctx::parts::SHOW_ITEMS as CTX_ITEMS;
 use crate::placeholders::gh::{self, Kind};
 use crate::placeholders::money::SHOW as MONEY_ITEMS;
 use crate::placeholders::usage::glyphs::{GLYPH_SETS, SHOW_ITEMS};
-use crate::placeholders::{gitst, modes, speed, task};
+use crate::placeholders::{gitst, jj, modes, speed, task};
 use crate::plugin;
 use crate::render::builtin_config;
 use serde_json::{json, Value};
@@ -110,6 +110,7 @@ pub fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
         "sha" => &[("len", Int), ("link", Any)],
         "tag" => &[("max", Int), ("link", Any), ("ttl", Pos)],
         "gitop" => &[("step", Any)],
+        "jj" => &[("show", List(jj::SHOW)), ("ttl", Pos), ("max", Int)],
         "name" => &[("max", Int)],
         "msgs" => &[("show", OneOf(&["user", "total"]))],
         "modes" => &[("show", List(modes::SHOW))],
@@ -213,6 +214,9 @@ pub fn option_help(name: &str, key: &str) -> Option<(&'static str, &'static str)
             "seconds before git lists the tags, when the files cannot tell",
         ),
         ("gitop", "step") => ("", "false, no, off or 0 leave out the rebase step"),
+        ("jj", "show") => ("change,bookmarks,state", "parts to show, in display order"),
+        ("jj", "ttl") => ("10", "seconds before jj log is refreshed"),
+        ("jj", "max") => ("", "truncate the description to this many characters"),
         ("name", "max") => ("", "truncate to this many characters"),
         ("msgs", "show") => ("user", "user prompts, or the total with assistant messages"),
         ("modes", "show") => ("", "modes to show; all when unset"),
@@ -273,6 +277,7 @@ struct Checker<'a> {
     budgets: budget::Budgets,
     /// `set usage-api on`.
     usage_api: bool,
+    jj_missing: bool,
     issues: Vec<Issue>,
     /// File of the lines being linted.
     layer: Layer,
@@ -330,6 +335,11 @@ impl Checker<'_> {
                 }
                 if used && !self.usage_api {
                     self.usage_api_off(name, opts, line);
+                }
+                if name == "jj" && used && self.jj_missing {
+                    self.jj_missing = false;
+                    let msg = "`jj` not on PATH: `jj` renders nothing".to_string();
+                    self.add(Level::Warning, line, msg);
                 }
             }
             None => self.plugin(name, opts, line, used),
@@ -615,6 +625,9 @@ pub fn check_layers(user: Option<Source>, project: Option<Source>, dirs: &[PathB
         gh_warned: Cell::new(false),
         budgets: Default::default(),
         usage_api: false,
+        jj_missing: !dirs
+            .iter()
+            .any(|d| crate::platform::executable_in(d, "jj").is_some()),
         issues: Vec::new(),
         layer: Layer::User,
         row: false,

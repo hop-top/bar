@@ -111,9 +111,20 @@ pub(crate) fn may_spawn(ctx: &Ctx) -> bool {
     ctx.session.task.is_none()
 }
 
+/// Root of a Jujutsu workspace not colocated with git (or nested inside
+/// an outer git work tree); `repo` then names it and drops the link.
+fn jj_only(dir: &Path, spawn: bool) -> Option<PathBuf> {
+    // cheap check first: no `.jj` anywhere above, no git lookup
+    super::jj::discover(dir)?;
+    super::jj::nearer_than(dir, toplevel(dir, spawn).as_deref())
+}
+
 fn project_name(dir: &Path, spawn: bool) -> String {
     if let Some(root) = hop_root(dir) {
         return basename(root);
+    }
+    if let Some(root) = jj_only(dir, spawn) {
+        return basename(&root);
     }
     if let Some(top) = toplevel(dir, spawn) {
         if top.join(".git").is_file() {
@@ -140,7 +151,10 @@ impl Placeholder for Repo {
     fn render(&self, ctx: &Ctx, opts: &Options) -> Option<String> {
         let dir = work_dir(ctx);
         let spawn = may_spawn(ctx);
-        let url = remote_url_with(&dir, spawn);
+        let url = match jj_only(&dir, spawn) {
+            Some(_) => None,
+            None => remote_url_with(&dir, spawn),
+        };
         let name = match &url {
             Some(u) => u.rsplit('/').next().unwrap_or_default().to_string(),
             None => project_name(&dir, spawn),

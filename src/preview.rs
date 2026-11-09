@@ -9,8 +9,8 @@ use crate::options::Options;
 use crate::placeholders::ctx as ctxp;
 use crate::placeholders::money::Budget;
 use crate::placeholders::{
-    budget, dirs, extra, gh, lookup, model, modes, niche, speed, spendhist, status, task, tokens,
-    update, usage, Ctx,
+    budget, dirs, extra, gh, gitst, jj, lookup, model, modes, niche, speed, spendhist, status,
+    task, tokens, update, usage, Ctx,
 };
 use crate::plugin::{self, ExtInfo};
 use crate::render::{builtin_config, render_sample};
@@ -280,6 +280,15 @@ fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Op
         "stash" => Some(dim("$1")),
         "gitop" => Some(fg(c.warn, "rebase 2/5")),
         "conflicts" => Some(fg(c.bad, "✗2")),
+        "jj" => {
+            let show = match opts.get("show") {
+                Some(v) => gitst::parse_show(v, jj::SHOW)?,
+                None => jj::DEFAULT_SHOW.to_vec(),
+            };
+            let info = jj::sample(state == "final");
+            let parts = jj::parts(ctx, opts, &info, Path::new("/src/bar-feat"), &show);
+            (!parts.is_empty()).then(|| parts.join(" "))
+        }
         "sid" => Some(dim("a1b2c3d4")),
         "tmux" => Some(dim("work:1")),
         "update" => Some(update::fmt(ctx, "0.2.0")),

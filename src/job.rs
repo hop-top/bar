@@ -24,6 +24,9 @@ pub enum Job {
     /// (absolute), no shell; `commit` is a full object id. Output: the
     /// commit, then one `<objecttype> <tag>` line per tag.
     GitTags { dir: String, commit: String },
+    /// `jj log` of the working-copy commit of the workspace at `dir`
+    /// (absolute), no shell, never snapshotting the working copy.
+    Jj { dir: String },
     /// `<path> --ext-info`, no shell; stdout when it parses as plugin info.
     PluginInfo { path: String },
     /// `<path>` with `input` on stdin, no shell; stdout when it parses as
@@ -72,6 +75,7 @@ impl Job {
             Job::GitTags { dir, commit } => {
                 json!({"kind": "git-tags", "dir": dir, "commit": commit})
             }
+            Job::Jj { dir } => json!({"kind": "jj", "dir": dir}),
             Job::PluginInfo { path } => json!({"kind": "plugin-info", "path": path}),
             Job::PluginRender { path, input } => {
                 json!({"kind": "plugin-render", "path": path, "input": input})
@@ -116,6 +120,9 @@ impl Job {
                     .filter(|c| crate::gitfs::is_oid(c))
                     .ok_or("git-tags job without a commit id")?
                     .into(),
+            }),
+            Some("jj") => Ok(Job::Jj {
+                dir: abs_path(v, "dir")?,
             }),
             Some("plugin-info") => Ok(Job::PluginInfo {
                 path: abs_path(v, "path")?,
@@ -187,6 +194,11 @@ impl Job {
                     .current_dir(dir)
                     .env("GIT_OPTIONAL_LOCKS", "0");
                 run_child(c, None, limit).map(|out| format!("{commit}\n{out}"))
+            }
+            Job::Jj { dir } => {
+                let mut c = Command::new(crate::platform::program("jj"));
+                c.args(crate::placeholders::jj::args(dir)).current_dir(dir);
+                run_child(c, None, limit)
             }
             Job::PluginInfo { path } => {
                 let mut c = Command::new(path);
