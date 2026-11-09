@@ -140,7 +140,8 @@
   // unknown, so a stale entry here never suggests a wrong key.
   const SET_KEYS = [
     "left", "center", "right", "separator", "gap", "wrap", "max-rows", "refresh", "icons", "icon-width", "claude-dir",
-    "compact-at", "update-check", "service-status", "project-config", "color.good", "color.warn", "color.bad", "skin",
+    "compact-at", "update-check", "service-status", "project-config", "budget-session", "budget-today",
+    "budget-month", "budget-block", "budget-warn", "color.good", "color.warn", "color.bad", "skin",
     "skin-glyphs", "palette", "color-depth", "gradient", "ramp", "price",
   ].filter((k) => !JSON.stringify(JSON.parse(bar.inspect(`set ${k} x`))).includes("unknown set key"));
   const DIRECTIVES = ["set", "default", "rule", "account", "plugin"];

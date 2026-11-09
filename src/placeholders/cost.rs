@@ -1,9 +1,10 @@
 use super::{Ctx, Placeholder};
+use crate::budget::{paint_if_set, Kind};
 use crate::options::Options;
 use crate::style::{dim, fg};
 
 /// `$1.23`; `<$0.01` for a positive amount under a cent.
-pub(super) fn usd(amount: f64) -> String {
+pub(crate) fn usd(amount: f64) -> String {
     if amount > 0.0 && amount < 0.01 {
         "<$0.01".into()
     } else {
@@ -25,7 +26,8 @@ pub struct Lines;
 impl Placeholder for Cost {
     // `fmt=usd` is the only format; any other value renders as usd.
     fn render(&self, ctx: &Ctx, _opts: &Options) -> Option<String> {
-        Some(usd(ctx.session.cost_usd?))
+        let cost = ctx.session.cost_usd?;
+        Some(paint_if_set(ctx.config, Kind::Session, cost, usd(cost)))
     }
 }
 

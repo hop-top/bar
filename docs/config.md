@@ -3,7 +3,7 @@
 How to write `bar.conf`: where it lives, the directives, every placeholder and its options, styling, layout and the commands around the config. Pictures of skins, skin glyphs, segment backgrounds, palettes, bar glyphs, usage components, pace states, icons, lines and wrapping, and PR checks: [Gallery](gallery.md).
 
 - [Overview](#overview): [config file](#config-file), [project config](#project-config), [directives](#directives), [rules](#rules), [minimal example](#minimal-example)
-- [Placeholders](#placeholders): [session](#session), [ctx](#ctx), [usage](#usage), [tokens, cache, cachettl](#tokens-cache-cachettl), [ttft, tps, misses](#ttft-tps-misses), [spendhist](#spendhist), [git and directories](#git-and-directories), [prs and issues](#prs-and-issues), [account, agents, sessions, tmux](#account-agents-sessions-tmux), [update](#update), [status](#status), [every placeholder](#options-on-every-placeholder), [values](#values)
+- [Placeholders](#placeholders): [session](#session), [ctx](#ctx), [usage](#usage), [tokens, cache, cachettl](#tokens-cache-cachettl), [ttft, tps, misses](#ttft-tps-misses), [spendhist](#spendhist), [budget](#budget), [git and directories](#git-and-directories), [prs and issues](#prs-and-issues), [account, agents, sessions, tmux](#account-agents-sessions-tmux), [update](#update), [status](#status), [every placeholder](#options-on-every-placeholder), [values](#values)
 - [Styling](#styling): [skins](#skins), [palettes](#palettes), [icons](#icons), [glyphs](#glyphs), [colours](#colours), [colour depth](#colour-depth), [gradients](#gradients)
 - [Layout](#layout): [lines and wrapping](#lines-and-wrapping), [subagent rows](#subagent-rows)
 - [Commands](#commands): [bar install](#bar-install), [bar update](#update), [bar check](#bar-check), [bar config](#bar-config), [bar preview](#bar-preview), [bar edit](#bar-edit), [presets and bar init](#presets), [click handler](#click-handler-macos), [clickable commands](#clickable-commands), [hooks](#hooks)
@@ -59,7 +59,7 @@ A project file comes with the repository, so what it may do is set in your confi
 
 | Directive | Form |
 |-----------|------|
-| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-64) `subagent subagent-hide separator gap wrap max-rows refresh icons icon-width skin skin-glyphs palette color-depth gradient claude-dir compact-at project-config update-check service-status color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
+| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-64) `subagent subagent-hide separator gap wrap max-rows refresh icons icon-width skin skin-glyphs palette color-depth gradient claude-dir compact-at project-config update-check service-status budget-session budget-today budget-month budget-block budget-warn color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
 | `default` | `default <placeholder> key=value ...` |
 | `account` | `account "<glob>" <label> <color>` |
 | `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%`; see [Rules](#rules) |
@@ -89,6 +89,8 @@ Quote values with spaces (double quotes; a value is one token). `#` outside quot
 | `update-check` | `off` (default) or `on`: a daily check for a newer bar release, shown by [`update`](#update) |
 | `service-status` | `off` (default) or `on`: reads the Claude status page every 5 minutes in the background, shown by [`status`](#status) |
 | `project-config` | `off`, `safe` (default) or `full`: what a project `.bar.conf` may do. See [Project config](#project-config) |
+| `budget-session`, `budget-today`, `budget-month`, `budget-block` | Dollar budget for [budget](#budget): `$20`, `20` or `12.50` (more than zero, at most two decimals); `off` clears it. Unset by default |
+| `budget-warn` | Percent of a budget from which spend takes the warn colour, `1%`-`100%`, default `80%`. See [budget](#budget) |
 | `color.good`, `color.warn`, `color.bad`, `ramp` | State colours (one colour) and usage ramp (exactly 11 colours, quoted, worst score first). See [Colours](#colours) |
 | `price` | Model price override for [spendhist](#spendhist) |
 
@@ -137,7 +139,7 @@ Fields of the session: model, effort, context, cost and the rest of the statusli
 | Placeholder | Option | Default | Meaning |
 |---|---|---|---|
 | `model`, `effort` | `click` | on | `none` turns the command link off; the link appears only once the handler is installed (`bar click install`). See [Clickable commands](#clickable-commands) |
-| `cost` | `fmt` | `usd` | Session cost, `$1.23`; `<$0.01` under a cent. Hidden when absent. `usd` is the only value |
+| `cost` | `fmt` | `usd` | Session cost, `$1.23`; `<$0.01` under a cent. Hidden when absent. `usd` is the only value. Coloured against `set budget-session` when it is set ([budget](#budget)) |
 | `burn` | none | | Cost per hour, `$4.10/h`; hidden for the first 60 s of the session |
 | `duration` | none | | Session time: `45s`, `12m`, `1h05m` |
 | `api` | none | | Time spent waiting on API responses, formatted like `duration`; hidden when absent |
@@ -351,7 +353,7 @@ Estimated spend for today and the calendar month, from every local transcript.
 | `period` | `both` | `today`, `month` |
 | `tz` | `local` | `utc` buckets days by UTC date |
 
-Output: `today $3.12 · mon $84.10` (the labels muted), or one bare `$3.12` for `period=today` / `period=month`. This is API-equivalent cost computed from token counts at list prices. It is not subscription billing and will not match an invoice.
+Output: `today $3.12 · mon $84.10` (the labels muted), or one bare `$3.12` for `period=today` / `period=month`. With `set budget-today` or `set budget-month`, that amount is coloured against its budget ([budget](#budget)). This is API-equivalent cost computed from token counts at list prices. It is not subscription billing and will not match an invoice.
 
 Source and scanning:
 
@@ -361,7 +363,7 @@ Source and scanning:
 - Days are local dates; `tz=utc` buckets by UTC date. Default `local`. The local zone is `TZ`, else the system zone, on Unix; on Windows it is the system zone with its year-specific daylight rules, and `TZ` is not read.
 - A background job does the scanning, at most once per 60 s (a failed run waits 60 s). A render only reads the finished summary, so it renders empty until the first run completes.
 - The first run reads the newest transcripts first and stops at the refresh time limit; later runs continue, so a large history catches up over a few minutes.
-- State: `spendhist/<hash>.json` in the state directory (mode 0600, written atomically): per-transcript byte offsets, tokens per day and model for the last 62 days, and the hashes of counted messages. If the file would pass 16 MiB the marks of the least recently modified transcripts and then the oldest hashes are dropped; totals are kept, but a transcript whose mark was dropped is read again.
+- State: `spendhist/<hash>.json` in the state directory (mode 0600, written atomically): per-transcript byte offsets, tokens per day and model for the last 62 days and per UTC hour and model for the last 25 hours (for [budget](#budget) blocks), and the hashes of counted messages. If the file would pass 16 MiB the marks of the least recently modified transcripts and then the oldest hashes are dropped; totals are kept, but a transcript whose mark was dropped is read again.
 
 Cost:
 
@@ -394,6 +396,53 @@ Snapshot fetch:
 - `bar prices update` fetches the same file on request.
 - A file that is invalid or dated in the future is ignored (`bar check` says why) and fetched again.
 - The download is capped at 64 MiB. It runs `curl` (`-fsS`, https only; `--max-time 60` for `bar prices update`, the refresh time limit in the background) and, with the opt-in [update check](#update) and [service status](#status), is one of the three places core bar uses the network (plugins have their own).
+
+### budget
+
+Spend against a dollar budget for the session, today, this month or the 5-hour block, coloured as it nears the limit.
+
+`#{budget[type=session|today|month|block, show=ratio,bar, count=used|left, glyphs=blocks, width=5, tz=local|utc]}`
+
+```text
+set budget-today $20
+set budget-block $8
+set budget-warn 75%
+set right "#{budget[type=today]} │ #{budget[type=block,show=pct,gauge]}"
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `type` | `session` | `session`, `today`, `month`, `block` |
+| `show` | `ratio,bar` | list of `spent`, `limit`, `ratio`, `pct`, `left`, `bar`, `gauge` |
+| `count` | `used` | `used`, `left`: what `pct`, `bar` and `gauge` show |
+| `glyphs` | `blocks` | as for [usage](#usage); see [Glyphs](#glyphs) |
+| `width` | `5` | Bar cells, clamped to 1..40 |
+| `tz` | `local` | `utc` takes today and this month by UTC date, as for [spendhist](#spendhist) |
+
+Renders nothing while the `type`'s budget is unset (`set budget-<type>`; `bar check` warns) or its spend is not known.
+
+Components:
+
+- `spent`: `$3.12`, with `~` when a model without a price was left out (see [spendhist](#spendhist)).
+- `limit`: the budget, muted: `$20`, `$12.50`.
+- `ratio`: `$3.12/$20`, the limit muted.
+- `pct`: percent of the budget used (`16%`, `118%` past it), or left with `count=left` (`84%`, `-18%` past it).
+- `left`: `$16.88 left`, or `$2.10 over` past the budget.
+- `bar`: the used share (or what is left) as a bar, full past the budget (empty with `count=left`). `gauge`: the same as one cell of `▁..█`.
+- Unknown items are skipped and repeats dropped; a `show` with no known item is the default.
+
+Spend:
+
+- `session`: the session's `cost.total_cost_usd`, as [cost](#session) shows it.
+- `today`, `month`: the [spendhist](#spendhist) totals (API-equivalent cost at list prices from local transcripts), from the same background scan and cache; a render never reads a transcript. Empty until the first scan is cached.
+- `block`: spendhist totals by UTC hour since the start of the 5-hour window. The window is the statusline JSON's `rate_limits.five_hour` while it runs: it started 5 hours before `resets_at`. Without it (no rate limits in the JSON, or the window expired) the block follows the transcripts: it opens at the first hour with usage, lasts 5 hours, and the next hour with usage after it opens the next; with no usage in the running block's hours, the block spend is `$0.00`. Spend is counted by whole hours, from the hour the window started in, over the last 25 hours of totals.
+
+Colour:
+
+- Below `budget-warn` (default `80%`) of the budget: the [ramp](#colours), from its good end at nothing spent to its middle at the threshold.
+- From `budget-warn`: `color.warn`. At the budget: `color.bad`. Past it (by at least a cent): `color.bad`, bold. The bar stays `color.bad`, not bold.
+- `#{cost}` takes the colour of the `session` budget, and the `spendhist` amounts those of `today` and `month`, when those budgets are set; otherwise they are unchanged.
+- `bar preview` draws each budget at 30% (`early`), 90% (`burning`) and 110% (`final`) of the configured budget, or of a sample one (`$10`; `$20` for `today`; `$200` for `month`) when it is unset.
 
 ### Git and directories
 
@@ -594,6 +643,7 @@ Colours and width:
 | `sessions` | `nf-fa-terminal` U+F120 | 💬 |
 | `spend` | `nf-fa-dollar` U+F155 | 💰 |
 | `spendhist` | `nf-fa-money` U+F0D6 | 💵 |
+| `budget` | `nf-fa-pie_chart` U+F200 | 🎯 |
 | `tokens` | `nf-fa-exchange` U+F0EC | 🔢 |
 | `cache` | `nf-fa-database` U+F1C0 | 💾 |
 | `cachettl` | `nf-fa-hourglass_end` U+F253 | 🕐 |
@@ -820,7 +870,8 @@ Each row is laid out like the status line, with the same skin, palette, icons an
 - Layout placeholders (`left`, `center`, `right`, and their `@N` forms) and `default` lines: unknown placeholder, unknown option, bad option value. Plugin placeholders are checked against their `--ext-info` schema.
 - `subagent`: the same, plus a plugin placeholder there is an error (rows draw none), and a row placeholder (`task.*`) in any other layout is one.
 - `prs` / `issues`: invalid `limit`, invalid `checks` item, invalid `author` / `assignee` / `label` expression.
-- Warnings: `gh` not on `PATH` while `prs` or `issues` is used; a `default` line for a plugin that is not on `PATH` (a layout using it is an error); an expression that expands to more than 8 queries (only the first 8 run).
+- `set budget-*` values: a bad dollar amount or `budget-warn` percent is an error.
+- Warnings: `gh` not on `PATH` while `prs` or `issues` is used; a `budget` placeholder whose type has no `set budget-<type>`; a `default` line for a plugin that is not on `PATH` (a layout using it is an error); an expression that expands to more than 8 queries (only the first 8 run).
 - Options holding `%command%` or `%$VAR%` are skipped; they resolve at render time.
 
 - Warnings for project lines that are left out: invalid ones, lines a project file may not hold under `safe`, and `set project-config` in a project file; and for an unreadable project file.

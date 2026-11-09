@@ -85,6 +85,7 @@ pub fn builtin(set: Icons, name: &str, opts: &Options) -> Option<&'static str> {
         "sessions" => ("\u{f120}", "💬"),          // nf-fa-terminal
         "spend" => ("\u{f155}", "💰"),             // nf-fa-dollar
         "spendhist" => ("\u{f0d6}", "💵"),         // nf-fa-money
+        "budget" => ("\u{f200}", "🎯"),            // nf-fa-pie_chart
         "tokens" => ("\u{f0ec}", "🔢"),            // nf-fa-exchange
         "cache" => ("\u{f1c0}", "💾"),             // nf-fa-database
         "cachettl" => ("\u{f253}", "🕐"),          // nf-fa-hourglass_end

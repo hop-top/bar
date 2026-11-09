@@ -154,6 +154,8 @@ pub struct Config {
     /// `set gradient`: a preset or stops painted across each line, as
     /// written; empty when off.
     pub gradient: String,
+    /// `set budget-<kind>` and `set budget-warn`.
+    pub budgets: crate::budget::Budgets,
 }
 
 impl Default for Config {
@@ -195,6 +197,7 @@ impl Default for Config {
             project_config: ProjectMode::default(),
             color_depth: ColorDepth::default(),
             gradient: String::new(),
+            budgets: Default::default(),
         }
     }
 }

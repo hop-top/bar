@@ -2,6 +2,7 @@
 
 pub mod account;
 pub mod agents;
+pub mod budget;
 pub mod cost;
 pub mod ctx;
 pub mod dirs;
@@ -69,6 +70,7 @@ static REGISTRY: &[(&str, &(dyn Placeholder + Sync))] = &[
     ("sessions", &sessions::Sessions),
     ("spend", &spend::Spend),
     ("spendhist", &spendhist::SpendHist),
+    ("budget", &budget::Budget),
     ("tokens", &tokens::Tokens),
     ("cache", &tokens::CacheStats),
     ("cachettl", &tokens::CacheTtl),
