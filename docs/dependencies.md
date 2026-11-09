@@ -127,3 +127,22 @@ Binary size: the release `bar` grows by about 390 KB (2.11 MB to 2.50 MB on macO
 
 - Use: icons and skin separators in the preview. The page uses an installed copy, else fetches `HackNerdFontMono-Regular.ttf` and `-Bold.ttf` from jsDelivr (`cdn.jsdelivr.net/gh/ryanoasis/nerd-fonts@v3.4.0`), else the system monospace font. Nothing is committed or redistributed.
 - Source: Nerd Fonts v3.4.0, released 2025-04-24. Licences as under [Gallery tooling](#font-hack-nerd-font-mono).
+
+## Dev container
+
+`.devcontainer/Dockerfile` builds the [dev container](../CONTRIBUTING.md#dev-container). Nothing in it ships in the binary or release archives. Every pin below was released at least 14 days before it was pinned; checksums are in the Dockerfile.
+
+| Component | Pin | Released | Checked by |
+|---|---|---|---|
+| Base: `python:3.14.8-slim-trixie` (Debian 13), the benchmark image's | index digest `sha256:fbecd461…` | 2026-10-21 | digest |
+| Debian packages (gcc, make, git 2.47.3, binaryen 120, curl, jq, less, procps, xz) | snapshot.debian.org `20261020T000000Z` | snapshot date | apt signatures |
+| rustup (`rustup-init`) | 1.29.2 | 2026-10-21 | sha256 (`rustup-init.sha256`) |
+| Rust (rustc, cargo, std, clippy, rustfmt, rust-src, wasm32-unknown-unknown std) | 1.99.1, as in the benchmark image | 2026-10-15 | rustup, against the signed channel manifest |
+| wasm-bindgen-cli (musl build) | 0.2.121, the version `web/wasm` pins | 2026-05-07 | sha256 (release asset digest) |
+| gh | 2.103.2 | 2026-10-23 | sha256 (release asset digest) |
+| jj (musl build) | 0.46.0 | 2026-10-07 | sha256 (release asset digest) |
+| Claude Code (native installer, `claude.ai/install.sh`) | latest at build time; `CLAUDE_CODE_VERSION` pins one | not pinned | the installer's checksum check against the release manifest |
+
+- Claude Code is not held to the age gate: the container is for trying bar against the newest Claude Code. A pinned `CLAUDE_CODE_VERSION` also sets `DISABLE_AUTOUPDATER` in `/etc/claude-code/managed-settings.json` so the pin holds.
+- git comes from Debian: 2.47.3 reads and writes reftable repositories (2.45 or later), which the git reader's fallback path covers.
+- gh 2.103.3 (2026-10-26) and jj 0.47 (2026-11-04) were under the age gate when the image was pinned.
