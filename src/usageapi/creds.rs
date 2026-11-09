@@ -97,9 +97,11 @@ pub fn access_token(dir: &Path, hashed: bool, now_ms: i64, limit: Duration) -> O
     {
         let svc = service(&dir.to_string_lossy(), hashed);
         let user = account(std::env::var("USER").ok().as_deref());
-        let limit = limit.min(Duration::from_secs(5));
-        if let Some(t) = keychain(&svc, Some(&user), now_ms, limit)
-            .or_else(|| keychain(&svc, None, now_ms, limit))
+        // both lookups together take at most 5 s of `limit`
+        let end = std::time::Instant::now() + limit.min(Duration::from_secs(5));
+        let left = || end.saturating_duration_since(std::time::Instant::now());
+        if let Some(t) = keychain(&svc, Some(&user), now_ms, left())
+            .or_else(|| keychain(&svc, None, now_ms, left()))
         {
             return Some(t);
         }
