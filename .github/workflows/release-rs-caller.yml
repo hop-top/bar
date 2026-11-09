@@ -123,39 +123,29 @@ jobs:
   # its binary, selected by npm through os/cpu on optionalDependencies; no
   # install scripts, no downloads. Built from this release's archives
   # (scripts/npm-stage checks the .sha256 files and that every package.json
-  # carries the tag's version). Runs only when the NPM_REGISTRY_TOKEN secret
-  # is set and every binary job succeeded; versions already on npm are
-  # skipped, so a re-run finishes a partial publish.
+  # carries the tag's version). Runs when every binary job succeeded and
+  # publishes through npm trusted publishing (OIDC, no token; provenance is
+  # automatic); versions already on npm are skipped, so a re-run finishes a
+  # partial publish.
   npm:
     needs: binaries
     runs-on: ubuntu-22.04
     permissions:
       contents: read
-      id-token: write # npm provenance
+      id-token: write # npm trusted publishing
     env:
       TAG: ${{ github.ref_name }}
     steps:
-      - name: Token
-        id: token
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_REGISTRY_TOKEN }}
-        run: |
-          if [ -n "$NODE_AUTH_TOKEN" ]; then
-            echo "set=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::NPM_REGISTRY_TOKEN not set: npm packages not published"
-          fi
-      - if: steps.token.outputs.set == 'true'
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-      - if: steps.token.outputs.set == 'true'
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '22'
-          registry-url: https://registry.npmjs.org
+          node-version: '26.12.0'
+      # trusted publishing needs npm >= 11.5.1
+      - name: npm
+        run: npm install -g npm@12.2.1 && npm --version
       - name: Stage
-        if: steps.token.outputs.set == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -164,9 +154,6 @@ jobs:
           gh release download "$TAG" --dir "$RUNNER_TEMP/assets" --pattern 'bar-*'
           scripts/npm-stage "${TAG#v}" "$RUNNER_TEMP/assets" "$RUNNER_TEMP/npm" > "$RUNNER_TEMP/order"
       - name: Publish
-        if: steps.token.outputs.set == 'true'
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_REGISTRY_TOKEN }}
         run: |
           set -euo pipefail
           version="${TAG#v}"
@@ -179,7 +166,7 @@ jobs:
             if [ -n "$(npm view "$name@$version" version 2>/dev/null || true)" ]; then
               echo "$name@$version already published"
             else
-              (cd "$dir" && npm publish --provenance --access public --tag "$dist")
+              (cd "$dir" && npm publish --access public --tag "$dist")
             fi
             if [ "$dist" = next ]; then
               latest="$(npm view "$name" dist-tags.latest 2>/dev/null || true)"
