@@ -47,6 +47,7 @@ pub fn describe(name: &str) -> &'static str {
         "stash" => "stash entries",
         "gitop" => "merge, rebase, cherry-pick, revert, bisect or am in progress",
         "conflicts" => "unmerged paths",
+        "jj" => "Jujutsu change, bookmarks and state",
         "sid" => "session id",
         "compactions" => "context compactions",
         "skills" => "skill calls",

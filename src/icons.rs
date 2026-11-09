@@ -82,6 +82,7 @@ pub fn builtin(set: Icons, name: &str, opts: &Options) -> Option<&'static str> {
         "stash" => ("\u{f187}", "📦"),             // nf-fa-archive
         "gitop" => ("\u{f419}", "🔄"),             // nf-oct-git_merge
         "conflicts" => ("\u{f071}", "⚠️"),         // nf-fa-warning
+        "jj" => ("\u{f454}", "🥋"),                // nf-oct-versions
         "prs" => ("\u{f407}", "🔀"),               // nf-oct-git_pull_request
         "issues" => ("\u{f41b}", "🐛"),            // nf-oct-issue_opened
         "usage" if usage_7d => ("\u{f073}", "📅"), // nf-fa-calendar

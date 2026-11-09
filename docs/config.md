@@ -508,7 +508,7 @@ Limits and failures:
 
 ### Git and directories
 
-Repository, branch, commit, tag, stash, operation in progress, working-tree state and the session directory. All of it is read from the repository files ([Performance](technical.md#performance)).
+Repository, branch, commit, tag, stash, operation in progress, working-tree state, the [Jujutsu](#jujutsu) working-copy commit and the session directory. The git ones are read from the repository files ([Performance](technical.md#performance)).
 
 | Placeholder | Option | Default | Meaning |
 |---|---|---|---|
@@ -527,7 +527,29 @@ Repository, branch, commit, tag, stash, operation in progress, working-tree stat
 | `gitop` | `step` | on | Operation in progress in this worktree: `merge`, `rebase 2/5`, `am 1/3`, `am/rebase`, `cherry-pick`, `revert`, `bisect`; hidden when there is none. `false`, `no`, `off`, `0` leave out the step count |
 | `conflicts` | `ttl` | `10` | Unmerged paths, `✗3`; hidden at 0. As `dirty` for an index the files cannot give (see below) |
 | `cwd` | `base` | `0` | Session directory with home as `~`; `1` shows the last component only |
-| `root` | `base` | `0` | Git top-level directory of the session directory, read without running `git`; hidden outside a repository |
+| `jj` | `show` | `change,bookmarks,state` | Comma list of `change`, `commit`, `bookmarks`, `workspace`, `state`, `desc`, drawn in that order ([Jujutsu](#jujutsu)) |
+| | `ttl` | `10` | Seconds before the cached `jj log` is refreshed in the background (minimum 1) |
+| | `max` | none | Truncate the description to this many characters with `…` |
+| `root` | `base` | `0` | Git top-level directory of the session directory, read without running `git`, or the Jujutsu workspace root when that is nearer; hidden outside a repository |
+
+#### Jujutsu
+
+`jj` shows the working-copy commit (`@`) when the session directory is inside a Jujutsu workspace: a `.jj` directory there or in a parent, colocated with git or not. Elsewhere, and before the first refresh, it renders nothing.
+
+| Part | Output |
+|---|---|
+| `change` | Change id: shortest unique prefix in bold, padded to 8 characters, e.g. `kpqxywon` |
+| `commit` | Commit id, same form |
+| `bookmarks` | Local bookmarks on `@`, then those on its parents (`@-`) |
+| `workspace` | Workspace name; hidden for `default` |
+| `state` | `conflict` (red), `divergent` (amber), `empty` (muted): `@` has conflicts, its change id has several visible commits, it changes no files |
+| `desc` | First line of the description; option `max` truncates it |
+
+- Source: one `jj --ignore-working-copy log -r @ --no-graph -T <template>` in the workspace root, run in the background like `git status` (cache key `jj:<workspace root>`, `ttl` 10 s, 60 s backoff after a failure). A render only looks for the `.jj` directory; it never runs `jj` or reads jj's files.
+- `--ignore-working-copy`: bar never snapshots the working copy and, in a colocated repository, never imports or exports git refs. `@` is as of the last snapshot, which any other `jj` command takes, so files edited since then (`empty`, the commit id) show after the next `jj` command.
+- Requires `jj` 0.32 or newer on `PATH`; `bar check` warns when it is missing.
+- `repo` and `root` in a workspace that is not colocated with git, or that sits inside another git work tree: the workspace root (`repo` without a link). In a colocated repository both are unchanged.
+- `branch` always shows git's branch. In a colocated repository jj keeps git's `HEAD` detached, so `branch` is usually empty there; `#{jj[show=bookmarks]}` shows the bookmarks instead.
 
 Commit, tags and stash:
 
@@ -741,6 +763,7 @@ Colours and width:
 | `stash` | `nf-fa-archive` U+F187 | 📦 |
 | `gitop` | `nf-oct-git_merge` U+F419 | 🔄 |
 | `conflicts` | `nf-fa-warning` U+F071 | ⚠️ |
+| `jj` | `nf-oct-versions` U+F454 | 🥋 |
 | `agents` | `nf-fa-users` U+F0C0 | 👥 |
 | `cost` | `nf-fa-credit_card` U+F09D | 💳 |
 | `burn` | `nf-fa-fire` U+F06D | 🔥 |
@@ -994,8 +1017,8 @@ Exit 0 when there are no errors (warnings allowed), 2 on a config error. `--form
 `bar preview [--state early|burning|final] [--preset [<name>]]` renders your layout (or a [preset](#presets)) with built-in sample data for every core placeholder. A bare `--preset` renders every preset in turn, each under a muted `── <name> ──` header.
 
 - Sample session: model, effort, context (38% of 200k, cache split, growth), usage windows, spend limit, cost, duration, lines, version, style, vim mode, agent, thinking, fast mode, session id, compaction and skill counts.
-- Stand-ins for the rest: repo, branch, git state, commit, tag, stash, operation in progress, conflicts, worktree, PRs (#131 failing CI, #129 pending, #128 passing), issues, account label, subagents, open sessions, spend history, transcript tokens and cache, directories.
-- In the `final` state the sample tree is clean, so `dirty` is empty.
+- Stand-ins for the rest: repo, branch, git state, commit, tag, stash, operation in progress, conflicts, worktree, Jujutsu change, PRs (#131 failing CI, #129 pending, #128 passing), issues, account label, subagents, open sessions, spend history, transcript tokens and cache, directories.
+- In the `final` state the sample tree is clean, so `dirty` is empty, and the Jujutsu change is new and `empty`.
 - It reads no session, account, git repository, `gh` or plugin, and writes no state. Plugin placeholders render empty.
 - `--subagent` draws the `subagent` layout (or the preset's, or the default) for three sample subagents instead, one row per line: a running `Explore`, a running `reviewer` on Opus 5.5 at high effort, and a completed task. Rows fit `COLUMNS` when it is set.
 
@@ -1165,7 +1188,7 @@ In the state directory:
 
 | Path | Written by | Holds |
 |---|---|---|
-| `cache/` | render, `bar refresh` | cached `gh`, `git status`, `tmux`, `%cmd%`, plugin, update check, service status and usage API results, locks and failure markers |
+| `cache/` | render, `bar refresh` | cached `gh`, `git status`, `jj log`, `tmux`, `%cmd%`, plugin, update check, service status and usage API results, locks and failure markers |
 | `transcript/<hash>.json` | render, `bar refresh` | per-transcript offsets, token totals and recent context sizes ([tokens](#tokens-cache-cachettl), [ctx](#ctx)) |
 | `spendhist/<hash>.json` | `bar refresh` | spend history scan ([spendhist](#spendhist)) |
 | `hist-5h`, `hist-7d`, `hist-7d-<model>` | render | usage samples for `spark` |
@@ -1197,7 +1220,7 @@ Environment variables bar reads:
 | `GIT_INDEX_FILE` | When set, `conflicts` counts from the cached `git status` instead of the index file |
 | `TZ` | Local zone for `spendhist` (Unix) |
 | `COLORTERM`, `NO_COLOR`, `FORCE_COLOR` | Only with `set color-depth auto`; see [Colour depth](#colour-depth) |
-| `PATH`, `PATHEXT` (Windows) | Plugins, `gh`, `git`, `tmux` |
+| `PATH`, `PATHEXT` (Windows) | Plugins, `gh`, `git`, `jj`, `tmux` |
 | `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, `GIT_CONFIG_COUNT`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_SYSTEM`, `GIT_CONFIG_NOSYSTEM` | When any is set, `repo`, `branch` and `sha` run `git` instead of reading the repository files, and `dirty`, `ahead`, `worktree`, `tag`, `stash`, `gitop`, `conflicts` render empty ([Performance](technical.md#performance)) |
 
 `FORCE_HYPERLINK` is read by Claude Code, not bar; see [Click handler](#click-handler-macos).

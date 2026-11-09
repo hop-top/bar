@@ -6,8 +6,9 @@ use std::path::Path;
 
 /// Session directory, home shown as `~`; `base=1` for the last component.
 pub struct Cwd;
-/// Git top-level directory of the session directory, no process spawned;
-/// hidden outside a repository.
+/// Git top-level directory of the session directory (a Jujutsu workspace
+/// root when that is nearer), no process spawned; hidden outside a
+/// repository.
 pub struct Root;
 
 /// Path separators: `/`, and `\` on Windows.
@@ -73,10 +74,13 @@ impl Placeholder for Cwd {
 
 impl Placeholder for Root {
     fn render(&self, ctx: &Ctx, opts: &Options) -> Option<String> {
-        let Found::Repo(r) = gitfs::discover(&work_dir(ctx)) else {
-            return None;
+        let dir = work_dir(ctx);
+        let top = match gitfs::discover(&dir) {
+            Found::Repo(r) => Some(r.top),
+            _ => None,
         };
-        shown(&path_str(&r.top)?, opts, &home())
+        let root = super::jj::nearer_than(&dir, top.as_deref()).or(top)?;
+        shown(&path_str(&root)?, opts, &home())
     }
 }
 

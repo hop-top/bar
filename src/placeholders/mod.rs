@@ -11,6 +11,7 @@ pub mod gh;
 pub mod gitop;
 pub mod gitref;
 pub mod gitst;
+pub mod jj;
 pub mod misc;
 pub mod model;
 pub mod modes;
@@ -107,6 +108,7 @@ static REGISTRY: &[(&str, &(dyn Placeholder + Sync))] = &[
     ("stash", &gitref::Stash),
     ("gitop", &gitop::GitOp),
     ("conflicts", &gitop::Conflicts),
+    ("jj", &jj::Jj),
     ("sid", &niche::Sid),
     ("compactions", &niche::Compactions),
     ("skills", &niche::Skills),
