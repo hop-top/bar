@@ -596,8 +596,9 @@ Open pull requests (merge requests on GitLab) and issues of the repository, colo
 
 On a GitLab remote, `prs` lists merge requests as `!N` and `issues` lists issues as `#N`, with the same options, colours, marks, links, 120 s TTL and failure backoff as on GitHub.
 
+- `bar check` warns when `glab` is not on `PATH` and `prs` or `issues` is in the layout while `set gitlab-hosts` is set or the current directory's `origin` is a GitLab host.
 - Hosts: gitlab.com, plus `set gitlab-hosts`. bar does not read `glab`'s own config to find hosts. The remote URL (https, ssh or scp form) is passed to `glab` as `-R https://<host>[:<port>]/<group>/.../<project>`, so `glab` picks the host and its own login for it; bar never sees a token.
-- One background job per query runs `glab mr list` (or `glab issue list`) with `--output json`, then for merge requests one `glab mr view <N> --output json` per listed MR for its pipeline, all in that job. The output is cut down to number, link, draft, merge status and pipeline before it is cached.
+- One background job per query runs `glab mr list` (or `glab issue list`) with `--output json`, then for merge requests one `glab mr view <N> --output json` for each of the first 10 listed MRs for its pipeline, all in that job; MRs past the tenth show the list's merge status only. `glab` runs in bar's state directory, not the project's. The output is cut down to number, link, draft, merge status and pipeline before it is cached.
 - Pipeline: the MR's head pipeline. `failed`, `canceled` and `canceling` fail; `created`, `waiting_for_resource`, `preparing`, `pending`, `running`, `scheduled` and `manual` are pending; `success` and `skipped` pass. When `glab mr view` fails, `detailed_merge_status` `ci_must_pass` counts as failed and `ci_still_running` as pending; otherwise no mark.
 - Colour: red for a failed pipeline, `detailed_merge_status` `requested_changes`, or a conflict; amber for a pending pipeline, `not_approved`, or a draft; else green.
 - `status=closed` and `status=merged` become `--closed` and `--merged`.

@@ -277,6 +277,8 @@ struct Checker<'a> {
     budgets: budget::Budgets,
     /// `set usage-api on`.
     usage_api: bool,
+    /// `glab` is not on PATH while a GitLab remote is in play.
+    glab_missing: bool,
     jj_missing: bool,
     issues: Vec<Issue>,
     /// File of the lines being linted.
@@ -445,6 +447,13 @@ impl Checker<'_> {
                 Level::Warning,
                 line,
                 format!("`gh` not on PATH: `{name}` renders nothing"),
+            );
+        }
+        if std::mem::take(&mut self.glab_missing) {
+            self.add(
+                Level::Warning,
+                line,
+                format!("`glab` not on PATH: `{name}` renders nothing on GitLab remotes"),
             );
         }
         let kind = if name == "prs" { Kind::Pr } else { Kind::Issue };
@@ -625,6 +634,7 @@ pub fn check_layers(user: Option<Source>, project: Option<Source>, dirs: &[PathB
         gh_warned: Cell::new(false),
         budgets: Default::default(),
         usage_api: false,
+        glab_missing: false,
         jj_missing: !dirs
             .iter()
             .any(|d| crate::platform::executable_in(d, "jj").is_some()),
@@ -659,6 +669,11 @@ pub fn check_layers(user: Option<Source>, project: Option<Source>, dirs: &[PathB
         c.defaults = cfg.defaults.clone();
         c.budgets = cfg.budgets;
         c.usage_api = cfg.usage_api;
+        let gitlab = !cfg.gitlab_hosts.is_empty() || cwd_on_gitlab(&cfg.gitlab_hosts);
+        c.glab_missing = gitlab
+            && !dirs
+                .iter()
+                .any(|d| crate::platform::executable_in(d, "glab").is_some());
     }
     for e in parsed.config.err().unwrap_or_default() {
         c.layer = e.layer;
@@ -704,6 +719,22 @@ pub fn check_layers(user: Option<Source>, project: Option<Source>, dirs: &[PathB
         issues: c.issues,
         notes: Vec::new(),
     }
+}
+
+/// The working directory's `origin`, read from the repository files only,
+/// is on gitlab.com or one of `hosts`.
+fn cwd_on_gitlab(hosts: &[String]) -> bool {
+    let Ok(dir) = std::env::current_dir() else {
+        return false;
+    };
+    let crate::gitfs::Found::Repo(repo) = crate::gitfs::discover(&dir) else {
+        return false;
+    };
+    repo.origin_url()
+        .ok()
+        .flatten()
+        .and_then(|u| crate::placeholders::repo::web_url(&u))
+        .is_some_and(|u| crate::placeholders::glab::gitlab_repo(&u, hosts).is_some())
 }
 
 /// Lints `text`, a user config file's contents, on its own.

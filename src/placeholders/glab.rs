@@ -15,6 +15,8 @@ pub const GITLAB_COM: &str = "gitlab.com";
 const MAX_OUTPUT: usize = 4 * 1024 * 1024;
 /// GitLab's largest page.
 const MAX_PER_PAGE: usize = 100;
+/// Merge requests per list that get a `glab mr view` for their pipeline.
+pub const MAX_VIEWS: usize = 10;
 
 /// `set gitlab-hosts`: comma-separated host names, lowercased; empty
 /// entries are skipped, so `""` clears the list.
@@ -153,16 +155,24 @@ pub fn plan(kind: Kind, remote: &str, hosts: &[String], opts: &Options) -> Optio
     })
 }
 
+/// `glab` runs in bar's state dir, never the project, so nothing in the
+/// project's directory reaches it.
 fn glab(args: &[String], limit: Duration) -> Option<Value> {
+    let state = crate::click::state_dir();
+    let dir = if state.is_dir() {
+        state
+    } else {
+        std::env::temp_dir()
+    };
     let mut c = Command::new(crate::platform::program("glab"));
-    c.args(args);
+    c.args(args).current_dir(dir);
     let out = run_child_capped(c, None, limit, MAX_OUTPUT)?;
     serde_json::from_str(&out).ok()
 }
 
-/// Body of a `glab` job: the list, then for merge requests one
-/// `glab mr view` each for its pipeline, while time is left. `None` when
-/// the list fails; a failed view only loses that MR's pipeline.
+/// Body of a `glab` job: the list, then for the first `MAX_VIEWS` merge
+/// requests one `glab mr view` each for its pipeline, while time is left.
+/// `None` when the list fails; a failed view only loses that MR's pipeline.
 pub fn run(kind: &str, repo: &str, args: &[String], limit: Duration) -> Option<String> {
     let deadline = Instant::now() + limit;
     let Value::Array(items) = glab(args, limit)? else {
@@ -170,11 +180,13 @@ pub fn run(kind: &str, repo: &str, args: &[String], limit: Duration) -> Option<S
     };
     let out: Vec<Value> = items
         .iter()
-        .map(|item| match kind {
+        .enumerate()
+        .map(|(i, item)| match kind {
             "mr" => {
                 let left = deadline.saturating_duration_since(Instant::now());
                 let iid = item["iid"].as_u64();
-                let view = iid.filter(|_| !left.is_zero()).and_then(|n| {
+                let view = iid.filter(|_| i < MAX_VIEWS && !left.is_zero());
+                let view = view.and_then(|n| {
                     let a = ["mr", "view", &n.to_string(), "-R", repo, "--output", "json"];
                     glab(&a.map(String::from), left)
                 });
