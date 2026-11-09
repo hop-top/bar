@@ -277,3 +277,44 @@ fn tree_reading_classifies_like_the_typed_one() {
     // the request started at the tool result
     assert_eq!(s.tps_last(), Some(10.0));
 }
+
+/// An assistant entry Claude Code writes itself (an API error, a usage
+/// limit): `<synthetic>` model, all usage zero.
+fn synthetic(id: &str, ms: i64, model: &str) -> String {
+    format!(
+        r#"{{"type":"assistant","timestamp":"{}","message":{{"id":"{id}","model":"{model}","role":"assistant","content":[{{"type":"text","text":"API Error"}}],"usage":{{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0,"cache_creation":{{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}}}}}"#,
+        at(ms)
+    )
+}
+
+#[test]
+fn synthetic_entries_are_not_requests() {
+    for model in ["<synthetic>", "claude-opus-5-5"] {
+        let t = Tmp::new();
+        t.append(&[
+            prompt(0),
+            reply("a", 1_000, 5, 0, 50_000, false),
+            prompt(MIN),
+            synthetic("e", MIN + 500, model),
+            prompt(2 * MIN),
+            reply("b", 2 * MIN + 1_000, 5, 0, 50_000, false),
+        ]);
+        let s = t.turns();
+        // the error answered nothing: timed from the next prompt
+        assert_eq!(
+            (s.ttft_last(), s.ttft_avg()),
+            (Some(1_000), Some(1_000)),
+            "{model}"
+        );
+        // the prefix survived the error, so b is a miss
+        assert_eq!(s.misses(), (0, 1), "{model}");
+        let st = transcript::update(&t.0.join("state"), &t.0.join("t.jsonl"), u64::MAX, None)
+            .unwrap()
+            .stats;
+        assert_eq!(
+            (st.ctx_reqs, st.ctx_prev, st.ctx_last, st.assistant_msgs),
+            (2, 50_003, 50_003, 2),
+            "{model}"
+        );
+    }
+}

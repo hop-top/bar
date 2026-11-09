@@ -200,7 +200,7 @@ fn apply(st: &mut State, line: &[u8]) {
             st.stats.user_msgs = st.stats.user_msgs.saturating_add(1);
         }
         (Rec::ToolResult, _, ts) => turns.tool_result(ts),
-        (Rec::Assistant, Some(u), Some(ts_ms)) => turns.assistant(&turns::Req {
+        (Rec::Assistant, Some(u), Some(ts_ms)) if !u.synthetic => turns.assistant(&turns::Req {
             id: &u.id,
             ts_ms,
             output: u.output,
@@ -210,7 +210,8 @@ fn apply(st: &mut State, line: &[u8]) {
         }),
         _ => {}
     }
-    let Some(u) = f.usage else {
+    // no request behind it: not a message, a context size or a cache use
+    let Some(u) = f.usage.filter(|u| !u.synthetic) else {
         return;
     };
     if let Some(ts) = u.ts {
