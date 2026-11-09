@@ -78,6 +78,31 @@ pub fn month_bounds(ts: i64, tz: Tz) -> (i64, i64) {
     (at(days_from_civil(y, m, 1)), at(days_from_civil(ny, nm, 1)))
 }
 
+/// `2026-11-09T12:00:00.123456+00:00` or `...Z` (an RFC 3339 time with a
+/// zone offset) to unix seconds.
+pub fn rfc3339(s: &str) -> Option<i64> {
+    let base = crate::transcript::parse_ts(s)?;
+    let tail = &s[19..];
+    let tail = tail.trim_start_matches(|c: char| c == '.' || c.is_ascii_digit());
+    let off = match tail.as_bytes() {
+        [] | [b'Z'] => 0,
+        [sign @ (b'+' | b'-'), h1, h2, b':', m1, m2] => {
+            let d = |a: &u8, b: &u8| -> Option<i64> {
+                (a.is_ascii_digit() && b.is_ascii_digit())
+                    .then(|| i64::from((a - b'0') * 10 + (b - b'0')))
+            };
+            let o = d(h1, h2)? * 3600 + d(m1, m2)? * 60;
+            if *sign == b'+' {
+                o
+            } else {
+                -o
+            }
+        }
+        _ => return None,
+    };
+    Some(base - off)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

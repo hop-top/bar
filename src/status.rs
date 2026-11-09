@@ -193,7 +193,7 @@ impl Snapshot {
 }
 
 fn ts(v: &Value) -> Option<i64> {
-    crate::transcript::parse_ts(v.as_str()?)
+    crate::tz::rfc3339(v.as_str()?)
 }
 
 fn incident(v: &Value) -> Option<Incident> {
