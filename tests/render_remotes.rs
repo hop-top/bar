@@ -133,6 +133,43 @@ fn not_a_fork_when_upstream_is_origin_or_missing() {
 }
 
 #[test]
+fn owner_and_repo_case_does_not_make_a_fork() {
+    let t = Tmp::new();
+    let d = repo(&t, "proj");
+    let (path, _) = no_git(&t);
+    git(
+        &d,
+        &[
+            "remote",
+            "add",
+            "origin",
+            "git@gitlab.example.com:Org/Proj.git",
+        ],
+    );
+    git(
+        &d,
+        &[
+            "remote",
+            "add",
+            "upstream",
+            "https://gitlab.example.com/org/proj",
+        ],
+    );
+    let conf = "set left \"#{fork}\"";
+    assert_eq!(one(&render(&t, &d, conf, &path).plain), "");
+    git(
+        &d,
+        &[
+            "remote",
+            "set-url",
+            "upstream",
+            "https://gitlab.example.com/other/proj",
+        ],
+    );
+    assert_eq!(one(&render(&t, &d, conf, &path).plain), "other/proj");
+}
+
+#[test]
 fn rewritten_config_reads_cached_git() {
     let t = Tmp::new();
     let d = fork(&t);
