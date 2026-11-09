@@ -127,7 +127,7 @@ docker run --rm -v /tmp/lr-src:/src -v /tmp/lr-target:/tgt -e CARGO_TARGET_DIR=/
 
 ## Releasing
 
-Versions come from [release-please](https://github.com/googleapis/release-please) with hop-top/.github's target-versioning extension: `.github/workflows/release-please.yml` calls its shared `release-please-on-push.yml`, pinned to a release commit SHA (`release-please-preflight.yml` carries the same pin). Config: `.github/release-please-config.json`; manifest: `.github/.release-please-manifest.json`. Every push to `next`, `main` or `release/<major>.<minor>` keeps one release PR open against that branch. Merging it sets `version` in `Cargo.toml` and `Cargo.lock`, writes `CHANGELOG.md`, tags `v<version>` and creates the GitHub release (a prerelease exactly when the version has a suffix).
+Versions come from [release-please](https://github.com/googleapis/release-please) with hop-top/.github's target-versioning extension: `.github/workflows/release-please.yml` calls its shared `release-please-on-push.yml`, pinned to a release commit SHA (`release-please-preflight.yml` carries the same pin). Config: `.github/release-please-config.json`; manifest: `.github/.release-please-manifest.json`. Every push to `next`, `main` or `release/<major>.<minor>` keeps one release PR open against that branch. Merging it sets `version` in `Cargo.toml` and `Cargo.lock`, in the Claude Code plugin manifest (`claude-plugin/.claude-plugin/plugin.json`, `$.version`; Claude Code offers a plugin update when that string changes) and in the bar row of `docs/comparison.md` (an `x-release-please-version` annotation), writes `CHANGELOG.md`, tags `v<version>` and creates the GitHub release (a prerelease exactly when the version has a suffix).
 
 The branch decides the version:
 
