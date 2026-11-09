@@ -6,6 +6,7 @@ use super::app::{App, Choice, Mode, STATES};
 use super::group;
 use super::model::{row_key, Editor};
 use super::schema::Kind;
+use crate::plugin::ExtInfo;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -49,7 +50,7 @@ fn previewed(app: &App) -> Cow<'_, Editor> {
     }
 }
 
-fn preview_lines(app: &App, ed: &Editor, width: u16) -> Vec<Line<'static>> {
+fn preview_lines(app: &App, ed: &Editor, width: u16, plugins: &[ExtInfo]) -> Vec<Line<'static>> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs() as i64);
@@ -60,7 +61,7 @@ fn preview_lines(app: &App, ed: &Editor, width: u16) -> Vec<Line<'static>> {
                 &c,
                 Some(width as usize),
                 now,
-                true,
+                Some(plugins),
             );
             ansi::lines(&out)
         }
@@ -78,8 +79,12 @@ fn preview_lines(app: &App, ed: &Editor, width: u16) -> Vec<Line<'static>> {
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.area();
+    let plugins = match previewed(app).config() {
+        Ok(c) => app.plugin_infos(&c),
+        Err(_) => Vec::new(),
+    };
     let shown = previewed(app);
-    let preview = preview_lines(app, &shown, area.width.saturating_sub(2));
+    let preview = preview_lines(app, &shown, area.width.saturating_sub(2), &plugins);
     let [title, prev, main, status, help] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(preview.len().clamp(1, 4) as u16 + 2),

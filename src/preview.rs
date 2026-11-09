@@ -233,25 +233,41 @@ pub fn render_session(
         now,
         &|name, opts, ctx, label| match lookup(name) {
             Some(_) => sample("early", name, opts, ctx, label),
-            None => plugin_sample(name, opts, ctx, plugins),
+            None => plugin_sample(name, opts, ctx, plugins, false),
         },
     )
 }
 
 /// A plugin's sample output through bar's plugin paint. Options are
 /// checked as for a real render: a listed plugin with options it does not
-/// accept draws nothing.
-fn plugin_sample(name: &str, opts: &Options, ctx: &Ctx, plugins: &[ExtInfo]) -> Option<String> {
+/// accept draws nothing. With `stub`, a plugin with no matching sample
+/// (or such options) draws its name, muted, instead.
+fn plugin_sample(
+    name: &str,
+    opts: &Options,
+    ctx: &Ctx,
+    plugins: &[ExtInfo],
+    stub: bool,
+) -> Option<String> {
     let (pick, opts) = icons::split(opts);
     let mut own = Options::default();
     for (k, v) in opts.iter().filter(|(k, _)| k.as_str() != "click") {
         own.set(k, v);
     }
-    let (info, typed) = match plugins.iter().find(|p| p.name == name) {
-        Some(i) => (i.clone(), plugin::validate(&i.options, &own).ok()?),
-        None => (ExtInfo::named(name), Default::default()),
+    let found = plugins.iter().find(|p| p.name == name);
+    let typed = match found {
+        Some(i) => plugin::validate(&i.options, &own).ok(),
+        None => Some(Default::default()),
     };
-    let out = plugin::web::sample(&info, &typed);
+    let info = found.cloned().unwrap_or_else(|| ExtInfo::named(name));
+    let out = match typed {
+        _ if stub => match typed.and_then(|t| plugin::web::matching_sample(&info, &t)) {
+            Some(o) => o,
+            None => return Some(dim(name)),
+        },
+        Some(t) => plugin::web::sample(&info, &t),
+        None => return None,
+    };
     plugin::paint_with(&out, name, ctx.config, ctx.now, &pick, info.icon.as_deref())
 }
 
@@ -262,25 +278,26 @@ pub fn render(state: &str, load: LoadResult, columns: Option<usize>, now: i64) -
         LoadResult::Ok(c) => c,
         _ => builtin_config(),
     };
-    render_config(state, &config, columns, now, false)
+    render_config(state, &config, columns, now, None)
 }
 
-/// The preview line(s) of `config`. With `stubs`, a plugin placeholder
-/// shows its name, muted, where `bar preview` leaves it empty.
+/// The preview line(s) of `config`. `plugins: None` leaves plugin
+/// placeholders empty, as `bar preview` does; with `Some`, a plugin draws
+/// its matching `web` sample from that list, else its name, muted.
 pub fn render_config(
     state: &str,
     config: &Config,
     columns: Option<usize>,
     now: i64,
-    stubs: bool,
+    plugins: Option<&[ExtInfo]>,
 ) -> String {
     render_sample(
         &session(state, now),
         config,
         Some(columns.unwrap_or(DEFAULT_COLUMNS)),
         now,
-        &|name, opts, ctx, label| match lookup(name) {
-            None if stubs => Some(dim(name)),
+        &|name, opts, ctx, label| match (lookup(name), plugins) {
+            (None, Some(list)) => plugin_sample(name, opts, ctx, list, true),
             _ => sample(state, name, opts, ctx, label),
         },
     )

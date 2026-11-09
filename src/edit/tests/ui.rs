@@ -140,3 +140,23 @@ fn ansi_to_styled_spans() {
     assert_eq!(s[2].style.fg, Some(Color::Indexed(1)));
     assert_eq!(l[1].spans[0].content, "E");
 }
+
+#[test]
+fn preview_draws_plugin_web_samples_else_the_name() {
+    use crate::edit::app::InfoLoader;
+    use crate::edit::model::Editor;
+    let ci = r#"{"name":"ci","version":"1","capabilities":["placeholder"],"options":{"name":{"type":"bool"}},"web":{"samples":[{"when":{"name":"true"},"output":{"text":"ok build-and-test"}},{"output":{"text":"ok-mark"}}]}}"#;
+    let load: InfoLoader =
+        Box::new(move |name| (name == "ci").then(|| crate::plugin::parse_info(ci))?);
+    let conf = "set left \"#{model} │ #{ci[name=true]} │ #{ci} │ #{weather}\"\n";
+    let ed = Editor::new(super::unwritable(), Some(conf.into()));
+    let mut a = App::new(ed, vec!["ci".into(), "weather".into()], load);
+    let s = screen(&mut a, 120, 20);
+    let preview = s
+        .iter()
+        .find(|l| l.contains("Opus 4.7"))
+        .expect("preview row");
+    assert!(preview.contains("ok build-and-test"), "{preview}");
+    assert!(preview.contains("ok-mark"), "{preview}");
+    assert!(preview.contains("weather"), "{preview}");
+}

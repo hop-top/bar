@@ -40,7 +40,7 @@ Any executable named `bar-<name>` on `PATH` (on Windows `bar-<name>.exe`, `.cmd`
 | `icon` | Optional default segment icon, used when `set icons` is not `none`. Sanitised; at most 2 cells. |
 | `ttl` | How long a render result stays fresh: seconds (`300`) or a duration (`90s`, `5m`, `1h`, `1d`). Default 60 s; zero or unparsable means the default. |
 | `cache` | Optional. `"session"`: the output depends on the Claude Code session, so results are cached per session id and the render input carries `session.record`. Any other value or none: shared across sessions. |
-| `web` | Optional. What the [web configurator](web.md) shows for the plugin, which it cannot run: see [Web configurator metadata](#web-configurator-metadata). Without it the plugin still works everywhere, and the page previews it as its name. |
+| `web` | Optional. What the [web configurator](web.md) shows for the plugin, which it cannot run: see [Web configurator metadata](#web-configurator-metadata). Without it the plugin still works everywhere, and the page and `bar edit` preview it as its name. |
 
 The result is cached for a day per binary path and modification time, so a changed binary is asked again at once; renders never run `--ext-info` themselves. A cold cache renders nothing and asks in the background. Output that does not parse, a non-zero exit or a timeout counts as a failed refresh (kept value, 60 s backoff); `bar plugin info` and `bar check`, which run it directly, fall back to the file name, an empty version and no capabilities.
 
@@ -71,7 +71,7 @@ The web configurator runs bar's renderer in the browser, where no plugin can run
 
 `bar check` validates the `web` object of each plugin a config uses and reports problems as warnings (``plugin `tlc`: web: samples[0]: ...``): a non-object, a non-string `description`, `category`, `label`, `help` or `placeholder`, a sample without a valid `output`, a `when` or hint for an undeclared option, or a `when` value or choice the option does not accept.
 
-`bar web plugins` prints `plugins.json`, the `--ext-info` of every placeholder plugin bar finds on `PATH` (or in each `--dir DIR` instead), `web` objects included; `-o FILE` writes it to a file. It reads the cached `--ext-info` when fresh and otherwise runs it now (5 s limit), storing the result for later renders. Load the file into the web configurator to compose and preview with your plugins.
+`bar web plugins` prints `plugins.json`, the `--ext-info` of every placeholder plugin bar finds on `PATH` (or in each `--dir DIR` instead), `web` objects included; `-o FILE` writes it to a file. It reads the cached `--ext-info` when fresh and otherwise runs it now (5 s limit), storing the result for later renders. Load the file into the web configurator to compose and preview with your plugins. [`bar edit`](config.md#bar-edit) previews plugins from the same samples, reading `--ext-info` the same way for the plugins its config uses.
 
 ## Render
 

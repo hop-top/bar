@@ -4,6 +4,7 @@
 use super::fuzzy;
 use super::model::Editor;
 use super::schema::{self, Kind, Opt};
+use crate::conf::Config;
 use crate::palette;
 use crate::placeholders;
 use crate::plugin::ExtInfo;
@@ -119,6 +120,19 @@ impl App {
             infos: HashMap::new(),
             load,
         }
+    }
+
+    /// The `--ext-info` of every plugin `config` names, loaded once each;
+    /// plugins without one are left out.
+    pub fn plugin_infos(&mut self, config: &Config) -> Vec<ExtInfo> {
+        let load = &self.load;
+        crate::conf::project::user_plugins(config)
+            .into_iter()
+            .filter_map(|n| {
+                let info = self.infos.entry(n).or_insert_with_key(|n| load(n));
+                info.clone()
+            })
+            .collect()
     }
 
     /// Picker entries: core placeholders, then plugins, with descriptions.
