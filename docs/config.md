@@ -253,30 +253,31 @@ Token counts, prompt-cache use and the time the prompt cache has left, from the 
 |---|---|---|---|
 | `tokens` | `show` | `both` | `in`, `out`, `total`, `both`; `both` is `12.3k↑ 4.1k↓` |
 | `cache` | `show` | `both` | `read`, `write`, `hit`, `both`; `both` is `r 1.2M w 80k`, `hit` is `hit 93%` |
-| `cachettl` | `ttl` | detected | Seconds the prompt cache lives (minimum 1). Without it: `3600` when the last cache write that names its lifetime went to the 1-hour cache, else `300` |
+| `cachettl` | `ttl` | detected | Seconds the prompt cache lives (minimum 1). Without it: the status line's `prompt_cache.expires_at` when sent, else `3600` when the last cache write that names its lifetime went to the 1-hour cache, else `300` |
 
-Read from the `transcript_path` in the session JSON (assistant messages' `usage`). Nothing renders without a readable transcript.
+Read from the `transcript_path` in the session JSON (assistant messages' `usage`). Nothing renders without a readable transcript, except `cachettl` when the JSON carries `prompt_cache`.
 
 - `tokens`: in is `input_tokens` plus `cache_creation_input_tokens`; out is `output_tokens`.
 - `cache`: read is `cache_read_input_tokens`, write is `cache_creation_input_tokens`, hit is read over read plus input plus write.
 - Numbers are compact: `999`, `12.3k`, `80k`, `1.2M`, `2.5B`.
 - A message written as several lines (one per content block) counts once, by `message.id`.
-- `cachettl`: `ttl` minus the time since the last assistant message (the transcript mtime when there is none), as `4m12s`; `cold` in muted text once it is over. Green above 60 s left, then the warn colour.
+- `cachettl` with `prompt_cache` in the status-line JSON and no `ttl` option: the time until `expires_at`, needing no transcript; `cold` while `warm` is `false` or `expires_at` is `null`.
+- `cachettl` otherwise: `ttl` minus the time since the last assistant message (the transcript mtime when there is none), as `4m12s`; `cold` in muted text once it is over. Green above 60 s left, then the warn colour.
 - The lifetime is detected from `usage.cache_creation`: a write with `ephemeral_1h_input_tokens` and no `ephemeral_5m_input_tokens` means the 1-hour cache; any 5-minute part means the 5-minute cache. A request that writes nothing, or a transcript without the split, keeps the last detected lifetime (5 minutes to begin with).
 - Totals are incremental. A state file per transcript (mode 0600, `transcript/` in the state directory) keeps the byte offset and running totals; a render reads only the bytes appended since. A smaller file, a different inode (on Windows, creation time), or a changed mtime at the same size rescans from the start.
 - A render reads at most 1 MiB. On a bigger backlog it shows the totals so far and a background `bar refresh` finishes the scan, so the numbers catch up within a few renders. Lines over 512 KiB and lines that are not valid JSON are skipped.
 
 ### ttft, tps, misses
 
-Time to first token, output speed and prompt-cache misses, from the same transcript read as [`tokens`](#tokens-cache-cachettl).
+Time to first token, output speed and prompt-cache misses, from the same transcript read as [`tokens`](#tokens-cache-cachettl). Misses come from the status line's `prompt_cache` object when Claude Code sends it (v2.1.251 and later).
 
-`#{ttft[show=last|avg|both]}`, `#{tps[show=last|avg|both]}`, `#{misses[show=count,cause,cold]}`
+`#{ttft[show=last|avg|both]}`, `#{tps[show=last|avg|both]}`, `#{misses[show=count,cause,last,cold]}`
 
 | Placeholder | Option | Default | Meaning |
 |---|---|---|---|
 | `ttft` | `show` | `last` | `last`, `avg`, `both`; `ttft 1.4s`, `ttft avg 1.8s`, `ttft 1.4s avg 1.8s` |
 | `tps` | `show` | `last` | `last`, `avg`, `both`; `43 t/s`, `avg 38 t/s`, `43 avg 38 t/s` |
-| `misses` | `show` | `count,cause` | list of `count` (`miss 2`), `cause` (`ttl 1 inv 1`), `cold` (`cold 180k +$0.68`) |
+| `misses` | `show` | `count,cause` | list of `count` (`miss 2`), `cause` (`ttl 1 inv 1`), `last` (`last tools_changed`), `cold` (`cold 180k +$0.68`) |
 
 What the timestamps measure:
 
@@ -299,6 +300,8 @@ What the timestamps measure:
 
 `misses`:
 
+- With `prompt_cache` in the status-line JSON, its numbers are used and the transcript is not needed: `count` is `misses` (requests that re-processed content the cache held, compactions and tool-result clearing excluded); `cause` puts the `ttl_expired_*` entries of `miss_causes` under `ttl` and every other miss, diagnosed or not, under `inv`; `last` lists the causes in `last_miss_cause` (such as `tools_changed`, `system_prompt_changed`); `cold` is `recache_tokens_if_cold`, priced with the 1-hour rate when `ttl` is `"1h"`. Without `miss_causes` (before v2.1.260) `cause` and `last` show nothing; `cold` hides while `recache_tokens_if_cold` is `null` (right after a compaction).
+- Without it, misses are worked out from the transcript as below; `last` shows nothing.
 - A response is a miss when the previous response had at least 1024 cached prompt tokens (cache read plus cache write), and this one reads under half of that and writes more than it reads: the cached prefix had to be written again.
 - Cause `ttl`: the time from the previous response's last entry to the user entry that sent this request is longer than the cache lifetime ([detected](#tokens-cache-cachettl) like `cachettl`: 1 hour or 5 minutes). Cause `inv`: the cache was still in its lifetime, so the prefix changed (another model, edited instructions or tools, a cleared or rewound conversation). A request with no user entry before it since the previous response has no known send time and counts as `inv`.
 - The first response after a compaction starts a new prompt and is never counted.

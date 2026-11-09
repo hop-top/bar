@@ -276,3 +276,27 @@ fn api_duration_formats_like_duration() {
     assert_eq!(run("api", &cost("0", "5000"), ""), None);
     assert_eq!(run("api", &Session::default(), ""), None);
 }
+
+#[test]
+fn parses_prompt_cache() {
+    let s = p(
+        r#"{"prompt_cache":{"warm":true,"ttl":"5m","expires_at":1738429200,"misses":2,"miss_causes":{"tools_changed":2,"Bad Name":1},"last_miss_cause":{"causes":["tools_changed","\u001b[31m"]},"recache_tokens_if_cold":45000}}"#,
+    );
+    let pc = s.prompt_cache.unwrap();
+    assert_eq!(pc.warm, Some(true));
+    assert_eq!(pc.ttl, Some(300));
+    assert_eq!(pc.expires_at, Some(1_738_429_200));
+    assert_eq!(pc.misses, Some(2));
+    // cause names outside a-z 0-9 _ are dropped
+    assert_eq!(pc.miss_causes, Some(vec![("tools_changed".into(), 2)]));
+    assert_eq!(pc.last_miss, vec!["tools_changed".to_string()]);
+    assert_eq!(pc.recache_if_cold, Some(45_000));
+    let s = p(r#"{"prompt_cache":{"ttl":"1h","expires_at":null,"last_miss_cause":null}}"#);
+    let pc = s.prompt_cache.unwrap();
+    assert_eq!(
+        (pc.ttl, pc.expires_at, pc.miss_causes),
+        (Some(3600), None, None)
+    );
+    assert!(p(r#"{"prompt_cache":[1]}"#).prompt_cache.is_none());
+    assert!(p("{}").prompt_cache.is_none());
+}

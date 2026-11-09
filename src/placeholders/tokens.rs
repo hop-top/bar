@@ -33,8 +33,25 @@ impl Placeholder for CacheStats {
 
 impl Placeholder for CacheTtl {
     fn render(&self, ctx: &Ctx, opts: &Options) -> Option<String> {
-        cachettl(ctx, opts, &stats(ctx)?)
+        match left_from_json(ctx, opts) {
+            Some(left) => Some(ttl_text(ctx, left)),
+            None => cachettl(ctx, opts, &stats(ctx)?),
+        }
     }
+}
+
+/// Seconds left on the cache from the status line's `prompt_cache`
+/// (`expires_at`; 0 once `warm` is false or it is `null`). `None` when it
+/// is absent or the `ttl` option sets the lifetime.
+fn left_from_json(ctx: &Ctx, opts: &Options) -> Option<i64> {
+    let p = ctx.session.prompt_cache.as_ref()?;
+    if opts.get("ttl").is_some() || (p.warm.is_none() && p.expires_at.is_none()) {
+        return None;
+    }
+    Some(match (p.warm, p.expires_at) {
+        (Some(false), _) | (_, None) => 0,
+        (_, Some(at)) => at.saturating_sub(ctx.now),
+    })
 }
 
 /// `1.2k`, `80k`, `1.2M`, `2.5B`: one decimal, a trailing `.0` dropped,
@@ -112,9 +129,13 @@ pub fn cachettl(ctx: &Ctx, opts: &Options, s: &Stats) -> Option<String> {
     };
     // a clock behind the transcript counts as just written
     let elapsed = ctx.now.saturating_sub(last).max(0);
-    let left = ttl.saturating_sub(elapsed);
+    Some(ttl_text(ctx, ttl.saturating_sub(elapsed)))
+}
+
+/// `4m12s` coloured by how much is left; `cold` once nothing is.
+fn ttl_text(ctx: &Ctx, left: i64) -> String {
     if left <= 0 {
-        return Some(dim("cold"));
+        return dim("cold");
     }
     let text = match (left / 3600, left / 60 % 60, left % 60) {
         (0, 0, s) => format!("{s}s"),
@@ -122,7 +143,7 @@ pub fn cachettl(ctx: &Ctx, opts: &Options, s: &Stats) -> Option<String> {
         (h, m, _) => format!("{h}h{m:02}m"),
     };
     let c = &ctx.config.colors;
-    Some(fg(if left < WARN_BELOW { c.warn } else { c.good }, &text))
+    fg(if left < WARN_BELOW { c.warn } else { c.good }, &text)
 }
 
 /// Stand-in values for `bar preview`.
