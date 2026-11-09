@@ -171,7 +171,7 @@ fn custom_bad_colour_applies_to_eta_and_proj() {
         ..Session::default()
     };
     let mut cfg = Config::default();
-    cfg.colors.bad = 160;
+    cfg.colors.bad = 160.into();
     let runner = ColdRunner;
     let ctx = Ctx {
         session: &s,

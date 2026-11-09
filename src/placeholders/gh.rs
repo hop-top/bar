@@ -3,6 +3,7 @@
 use super::repo::{may_spawn, remote_url_with};
 use super::{link_enabled, work_dir, Ctx, Placeholder};
 use crate::cache::{Cache, Job};
+use crate::color::Color;
 use crate::expr;
 use crate::icons;
 use crate::options::Options;
@@ -190,7 +191,7 @@ pub fn checks(pr: &Value) -> Checks {
 }
 
 /// Port of the reference classification: red, amber, else green.
-fn pr_color(ctx: &Ctx, pr: &Value, state: Checks) -> u8 {
+fn pr_color(ctx: &Ctx, pr: &Value, state: Checks) -> Color {
     let colors = &ctx.config.colors;
     if state == Checks::Fail
         || str_of(pr, "reviewDecision") == "CHANGES_REQUESTED"

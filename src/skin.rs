@@ -1,16 +1,16 @@
 //! Skins: segments painted on background colours, joined by Powerline
 //! arrows or wrapped in capsules. Every separator glyph is one cell.
 
+use crate::color::Color;
 use crate::conf::{Skin, SkinGlyphs};
 use crate::layout::Group;
-use crate::options::Options;
-use crate::style::{bg_code, fg, fg_code, muted};
+use crate::style::{bg_code, depth, fg, fg_code, muted};
 
 /// A rendered segment with its visible width and background.
 pub struct Seg {
     pub text: String,
     pub width: usize,
-    pub bg: u8,
+    pub bg: Color,
 }
 
 /// The skins that paint backgrounds; `plain` is drawn by the layout.
@@ -35,26 +35,6 @@ pub enum Side {
     Left,
     Center,
     Right,
-}
-
-/// The `bg` option split off; the placeholder never sees it. A value that
-/// is not 0-255 is dropped.
-pub fn split_bg(opts: &Options) -> (Option<u8>, Options) {
-    let mut rest = Options::default();
-    let mut bg = None;
-    for (k, v) in opts.iter() {
-        if k == "bg" {
-            bg = v.trim().parse().ok();
-        } else {
-            rest.set(k, v);
-        }
-    }
-    (bg, rest)
-}
-
-/// Whether `raw` is acceptable as `bg=`.
-pub fn valid_bg(raw: &str) -> bool {
-    raw.trim().parse::<u8>().is_ok()
 }
 
 struct Glyphs {
@@ -87,7 +67,7 @@ fn glyphs(set: SkinGlyphs) -> Glyphs {
     }
 }
 
-fn fg_glyph(code: u8, g: char) -> String {
+fn fg_glyph(code: Color, g: char) -> String {
     fg(code, &g.to_string())
 }
 
@@ -117,7 +97,7 @@ fn resets_bg(params: &str) -> bool {
 
 /// Segment text whose resets put the background back, so a styled value
 /// ending mid-segment leaves no hole.
-fn keep_bg(text: &str, bg: u8) -> String {
+fn keep_bg(text: &str, bg: Color) -> String {
     let b = bg_code(bg);
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
@@ -154,8 +134,10 @@ pub fn paint(paint: Paint, set: SkinGlyphs, segs: &[Seg], side: Side) -> Group {
         return Group::default();
     }
     let g = glyphs(set);
-    let thin = |c: char| fg_glyph(muted(), c);
-    let same = |i: usize| i > 0 && segs[i - 1].bg == segs[i].bg;
+    let thin = |c: char| fg_glyph(muted().into(), c);
+    // backgrounds compare as drawn: two codes may share one colour at depth 16
+    let d = depth();
+    let same = |i: usize| i > 0 && segs[i - 1].bg.at(d) == segs[i].bg.at(d);
     let mut text = String::new();
     let content: usize = segs.iter().map(|s| s.width + 2).sum();
     let width = match (paint, side) {

@@ -60,7 +60,13 @@ fn owned(items: &[&str]) -> Vec<String> {
 
 /// Options bar handles itself on every placeholder.
 fn generic() -> Vec<Opt> {
-    vec![Opt::new("icon", Kind::Text), Opt::new("bg", Kind::Text)]
+    vec![
+        Opt::new("icon", Kind::Text),
+        Opt::new("bg", Kind::Text),
+        Opt::new("fg", Kind::Text),
+        Opt::new("bold", Kind::Choice(owned(&["on", "off"]))),
+        Opt::new("gradient", Kind::Text),
+    ]
 }
 
 /// Options of core placeholder `name`; `None` when it is not one.

@@ -15,7 +15,10 @@ fn terminal_palette_is_ansi16_with_three_step_ramp() {
     assert_eq!(p.ramp, [1, 1, 1, 3, 3, 3, 3, 2, 2, 2, 2]);
     assert!(p.bgs.iter().all(|&b| b < 16 && b != p.muted));
     let c = parse("set palette terminal").unwrap();
-    assert_eq!((c.muted, c.ramp, c.bgs), (p.muted, p.ramp, p.bgs));
+    assert_eq!(
+        (c.muted, c.ramp, c.bgs),
+        (p.muted, p.ramp.map(Into::into), p.bgs)
+    );
 }
 
 #[test]

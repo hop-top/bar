@@ -1,5 +1,6 @@
 use super::{Ctx, Placeholder};
 use crate::click;
+use crate::color::Color;
 use crate::conf::Rule;
 use crate::history;
 use crate::options::Options;
@@ -163,7 +164,7 @@ fn width_opt(opts: &Options) -> i64 {
 }
 
 /// Used percents as `▁..█`: one colour, or each cell by its own value.
-fn spark(used: &[f64], gradient: bool, color: u8, by_left: impl Fn(i64) -> u8) -> String {
+fn spark(used: &[f64], gradient: bool, color: Color, by_left: impl Fn(i64) -> Color) -> String {
     if !gradient {
         let cells: String = used.iter().map(|&u| level(u)).collect();
         return fg(color, &cells);
@@ -174,7 +175,7 @@ fn spark(used: &[f64], gradient: bool, color: u8, by_left: impl Fn(i64) -> u8) -
 }
 
 /// Bar cells; `color(i, n)` is the colour of drawn cell `i` of `n`.
-fn bar(opts: &Options, value: i64, color: &dyn Fn(usize, usize) -> u8) -> String {
+fn bar(opts: &Options, value: i64, color: &dyn Fn(usize, usize) -> Color) -> String {
     glyphs::bar(
         opts.get("glyphs").unwrap_or("blocks"),
         width_opt(opts),

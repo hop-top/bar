@@ -45,7 +45,7 @@ fn seg(text: &str, bg: u8) -> Seg {
     Seg {
         text: text.into(),
         width: strip_codes(text).chars().count(),
-        bg,
+        bg: bg.into(),
     }
 }
 
@@ -76,7 +76,7 @@ fn every_palette_parses() {
         assert_eq!(c.muted, p.muted, "{name}");
         assert_eq!(
             (c.colors.good, c.colors.warn, c.colors.bad),
-            (p.good, p.warn, p.bad),
+            (p.good.into(), p.warn.into(), p.bad.into()),
             "{name}"
         );
         assert_eq!(c.ramp, p.ramp, "{name}");
@@ -104,7 +104,10 @@ fn explicit_colours_beat_palette_in_any_order() {
     ] {
         let c = parse(&src).unwrap();
         assert_eq!(c.colors.good, 1);
-        assert_eq!((c.colors.warn, c.colors.bad), (nord.warn, nord.bad));
+        assert_eq!(
+            (c.colors.warn, c.colors.bad),
+            (nord.warn.into(), nord.bad.into())
+        );
         assert_eq!(c.ramp, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
         assert_eq!(c.muted, nord.muted);
     }
@@ -200,7 +203,7 @@ fn no_bg_bleed_inside_segment() {
     let s = Seg {
         text: text.into(),
         width: 7,
-        bg: 5,
+        bg: 5.into(),
     };
     for skin in [Paint::Powerline, Paint::Capsule] {
         let g = paint(skin, SkinGlyphs::Nerd, std::slice::from_ref(&s), Side::Left);
@@ -296,7 +299,7 @@ fn compound_resets_restore_bg() {
     let s = Seg {
         text: "\x1b[0;1mx\x1b[22;49my\x1b[1;38;5;2mz\x1b[;1mw".into(),
         width: 4,
-        bg: 5,
+        bg: 5.into(),
     };
     let g = paint(
         Paint::Powerline,

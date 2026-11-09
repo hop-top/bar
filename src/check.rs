@@ -4,6 +4,7 @@ use crate::conf::{layers, layout_key, parse_options, project, tokenize, Layer};
 use crate::expr;
 use crate::format::{self, Token};
 use crate::icons;
+use crate::look;
 use crate::options::Options;
 use crate::placeholders::ctx::parts::SHOW_ITEMS as CTX_ITEMS;
 use crate::placeholders::gh::{self, Kind};
@@ -11,7 +12,6 @@ use crate::placeholders::usage::glyphs::{GLYPH_SETS, SHOW_ITEMS};
 use crate::placeholders::{gitst, modes, speed, task};
 use crate::plugin;
 use crate::render::builtin_config;
-use crate::skin;
 use serde_json::{json, Value};
 use std::cell::Cell;
 use std::collections::BTreeMap;
@@ -166,8 +166,8 @@ pub fn option_help(name: &str, key: &str) -> Option<(&'static str, &'static str)
 
 /// A core placeholder's options as JSON: `[{"key", "kind", "values",
 /// "default", "help"}]` (`default` empty when there is none),
-/// `kind` one of `any`, `int`, `pos`, `one`, `list`; `icon` and `bg`
-/// apply to every placeholder and are not listed. Empty for plugins.
+/// `kind` one of `any`, `int`, `pos`, `one`, `list`; the options on every
+/// placeholder (`look::schema`) are not listed. Empty for plugins.
 pub fn option_schema(name: &str) -> Value {
     let opts: Vec<Value> = core_options(name)
         .unwrap_or(&[])
@@ -274,8 +274,8 @@ impl Checker<'_> {
                 bad |= self.icon(v, line);
                 continue;
             }
-            if k == "bg" {
-                bad |= self.bg(v, line);
+            if look::KEYS.contains(&k.as_str()) {
+                bad |= self.look(k, v, line);
                 continue;
             }
             match spec.iter().find(|(n, _)| n == k) {
@@ -306,11 +306,13 @@ impl Checker<'_> {
         bad
     }
 
-    /// Reports a bad `bg` value; true when there was one.
-    fn bg(&mut self, v: &str, line: usize) -> bool {
-        let bad = !v.contains('%') && !skin::valid_bg(v);
-        if bad {
-            self.error(line, format!("invalid bg `{v}` (0-255)"));
+    /// Reports a bad `bg`, `fg`, `bold` or `gradient` value; true when
+    /// there was one.
+    fn look(&mut self, k: &str, v: &str, line: usize) -> bool {
+        let msg = look::invalid(k, v).filter(|_| !v.contains('%'));
+        let bad = msg.is_some();
+        if let Some(m) = msg {
+            self.error(line, m);
         }
         bad
     }
@@ -383,6 +385,10 @@ impl Checker<'_> {
                 self.add(Level::Warning, line, msg);
             }
         }
+        if let Some(opt) = info.declares_look_option {
+            let msg = format!("plugin `{name}` declares the reserved option `{opt}`; ignored");
+            self.add(Level::Warning, line, msg);
+        }
         for issue in plugin::web::issues(&info) {
             self.add(
                 Level::Warning,
@@ -394,8 +400,8 @@ impl Checker<'_> {
         for (k, v) in opts.iter().filter(|(_, v)| !v.contains('%')) {
             if k == "icon" {
                 self.icon(v, line);
-            } else if k == "bg" {
-                self.bg(v, line);
+            } else if look::KEYS.contains(&k.as_str()) {
+                self.look(k, v, line);
             } else if k == "click" {
                 if !val_ok(Val::OneOf(&["toggle", "none"]), v) {
                     self.error(line, format!("invalid value `{v}` for `click`"));

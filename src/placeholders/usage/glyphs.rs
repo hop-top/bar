@@ -1,5 +1,6 @@
 //! Bar drawing and the `show`/`alt` component lists of the usage placeholder.
 
+use crate::color::Color;
 use crate::style::{dim, fg};
 
 /// Components `show` and `alt` accept.
@@ -78,7 +79,7 @@ const PARTIAL: [&str; 8] = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"]
 
 /// `value` percent of `width` cells; empty cells muted. `color(i, n)` gives
 /// the colour of drawn cell `i` of `n`.
-pub fn bar(glyphs: &str, width: i64, value: i64, color: &dyn Fn(usize, usize) -> u8) -> String {
+pub fn bar(glyphs: &str, width: i64, value: i64, color: &dyn Fn(usize, usize) -> Color) -> String {
     let width = width as usize;
     let (full, empty) = cells(glyphs);
     let (filled, part) = if glyphs == "eighths" {

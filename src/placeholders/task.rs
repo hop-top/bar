@@ -139,10 +139,10 @@ impl Placeholder for Status {
         let t = task(ctx)?;
         let c = &ctx.config.colors;
         let (mark, color) = match t.status.as_str() {
-            "" | "running" => ("●", crate::style::accent()),
+            "" | "running" => ("●", crate::color::Color::from(crate::style::accent())),
             "completed" => ("✓", c.good),
             "failed" | "killed" => ("✗", c.bad),
-            _ => ("○", ctx.config.muted),
+            _ => ("○", crate::color::Color::from(ctx.config.muted)),
         };
         let word = sanitize(if t.status.is_empty() {
             "running"

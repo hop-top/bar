@@ -1,5 +1,6 @@
 //! Config parser: line-oriented, tmux-style directives.
 
+use crate::color::{Color, ColorDepth};
 use crate::compact::CompactAt;
 use crate::options::Options;
 use crate::palette;
@@ -87,14 +88,14 @@ pub struct Rule {
 pub struct AccountRule {
     pub glob: String,
     pub label: String,
-    pub color: u8,
+    pub color: Color,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Colors {
-    pub good: u8,
-    pub warn: u8,
-    pub bad: u8,
+    pub good: Color,
+    pub warn: Color,
+    pub bad: Color,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -121,7 +122,7 @@ pub struct Config {
     /// Cells a private-use (Nerd Font) glyph occupies: 1 or 2.
     pub icon_width: usize,
     pub colors: Colors,
-    pub ramp: [u8; 11],
+    pub ramp: [Color; 11],
     /// Muted text colour, from the palette.
     pub muted: u8,
     pub skin: Skin,
@@ -145,6 +146,11 @@ pub struct Config {
     pub update_check: bool,
     /// What a project `.bar.conf` may do (`set project-config`).
     pub project_config: ProjectMode,
+    /// `set color-depth`: colours the output uses.
+    pub color_depth: ColorDepth,
+    /// `set gradient`: a preset or stops painted across each line, as
+    /// written; empty when off.
+    pub gradient: String,
 }
 
 impl Default for Config {
@@ -164,11 +170,11 @@ impl Default for Config {
             icons: Icons::None,
             icon_width: 1,
             colors: Colors {
-                good: 114,
-                warn: 179,
-                bad: 203,
+                good: Color::Idx(114),
+                warn: Color::Idx(179),
+                bad: Color::Idx(203),
             },
-            ramp: [196, 202, 208, 214, 220, 226, 190, 154, 118, 82, 46],
+            ramp: palette::default().ramp.map(Color::Idx),
             muted: palette::default().muted,
             skin: Skin::Plain,
             skin_glyphs: SkinGlyphs::Nerd,
@@ -183,6 +189,8 @@ impl Default for Config {
             compact_at: None,
             update_check: false,
             project_config: ProjectMode::default(),
+            color_depth: ColorDepth::default(),
+            gradient: String::new(),
         }
     }
 }
@@ -296,9 +304,8 @@ fn amount(s: &str) -> Result<Amount, String> {
         .ok_or_else(bad)
 }
 
-fn code(s: &str) -> Result<u8, String> {
-    s.parse()
-        .map_err(|_| format!("invalid colour `{s}` (0-255)"))
+fn code(s: &str) -> Result<Color, String> {
+    Color::parse(s).ok_or_else(|| format!("invalid colour `{s}` (0-255, #rrggbb or an ANSI name)"))
 }
 
 fn kv<'a>(tok: &'a str, key: &str) -> Option<&'a str> {

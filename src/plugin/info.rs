@@ -43,6 +43,9 @@ pub struct ExtInfo {
     pub declares_icon_option: bool,
     /// As `declares_icon_option`, for the reserved `bg` option.
     pub declares_bg_option: bool,
+    /// The reserved `fg`, `bold` or `gradient` option the plugin declared
+    /// first, if any.
+    pub declares_look_option: Option<&'static str>,
     /// As `declares_icon_option`, for the reserved `click` option.
     pub declares_click_option: bool,
     /// `"cache": "session"`: output depends on the session, so results are
@@ -72,6 +75,7 @@ impl ExtInfo {
             icon: None,
             declares_icon_option: false,
             declares_bg_option: false,
+            declares_look_option: None,
             declares_click_option: false,
             session_cache: false,
             web: None,
@@ -197,7 +201,7 @@ pub(super) fn ttl_of(v: &Value) -> u64 {
 }
 
 /// Placeholder options bar handles itself; never sent to a plugin.
-pub const RESERVED: [&str; 3] = ["icon", "bg", "click"];
+pub const RESERVED: [&str; 6] = ["icon", "bg", "fg", "bold", "gradient", "click"];
 
 /// `None` unless a JSON object with string `name` and `version`.
 pub fn parse_info(raw: &str) -> Option<ExtInfo> {
@@ -213,6 +217,9 @@ pub fn parse_info(raw: &str) -> Option<ExtInfo> {
         .unwrap_or_default();
     let declares_icon_option = v["options"].get("icon").is_some();
     let declares_bg_option = v["options"].get("bg").is_some();
+    let declares_look_option = ["fg", "bold", "gradient"]
+        .into_iter()
+        .find(|k| v["options"].get(k).is_some());
     let declares_click_option = v["options"].get("click").is_some();
     Some(ExtInfo {
         name: clean_str(&v["name"])?,
@@ -227,6 +234,7 @@ pub fn parse_info(raw: &str) -> Option<ExtInfo> {
         icon: clean_str(&v["icon"]).filter(|i| !i.trim().is_empty()),
         declares_icon_option,
         declares_bg_option,
+        declares_look_option,
         declares_click_option,
         session_cache: v["cache"] == "session",
         web: v.get("web").filter(|w| !w.is_null()).cloned(),

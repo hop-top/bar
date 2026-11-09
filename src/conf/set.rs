@@ -4,7 +4,9 @@
 use super::{
     code, duration, layout_key, Config, Icons, ProjectMode, Skin, SkinGlyphs, Wrap, MAX_LINES,
 };
+use crate::color::{Color, ColorDepth};
 use crate::compact::CompactAt;
+use crate::look;
 use crate::palette;
 use crate::prices::Price;
 
@@ -113,8 +115,26 @@ pub(super) fn apply_set(c: &mut Config, key: &str, val: &str) -> Result<(), Stri
                 .ok_or_else(|| format!("invalid palette `{val}` ({})", palette::NAMES.join("|")))?
                 .name;
         }
+        "color-depth" => {
+            c.color_depth = ColorDepth::parse(val).ok_or_else(|| {
+                format!(
+                    "invalid color-depth `{val}` ({})",
+                    ColorDepth::NAMES.join("|")
+                )
+            })?
+        }
+        "gradient" => {
+            if val != "off" && !look::valid_gradient(val) {
+                return Err(look::invalid("gradient", val).unwrap_or_default());
+            }
+            c.gradient = if val == "off" {
+                String::new()
+            } else {
+                val.into()
+            };
+        }
         "ramp" => {
-            let codes: Result<Vec<u8>, _> = val.split_whitespace().map(code).collect();
+            let codes: Result<Vec<Color>, _> = val.split_whitespace().map(code).collect();
             c.ramp = codes?
                 .try_into()
                 .map_err(|_| "ramp needs exactly 11 codes".to_string())?;
@@ -159,15 +179,15 @@ pub(super) fn apply_palette(c: &mut Config, explicit: &[String]) {
     c.muted = p.muted;
     c.bgs = p.bgs;
     if unset("color.good") {
-        c.colors.good = p.good;
+        c.colors.good = p.good.into();
     }
     if unset("color.warn") {
-        c.colors.warn = p.warn;
+        c.colors.warn = p.warn.into();
     }
     if unset("color.bad") {
-        c.colors.bad = p.bad;
+        c.colors.bad = p.bad.into();
     }
     if unset("ramp") {
-        c.ramp = p.ramp;
+        c.ramp = p.ramp.map(Color::Idx);
     }
 }
