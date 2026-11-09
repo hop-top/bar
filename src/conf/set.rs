@@ -2,8 +2,10 @@
 //! palette fill-in applied after the whole file is read.
 
 use super::{
-    code, duration, layout_key, Config, Icons, ProjectMode, Skin, SkinGlyphs, Wrap, MAX_LINES,
+    amount, code, duration, layout_key, Amount, Config, Icons, ProjectMode, Skin, SkinGlyphs, Wrap,
+    MAX_LINES,
 };
+use crate::budget::Kind;
 use crate::color::{Color, ColorDepth};
 use crate::compact::CompactAt;
 use crate::look;
@@ -30,7 +32,24 @@ fn group_slot<'a>(c: &'a mut Config, group: &str, line: usize) -> &'a mut String
     }
 }
 
+/// `$20`, `20`, `12.50` as cents, more than zero; `off` as `None`.
+fn budget_amount(key: &str, val: &str) -> Result<Option<u64>, String> {
+    if val == "off" {
+        return Ok(None);
+    }
+    let bad = || format!("invalid {key} `{val}` (dollars like $20 or 12.50, or off)");
+    let dollars = val.strip_prefix('$').unwrap_or(val);
+    match amount(&format!("${dollars}")) {
+        Ok(Amount::Cents(c)) if c > 0 => Ok(Some(c)),
+        _ => Err(bad()),
+    }
+}
+
 pub(super) fn apply_set(c: &mut Config, key: &str, val: &str) -> Result<(), String> {
+    if let Some(kind) = key.strip_prefix("budget-").and_then(Kind::parse) {
+        c.budgets.set(kind, budget_amount(key, val)?);
+        return Ok(());
+    }
     if let Some(k) = layout_key(key) {
         let (group, line) = k?;
         *group_slot(c, group, line) = val.into();
@@ -98,6 +117,13 @@ pub(super) fn apply_set(c: &mut Config, key: &str, val: &str) -> Result<(), Stri
                     ProjectMode::NAMES.join("|")
                 )
             })?
+        }
+        "budget-warn" => {
+            c.budgets.warn = val
+                .strip_suffix('%')
+                .and_then(|p| p.parse().ok())
+                .filter(|p| (1..=100).contains(p))
+                .ok_or_else(|| format!("invalid budget-warn `{val}` (1%..100%)"))?
         }
         "color.good" => c.colors.good = code(val)?,
         "color.warn" => c.colors.warn = code(val)?,

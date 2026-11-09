@@ -1,18 +1,20 @@
 //! `bar preview`: the configured layout filled with built-in sample data.
 //! Reads no session, account, git, gh or plugin; touches no state.
 
+use crate::budget::Kind;
 use crate::click::Term;
 use crate::conf::{Config, LoadResult};
 use crate::icons;
 use crate::options::Options;
 use crate::placeholders::ctx as ctxp;
 use crate::placeholders::{
-    dirs, gh, lookup, model, modes, niche, speed, spendhist, status, task, tokens, update, usage,
-    Ctx,
+    budget, dirs, gh, lookup, model, modes, niche, speed, spendhist, status, task, tokens, update,
+    usage, Ctx,
 };
 use crate::plugin::{self, ExtInfo};
 use crate::render::{builtin_config, render_sample};
 use crate::session::{CtxUsage, Session, SpendLimit, Window};
+use crate::spendhist::Spend;
 use crate::style::{accent, bold, dim, fg};
 use serde_json::{json, Value};
 use std::path::Path;
@@ -161,6 +163,27 @@ fn limit(opts: &Options) -> usize {
         .unwrap_or(5)
 }
 
+/// The configured limit, else a sample one, spent by a share per state:
+/// comfortable, past the warn threshold, over.
+fn budget_sample(state: &str, opts: &Options, ctx: &Ctx) -> Option<String> {
+    let kind = Kind::parse(opts.get("type").unwrap_or("session"))?;
+    let limit = ctx.config.budgets.get(kind).unwrap_or(match kind {
+        Kind::Month => 20_000,
+        Kind::Today => 2_000,
+        _ => 1_000,
+    });
+    let share = match state {
+        "burning" => 0.9,
+        "final" => 1.1,
+        _ => 0.3,
+    };
+    let spent = Spend {
+        usd: limit as f64 * share / 100.0,
+        unknown: false,
+    };
+    Some(budget::fmt(ctx.config, opts, spent, limit))
+}
+
 fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Option<String> {
     let c = &ctx.config.colors;
     let list = |items: Vec<String>| {
@@ -204,6 +227,7 @@ fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Op
             let period = opts.get("period").unwrap_or("both");
             Some(spendhist::fmt(period, 3.12, false, 84.10, false))
         }
+        "budget" => budget_sample(state, opts, ctx),
         "tokens" => tokens::tokens(ctx, opts, &tokens::sample_stats(ctx.now)),
         "cache" => tokens::cache(ctx, opts, &tokens::sample_stats(ctx.now)),
         "cachettl" => tokens::cachettl(ctx, opts, &tokens::sample_stats(ctx.now)),

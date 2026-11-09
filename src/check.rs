@@ -1,11 +1,13 @@
 //! `bar check`: lints the config file without rendering anything.
 
+use crate::budget;
 use crate::conf::{layers, layout_key, parse_options, project, tokenize, Layer};
 use crate::expr;
 use crate::format::{self, Token};
 use crate::icons;
 use crate::look;
 use crate::options::Options;
+use crate::placeholders::budget::{DEFAULT_SHOW as BUDGET_SHOW, SHOW_ITEMS as BUDGET_ITEMS};
 use crate::placeholders::ctx::parts::SHOW_ITEMS as CTX_ITEMS;
 use crate::placeholders::gh::{self, Kind};
 use crate::placeholders::usage::glyphs::{GLYPH_SETS, SHOW_ITEMS};
@@ -57,6 +59,14 @@ pub fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
         "cwd" | "root" => &[("base", OneOf(&["0", "1"]))],
         "spendhist" => &[
             ("period", OneOf(&["today", "month", "both"])),
+            ("tz", OneOf(&["local", "utc"])),
+        ],
+        "budget" => &[
+            ("type", OneOf(&budget::Kind::NAMES)),
+            ("show", List(&BUDGET_ITEMS)),
+            ("count", OneOf(&["used", "left"])),
+            ("glyphs", OneOf(&GLYPH_SETS)),
+            ("width", Int),
             ("tz", OneOf(&["local", "utc"])),
         ],
         "tokens" => &[("show", OneOf(&["in", "out", "total", "both"]))],
@@ -126,6 +136,15 @@ pub fn option_help(name: &str, key: &str) -> Option<(&'static str, &'static str)
         ("cwd" | "root", "base") => ("0", "1 shows the last path component only"),
         ("spendhist", "period") => ("both", "today, this month, or both"),
         ("spendhist", "tz") => ("local", "bucket days by local or UTC date"),
+        ("budget", "type") => (
+            "session",
+            "the session, today, this month or the 5-hour block",
+        ),
+        ("budget", "show") => (BUDGET_SHOW, "components, in order"),
+        ("budget", "count") => ("used", "show what is used or what is left"),
+        ("budget", "glyphs") => ("blocks", "glyph set of the bar"),
+        ("budget", "width") => ("5", "bar cells (1-40)"),
+        ("budget", "tz") => ("local", "bucket days by local or UTC date"),
         ("tokens", "show") => ("both", "input, output, their total, or both"),
         ("cache", "show") => ("both", "cache reads, writes, hit rate, or reads and writes"),
         ("cachettl", "ttl") => ("300", "seconds the cache lives; 3600 for the 1 h cache"),
@@ -222,6 +241,7 @@ struct Checker<'a> {
     defaults: BTreeMap<String, Options>,
     gh_missing: bool,
     gh_warned: Cell<bool>,
+    budgets: budget::Budgets,
     issues: Vec<Issue>,
     /// File of the lines being linted.
     layer: Layer,
@@ -273,6 +293,9 @@ impl Checker<'_> {
                 let bad = self.core_values(name, spec, opts, line);
                 if matches!(name, "prs" | "issues") {
                     self.gh_checks(name, opts, line, used, bad);
+                }
+                if name == "budget" && used && !bad {
+                    self.budget_set(opts, line);
                 }
             }
             None => self.plugin(name, opts, line, used),
@@ -334,6 +357,21 @@ impl Checker<'_> {
             self.error(line, m);
         }
         bad
+    }
+
+    /// Warns when the budget a `budget` placeholder shows is not set.
+    fn budget_set(&mut self, opts: &Options, line: usize) {
+        let merged = match self.defaults.get("budget") {
+            Some(d) => opts.merged_over(d),
+            None => opts.clone(),
+        };
+        let ty = merged.get("type").unwrap_or("session");
+        if let Some(kind) = budget::Kind::parse(ty) {
+            if self.budgets.get(kind).is_none() {
+                let msg = format!("no `set budget-{ty}`: `budget[type={ty}]` renders nothing");
+                self.add(Level::Warning, line, msg);
+            }
+        }
     }
 
     fn gh_checks(&mut self, name: &str, opts: &Options, line: usize, used: bool, bad: bool) {
@@ -523,6 +561,7 @@ pub fn check_layers(user: Option<Source>, project: Option<Source>, dirs: &[PathB
             .iter()
             .any(|d| crate::platform::executable_in(d, "gh").is_some()),
         gh_warned: Cell::new(false),
+        budgets: Default::default(),
         issues: Vec::new(),
         layer: Layer::User,
         row: false,
@@ -552,6 +591,7 @@ pub fn check_layers(user: Option<Source>, project: Option<Source>, dirs: &[PathB
         c.icon_width = cfg.icon_width;
         c.max_rows = cfg.max_rows;
         c.defaults = cfg.defaults.clone();
+        c.budgets = cfg.budgets;
     }
     for e in parsed.config.err().unwrap_or_default() {
         c.layer = e.layer;

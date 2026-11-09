@@ -15,6 +15,7 @@ pub fn describe(name: &str) -> &'static str {
         "sessions" => "open Claude Code sessions by state",
         "spend" => "time left on a monthly spend limit",
         "spendhist" => "estimated spend today and this month",
+        "budget" => "spend against a dollar budget",
         "tokens" => "transcript token counts",
         "cache" => "prompt cache reads and writes",
         "cachettl" => "time the prompt cache has left",
