@@ -89,6 +89,38 @@ fn without_open_the_output_is_unchanged() {
 
 #[cfg(unix)]
 #[test]
+fn abbreviated_paths_link_the_full_directory() {
+    let t = Tmp::new();
+    let d = repo(&t, "proj");
+    let sub = d.join("alpha/beta/gamma");
+    std::fs::create_dir_all(&sub).unwrap();
+    let o = run(&t)
+        .conf("set left \"#{cwd[fish=1,depth=2,open=vscode]} #{root[fish=1,open=zed]}\"")
+        .cwd(&sub)
+        .unset("GIT_CONFIG_NOSYSTEM")
+        .go();
+    let shown: Vec<&str> = o.plain.split_whitespace().collect();
+    assert_eq!(shown[0], "…/b/gamma", "{:?}", o.raw);
+    assert!(
+        shown[1].ends_with("/proj") && shown[1].len() < d.to_str().unwrap().len(),
+        "{:?}",
+        o.raw
+    );
+    assert!(
+        o.raw
+            .contains(&link_to(&format!("vscode://file{}/", enc(&sub)))),
+        "{:?}",
+        o.raw
+    );
+    assert!(
+        o.raw.contains(&link_to(&format!("zed://file{}/", enc(&d)))),
+        "{:?}",
+        o.raw
+    );
+}
+
+#[cfg(unix)]
+#[test]
 fn root_links_the_top_level_from_a_subdirectory() {
     let t = Tmp::new();
     let d = repo(&t, "proj");
