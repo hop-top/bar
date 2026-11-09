@@ -115,6 +115,43 @@ fn check_flags_missing_gh() {
 }
 
 #[test]
+fn check_flags_missing_glab_for_gitlab() {
+    let fx = Fx::new();
+    fx.exe("gh", "#!/bin/sh\nexit 0\n");
+    fx.conf("set left \"#{prs}\"\n");
+    // a GitHub user without GitLab anywhere: no word about glab
+    let (_, stdout) = out(&mut fx.bar(&["check"]));
+    assert!(!stdout.contains("glab"), "{stdout}");
+    // self-hosted GitLab configured
+    fx.conf("set gitlab-hosts git.example.com\nset left \"#{prs} #{issues}\"\n");
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_eq!(code, 0, "a warning is not a config error: {stdout}");
+    assert_eq!(stdout.matches("`glab` not on PATH").count(), 1, "{stdout}");
+    // or the working directory's origin is on gitlab.com
+    let repo = fx.root.join("repo");
+    std::fs::create_dir_all(repo.join(".git/refs")).unwrap();
+    std::fs::create_dir_all(repo.join(".git/objects")).unwrap();
+    std::fs::write(repo.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+    std::fs::write(
+        repo.join(".git/config"),
+        "[remote \"origin\"]\n\turl = git@gitlab.com:g/p.git\n",
+    )
+    .unwrap();
+    fx.conf("set left \"#{issues}\"\n");
+    let (_, stdout) = out(fx.bar(&["check"]).current_dir(&repo));
+    assert!(stdout.contains("`glab` not on PATH"), "{stdout}");
+    assert!(stdout.contains("issues"), "{stdout}");
+    // a layout without prs or issues
+    fx.conf("set gitlab-hosts git.example.com\nset left \"#{repo}\"\n");
+    let (_, stdout) = out(fx.bar(&["check"]).current_dir(&repo));
+    assert!(!stdout.contains("glab"), "{stdout}");
+    fx.exe("glab", "#!/bin/sh\nexit 0\n");
+    fx.conf("set left \"#{issues}\"\n");
+    let (_, stdout) = out(fx.bar(&["check"]).current_dir(&repo));
+    assert!(!stdout.contains("glab"), "glab present: {stdout}");
+}
+
+#[test]
 fn check_flags_unknown_placeholder_and_unknown_option() {
     let fx = Fx::new();
     fx.plugin("bar-echo");

@@ -124,6 +124,56 @@ fn list_and_views_run_in_one_job_without_a_shell() {
 }
 
 #[test]
+fn glab_runs_outside_the_project() {
+    let f = gitlab();
+    f.out("glab-mr.json", &format!("[{}]", mr(5, "")));
+    f.out("glab-view-5.json", &view(5, "success", ""));
+    let pwd = f.root.join("glab-pwd");
+    let bin = f.root.join("bin/glab");
+    let body = std::fs::read_to_string(&bin).unwrap();
+    let body = body.replacen(
+        "#!/bin/sh\n",
+        &format!("#!/bin/sh\npwd -P >> '{}'\n", pwd.display()),
+        1,
+    );
+    std::fs::write(&bin, body).unwrap();
+    std::env::set_var("BAR_STATE_DIR", &f.state);
+    f.prime_gitlab(Kind::Pr, REMOTE, &[], &[]);
+    std::env::remove_var("BAR_STATE_DIR");
+    let dirs = std::fs::read_to_string(&pwd).unwrap();
+    let state = f.state.canonicalize().unwrap();
+    assert_eq!(dirs.lines().count(), 2, "{dirs:?}");
+    for d in dirs.lines() {
+        assert_eq!(std::path::Path::new(d), state, "{dirs:?}");
+    }
+}
+
+#[test]
+fn pipeline_views_capped_at_ten() {
+    let f = gitlab();
+    let list: Vec<String> = (1..=15).rev().map(|n| mr(n, "")).collect();
+    f.out("glab-mr.json", &format!("[{}]", list.join(",")));
+    for n in 1..=15 {
+        f.out(&format!("glab-view-{n}.json"), &view(n, "failed", ""));
+    }
+    f.prime_gitlab(Kind::Pr, REMOTE, &[], &[("limit", "15")]);
+    let views: Vec<String> = f
+        .glab_calls()
+        .into_iter()
+        .filter(|c| c.starts_with("mr view"))
+        .collect();
+    let want: Vec<String> = (6..=15)
+        .rev()
+        .map(|n| format!("mr view {n} -R {REMOTE} --output json"))
+        .collect();
+    assert_eq!(views, want);
+    // past the cap, the list entry alone: no pipeline mark
+    let shown = strip(&f.show(Kind::Pr, &[("limit", "15")]));
+    assert!(shown.starts_with("!15✗ "), "{shown:?}");
+    assert!(shown.ends_with(" !5 !4 !3 !2 !1"), "{shown:?}");
+}
+
+#[test]
 fn stored_value_is_reduced() {
     let f = gitlab();
     f.out("glab-mr.json", &format!("[{}]", mr(5, "")));
