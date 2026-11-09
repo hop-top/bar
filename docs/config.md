@@ -674,14 +674,14 @@ A render prints at most 4 rows, all lines together. Rows past the fourth are dro
 ```
 
 - The file: user settings, `<claude dir>/settings.json` (`CLAUDE_CONFIG_DIR`, else `~/.claude`); `--project` edits `.claude/settings.json` and `--local` edits `.claude/settings.local.json` in the current directory, so run those from the project root.
-- `<path>` is the absolute path of the running binary, quoted as for the [hooks](#hooks): on Windows with forward slashes and unquoted when it has no spaces or shell characters.
+- `<path>` is the absolute path of the running binary, quoted as for the [hooks](#hooks): on Windows with forward slashes and unquoted when it has no spaces or shell characters. `--project` writes plain `bar render` (and `bar click hook`) instead: `.claude/settings.json` is shared with everyone working on the project, so it names no path of yours, and each person needs `bar` on the `PATH` Claude Code runs commands with.
 - It prints a unified diff of the file first, then asks `write <file>? [y/N]`. `--yes` skips the question; without a terminal on stdin and without `--yes` it prints the diff, writes nothing and exits 2. Any answer but `y` or `yes` writes nothing and exits 1.
 - Other keys and their order are kept, as are other fields of an existing `statusLine` (`padding`, `hideVimModeIndicator`, `refreshInterval`). `--refresh <secs>` (1 or more) sets `refreshInterval`, which re-runs the status line on a timer as well as on Claude Code's events.
 - An existing file is first copied to `backups/<name>-<hash>.bak-<time>-<pid>` in the state directory (mode 0600), never beside it: `.claude/` may be committed and a settings file may hold keys. The path is printed; the newest 5 backups of each file are kept. The file is then written atomically, keeping its mode; a symlink is written through to its target. A file that does not parse as a JSON object is left untouched (exit 1). Nothing is written when the file already says the same.
 - A status line that does not run bar is kept in `install/<hash>.json` in the state directory before it is replaced.
 - `--hooks` also adds the `bar click hook` entries to the same file, as `bar click install --hooks-only` does ([Hooks](#hooks)).
 - The file is read again right before writing; if it changed since the diff was made (another program or session wrote it while the question was up), nothing is written and the exit is 1: run `bar install` again.
-- `bar install --uninstall` puts back the status line bar replaced, or removes `statusLine` when there was none, again after a diff and confirmation. A `statusLine` that does not run `bar render` is left as is. With `--hooks` it also removes hook entries that run only `bar click hook`, and event lists or a `hooks` object left empty by that.
+- `bar install --uninstall` puts back the status line bar replaced, or removes `statusLine` when there was none, again after a diff and confirmation. A `statusLine` that does not run `bar render` is left as is. With `--hooks` it also removes hook entries that run only `bar click hook`, whatever path to `bar` they use, and event lists or a `hooks` object left empty by that.
 
 ### bar check
 
@@ -862,7 +862,7 @@ tlc task record: on `PostToolUse` of the `Bash` tool the hook keeps `records/tlc
 
 Registering the hooks:
 
-- `bar click install` and `bar click install --hooks-only` add a `'<bar>' click hook` command entry under `hooks` in `<claude dir>/settings.json` (`CLAUDE_CONFIG_DIR`, else `~/.claude`) for each of the 12 events above that lacks one, and print every addition before writing. `<bar>` is the absolute path of the running binary.
+- `bar click install` and `bar click install --hooks-only` add a `'<bar>' click hook` command entry under `hooks` in `<claude dir>/settings.json` (`CLAUDE_CONFIG_DIR`, else `~/.claude`) for each of the 12 events above that lacks one, and print every addition before writing. An entry that runs `bar click hook` from another path (an earlier install from a different location) is replaced, not kept beside the new one. `<bar>` is the absolute path of the running binary.
 - They refuse (exit 2) when the home dir (`HOME`; on Windows `USERPROFILE`, else `HOME`) is unset or relative, or `CLAUDE_CONFIG_DIR` is relative.
 - The file is re-read right before writing (after the app is built) so a concurrent edit is kept, backed up to `backups/` in the state directory as `bar install` does, and written atomically, keeping its mode.
 - A symlinked `settings.json` is written through to its target; a link to a missing file is refused.

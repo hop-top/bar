@@ -384,3 +384,68 @@ fn a_file_changed_during_the_question_is_not_overwritten() {
     assert_eq!(read(&s), json!({"theme": "light"}));
     assert!(!t.path().join("state").exists());
 }
+
+#[test]
+fn cli_project_scope_writes_a_portable_command() {
+    let t = Tmp::new();
+    let (_, cwd) = common::isolation(t.path());
+    let o = cli(&t, &["--project", "--hooks", "--yes"]);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let v = read(&cwd.join(".claude/settings.json"));
+    assert_eq!(v["statusLine"]["command"], json!("bar render"));
+    assert_eq!(
+        v["hooks"]["Stop"][0]["hooks"][0]["command"],
+        json!("bar click hook")
+    );
+    let o = cli(&t, &["--local", "--yes"]);
+    assert!(o.status.success());
+    let v = read(&cwd.join(".claude/settings.local.json"));
+    assert_ne!(v["statusLine"]["command"], json!("bar render"));
+}
+
+#[test]
+fn uninstall_hooks_removes_bar_hooks_of_any_path() {
+    let t = Tmp::new();
+    let old = r#"{"hooks": {
+      "Stop": [
+        {"hooks": [{"type": "command", "command": "'/opt/homebrew/Cellar/bar/0.1.0/bin/bar' click hook"}]},
+        {"hooks": [{"type": "command", "command": "say done"}]}
+      ],
+      "SessionEnd": [{"hooks": [{"type": "command", "command": "bar click hook"}]}]
+    }}"#;
+    t.write("claude/settings.json", old);
+    let s = t.path().join("claude/settings.json");
+    let e = env(&t, s.clone());
+    let un = Opts {
+        uninstall: true,
+        hooks: true,
+        ..opts()
+    };
+    run(&e, &un, false, "").0.unwrap();
+    assert_eq!(
+        read(&s),
+        json!({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "say done"}]}]}})
+    );
+}
+
+#[test]
+fn install_hooks_replaces_bar_hooks_of_another_path() {
+    let t = Tmp::new();
+    let old = r#"{"hooks": {"Stop": [
+        {"hooks": [{"type": "command", "command": "'/opt/homebrew/Cellar/bar/0.1.0/bin/bar' click hook"}]}
+    ]}}"#;
+    t.write("claude/settings.json", old);
+    let s = t.path().join("claude/settings.json");
+    let e = env(&t, s.clone());
+    let o = Opts {
+        hooks: true,
+        ..opts()
+    };
+    run(&e, &o, false, "").0.unwrap();
+    let stop = read(&s)["hooks"]["Stop"].clone();
+    assert_eq!(stop.as_array().unwrap().len(), 1, "{stop}");
+    assert_eq!(
+        stop[0]["hooks"][0]["command"],
+        json!(format!("'{}' click hook", e.bar.display()))
+    );
+}
