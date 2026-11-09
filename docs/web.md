@@ -2,6 +2,8 @@
 
 A static page for building a `bar.conf`: compose each status line from placeholders and text, set their options, pick a preset, skin, palette and icons, and watch the result. Copy or download the file when done, or load an existing `bar.conf` to edit it.
 
+It opens on the `powerline` preset. The presets at the top show their own preview; a click applies one (Undo in the notice takes it back), and the header of that list names the preset in use, or `custom` once you edit. After **Copy** or **Download**, a **Use it** panel lists the steps: install bar, save the file as `~/.config/bar/bar.conf`, run `bar install` (or add the `statusLine` entry to `~/.claude/settings.json`), and `bar check`.
+
 ## Run it
 
 ```sh

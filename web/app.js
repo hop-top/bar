@@ -13,6 +13,8 @@
   const bar = wasm_bindgen;
   const schema = JSON.parse(bar.schema());
   const STORE = "bar-configurator";
+  // first visit: icons, a skin, and it fits 120 columns
+  const FIRST_PRESET = "powerline";
 
   // A sample statusLine payload; only fields bar reads, resets relative to now.
   function sampleSession() {
@@ -135,6 +137,7 @@
     $("look").disabled = !inspect.ok;
     renderIssues();
     renderPreview();
+    markPreset();
     $("undo").disabled = !history.canUndo();
     $("redo").disabled = !history.canRedo();
     store();
@@ -179,13 +182,88 @@
   $("separator").onchange = (e) => setText(Conf.set(text, "separator", e.target.value || null));
   $("gap").onchange = (e) => setText(Conf.set(text, "gap", e.target.value === "" ? null : e.target.value));
 
-  const presetSel = $("preset");
-  for (const p of schema.presets) presetSel.append(new Option(p, p));
-  presetSel.value = "full";
-  $("preset-apply").onclick = () => {
-    const body = bar.preset(presetSel.value);
-    if (body && (text.trim() === "" || confirm(`Replace bar.conf with the ${presetSel.value} preset?`))) setText(body);
+  // Presets: one click applies, with an undo in the toast
+  const presets = schema.presets.map((name) => ({ name, body: bar.preset(name) }));
+  const presetButtons = presets.map((p) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "preset";
+    b.dataset.focus = "preset:" + p.name;
+    const name = document.createElement("span");
+    name.className = "preset-name";
+    name.textContent = p.name;
+    const desc = document.createElement("span");
+    desc.className = "preset-desc";
+    // the preset's first comment line, without its "name:" prefix
+    const first = p.body.split("\n")[0] || "";
+    desc.textContent = first.startsWith("#") ? first.replace(/^#\s*([\w-]+:\s*)?/, "") : "";
+    const thumb = document.createElement("span");
+    thumb.className = "preset-thumb term";
+    thumb.setAttribute("aria-hidden", "true");
+    b.append(name, desc, thumb);
+    b.onclick = () => applyPreset(p);
+    $("preset-list").append(b);
+    return { p, b, thumb };
+  });
+
+  function drawPresetThumbs() {
+    for (const { p, thumb } of presetButtons) {
+      const out = bar.render(p.body, ui.session.value, 90, Date.now() / 1000, manifest);
+      thumb.innerHTML = Ansi.toHtml(out).map((h) => `<span class="row">${h || " "}</span>`).join("");
+    }
+  }
+
+  function markPreset() {
+    const cur = presets.find((p) => p.body === text);
+    for (const { p, b } of presetButtons) b.setAttribute("aria-pressed", String(cur === p));
+    $("preset-current").textContent = cur ? `current: ${cur.name}` : "current: custom";
+  }
+
+  function applyPreset(p) {
+    if (p.body === text) return;
+    setText(p.body);
+    toast(`Applied the ${p.name} preset.`);
+  }
+
+  let toastTimer = 0;
+  function toast(message) {
+    $("toast-text").textContent = message;
+    $("toast").hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => ($("toast").hidden = true), 8000);
+  }
+  $("toast-undo").onclick = () => {
+    $("toast").hidden = true;
+    undo();
   };
+
+  // Feedback beside the header buttons, read out by screen readers
+  let sayTimer = 0;
+  function say(message) {
+    $("say").textContent = message;
+    clearTimeout(sayTimer);
+    sayTimer = setTimeout(() => ($("say").textContent = ""), 10000);
+  }
+  function showUseIt() {
+    $("use-it").hidden = false;
+  }
+  $("use-it-close").onclick = () => {
+    $("use-it").hidden = true;
+    $("download").focus();
+  };
+  for (const btn of document.querySelectorAll(".copy-cmd")) {
+    btn.onclick = async () => {
+      const code = $(btn.dataset.copy).textContent;
+      try {
+        await navigator.clipboard.writeText(code);
+        btn.textContent = "Copied";
+      } catch (_) {
+        getSelection().selectAllChildren($(btn.dataset.copy));
+        btn.textContent = "Press Ctrl+C";
+      }
+      setTimeout(() => (btn.textContent = "Copy"), 1500);
+    };
+  }
 
   Compose.init({
     schema,
@@ -207,10 +285,14 @@
   // Source, session, columns
   ui.conf.oninput = () => setText(ui.conf.value, ui.conf, { group: "typing" });
   ui.conf.onblur = () => history.seal();
-  ui.session.oninput = renderPreview;
+  ui.session.oninput = () => {
+    renderPreview();
+    drawPresetThumbs();
+  };
   $("session-reset").onclick = () => {
     ui.session.value = JSON.stringify(sampleSession(), null, 2);
     renderPreview();
+    drawPresetThumbs();
   };
   ui.columns.oninput = () => {
     renderPreview();
@@ -228,6 +310,7 @@
       if (!Array.isArray(list)) throw new Error("no plugins list");
       setPlugins(list);
       setText(text);
+      drawPresetThumbs();
     } catch (err) {
       alert(`Not a plugins.json: ${err.message}`);
     }
@@ -242,12 +325,12 @@
   $("copy").onclick = async () => {
     try {
       await navigator.clipboard.writeText(text);
-      $("copy").textContent = "Copied";
+      say("Copied bar.conf. Paste it into ~/.config/bar/bar.conf; steps below.");
     } catch (_) {
       ui.conf.select();
-      $("copy").textContent = "Press ⌘C / Ctrl+C";
+      say("Copy blocked by the browser: bar.conf is selected, press Ctrl+C or ⌘C.");
     }
-    setTimeout(() => ($("copy").textContent = "Copy"), 1500);
+    showUseIt();
   };
   $("download").onclick = () => {
     const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
@@ -255,6 +338,8 @@
     a.click();
     // revoked later: a revoke right after click() can cancel the download
     setTimeout(() => URL.revokeObjectURL(url), 30000);
+    say("Downloaded bar.conf. Save it to ~/.config/bar/bar.conf; steps below.");
+    showUseIt();
   };
 
   // Start: last session's config, else the full preset
@@ -265,7 +350,8 @@
   if (saved && saved.columns) ui.columns.value = saved.columns;
   ui.session.value = JSON.stringify(sampleSession(), null, 2);
   $("app").hidden = false;
-  setText(saved && typeof saved.text === "string" ? saved.text : bar.preset("full"), null, { record: false });
+  drawPresetThumbs();
+  setText(saved && typeof saved.text === "string" ? saved.text : bar.preset(FIRST_PRESET), null, { record: false });
   // countdowns move: redraw once a minute
   setInterval(renderPreview, 60000);
 })();
