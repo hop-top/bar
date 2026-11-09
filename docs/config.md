@@ -687,7 +687,7 @@ Plugins are not drawn in a row (`bar check` reports them), and click links are o
 
 Each row is laid out like the status line, with the same skin, palette, icons and separator: one left group, at most one row. Claude Code sends the usable width of a row (`columns`); while the row is wider, its last segment is dropped, but never its first. A row that renders empty keeps Claude Code's own text, and so does every row when the config has an error.
 
-`bar subagent` reads at most 4 MiB of input and draws at most 64 rows. Claude Code runs it on each refresh of the agent panel. The default layout reads only the input; git placeholders in a row read files and the background cache as in `bar render`. The [project config](#project-config) is found from the session's directory, as for `bar render`; under `safe` a project `set subagent` may not hold `%…%` values.
+`bar subagent` reads at most 4 MiB of input and draws at most 64 rows. Claude Code runs it on each refresh of the agent panel. It runs no process in the foreground: the default layout reads only the input; git placeholders in a row read git's files and the background cache, and where `bar render` would run `git` itself (a repository the file reader does not support) a row shows no repository, branch or PRs instead. The [project config](#project-config) is found from the session's directory, as for `bar render`; under `safe` a project `set subagent` may not hold `%…%` values.
 
 ## Commands
 

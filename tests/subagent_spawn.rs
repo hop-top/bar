@@ -56,3 +56,46 @@ fn command_links_never_probe_the_terminal_in_a_row() {
     assert!(model::effort_with(&ctx, &o, t.path(), no_probe).is_some());
     assert!(ctxp::render_with(&ctx, &o, t.path(), no_probe).is_some());
 }
+
+/// `bar subagent` with `#{repo}`, `#{branch}`, `#{prs}` in the row and a
+/// repository the git file reader does not support (`GIT_CONFIG_NOSYSTEM`
+/// set): a logging `git` on PATH is never run.
+#[cfg(unix)]
+#[test]
+fn git_is_never_run_in_the_foreground_for_a_row() {
+    use std::os::unix::fs::PermissionsExt;
+    let t = Tmp::new();
+    let (iso, cwd) = common::isolation(t.path());
+    let log = t.path().join("fake-git.log");
+    let git = t.path().join("fake-bin/git");
+    std::fs::write(
+        &git,
+        format!("#!/bin/sh\necho \"$*\" >> '{}'\necho main\n", log.display()),
+    )
+    .unwrap();
+    std::fs::set_permissions(&git, std::fs::Permissions::from_mode(0o755)).unwrap();
+    t.write("repo/.git/HEAD", "ref: refs/heads/main\n");
+    t.write(
+        "repo/.git/config",
+        "[remote \"origin\"]\n\turl = https://github.com/o/r\n",
+    );
+    t.write(
+        "xdg/bar/bar.conf",
+        "set subagent \"#{task.name} #{repo} #{branch} #{prs}\"\n",
+    );
+    let repo = t.path().join("repo");
+    let input = serde_json::json!({
+        "cwd": repo, "columns": 100,
+        "tasks": [{"id": "a", "agentType": "Explore", "status": "running", "cwd": repo}],
+    });
+    let mut c = assert_cmd::Command::cargo_bin("bar").unwrap();
+    c.arg("subagent").envs(iso).current_dir(cwd);
+    let out = c.write_stdin(input.to_string()).assert().success();
+    let text = String::from_utf8(out.get_output().stdout.clone()).unwrap();
+    assert!(text.contains("Explore"), "{text}");
+    assert!(
+        !log.exists(),
+        "git ran: {:?}",
+        std::fs::read_to_string(&log)
+    );
+}

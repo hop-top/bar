@@ -1,6 +1,6 @@
 //! `prs` and `issues`: `gh` lists cached per query, merged at render time.
 
-use super::repo::remote_url;
+use super::repo::{may_spawn, remote_url_with};
 use super::{link_enabled, work_dir, Ctx, Placeholder};
 use crate::cache::{Cache, Job};
 use crate::expr;
@@ -260,7 +260,7 @@ fn merged(cache: &Cache, plan: &Plan) -> Vec<Value> {
 
 fn render_kind(kind: Kind, ctx: &Ctx, opts: &Options) -> Option<String> {
     let cache = ctx.cache?;
-    let remote = remote_url(&work_dir(ctx))?;
+    let remote = remote_url_with(&work_dir(ctx), may_spawn(ctx))?;
     let plan = plan(kind, &remote, opts)?;
     if plan.limit == 0 {
         return None;
