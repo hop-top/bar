@@ -69,13 +69,25 @@ pub fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
 /// Unix seconds of the start of the calendar month holding `ts` and of
 /// the next one, in `tz`.
 pub fn month_bounds(ts: i64, tz: Tz) -> (i64, i64) {
-    let (y, m, _) = civil(day_of(ts, tz));
+    month_bounds_by(ts, |t| tz.offset(t))
+}
+
+/// `month_bounds` with the zone as a function from an instant to its
+/// offset.
+pub fn month_bounds_by(ts: i64, offset: impl Fn(i64) -> i64) -> (i64, i64) {
+    let (y, m, _) = civil((ts + offset(ts)).div_euclid(86_400));
     let (ny, nm) = if m == 12 { (y + 1, 1) } else { (y, m + 1) };
-    let at = |days: i64| {
-        let local = days * 86_400;
-        local - tz.offset(local)
-    };
+    let at = |days: i64| local_midnight(days * 86_400, &offset);
     (at(days_from_civil(y, m, 1)), at(days_from_civil(ny, nm, 1)))
+}
+
+/// The instant whose local time is `local` (seconds of the local wall
+/// clock since the epoch): the offset is taken again at the first guess,
+/// so a change of offset between `local` read as UTC and the real instant
+/// (daylight saving starting that day) does not move it by an hour.
+fn local_midnight(local: i64, offset: &impl Fn(i64) -> i64) -> i64 {
+    let guess = local - offset(local);
+    local - offset(guess)
 }
 
 /// `2026-11-09T12:00:00.123456+00:00` or `...Z` (an RFC 3339 time with a
@@ -106,6 +118,27 @@ pub fn rfc3339(s: &str) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Sydney 2023: AEST (+10) until 2023-10-01 02:00 local, then AEDT (+11).
+    fn sydney(ts: i64) -> i64 {
+        let dst = days_from_civil(2023, 10, 1) * 86_400 + 2 * 3600 - 10 * 3600;
+        if ts >= dst {
+            11 * 3600
+        } else {
+            10 * 3600
+        }
+    }
+
+    #[test]
+    fn month_starts_on_a_daylight_saving_day() {
+        // 2023-10-15 noon local: October starts at local midnight, still AEST
+        let ts = days_from_civil(2023, 10, 15) * 86_400;
+        let (start, _) = month_bounds_by(ts, sydney);
+        assert_eq!(start, days_from_civil(2023, 10, 1) * 86_400 - 10 * 3600);
+        // and September ends there
+        let sep = days_from_civil(2023, 9, 20) * 86_400;
+        assert_eq!(month_bounds_by(sep, sydney).1, start);
+    }
 
     #[test]
     fn civil_round_trips_and_months() {
