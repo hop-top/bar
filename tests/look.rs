@@ -248,8 +248,9 @@ fn depth_16_and_none_on_a_full_line() {
     );
     assert!(!sixteen.contains(";2;"), "{sixteen:?}");
     let none = render(&format!("set color-depth none\n{conf}\nset gradient ember"));
-    // the 256-colour line without its colours
-    assert_eq!(none, hop_bar::style::strip_colors(&render(conf)));
+    // the plain 256-colour line without its colours
+    let plain = conf.replace("set skin powerline\n", "");
+    assert_eq!(none, hop_bar::style::strip_colors(&render(&plain)));
     assert!(
         none.contains("\x1b]8;;https://example.com/x"),
         "links stay: {none:?}"
@@ -267,4 +268,25 @@ fn backgrounds_that_quantise_alike_join_like_one() {
     assert_eq!(at16.trim(), "x | y >", "{at16:?}");
     let at256 = strip_codes(&render(conf));
     assert_eq!(at256.trim(), "x > y >", "{at256:?}");
+}
+
+#[test]
+fn depth_none_draws_skins_as_plain() {
+    let body = "set color-depth none\nset left \"#{x} │ #{d}\"\nset right \"#{a}\"\n";
+    let plain = render(body);
+    assert!(plain.contains(" │ "), "{plain:?}");
+    for skin in ["powerline", "capsule"] {
+        for glyphs in ["nerd", "ascii"] {
+            let out = render(&format!(
+                "set skin {skin}\nset skin-glyphs {glyphs}\n{body}"
+            ));
+            assert_eq!(out, plain, "{skin} {glyphs}");
+        }
+    }
+    // other depths keep the skin
+    let out = render(&format!(
+        "set skin powerline\n{}",
+        body.replace("none", "16")
+    ));
+    assert_ne!(strip_codes(&out), strip_codes(&plain));
 }

@@ -291,6 +291,11 @@ fn render_impl(
     let _ansi = style::use_ansi(palette::by_name(config.palette).is_some_and(|p| p.ansi));
     let depth = config.color_depth.resolve(|k| std::env::var(k).ok());
     let _depth = style::use_depth(depth);
+    // without colour a skin is only its glyphs: draw the plain layout
+    let paint = match depth {
+        Depth::None => None,
+        _ => Paint::of(config.skin),
+    };
     let mut rows: Vec<String> = Vec::new();
     for src in config.lines() {
         let budget = config.max_rows.saturating_sub(rows.len());
@@ -301,7 +306,7 @@ fn render_impl(
         if groups.iter().all(Vec::is_empty) {
             continue;
         }
-        rows.extend(line_rows(config, groups, columns, budget));
+        rows.extend(line_rows(config, paint, groups, columns, budget));
     }
     let out = rows.join("\n");
     if depth == Depth::None {
@@ -314,13 +319,14 @@ fn render_impl(
 /// One status line as at most `budget` rows: placed as usual, or, with
 /// `set wrap on` and a line that does not fit one row, its segments
 /// flowed left to right onto rows, left-aligned. An empty line has none.
+/// `paint` is the skin, `None` for the plain layout.
 fn line_rows(
     config: &Config,
+    paint: Option<Paint>,
     groups: [Vec<Rendered>; 3],
     columns: Option<usize>,
     budget: usize,
 ) -> Vec<String> {
-    let paint = Paint::of(config.skin);
     let [l, c, r] = segs(config, groups);
     let group = |segs: &[Seg], side| draw(config, paint, segs, side);
     let (gl, gc, gr) = (
