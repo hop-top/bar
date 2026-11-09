@@ -360,6 +360,14 @@ fn without_colors(params: &str) -> String {
     let mut kept: Vec<&str> = Vec::new();
     let mut i = 0;
     while i < p.len() {
+        // colon form: one parameter holds the whole colour (`38:2::r:g:b`)
+        if let Some((head, _)) = p[i].split_once(':') {
+            if !matches!(head, "38" | "48" | "58") {
+                kept.push(p[i]);
+            }
+            i += 1;
+            continue;
+        }
         match p[i].parse::<u16>().unwrap_or(0) {
             38 | 48 | 58 => {
                 i += match p.get(i + 1).copied() {
