@@ -31,6 +31,37 @@ pub fn settings_path(scope: Scope, claude: Option<PathBuf>, cwd: &Path) -> Resul
     }
 }
 
+/// A path to `exe` that outlives an upgrade: the first `bar` on `path`
+/// (the `PATH` value) that is the same file, else for a Homebrew keg
+/// (`<prefix>/Cellar/bar/<version>/bin/bar`) `<prefix>/bin/bar` when it is
+/// the same file, else `exe`.
+pub fn stable_exe(exe: &Path, path: Option<&std::ffi::OsStr>) -> PathBuf {
+    let Ok(real) = std::fs::canonicalize(exe) else {
+        return exe.to_path_buf();
+    };
+    let same = |p: &Path| std::fs::canonicalize(p).is_ok_and(|c| c == real);
+    let name = exe.file_name().unwrap_or_default();
+    let on_path = crate::plugin::path_dirs(path)
+        .into_iter()
+        .map(|d| d.join(name))
+        .find(|p| same(p));
+    if let Some(p) = on_path {
+        return p;
+    }
+    let keg = exe.ancestors().nth(4).filter(|cellar| {
+        cellar.file_name() == Some("Cellar".as_ref())
+            && exe.ancestors().nth(3).and_then(Path::file_name) == Some("bar".as_ref())
+            && exe.parent().and_then(Path::file_name) == Some("bin".as_ref())
+    });
+    match keg
+        .and_then(Path::parent)
+        .map(|pfx| pfx.join("bin").join(name))
+    {
+        Some(p) if same(&p) => p,
+        _ => exe.to_path_buf(),
+    }
+}
+
 /// The `bar` that `scope`'s settings run: plain `bar` (found on `PATH`)
 /// for the project settings, which are shared, else this binary.
 pub fn bar_for(scope: Scope, exe: Option<PathBuf>) -> PathBuf {

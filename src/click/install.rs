@@ -30,7 +30,10 @@ impl InstallCfg {
                 PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join("Applications")
             });
         Ok(InstallCfg {
-            bar: std::env::current_exe().unwrap_or_else(|_| PathBuf::from("bar")),
+            bar: std::env::current_exe().map_or_else(
+                |_| PathBuf::from("bar"),
+                |e| crate::install::stable_exe(&e, std::env::var_os("PATH").as_deref()),
+            ),
             state_dir: state_dir(),
             app: apps.join("bar-click.app"),
             settings: claude.join("settings.json"),
