@@ -43,6 +43,10 @@ struct State {
     hours: BTreeMap<i64, Models>,
     /// Hashes of counted messages, by the day they were counted on.
     seen: BTreeMap<String, Vec<u64>>,
+    /// Written by a bar without hourly totals: the scanned part of recent
+    /// transcripts is read again for `hours` alone. Until that pass
+    /// completes, the state is saved without `hours`, so it starts over.
+    hours_missing: bool,
 }
 
 impl State {
@@ -55,6 +59,7 @@ impl State {
                 Some(h) => hours_from_json(h)?,
                 None => BTreeMap::new(),
             },
+            hours_missing: v.get("hours").is_none(),
             ..State::default()
         };
         for (path, m) in v.get("files")?.as_object()? {
@@ -108,12 +113,14 @@ impl State {
                 )
             })
             .collect();
-        let head = json!({
+        let mut head = json!({
             "v": 1,
             "files": files,
             "days": days_to_json(&self.days, ""),
-            "hours": hours_to_json(&self.hours),
         });
+        if !self.hours_missing {
+            head["hours"] = hours_to_json(&self.hours);
+        }
         let mut budget = max.saturating_sub(head.to_string().len() + 32);
         let mut seen = Map::new();
         for (day, ids) in self.seen.iter().rev() {
@@ -214,6 +221,8 @@ fn id_hash(id: &str, req: &str) -> u64 {
 struct Fold<'a> {
     st: &'a mut State,
     seen: HashSet<u64>,
+    /// Re-reading counted lines for `hours` only: dedupe of that pass.
+    hours_only: Option<HashSet<u64>>,
     days: Days,
     min_date: String,
     min_hour: i64,
@@ -257,8 +266,14 @@ impl Fold<'_> {
             .as_str()
             .filter(|i| i.len() <= MAX_ID)
             .unwrap_or_default();
-        if !id.is_empty() {
-            let h = id_hash(id, v["requestId"].as_str().unwrap_or_default());
+        let hash =
+            (!id.is_empty()).then(|| id_hash(id, v["requestId"].as_str().unwrap_or_default()));
+        if let Some(pass) = self.hours_only.as_mut() {
+            if hash.is_some_and(|h| !pass.insert(h)) {
+                return;
+            }
+        }
+        if let (Some(h), None) = (hash, &self.hours_only) {
             if !self.seen.insert(h) {
                 return;
             }
@@ -276,7 +291,9 @@ impl Fold<'_> {
         if hour >= self.min_hour {
             put(self.st.hours.entry(hour).or_default(), &key, &t);
         }
-        put(self.st.days.entry(date).or_default(), &key, &t);
+        if self.hours_only.is_none() {
+            put(self.st.days.entry(date).or_default(), &key, &t);
+        }
         self.dirty = true;
     }
 }
@@ -358,6 +375,7 @@ pub fn update_with(
     let mut fold = Fold {
         st: &mut st,
         seen,
+        hours_only: None,
         days: Days {
             tz,
             slot: i64::MIN,
@@ -369,6 +387,31 @@ pub fn update_with(
         now,
         dirty: false,
     };
+    if fold.st.hours_missing {
+        fold.st.hours.clear();
+        fold.hours_only = Some(HashSet::new());
+        let since = (now - KEEP_HOURS * 3600).saturating_mul(1_000_000_000);
+        let mut done = true;
+        for (path, meta) in &files {
+            let Some(m) = fold.st.files.get(path).copied() else {
+                continue;
+            };
+            // a replaced file is read whole below; an old one has no recent hours
+            if m.replaced_by(meta) || m.offset == 0 || crate::linescan::mtime_ns(meta) < since {
+                continue;
+            }
+            let Ok(mut f) = fs::File::open(path) else {
+                continue;
+            };
+            let mut pass = Mark::fresh(meta);
+            done &= pass.scan(&mut f, m.offset, u64::MAX, deadline, |l| fold.line(l));
+        }
+        fold.hours_only = None;
+        if done {
+            fold.st.hours_missing = false;
+            fold.dirty = true;
+        }
+    }
     let mut marks = Vec::new();
     for (path, meta) in &files {
         if deadline.is_some_and(|d| Instant::now() >= d) {
