@@ -212,7 +212,8 @@
     const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
     const a = Object.assign(document.createElement("a"), { href: url, download: "bar.conf" });
     a.click();
-    URL.revokeObjectURL(url);
+    // revoked later: a revoke right after click() can cancel the download
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
   };
 
   // Start: last session's config, else the full preset
