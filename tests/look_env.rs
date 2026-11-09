@@ -31,9 +31,18 @@ fn auto_depth_reads_colorterm_no_color_and_force_color() {
     let none = render(&[("NO_COLOR", "1"), ("COLORTERM", "truecolor")]);
     assert_eq!(none.trim_end(), "\x1b[1mOpus\x1b[22m");
     let sixteen = render(&[("NO_COLOR", "1"), ("FORCE_COLOR", "1")]);
-    let code = sixteen.split("\x1b[").nth(3).unwrap();
+    // only 16-colour foreground SGR (3x, 9x), besides bold
+    let codes: Vec<&str> = sixteen
+        .split("\x1b[")
+        .skip(1)
+        .map(|c| &c[..c.find('m').unwrap()])
+        .filter(|c| !matches!(*c, "1" | "22" | "39"))
+        .collect();
+    assert!(!codes.is_empty(), "{sixteen:?}");
     assert!(
-        code.len() > 3 && matches!(&code[..1], "3" | "9") && &code[2..3] == "m",
+        codes
+            .iter()
+            .all(|c| c.len() == 2 && matches!(&c[..1], "3" | "9")),
         "{sixteen:?}"
     );
 }

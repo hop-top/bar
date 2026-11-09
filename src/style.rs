@@ -212,7 +212,12 @@ fn is_private_use(c: char) -> bool {
 /// As `visible_width`, counting private-use glyphs (Nerd Font icons) as
 /// `icon_width` cells; fonts draw them one or two cells wide.
 pub fn visible_width_with(text: &str, icon_width: usize) -> usize {
-    let plain = strip_codes(text);
+    plain_width(&strip_codes(text), icon_width)
+}
+
+/// Cells of text without escape sequences, private-use glyphs `icon_width`
+/// cells each.
+pub fn plain_width(plain: &str, icon_width: usize) -> usize {
     plain
         .split(is_private_use)
         .map(|run| run.width())
