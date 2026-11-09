@@ -482,6 +482,7 @@ Components, joined by a space; `limit` right after `used` joins it with `/`:
 - Colour (`used`, `left`, `pct`, `bar`, `gauge`): the pace score of what is left over the calendar month, by `rule extra`, else amber at 20% left and red at 5%, rising with the time left. No final stretch: money left at the end of the month is not lost.
 - Hidden when the endpoint reports no extra usage, extra usage turned off (`is_enabled` false) or no limit, and when the numbers are older than an hour.
 - The month is the local calendar month; `today` and `daily` use the local date.
+- Two readings here are bar's, not documented by the endpoint, and match how ccstatusline reads it: the extra-usage month is taken to reset with the local calendar month, and `monthly_limit` and `used_credits` to be minor units (cents). Either may differ for an account; when it does, the amounts or the time left are off.
 
 `today` is not reported by the endpoint. Each fetch stores the month's spent amount; the first fetch of a day takes the last amount fetched the day before as the day's start, and `today` is the difference. When the day before was not fetched (the first day, or after a day without Claude Code), `today` stays empty for that day. An amount lower than the day's start (a new month) starts the day at zero.
 
@@ -498,6 +499,7 @@ What the background job does:
 Limits and failures:
 
 - At most one fetch per 5 minutes, shared by every session with the same Claude Code config dir.
+- The config dir is the one Claude Code itself uses: `CLAUDE_CONFIG_DIR`, else `~/.claude`. `set claude-dir` does not apply: the keychain item name follows `CLAUDE_CONFIG_DIR` as Claude Code sets it, and pointing bar at another dir must not make it read another account's sign-in.
 - HTTP 429: the last numbers are kept and nothing is sent until the `Retry-After` time (seconds; 10 minutes without one, at most a day).
 - HTTP 401 or 403 (a revoked or expired token): the last numbers are kept and nothing is sent for 15 minutes.
 - A network error, a timeout, a server error or another status, or a response that is not the expected JSON: the last numbers are kept and nothing is sent for 5 minutes, doubling with each failure in a row up to an hour; a successful fetch resets it.
@@ -594,7 +596,7 @@ Who is signed in, running subagents, other open sessions and the tmux window.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `show` | `state` | Parts, in order, space separated: `state` (`status minor`), `text` (the title of the active incident) and `strip` (the 48-hour history) |
+| `show` | `state` | Parts, comma separated (`show=state,strip`), drawn in that order with a space between: `state` (`status minor`), `text` (the title of the active incident) and `strip` (the 48-hour history) |
 | `components` | all | Only these components count: names separated by `\|`, matched case-insensitively as substrings of the status page's component names (`code\|api` matches `Claude Code` and `Claude API (api.anthropic.com)`) |
 | `ok` | `0` | `1` shows `status ✓` (good colour) while everything is operational, and the strip while it has no incident |
 | `hours` | `6` | Hours per cell of the strip; `ceil(48 / hours)` cells |
