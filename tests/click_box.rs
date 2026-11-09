@@ -1,3 +1,4 @@
+mod common;
 #[path = "common/fake_env.rs"]
 mod fake_env;
 

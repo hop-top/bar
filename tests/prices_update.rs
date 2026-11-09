@@ -1,5 +1,7 @@
 // Unix fixtures (shell scripts, modes, POSIX paths); Windows coverage: tests/windows.rs
 #![cfg(unix)]
+mod common;
+use common::tmp::Dir;
 
 use assert_cmd::Command;
 use hop_bar::prices::models::Snapshot;
@@ -12,9 +14,8 @@ const API: &str = r#"{"openai":{"id":"openai","name":"OpenAI","models":{
 "gpt-nocost":{"id":"gpt-nocost","limit":{"context":8000}}}},
 "anthropic":{"id":"anthropic","models":{"claude-z":{"id":"claude-z","cost":{"input":3,"output":15,"cache_read":0.3,"cache_write":3.75},"limit":{"context":200000}}}}}"#;
 
-fn fx(name: &str, curl_body: &str) -> (PathBuf, PathBuf) {
-    let root = std::env::temp_dir().join(format!("bar-pu-{}-{name}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
+fn fx(name: &str, curl_body: &str) -> (Dir, PathBuf) {
+    let root = Dir::new(&format!("bar-pu-{}-{name}", std::process::id()));
     let bin = root.join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     let fake = bin.join("curl");

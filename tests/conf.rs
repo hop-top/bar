@@ -1,3 +1,4 @@
+mod common;
 use hop_bar::conf::{self, Amount, Early, LoadResult, Wrap};
 use std::fs;
 
@@ -124,8 +125,7 @@ fn write(dir: &std::path::Path, body: &str) {
 
 #[test]
 fn config_search_order() {
-    let t = std::env::temp_dir().join(format!("bar-conf-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&t);
+    let t = common::tmp::Dir::new(&format!("bar-conf-{}", std::process::id()));
     let (xdg, home, kit) = (t.join("xdg"), t.join("home"), t.join("kit"));
     let dot = home.join(".config");
     fs::create_dir_all(&xdg).unwrap();
@@ -141,16 +141,13 @@ fn config_search_order() {
     assert!(matches!(load(), LoadResult::Ok(c) if c.gap == 7));
     write(&xdg, "set gap x\n");
     assert!(matches!(load(), LoadResult::Invalid(e) if e[0].line == 1));
-    let _ = fs::remove_dir_all(&t);
 }
 
 #[test]
 fn missing_file_is_missing_not_error() {
-    let t = std::env::temp_dir().join(format!("bar-conf-missing-{}", std::process::id()));
-    fs::create_dir_all(&t).unwrap();
+    let t = common::tmp::Dir::new(&format!("bar-conf-missing-{}", std::process::id()));
     let r = conf::load_from(&lookup(None), &t, &t.join("kit/bar"));
     assert!(matches!(r, LoadResult::Missing));
-    let _ = fs::remove_dir_all(&t);
 }
 
 #[test]

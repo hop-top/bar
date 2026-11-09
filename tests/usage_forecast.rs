@@ -1,3 +1,4 @@
+mod common;
 use hop_bar::conf::Config;
 use hop_bar::options::Options;
 use hop_bar::placeholders::usage::render_with;
@@ -124,12 +125,10 @@ fn forecast_items_order_freely_with_others() {
 
 #[test]
 fn alt_accepts_forecast_items() {
-    let dir = std::env::temp_dir().join(format!("bar-uf-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = common::tmp::Dir::new(&format!("bar-uf-{}", std::process::id()));
     std::fs::write(dir.join("pct-5h"), "").unwrap();
     let o = [("show", "time,bar"), ("alt", "eta,proj")];
     let out = strip_codes(&run(60.0, 3 * H, &o, &dir));
-    let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(out, "→1h20m p150%");
 }
 
@@ -221,12 +220,10 @@ fn seven_day_window() {
 
 #[test]
 fn only_bar_and_pct_are_linked() {
-    let dir = std::env::temp_dir().join(format!("bar-uf-link-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = common::tmp::Dir::new(&format!("bar-uf-link-{}", std::process::id()));
     std::fs::write(dir.join("click-installed"), "").unwrap();
     let o = [("show", "time,eta,bar,proj,pct")];
     let raw = run(60.0, 3 * H, &o, &dir);
-    let _ = std::fs::remove_dir_all(&dir);
     let open = "\x1b]8;;bar://toggle/5h\x1b\\";
     assert_eq!(raw.matches(open).count(), 2, "{raw:?}");
     for part in ["→1h20m", "p150%"] {

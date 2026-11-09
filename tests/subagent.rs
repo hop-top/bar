@@ -242,9 +242,9 @@ fn run_writes_json_lines_and_nothing_on_config_error() {
 static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 /// `bar <args>` with state, PATH and cwd in a temp dir of its own.
-fn isolated(args: &[&str]) -> (Command, std::path::PathBuf) {
+fn isolated(args: &[&str]) -> (Command, common::tmp::Dir) {
     let n = N.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let home = std::env::temp_dir().join(format!("bar-subagent-{}-{n}", std::process::id()));
+    let home = common::tmp::Dir::new(&format!("bar-subagent-{}-{n}", std::process::id()));
     let (iso, cwd) = common::isolation(&home);
     let mut c = Command::cargo_bin("bar").unwrap();
     c.args(args)
@@ -256,7 +256,7 @@ fn isolated(args: &[&str]) -> (Command, std::path::PathBuf) {
 
 #[test]
 fn cli_subagent_prints_one_line_per_row() {
-    let (mut c, home) = isolated(&["subagent"]);
+    let (mut c, _home) = isolated(&["subagent"]);
     let out = c
         .write_stdin(input())
         .assert()
@@ -270,21 +270,19 @@ fn cli_subagent_prints_one_line_per_row() {
         .map(|l| serde_json::from_str::<Value>(l).unwrap()["id"].to_string())
         .collect();
     assert_eq!(ids, ["\"a1\"", "\"a2\"", "\"a3\""]);
-    let _ = std::fs::remove_dir_all(&home);
 }
 
 #[test]
 fn cli_subagent_with_bad_input_prints_nothing() {
     for bad in ["", "not json", "{\"tasks\":[]}"] {
-        let (mut c, home) = isolated(&["subagent"]);
+        let (mut c, _home) = isolated(&["subagent"]);
         c.write_stdin(bad).assert().success().stdout("");
-        let _ = std::fs::remove_dir_all(&home);
     }
 }
 
 #[test]
 fn cli_preview_subagent_draws_the_sample_rows() {
-    let (mut c, home) = isolated(&["preview", "--subagent"]);
+    let (mut c, _home) = isolated(&["preview", "--subagent"]);
     let out = c.assert().success().get_output().stdout.clone();
     let text = strip_codes(&String::from_utf8(out).unwrap());
     let rows: Vec<&str> = text.lines().collect();
@@ -298,7 +296,6 @@ fn cli_preview_subagent_draws_the_sample_rows() {
         "{text}"
     );
     assert!(rows[2].starts_with("✓ general-purpose"), "{text}");
-    let _ = std::fs::remove_dir_all(&home);
 }
 
 #[test]

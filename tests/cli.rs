@@ -8,8 +8,8 @@ fn bar() -> Command {
 }
 
 /// `bar render` with state, PATH and cwd confined to a temp dir.
-fn isolated_render() -> (Command, std::path::PathBuf) {
-    let home = std::env::temp_dir().join(format!(
+fn isolated_render() -> (Command, common::tmp::Dir) {
+    let home = common::tmp::Dir::new(&format!(
         "bar-cli-{}-{:?}",
         std::process::id(),
         std::thread::current().id()
@@ -25,9 +25,8 @@ fn isolated_render() -> (Command, std::path::PathBuf) {
 
 #[test]
 fn render_exits_zero() {
-    let (mut c, home) = isolated_render();
+    let (mut c, _home) = isolated_render();
     c.write_stdin("").assert().success();
-    let _ = std::fs::remove_dir_all(&home);
 }
 
 #[test]
@@ -59,7 +58,6 @@ fn render_shows_cwd_dirname() {
         .assert()
         .success()
         .stdout(predicate::str::contains("proj"));
-    let _ = std::fs::remove_dir_all(&home);
 }
 
 #[test]
@@ -78,7 +76,7 @@ fn render_and_refresh_flags_still_reach_clap() {
 #[cfg(feature = "edit")]
 #[test]
 fn edit_refuses_without_a_terminal() {
-    let home = std::env::temp_dir().join(format!("bar-cli-edit-{}", std::process::id()));
+    let home = common::tmp::Dir::new(&format!("bar-cli-edit-{}", std::process::id()));
     let (iso, cwd) = common::isolation(&home);
     bar()
         .arg("edit")
@@ -89,5 +87,4 @@ fn edit_refuses_without_a_terminal() {
         .code(2)
         .stderr(predicate::str::contains("bar edit: needs a terminal"));
     assert!(!home.join("xdg/bar/bar.conf").exists());
-    let _ = std::fs::remove_dir_all(&home);
 }

@@ -17,7 +17,7 @@ struct Fx {
 
 impl Fx {
     fn new() -> Fx {
-        let root = std::env::temp_dir().join(format!(
+        let root = crate::common::tmp::root().join(format!(
             "bar-check-{}-{}",
             std::process::id(),
             N.fetch_add(1, Ordering::SeqCst)
@@ -76,7 +76,7 @@ impl Fx {
 
 impl Drop for Fx {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.root);
+        crate::common::tmp::remove(&self.root);
     }
 }
 

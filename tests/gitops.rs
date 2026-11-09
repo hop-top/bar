@@ -1,6 +1,7 @@
 // Unix fixtures (POSIX paths, git CLI); Windows coverage: tests/windows.rs
 #![cfg(unix)]
 
+mod common;
 #[path = "common/git_fx.rs"]
 mod git_fx;
 use git_fx::*;

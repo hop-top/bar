@@ -19,7 +19,7 @@ pub struct Fx {
 
 impl Drop for Fx {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.root);
+        crate::common::tmp::remove(&self.root);
     }
 }
 
@@ -36,7 +36,7 @@ pub fn exe(path: &Path, body: &str) {
 
 impl Fx {
     pub fn new() -> Fx {
-        let root = std::env::temp_dir().join(format!(
+        let root = crate::common::tmp::root().join(format!(
             "bar-plugins-{}-{}",
             std::process::id(),
             N.fetch_add(1, Ordering::SeqCst)

@@ -5,6 +5,8 @@
 //! `root`.
 #![allow(dead_code)]
 
+pub mod tmp;
+
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 

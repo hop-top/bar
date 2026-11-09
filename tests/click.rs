@@ -1,5 +1,6 @@
 // Unix fixtures (shell scripts, modes, POSIX paths); Windows coverage: tests/windows.rs
 #![cfg(unix)]
+mod common;
 
 #[path = "common/fake_env.rs"]
 mod fake_env;
@@ -22,7 +23,7 @@ static N: AtomicUsize = AtomicUsize::new(0);
 struct Tmp(PathBuf);
 impl Tmp {
     fn new() -> Tmp {
-        let p = std::env::temp_dir().join(format!(
+        let p = crate::common::tmp::root().join(format!(
             "bar-click-{}-{}",
             std::process::id(),
             N.fetch_add(1, Ordering::SeqCst)
@@ -36,7 +37,7 @@ impl Tmp {
 }
 impl Drop for Tmp {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        crate::common::tmp::remove(&self.0);
     }
 }
 

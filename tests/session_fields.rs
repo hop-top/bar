@@ -1,5 +1,6 @@
 // Unix fixtures (shell scripts, modes, POSIX paths); Windows coverage: tests/windows.rs
 #![cfg(unix)]
+mod common;
 
 use hop_bar::conf::Config;
 use hop_bar::options::Options;
@@ -203,7 +204,7 @@ fn cwd_full_and_base() {
 struct TempDir(std::path::PathBuf);
 impl Drop for TempDir {
     fn drop(&mut self) {
-        std::fs::remove_dir_all(&self.0).ok();
+        crate::common::tmp::remove(&self.0);
     }
 }
 
@@ -212,7 +213,7 @@ fn root_from_gitfs_and_hidden_outside_repo() {
     for k in ["GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR"] {
         std::env::remove_var(k);
     }
-    let root = TempDir(std::env::temp_dir().join(format!("bar-root-{}", std::process::id())));
+    let root = TempDir(crate::common::tmp::root().join(format!("bar-root-{}", std::process::id())));
     let dir = &root.0;
     let sub = dir.join("repo/src/deep");
     std::fs::create_dir_all(&sub).unwrap();
