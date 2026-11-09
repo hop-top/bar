@@ -303,13 +303,27 @@ pub(crate) fn run_command(cmd: &str, limit: Duration) -> Option<String> {
 /// Stdout of `cmd` when it exits 0 within `limit`; otherwise killed with
 /// its process group (its process tree on Windows). `input`, if any, is
 /// written to its stdin, else stdin is closed.
-pub(crate) fn run_child(
-    mut cmd: Command,
-    input: Option<Vec<u8>>,
-    limit: Duration,
-) -> Option<String> {
+pub(crate) fn run_child(cmd: Command, input: Option<Vec<u8>>, limit: Duration) -> Option<String> {
+    match run_child_raw(cmd, input, limit) {
+        Child::Out(b) => Some(cap(String::from_utf8_lossy(&b).into_owned())),
+        _ => None,
+    }
+}
+
+/// How a child run by `run_child_raw` ended.
+pub(crate) enum Child {
+    /// Exit 0: stdout, at most `MAX_VALUE` bytes.
+    Out(Vec<u8>),
+    /// It could not start or exited non-zero.
+    Failed,
+    /// Killed at the time limit.
+    TimedOut,
+}
+
+/// As `run_child`, with the raw stdout and whether it timed out.
+pub(crate) fn run_child_raw(mut cmd: Command, input: Option<Vec<u8>>, limit: Duration) -> Child {
     let deadline = Instant::now() + limit;
-    let mut child = crate::platform::own_group(&mut cmd)
+    let mut child = match crate::platform::own_group(&mut cmd)
         .stdin(if input.is_some() {
             Stdio::piped()
         } else {
@@ -318,14 +332,19 @@ pub(crate) fn run_child(
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .ok()?;
+    {
+        Ok(c) => c,
+        Err(_) => return Child::Failed,
+    };
     if let (Some(bytes), Some(mut stdin)) = (input, child.stdin.take()) {
         // a plugin that never reads must not block us; EPIPE is ignored
         std::thread::spawn(move || {
             let _ = stdin.write_all(&bytes);
         });
     }
-    let mut stdout = child.stdout.take()?;
+    let Some(mut stdout) = child.stdout.take() else {
+        return Child::Failed;
+    };
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let mut buf = Vec::new();
@@ -350,12 +369,12 @@ pub(crate) fn run_child(
     if status.is_none() || out.is_none() {
         crate::platform::kill_tree(&mut child);
         let _ = child.wait();
-        return None;
+        return Child::TimedOut;
     }
-    if !status.is_some_and(|s| s.success()) {
-        return None;
+    match (status, out) {
+        (Some(s), Some(b)) if s.success() => Child::Out(b),
+        _ => Child::Failed,
     }
-    out.map(|b| cap(String::from_utf8_lossy(&b).into_owned()))
 }
 
 /// The real `CommandRunner`: `%command%` via the cache, key
