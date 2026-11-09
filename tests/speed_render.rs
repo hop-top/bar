@@ -155,3 +155,88 @@ fn seconds_format() {
     assert_eq!(secs(3_900_000), "1h05m");
     assert_eq!(secs(-5), "0.0s");
 }
+
+/// Renders with a status-line `prompt_cache` object and no transcript.
+fn render_pc(conf: &str, pc: serde_json::Value, model: &str) -> String {
+    let t = Tmp::new();
+    let stdin = serde_json::json!({"model": {"id": model}, "prompt_cache": pc});
+    run(&t)
+        .conf(conf)
+        .stdin(&stdin.to_string())
+        .go()
+        .plain
+        .trim()
+        .to_string()
+}
+
+fn pc() -> serde_json::Value {
+    serde_json::json!({
+        "warm": true,
+        "caching_observed": true,
+        "ttl": "1h",
+        "expires_at": now_ms() / 1000 + 1_500,
+        "requests": 14,
+        "misses": 3,
+        "expected_rebuilds": 1,
+        "hit_ratio": 0.91,
+        "last_miss_at": now_ms() / 1000 - 60,
+        "last_miss_cause": {"causes": ["tools_changed"], "tools_added": 2, "tools_removed": 0},
+        "miss_causes": {"ttl_expired_5m": 1, "tools_changed": 1},
+        "recache_tokens_if_cold": 100_000
+    })
+}
+
+#[test]
+fn misses_prefer_the_status_line_prompt_cache() {
+    let conf = "set left \"#{misses}|#{misses[show=last]}|#{misses[show=cold]}\"";
+    // diagnosed: one TTL expiry, one tools change; the third undiagnosed
+    // counts as inv. 100k written again on the 1-hour cache:
+    // (10 - 0.50) $/MTok
+    assert_eq!(
+        render_pc(conf, pc(), "claude-opus-4-7"),
+        "miss 3 ttl 1 inv 2|last tools_changed|cold 100k +$0.95"
+    );
+    // before miss causes existed: the count only
+    let mut old = pc();
+    old.as_object_mut().unwrap().remove("miss_causes");
+    old.as_object_mut().unwrap().remove("last_miss_cause");
+    assert_eq!(render_pc(conf, old, "x"), "miss 3|cold 100k");
+    // no misses, nothing to re-cache right after a compaction
+    let mut none = pc();
+    none["misses"] = 0.into();
+    none["miss_causes"] = serde_json::json!({});
+    none["last_miss_cause"] = serde_json::Value::Null;
+    none["recache_tokens_if_cold"] = serde_json::Value::Null;
+    assert_eq!(render_pc(conf, none, "x"), "");
+}
+
+#[test]
+fn misses_json_wins_over_the_transcript() {
+    let t = Tmp::new();
+    t.write("t.jsonl", &session(false));
+    let stdin = serde_json::json!({
+        "transcript_path": t.path().join("t.jsonl"),
+        "model": {"id": "x"},
+        "prompt_cache": pc(),
+    });
+    let o = run(&t)
+        .conf("set left \"#{misses}\"")
+        .stdin(&stdin.to_string())
+        .go();
+    assert_eq!(o.plain.trim(), "miss 3 ttl 1 inv 2");
+}
+
+#[test]
+fn cachettl_prefers_expires_at() {
+    let out = render_pc("set left \"#{cachettl}\"", pc(), "x");
+    assert!(out.starts_with("24m") || out.starts_with("25m"), "{out}");
+    let mut cold = pc();
+    cold["warm"] = false.into();
+    assert_eq!(render_pc("set left \"#{cachettl}\"", cold, "x"), "cold");
+    let mut gone = pc();
+    gone["expires_at"] = serde_json::Value::Null;
+    assert_eq!(render_pc("set left \"#{cachettl}\"", gone, "x"), "cold");
+    let mut past = pc();
+    past["expires_at"] = (now_ms() / 1000 - 5).into();
+    assert_eq!(render_pc("set left \"#{cachettl}\"", past, "x"), "cold");
+}

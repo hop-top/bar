@@ -22,6 +22,26 @@ pub struct CtxUsage {
     pub cache_read: u64,
 }
 
+/// `prompt_cache`: Claude Code's own prompt-cache statistics for the
+/// main conversation (v2.1.251 and later; causes from v2.1.260).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct PromptCache {
+    /// `warm`: the cached prefix is within its lifetime.
+    pub warm: Option<bool>,
+    /// `ttl` (`"5m"`, `"1h"`), seconds.
+    pub ttl: Option<i64>,
+    /// `expires_at`, unix seconds; `None` while `null`.
+    pub expires_at: Option<i64>,
+    /// `misses`.
+    pub misses: Option<u64>,
+    /// `miss_causes`: diagnosed misses per cause; `None` when absent.
+    pub miss_causes: Option<Vec<(String, u64)>>,
+    /// `last_miss_cause.causes`; empty when `null` or absent.
+    pub last_miss: Vec<String>,
+    /// `recache_tokens_if_cold`; `None` while `null`.
+    pub recache_if_cold: Option<u64>,
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Session {
     pub cwd: String,
@@ -58,6 +78,8 @@ pub struct Session {
     pub agent: String,
     pub thinking: bool,
     pub fast_mode: bool,
+    /// `prompt_cache`, when it is an object.
+    pub prompt_cache: Option<PromptCache>,
 }
 
 fn str_at(v: &Value, path: &[&str]) -> Option<String> {
@@ -100,6 +122,50 @@ fn current_usage(v: &Value) -> Option<CtxUsage> {
         input: n("input_tokens"),
         cache_creation: n("cache_creation_input_tokens"),
         cache_read: n("cache_read_input_tokens"),
+    })
+}
+
+/// A cause name as shown: `a-z 0-9 _`, at most 40 bytes.
+fn cause_name(s: &str) -> Option<String> {
+    let ok = !s.is_empty()
+        && s.len() <= 40
+        && s.bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_');
+    ok.then(|| s.to_string())
+}
+
+/// `"5m"`, `"1h"`, `"30s"` to seconds.
+fn ttl_secs(s: &str) -> Option<i64> {
+    let (n, unit) = s.split_at(s.len().checked_sub(1)?);
+    let n: i64 = n.parse().ok().filter(|n| *n > 0)?;
+    n.checked_mul(match unit {
+        "s" => 1,
+        "m" => 60,
+        "h" => 3600,
+        _ => return None,
+    })
+}
+
+fn prompt_cache(v: &Value) -> Option<PromptCache> {
+    let p = v.get("prompt_cache").filter(|p| p.is_object())?;
+    let n = |k: &str| num_at(p, &[k]).map(|n| n as u64);
+    Some(PromptCache {
+        warm: p.get("warm").and_then(Value::as_bool),
+        ttl: p.get("ttl").and_then(Value::as_str).and_then(ttl_secs),
+        expires_at: p.get("expires_at").and_then(Value::as_i64),
+        misses: n("misses"),
+        miss_causes: p.get("miss_causes").and_then(Value::as_object).map(|m| {
+            m.iter()
+                .filter_map(|(k, c)| Some((cause_name(k)?, c.as_u64()?)))
+                .collect()
+        }),
+        last_miss: p
+            .get("last_miss_cause")
+            .and_then(|c| c.get("causes"))
+            .and_then(Value::as_array)
+            .map(|a| a.iter().filter_map(|c| cause_name(c.as_str()?)).collect())
+            .unwrap_or_default(),
+        recache_if_cold: n("recache_tokens_if_cold"),
     })
 }
 
@@ -155,5 +221,6 @@ pub fn parse(input: &str) -> Session {
         agent: str_at(&v, &["agent", "name"]).unwrap_or_default(),
         thinking: bool_at(&v, &["thinking", "enabled"]),
         fast_mode: bool_at(&v, &["fast_mode"]),
+        prompt_cache: prompt_cache(&v),
     }
 }
