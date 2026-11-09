@@ -103,6 +103,18 @@ fn model_ids_read_as_names() {
     assert_eq!(model_name("claude-opus-4-6[1m]"), "Opus 4.6");
     assert_eq!(model_name("gpt-x"), "gpt-x");
     assert_eq!(model_name("claude-"), "claude-");
+    // version first, the older naming
+    assert_eq!(model_name("claude-3-5-sonnet-20241022"), "Sonnet 3.5");
+    assert_eq!(model_name("claude-3-opus-20240229"), "Opus 3");
+    assert_eq!(
+        model_name("claude-3-7-sonnet-latest"),
+        "claude-3-7-sonnet-latest"
+    );
+    assert_eq!(
+        model_name("claude-opus-4-1-preview"),
+        "claude-opus-4-1-preview"
+    );
+    assert_eq!(model_name("claude-3-5"), "claude-3-5");
 }
 
 #[test]
