@@ -217,7 +217,11 @@
   // `from` is the control that made the change; it is not redrawn. Every
   // change but undo/redo itself is recorded; `group` folds typing runs.
   function setText(next, from, { group = null, record = true } = {}) {
-    if (record && next !== text) history.record(text, group);
+    if (record && next !== text) {
+      history.record(text, group);
+      // the toast's Undo refers to the change it announced, not to this one
+      $("toast").hidden = true;
+    }
     text = next;
     if (from !== ui.conf) ui.conf.value = text;
     const inspect = JSON.parse(bar.inspect(text));
@@ -226,6 +230,7 @@
     Compose.update(inspect.ok ? inspect : null);
     // controls write `set` lines: locked while the text does not parse
     $("look").disabled = !inspect.ok;
+    $("chip-keys").hidden = !inspect.ok;
     renderIssues();
     renderPreview();
     markPreset();
@@ -313,6 +318,7 @@
   function applyPreset(p) {
     if (p.body === text) return;
     setText(p.body);
+    history.seal();
     toast(`Applied the ${p.name} preset.`);
   }
 
