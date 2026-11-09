@@ -108,7 +108,7 @@ Stdout is one JSON object:
   "metric": { "remaining": 14907, "granted": 20000, "expires_at": 1800000000, "granted_at": 1797400000 } }
 ```
 
-- `text` (required, a string) is stripped of escape and control characters, line and paragraph separators (U+2028, U+2029) and bidi overrides; wide characters (CJK, emoji) count as 2 cells. Nothing visible left omits the segment.
+- `text` (required, a string) is stripped of escape and control characters (tabs and line breaks become spaces), line and paragraph separators (U+2028, U+2029) and Unicode format characters (bidi marks and overrides, zero-width spaces, soft hyphens, BOM; the joiners U+200C and U+200D and emoji tag characters are kept); wide characters (CJK, emoji) count as 2 cells. Nothing visible left omits the segment.
 - `alt` (optional) is shown instead of `text` while the plugin's toggle is on: `bar toggle <name>` flips `toggle-<name>` in the state directory, and a click on the text opens `bar://toggle/<name>` once the handler is installed (`bar click install`), unless the output has its own `link` or the placeholder sets `click=none`. Sanitised like `text`; colour, label and icon stay the same. Without `alt` there is no toggle. Both texts come from one render, so a toggle shows at once, without a refresh.
 - `click` is a reserved option name: `toggle` (default) or `none`, never sent to the plugin; a `click` entry in `options` is ignored, and `bar check` warns about it.
 - `label` (optional) is sanitised like `text` and drawn dim, plus a space, before `text`. It takes no colour and sits outside the link. Empty or absent: `text` alone.

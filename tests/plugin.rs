@@ -124,7 +124,8 @@ fn wide_and_invisible_text_measured_through_compose() {
     let (s, cache, dirs) = (session(), fx.cache(), fx.dirs());
     let out = render_in(&s, &c, Some(120), &ColdRunner, Some(&cache), &dirs);
     let line = out.trim_end();
-    assert_eq!(line, "\u{6f22}\u{5b57}\u{1f642}\u{200b}x");
+    // the zero-width space is a format character: dropped
+    assert_eq!(line, "\u{6f22}\u{5b57}\u{1f642}x");
     assert!(!line
         .chars()
         .any(|ch| ch.is_control() || matches!(ch, '\u{2028}' | '\u{2029}')));

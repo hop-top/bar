@@ -15,6 +15,12 @@ fn line_breaks_and_tabs_become_spaces() {
 }
 
 #[test]
+fn format_characters_are_dropped() {
+    let hidden = "a\u{200B}b\u{200E}c\u{200F}d\u{FEFF}e\u{061C}f\u{00AD}g\u{2060}h\u{2064}i\u{180E}j\u{FFF9}k\u{E0001}l";
+    assert_eq!(sanitize(hidden), "abcdefghijkl");
+}
+
+#[test]
 fn emoji_sequences_survive() {
     // family (ZWJ), keycap and heart with VS16, England flag (tags)
     for e in [
