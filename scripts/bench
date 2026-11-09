@@ -11,8 +11,8 @@
 #      bench/README.md and README.md and the badge, and stages the lot
 #
 # BENCH_RUNNER=native skips the image: step 3 runs in a prepared Linux
-# environment (the image's layout under $SLB, default /opt/slbench, and its
-# tools on PATH) reached through BENCH_EXEC, a command prefix that runs a
+# environment (the image's layout under $SLB, default /opt/slbench; its
+# cargo, rustup and bun under $SLB are put on PATH) reached through BENCH_EXEC, a command prefix that runs a
 # command there with stdin and stdout attached (default: none, this machine).
 # The tree goes to $SLB/bar, bench/image/entry.sh runs from it, the results
 # come back as a tar on stdout. Step 4 is the same.
@@ -93,6 +93,12 @@ else
 native() {
   set -euo pipefail
   local SLB=${SLB:-/opt/slbench} out
+  # the image's tool locations under $SLB, when present: the environment's own
+  # PATH need not carry them
+  if [ -d "$SLB/cargo/bin" ]; then PATH=$SLB/cargo/bin:$PATH; export CARGO_HOME=${CARGO_HOME:-$SLB/cargo}; fi
+  if [ -d "$SLB/rustup" ]; then export RUSTUP_HOME=${RUSTUP_HOME:-$SLB/rustup}; fi
+  if [ -d "$SLB/bun/bin" ]; then PATH=$SLB/bun/bin:$PATH; fi
+  export PATH
   if [ -e "$SLB/bar" ] && [ ! -e "$SLB/bar/.bench-native" ]; then
     echo "make bench: $SLB/bar exists and is not from a native run; move it away" >&2; return 1
   fi
