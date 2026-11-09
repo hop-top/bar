@@ -10,7 +10,7 @@ pub struct Branch;
 
 /// `git` in `dir`, unless `spawn` is false (a `bar subagent` row, which
 /// never waits on a process): then nothing, as for an unknown value.
-fn git_if(spawn: bool, dir: &Path, args: &[&str]) -> Option<String> {
+pub(super) fn git_if(spawn: bool, dir: &Path, args: &[&str]) -> Option<String> {
     spawn.then(|| git(dir, args))?
 }
 

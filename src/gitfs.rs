@@ -1,6 +1,15 @@
-//! Minimal read-only view of a git repository: branch and origin URL from
-//! plain files, no process spawn. Anything it cannot read exactly the way
-//! git would reports `Unsupported`; callers then ask git itself.
+//! Minimal read-only view of a git repository: branch, refs, origin URL,
+//! in-progress operation and unmerged index entries from plain files, no
+//! process spawn. Anything it cannot read exactly the way git would
+//! reports `Unsupported`; callers then ask git itself.
+
+mod index;
+mod ops;
+mod refs;
+
+pub use index::{unmerged, MAX_INDEX};
+pub use ops::{Op, Step};
+pub use refs::{best_tag, is_oid, TagScan};
 
 use std::fs;
 use std::io::Read;
@@ -32,6 +41,14 @@ pub struct Repo {
 /// "no config" idiom). Anything but a small regular UTF-8 file is
 /// `Unsupported`, so a FIFO or device never blocks the reader.
 fn read(p: &Path) -> Result<Option<String>, Unsupported> {
+    match read_bytes(p, MAX_FILE)? {
+        Some(b) => String::from_utf8(b).map(Some).map_err(|_| Unsupported),
+        None => Ok(None),
+    }
+}
+
+/// As `read`, raw bytes, capped at `max`.
+fn read_bytes(p: &Path, max: u64) -> Result<Option<Vec<u8>>, Unsupported> {
     let meta = match fs::metadata(p) {
         Ok(m) => m,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -44,12 +61,15 @@ fn read(p: &Path) -> Result<Option<String>, Unsupported> {
             Err(Unsupported)
         };
     }
-    let mut body = String::new();
+    if meta.len() > max {
+        return Err(Unsupported);
+    }
+    let mut body = Vec::with_capacity(meta.len() as usize);
     let file = fs::File::open(p).map_err(|_| Unsupported)?;
-    file.take(MAX_FILE + 1)
-        .read_to_string(&mut body)
+    file.take(max + 1)
+        .read_to_end(&mut body)
         .map_err(|_| Unsupported)?;
-    if body.len() as u64 > MAX_FILE {
+    if body.len() as u64 > max {
         return Err(Unsupported);
     }
     Ok(Some(body))
