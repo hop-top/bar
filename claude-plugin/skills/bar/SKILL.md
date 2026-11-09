@@ -1,5 +1,6 @@
 ---
-description: Set up the bar status line (install check, preset, skin, palette, icons, statusLine)
+name: bar
+description: Set up the bar status line (install check, preset, skin, palette, icons, bar install)
 argument-hint: "[preset]"
 allowed-tools: Bash(bar:*), Bash(command -v:*), Bash(test:*), Bash(mkdir:*), Read, Edit, Write, AskUserQuestion
 ---
@@ -39,16 +40,16 @@ Edit the existing `set skin|palette|icons` line, or append one if the preset has
 
 ## 5. Wire the status line
 
-Check `bar install --help`.
+`bar install` writes the `statusLine` entry into Claude Code's settings; it prints a diff first and keeps every other key. Ask where it goes: user settings (default), this project (`--project`, `.claude/settings.json`) or this project, not committed (`--local`, `.claude/settings.local.json`); run the project ones from the project root.
 
-- If it succeeds, run `bar install` (read its help first for options and for whether it asks before touching `settings.json`).
-- If it fails, edit `~/.claude/settings.json` yourself, after showing the user the change and getting a yes: merge, keeping every other key, this entry:
+1. Run `bar install --refresh 5` (plus `--project` or `--local`). Without a terminal it prints the diff, writes nothing and exits 2. Show the diff; if it replaces a different `statusLine`, point that out (bar keeps a copy, and `bar install --uninstall` puts it back).
+2. On a yes, run the same command with `--yes`. It backs the old file up and prints `backup <file>` and `wrote <file>`. Exit 1 means it did not write (the message says why; a file that is not a JSON object is left untouched).
+
+If `bar` answers that `install` is not a command (an older release), show the user this entry for `~/.claude/settings.json` and, on a yes, merge it in yourself, keeping every other key:
 
 ```json
 "statusLine": { "type": "command", "command": "bar render", "refreshInterval": 5 }
 ```
-
-If a different `statusLine` already exists, show it and ask before replacing it. If you cannot edit the file, print the entry for the user to add.
 
 ## 6. Finish
 
