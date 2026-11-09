@@ -85,10 +85,26 @@ impl PartialOrd for Version {
     }
 }
 
-/// `1.2.3`, `1.2.3-rc.1`, with any leading text before the first digit
-/// (`v1.2.3`, `bar-v1.2.3`); `None` otherwise.
+/// A release tag: `v<version>` or `bar-v<version>`; other tags are not
+/// bar releases.
+pub fn parse_tag(tag: &str) -> Option<Version> {
+    parse(
+        tag.strip_prefix("bar-v")
+            .or_else(|| tag.strip_prefix('v'))?,
+    )
+}
+
+/// Whether `v` is a development build (`0.0.0`), which is not compared
+/// with releases.
+fn is_dev(v: &Version) -> bool {
+    v.core == [0, 0, 0] && v.pre.is_empty()
+}
+
+/// `1.2.3`, `1.2.3-rc.1`; `None` otherwise.
 pub fn parse(s: &str) -> Option<Version> {
-    let s = &s[s.find(|c: char| c.is_ascii_digit())?..];
+    if !s.starts_with(|c: char| c.is_ascii_digit()) {
+        return None;
+    }
     let s = s.split('+').next().unwrap_or_default();
     let (core, pre) = match s.split_once('-') {
         Some((c, p)) => (c, Some(p)),
@@ -123,16 +139,20 @@ pub fn latest(body: &[u8], prerelease: bool) -> Option<String> {
         .filter(|r| prerelease || r["prerelease"] != Value::Bool(true))
         .filter_map(|r| {
             let tag = r["tag_name"].as_str()?;
-            let ver = parse(tag)?;
+            let ver = parse_tag(tag)?;
             (prerelease || ver.pre.is_empty()).then(|| (ver, tag.to_string()))
         })
         .max_by(|a, b| a.0.cmp(&b.0))
         .map(|(_, t)| t)
 }
 
-/// The version of `tag` when it is newer than `current`.
+/// The version of `tag` when it is newer than `current`; never for a
+/// development build.
 pub fn newer(current: &str, tag: &str) -> Option<String> {
-    let (c, t) = (parse(current)?, parse(tag)?);
+    let (c, t) = (parse(current)?, parse_tag(tag)?);
+    if is_dev(&c) {
+        return None;
+    }
     let shown = &tag[tag.find(|c: char| c.is_ascii_digit())?..];
     (t > c).then(|| shown.to_string())
 }
@@ -191,7 +211,11 @@ pub fn report(current: &str, cached: Option<Option<&str>>, exe: &Path) -> String
         Some(Some(_)) => {}
     }
     let newer = tag.and_then(|t| newer(current, t));
+    let dev = parse(current).is_some_and(|v| is_dev(&v));
     match (&newer, tag) {
+        (_, Some(t)) if dev => {
+            out += &format!("development build, not compared (latest {channel} release: {t})\n")
+        }
         (Some(v), _) => out += &format!("newer {channel} release: {v}\n"),
         (None, Some(t)) => out += &format!("up to date (latest {channel} release: {t})\n"),
         (None, None) => {}
@@ -222,7 +246,19 @@ mod tests {
         for w in ordered.windows(2) {
             assert!(parse(w[0]).unwrap() < parse(w[1]).unwrap(), "{w:?}");
         }
-        assert_eq!(parse("v1.2.3"), parse("bar-v1.2.3+build.5"));
+        assert_eq!(parse_tag("v1.2.3"), parse("1.2.3"));
+        assert_eq!(parse_tag("v1.2.3"), parse_tag("bar-v1.2.3+build.5"));
+        for bad in [
+            "1.2.3",
+            "release-1.2.3",
+            "x1.2.3",
+            "bar-1.2.3",
+            "vv1.2.3",
+            "v",
+        ] {
+            assert!(parse_tag(bad).is_none(), "{bad}");
+        }
+        assert!(parse("v1.2.3").is_none());
         for bad in ["", "v", "1.2", "1.2.3.4", "1.2.x", "1.2.3-", "1.2.3-a..b"] {
             assert!(parse(bad).is_none(), "{bad}");
         }
@@ -235,6 +271,9 @@ mod tests {
         assert_eq!(newer("0.2.0", "v0.1.9"), None);
         assert_eq!(newer("0.2.0-rc.1", "v0.2.0").as_deref(), Some("0.2.0"));
         assert_eq!(newer("0.2.0", ""), None);
+        assert_eq!(newer("0.1.0", "nightly-9.9.9"), None);
+        // a development build is not compared with releases
+        assert_eq!(newer("0.0.0", "v0.2.0"), None);
     }
 
     #[test]
@@ -273,6 +312,9 @@ mod tests {
         );
         assert!(report("0.2.0", Some(Some("")), exe).contains("last check failed"));
         assert!(report("0.2.0", Some(None), exe).contains("no check result yet"));
+        let r = report("0.0.0", Some(Some("v0.2.0")), exe);
+        assert!(r.contains("development build"), "{r}");
+        assert!(!r.contains("up to date"), "{r}");
         let r = report("0.3.0-alpha.1", Some(Some("v0.3.0-alpha.2")), exe);
         assert!(r.contains("newer prerelease release: 0.3.0-alpha.2"), "{r}");
     }
