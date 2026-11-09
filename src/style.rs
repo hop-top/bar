@@ -113,9 +113,11 @@ pub fn ramp(score: i32, ramp: &[u8; 11]) -> u8 {
 
 /// Drops ESC, C0, DEL and C1 controls, line/paragraph separators and bidi
 /// overrides/isolates, so external text cannot inject codes, break the line
-/// or reorder what follows it.
+/// or reorder what follows it. Tabs, line feeds and carriage returns read
+/// as spaces, so words on two lines stay apart.
 pub fn sanitize(text: &str) -> String {
     text.chars()
+        .map(|c| if matches!(c, '\n' | '\t' | '\r') { ' ' } else { c })
         .filter(|c| {
             !c.is_control()
                 && !matches!(c, '\u{2028}' | '\u{2029}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
