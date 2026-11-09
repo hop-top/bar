@@ -141,27 +141,29 @@ pub fn parse(input: &str) -> Payload {
 }
 
 /// `claude-opus-5-5` to `Opus 5.5`, `claude-haiku-4-5-20251001` to
-/// `Haiku 4.5`; an id of any other form as it is.
+/// `Haiku 4.5`, `claude-3-5-sonnet-20241022` to `Sonnet 3.5`; an id of any
+/// other form (a suffix after the version, no version, ...) as it is.
 pub fn model_name(id: &str) -> String {
     let canon = crate::prices::norm::canonical(id);
     let Some(rest) = canon.strip_prefix("claude-") else {
         return id.to_string();
     };
-    let mut it = rest.split('-');
-    let family = it.next().unwrap_or_default();
-    let version: Vec<&str> = it
-        .take_while(|p| !p.is_empty() && p.len() <= 2 && p.bytes().all(|b| b.is_ascii_digit()))
-        .collect();
-    let mut chars = family.chars();
-    let (Some(first), false) = (chars.next(), version.is_empty()) else {
-        return id.to_string();
+    let parts: Vec<&str> = rest.split('-').collect();
+    let num = |p: &&str| !p.is_empty() && p.len() <= 2 && p.bytes().all(|b| b.is_ascii_digit());
+    let word = |p: &str| !p.is_empty() && p.bytes().all(|b| b.is_ascii_lowercase());
+    // family then version, or version then family; nothing else
+    let (family, version) = match parts.split_first() {
+        Some((f, v)) if word(f) && !v.is_empty() && v.iter().all(num) => (*f, v),
+        _ => match parts.split_last() {
+            Some((f, v)) if word(f) && !v.is_empty() && v.iter().all(num) => (*f, v),
+            _ => return id.to_string(),
+        },
     };
-    format!(
-        "{}{} {}",
-        first.to_ascii_uppercase(),
-        chars.as_str(),
-        version.join(".")
-    )
+    let mut chars = family.chars();
+    let first = chars
+        .next()
+        .map_or(String::new(), |c| c.to_ascii_uppercase().to_string());
+    format!("{first}{} {}", chars.as_str(), version.join("."))
 }
 
 /// The session a row's placeholders read: the task's model, effort,
