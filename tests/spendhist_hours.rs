@@ -133,3 +133,26 @@ fn block_starts_at_the_first_active_hour_after_a_gap() {
     assert_eq!(with_hours(&[H - 4]).block_start(NOW), Some(H - 4));
     assert_eq!(with_hours(&[]).block_start(NOW), None);
 }
+
+#[test]
+fn a_block_that_may_have_opened_before_the_kept_hours_is_uncertain() {
+    // the oldest kept hour is H-24: activity there may belong to a block
+    // that opened earlier, so the chain is anchored only after a gap of
+    // five hours or more
+    let every3: Vec<i64> = (0..8).map(|k| H - 22 + 3 * k).collect();
+    assert_eq!(with_hours(&every3).block(NOW), Some((H - 4, true)));
+    let all: Vec<i64> = (H - 24..=H).collect();
+    assert!(with_hours(&all).block(NOW).is_some_and(|b| b.1));
+    // a gap of five hours anchors it
+    assert_eq!(
+        with_hours(&[H - 24, H - 23, H - 15, H - 2]).block(NOW),
+        Some((H - 2, false))
+    );
+    // nothing near the edge: certain
+    assert_eq!(
+        with_hours(&[H - 20, H - 2]).block(NOW),
+        Some((H - 2, false))
+    );
+    assert_eq!(with_hours(&[H - 2, H]).block(NOW), Some((H - 2, false)));
+    assert_eq!(with_hours(&every3).block_start(NOW), Some(H - 4));
+}

@@ -75,16 +75,34 @@ impl Summary {
     /// the first active hour, lasts `BLOCK_HOURS`, and the next active hour
     /// after it opens the next. `None` when no block is running.
     pub fn block_start(&self, now: i64) -> Option<i64> {
+        self.block(now).map(|(start, _)| start)
+    }
+
+    /// As `block_start`, and whether the start is a guess: the first
+    /// active hour is close enough to the oldest kept hour that a block
+    /// opened before it may still have run, and no gap of `BLOCK_HOURS` or
+    /// more between active hours anchors the chain after it.
+    pub fn block(&self, now: i64) -> Option<(i64, bool)> {
+        let active: Vec<i64> = self
+            .hours
+            .iter()
+            .filter(|(_, models)| models.values().any(|t| t.iter().any(|n| *n > 0)))
+            .map(|(h, _)| *h)
+            .collect();
+        let oldest = now.div_euclid(3600) - (super::KEEP_HOURS - 1);
+        let near_edge = active
+            .first()
+            .is_some_and(|a| *a < oldest + BLOCK_HOURS - 1);
+        let anchored = active.windows(2).any(|w| w[1] - w[0] >= BLOCK_HOURS);
         let mut start: Option<i64> = None;
-        for (h, models) in &self.hours {
-            if !models.values().any(|t| t.iter().any(|n| *n > 0)) {
-                continue;
-            }
-            if start.is_none_or(|s| *h >= s + BLOCK_HOURS) {
-                start = Some(*h);
+        for h in active {
+            if start.is_none_or(|s| h >= s + BLOCK_HOURS) {
+                start = Some(h);
             }
         }
-        start.filter(|s| now < (s + BLOCK_HOURS) * 3600)
+        start
+            .filter(|s| now < (s + BLOCK_HOURS) * 3600)
+            .map(|s| (s, near_edge && !anchored))
     }
 
     /// Some model with tokens on the days starting with `prefix` has

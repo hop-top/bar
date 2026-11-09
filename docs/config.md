@@ -437,7 +437,7 @@ Renders nothing while the `type`'s budget is unset (`set budget-<type>`; `bar ch
 
 Components:
 
-- `spent`: `$3.12`, with `~` when a model without a price was left out (see [spendhist](#spendhist)).
+- `spent`: `$3.12`, with `~` when a model without a price was left out (see [spendhist](#spendhist)) or, for `block`, when where the block opened is a guess (below).
 - `limit`: the budget, muted: `$20`, `$12.50`.
 - `ratio`: `$3.12/$20`, the limit muted.
 - `pct`: percent of the budget used (`16%`, `118%` past it), or left with `count=left` (`84%`, `-18%` past it).
@@ -449,7 +449,7 @@ Spend:
 
 - `session`: the session's `cost.total_cost_usd`, as [cost](#session) shows it.
 - `today`, `month`: the [spendhist](#spendhist) totals (API-equivalent cost at list prices from local transcripts), from the same background scan and cache; a render never reads a transcript. Empty until the first scan is cached.
-- `block`: spendhist totals by UTC hour since the start of the 5-hour window. The window is the statusline JSON's `rate_limits.five_hour` while it runs: it started 5 hours before `resets_at`. Without it (no rate limits in the JSON, or the window expired) the block follows the transcripts: it opens at the first hour with usage, lasts 5 hours, and the next hour with usage after it opens the next; with no usage in the running block's hours, the block spend is `$0.00`. Spend is counted by whole hours, from the hour the window started in, over the last 25 hours of totals.
+- `block`: spendhist totals by UTC hour since the start of the 5-hour window. The window is the statusline JSON's `rate_limits.five_hour` while it runs: it started 5 hours before `resets_at`. Without it (no rate limits in the JSON, or the window expired) the block follows the transcripts: it opens at the first hour with usage, lasts 5 hours, and the next hour with usage after it opens the next; with no usage in the running block's hours, the block spend is `$0.00`. Spend is counted by whole hours, from the hour the window started in, over the last 25 hours of totals. When the first hour with usage is within 4 hours of the oldest one kept, a block that opened earlier may still have been running, so the chain is only certain from a gap of 5 hours or more without usage; without one, the amount takes `~`.
 
 Colour:
 

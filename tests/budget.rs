@@ -313,3 +313,27 @@ fn check_validates_settings_options_and_missing_budgets() {
         issues("set budget-month $100\ndefault budget type=month\nset left \"#{budget}\"\n");
     assert!(via_default.is_empty(), "{via_default:?}");
 }
+
+#[test]
+fn an_uncertain_block_start_marks_the_block_spend() {
+    let t = Tmp::new();
+    let claude = t.path().join("cl");
+    let cache = Cache::with_exe(&t.path().join("st"), "/usr/bin/false".into());
+    // every three hours from H-22: the block may have opened before the
+    // kept hours, so where the running one opened is a guess
+    let hours: Vec<String> = (0..8)
+        .map(|k| {
+            format!(
+                "\"{}\":{{\"claude-opus-4-5\":[100000,0,0,0]}}",
+                H - 22 + 3 * k
+            )
+        })
+        .collect();
+    let agg = format!(r#"{{"v":1,"days":{{}},"hours":{{{}}}}}"#, hours.join(","));
+    cache.store(&cache_key(&claude, Tz::Utc), &agg).unwrap();
+    let mut c = cfg("set budget-block $4");
+    c.claude_dir = Some(claude.to_string_lossy().into_owned());
+    let o = opts(&[("type", "block"), ("tz", "utc"), ("show", "ratio")]);
+    let got = ctx_go(&Budget, &Session::default(), &c, Some(&cache), &o).map(|o| plain(&o));
+    assert_eq!(got, Some("$1.00~/$4".into()));
+}
