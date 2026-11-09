@@ -39,8 +39,15 @@ fn spent(ctx: &Ctx, opts: &Options, kind: Kind) -> Option<Spend> {
     Some(match kind {
         Kind::Today => sum.spend(&day, prices),
         Kind::Month => sum.spend(&day[..7], prices),
-        _ => match block_start(ctx).or_else(|| sum.block_start(ctx.now)) {
-            Some(hour) => sum.spend_since(hour, prices),
+        _ => match block_start(ctx)
+            .map(|h| (h, false))
+            .or_else(|| sum.block(ctx.now))
+        {
+            Some((hour, guess)) => {
+                let mut s = sum.spend_since(hour, prices);
+                s.unknown |= guess;
+                s
+            }
             None => Spend {
                 usd: 0.0,
                 unknown: false,
