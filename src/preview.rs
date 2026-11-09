@@ -9,8 +9,8 @@ use crate::options::Options;
 use crate::placeholders::ctx as ctxp;
 use crate::placeholders::money::Budget;
 use crate::placeholders::{
-    budget, dirs, extra, gh, gitst, jj, lookup, model, modes, niche, open, remotes, repo, speed,
-    spendhist, status, task, tokens, update, usage, Ctx,
+    budget, dirs, extra, gh, gitage, gitst, jj, lookup, model, modes, niche, open, remotes, repo,
+    speed, spendhist, status, task, tokens, update, usage, Ctx,
 };
 use crate::plugin::{self, ExtInfo};
 use crate::render::{builtin_config, render_sample};
@@ -243,7 +243,7 @@ fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Op
         "ahead" => Some(format!("{} {}", fg(c.good, "↑2"), fg(c.warn, "↓1"))),
         "diff" if state == "final" => None,
         "diff" => Some(format!("{} {}", fg(c.good, "+42"), fg(c.bad, "-7"))),
-        "age" => Some(dim("2h")),
+        "age" => gitage::sample(2 * 3600, opts, &ctx.config.ramp),
         "prs" => list(
             sample_prs()
                 .iter()

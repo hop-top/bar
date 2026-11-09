@@ -5,6 +5,7 @@
 
 use super::{gitst, work_dir, Ctx, Placeholder};
 use crate::cache::{run_child_capped, Job};
+use crate::color::Color;
 use crate::gitfs::{self, Found};
 use crate::options::Options;
 use crate::style::{dim, fg, ramp};
@@ -83,12 +84,31 @@ pub fn score(secs: i64, hours: u64) -> i32 {
     (100 - used) as i32
 }
 
+/// `ramp=<hours>`: `Some(None)` without it, `None` when it is invalid.
+fn ramp_hours(opts: &Options) -> Option<Option<u64>> {
+    match opts.get("ramp") {
+        Some(r) => Some(Some(r.trim().parse::<u64>().ok().filter(|h| *h >= 1)?)),
+        None => Some(None),
+    }
+}
+
+/// An age of `secs` as `age` draws it: muted, or on `ramp` over `hours`.
+fn paint(secs: i64, hours: Option<u64>, ramp_colors: &[Color; 11]) -> String {
+    let text = fmt(secs);
+    match hours {
+        Some(h) => fg(ramp(score(secs, h), ramp_colors), &text),
+        None => dim(&text),
+    }
+}
+
+/// A commit `secs` old, for previews.
+pub fn sample(secs: i64, opts: &Options, ramp_colors: &[Color; 11]) -> Option<String> {
+    Some(paint(secs, ramp_hours(opts)?, ramp_colors))
+}
+
 impl Placeholder for Age {
     fn render(&self, ctx: &Ctx, opts: &Options) -> Option<String> {
-        let hours = match opts.get("ramp") {
-            Some(r) => Some(r.trim().parse::<u64>().ok().filter(|h| *h >= 1)?),
-            None => None,
-        };
+        let hours = ramp_hours(opts)?;
         let cache = ctx.cache?;
         let Found::Repo(repo) = gitfs::discover(&work_dir(ctx)) else {
             return None;
@@ -110,10 +130,6 @@ impl Placeholder for Age {
         let raw = cache.read_or_refresh_if(&cache_key(&top), TTL, &job, current)?;
         // another commit's time would be wrong, not just old
         let secs = ctx.now - decode(&raw, &commit)?;
-        let text = fmt(secs);
-        Some(match hours {
-            Some(h) => fg(ramp(score(secs, h), &ctx.config.ramp), &text),
-            None => dim(&text),
-        })
+        Some(paint(secs, hours, &ctx.config.ramp))
     }
 }
