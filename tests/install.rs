@@ -581,3 +581,29 @@ fn reformatted_file_diff_shows_content_and_says_so() {
     assert_eq!(changes(&out).len(), 2, "{out}");
     assert!(out.contains("reformatted"), "{out}");
 }
+
+#[test]
+fn a_binary_in_the_npx_cache_gets_a_warning() {
+    let t = Tmp::new();
+    let settings = t.path().join("claude/settings.json");
+    let npx = t
+        .path()
+        .join(".npm/_npx/0123abcd/node_modules/@hop-top/bar-linux-x64/bin/bar");
+    let e = Env {
+        bar: npx,
+        ..env(&t, settings.clone())
+    };
+    let (r, out) = run(&e, &opts(), false, "");
+    assert_eq!(r, Ok(()), "{out}");
+    assert!(out.contains("npx cache"), "{out}");
+    assert!(out.contains("npm install -g @hop-top/bar"), "{out}");
+    // a regular install: no warning
+    let (_, out) = run(&env(&t, t.path().join("other.json")), &opts(), false, "");
+    assert!(!out.contains("npx cache"), "{out}");
+    // a directory merely named like it is not the cache
+    let e = Env {
+        bar: t.path().join("my_npx_tools/bar"),
+        ..env(&t, t.path().join("third.json"))
+    };
+    assert!(!run(&e, &opts(), false, "").1.contains("npx cache"));
+}
