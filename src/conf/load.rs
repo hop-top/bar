@@ -30,6 +30,30 @@ pub fn find_path(
         .find(|p| p.is_file())
 }
 
+/// Where user palette files live: `palettes/` beside the `bar.conf` in
+/// use, else beside the first candidate path (`None` when that one is
+/// relative).
+pub fn palette_dir(
+    env: &dyn Fn(&str) -> Option<String>,
+    home: &Path,
+    kit_dir: &Path,
+) -> Option<PathBuf> {
+    let conf = find_path(env, home, kit_dir)
+        .or_else(|| search_paths(env, home, kit_dir).into_iter().next())?;
+    let dir = conf.parent()?.join("palettes");
+    dir.is_absolute().then_some(dir)
+}
+
+/// [`palette_dir`] for the process environment.
+pub fn palette_dir_default() -> Option<PathBuf> {
+    let home = crate::platform::home().unwrap_or_default();
+    palette_dir(
+        &|k| std::env::var(k).ok(),
+        &home,
+        &crate::platform::dirs::config(),
+    )
+}
+
 /// Seam for tests: explicit env lookup, home, and kit config dir; the user
 /// config only.
 pub fn load_from(env: &dyn Fn(&str) -> Option<String>, home: &Path, kit_dir: &Path) -> LoadResult {
@@ -42,12 +66,14 @@ fn read(path: &Path) -> Result<String, String> {
 
 /// The user config with the project config found from `cwd` over it. The
 /// project file is only looked for when `project-config` is not `off`.
+/// `set palette` finds user palettes in [`palette_dir`].
 pub fn load_layered(
     env: &dyn Fn(&str) -> Option<String>,
     home: &Path,
     kit_dir: &Path,
     cwd: Option<&Path>,
 ) -> LoadResult {
+    let _palettes = crate::palette::use_dir(palette_dir(env, home, kit_dir));
     let user = match find_path(env, home, kit_dir).map(|p| read(&p)) {
         None => None,
         Some(Ok(text)) => Some(text),

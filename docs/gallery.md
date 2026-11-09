@@ -71,7 +71,7 @@ set right "#{account}"
 
 ## Palettes
 
-`set palette` swaps muted text, state colours, the usage ramp and the skin backgrounds; here on the powerline skin in the `burning` state. `terminal` uses the terminal's own 16 colours, drawn here with the xterm defaults. See [Palettes](config.md#palettes).
+`set palette` swaps muted text, state colours, the usage ramp and the skin backgrounds; here on the powerline skin in the `burning` state. The `#rrggbb` palettes are drawn at the default depth, as their nearest 256-colour codes. `terminal` uses the terminal's own 16 colours, drawn here with the xterm defaults. See [Palettes](config.md#palettes).
 
 ![Powerline skin with the default palette.](gallery/palette-default.svg)
 
@@ -145,6 +145,84 @@ set right "#{account}"
 ```text
 set skin powerline
 set palette mono
+set icons nerdfont
+set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch}"
+set center "#{usage[type=5h]} │ #{usage[type=7d]}"
+set right "#{account}"
+```
+
+![Powerline skin with the tokyo-night palette.](gallery/palette-tokyo-night.svg)
+
+`COLUMNS=100 bar preview --state burning` with:
+
+```text
+set skin powerline
+set palette tokyo-night
+set icons nerdfont
+set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch}"
+set center "#{usage[type=5h]} │ #{usage[type=7d]}"
+set right "#{account}"
+```
+
+![Powerline skin with the rose-pine palette.](gallery/palette-rose-pine.svg)
+
+`COLUMNS=100 bar preview --state burning` with:
+
+```text
+set skin powerline
+set palette rose-pine
+set icons nerdfont
+set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch}"
+set center "#{usage[type=5h]} │ #{usage[type=7d]}"
+set right "#{account}"
+```
+
+![Powerline skin with the catppuccin palette.](gallery/palette-catppuccin.svg)
+
+`COLUMNS=100 bar preview --state burning` with:
+
+```text
+set skin powerline
+set palette catppuccin
+set icons nerdfont
+set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch}"
+set center "#{usage[type=5h]} │ #{usage[type=7d]}"
+set right "#{account}"
+```
+
+![Powerline skin with the one-dark palette.](gallery/palette-one-dark.svg)
+
+`COLUMNS=100 bar preview --state burning` with:
+
+```text
+set skin powerline
+set palette one-dark
+set icons nerdfont
+set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch}"
+set center "#{usage[type=5h]} │ #{usage[type=7d]}"
+set right "#{account}"
+```
+
+![Powerline skin with the everforest palette.](gallery/palette-everforest.svg)
+
+`COLUMNS=100 bar preview --state burning` with:
+
+```text
+set skin powerline
+set palette everforest
+set icons nerdfont
+set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch}"
+set center "#{usage[type=5h]} │ #{usage[type=7d]}"
+set right "#{account}"
+```
+
+![Powerline skin with the kanagawa palette.](gallery/palette-kanagawa.svg)
+
+`COLUMNS=100 bar preview --state burning` with:
+
+```text
+set skin powerline
+set palette kanagawa
 set icons nerdfont
 set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch}"
 set center "#{usage[type=5h]} │ #{usage[type=7d]}"

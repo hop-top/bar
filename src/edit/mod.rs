@@ -41,6 +41,7 @@ pub fn run() -> Result<(), String> {
         return Err("needs a terminal".into());
     }
     let path = config_path().ok_or("home dir is unset or relative; set it or XDG_CONFIG_HOME")?;
+    let _palettes = crate::palette::use_dir(path.parent().map(|d| d.join("palettes")));
     let text = match std::fs::read_to_string(&path) {
         Ok(t) => Some(t),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,

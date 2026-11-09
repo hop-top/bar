@@ -81,7 +81,7 @@ Quote values with spaces (double quotes; a value is one token). `#` outside quot
 | `icon-width` | `1` (default) or `2`; cells a Nerd Font glyph (private-use codepoint) takes in your font. Layout uses it to pad; emoji widths come from Unicode |
 | `skin` | `plain` (default), `powerline` or `capsule`. See [Skins](#skins) |
 | `skin-glyphs` | `nerd` (default) or `ascii`. See [Glyphs](#glyphs) |
-| `palette` | `default`, `nord`, `gruvbox`, `dracula`, `solarized`, `mono` or `terminal`. See [Palettes](#palettes) |
+| `palette` | `default`, `nord`, `gruvbox`, `dracula`, `solarized`, `mono`, `tokyo-night`, `rose-pine`, `catppuccin`, `one-dark`, `everforest`, `kanagawa`, `terminal`, or the name of a [palette file](#palette-files). See [Palettes](#palettes) |
 | `color-depth` | `256`, `truecolor`, `16`, `none` or `auto`; unset, 256 colours unless `NO_COLOR` or `TERM=dumb`. See [Colour depth](#colour-depth) |
 | `gradient` | `off` (default), a preset or colours painted across every line. See [Gradients](#gradients) |
 | `claude-dir` | Claude Code config dir read by [spendhist](#spendhist) |
@@ -722,10 +722,17 @@ Colours and width:
 | `dracula` | 146 | 84 | 228 | 203 | 236 61 238 97 239 |
 | `solarized` | 245 | 106 | 136 | 160 | 23 235 24 30 66 |
 | `mono` | 245 | 252 | 248 | 255 | 236 238 240 242 |
+| `tokyo-night` | `#a9b1d6` | `#9ece6a` | `#e0af68` | `#f7768e` | `#24283b #1a1b26 #394b70 #292e42 #16161e` |
+| `rose-pine` | `#908caa` | `#9ccfd8` | `#f6c177` | `#eb6f92` | `#1f1d2e #26233a #191724` |
+| `catppuccin` | `#a6adc8` | `#a6e3a1` | `#f9e2af` | `#f38ba8` | `#313244 #1e1e2e #45475a #181825 #11111b` |
+| `one-dark` | `#828997` | `#98c379` | `#e5c07b` | `#e06c75` | `#282c34 #31363f #21252b` |
+| `everforest` | `#9da9a0` | `#a7c080` | `#dbbc7f` | `#e67e80` | `#343f44 #2d353b #3a515d #232a2e #425047` |
+| `kanagawa` | `#938aa9` | `#98bb6c` | `#e6c384` | `#e46876` | `#1f1f28 #2a2a37 #16161d #363646 #223249` |
 | `terminal` | 8 | 2 | 3 | 1 | 0 4 |
 
 - `default` is the built-in colour set, ramp included (`196 … 46`).
-- `nord` keeps its text colours (muted, good, warn, bad, plain values, repo names) at a contrast of at least 3:1 on each of its backgrounds.
+- The `#rrggbb` palettes are drawn exactly at `set color-depth truecolor` and as the nearest 256-colour code below it (the default depth; see [Colour depth](#colour-depth)). `catppuccin` is its Mocha flavour, `rose-pine` its main variant, `everforest` its dark medium variant. Colour sources and licences: [Dependencies](dependencies.md#palette-colours).
+- `nord` and the `#rrggbb` palettes keep their text colours (muted, good, warn, bad, plain values, repo names) at a contrast of at least 3:1 on each of their backgrounds, at 256 colours and at truecolor.
 - The other palettes use a three-step ramp from their own colours: bad for scores up to 20, warn up to 60, good above (the ramp is indexed by `(score + 9) / 10`).
 - An explicit `set color.good|warn|bad` or `set ramp` beats the palette wherever it appears in the file (see [Colours](#colours)).
 
@@ -736,6 +743,35 @@ Colours and width:
 - The skin backgrounds are black and blue only, the two that keep green, yellow and red text readable in most themes (contrast still depends on the theme; use `bg=` per placeholder to override).
 - Its ramp has three steps (bad, warn, good).
 - Colours you set to 0-15 yourself (`color.*`, `ramp`, `bg=`, `fg=`, account colours, ANSI names) are drawn the same way under this palette; codes from 16 up keep the 256-colour form.
+
+#### Palette files
+
+`set palette <name>` also takes your own palette: a file `palettes/<name>.conf` in the directory of the `bar.conf` in use (`~/.config/bar/palettes/` by default; with no `bar.conf`, the directory one would be created in). It is written like `bar.conf`, one `set` per line:
+
+```
+# ~/.config/bar/palettes/harbour.conf
+set muted "#a0a0b0"
+set good "#9ece6a"
+set warn 179
+set bad red
+set backgrounds "#202030 236 #303048"
+# optional: 11 colours, low score to high
+# set ramp "196 202 208 214 220 226 190 154 118 82 46"
+```
+
+| Key | Value |
+|---|---|
+| `muted`, `good`, `warn`, `bad` | One [colour](#colours) each; required |
+| `backgrounds` | 1 to 16 colours split by spaces, the list skins cycle through; required |
+| `ramp` | Exactly 11 colours; optional, defaults to the three-step ramp from `bad`, `warn` and `good` |
+
+- Hex colours are quoted, as in `bar.conf`; `#` outside quotes starts a comment.
+- Names are ASCII letters, digits, `-` and `_`, starting with a letter or digit, at most 64 bytes; the file is read only from the palettes directory, at most 16 KiB.
+- A built-in name always means the built-in palette: `palettes/nord.conf` is never read, and `bar check` warns about it. Copy a palette under a new name to change it.
+- A palette file is drawn like the built-in hex palettes (no ANSI 16-colour mode), and its contrast is up to you.
+- A missing file, an unknown key, a bad colour or a missing key is an error on the `set palette` line; `bar check` names the palette file line. In a [project config](#project-config) the line is dropped instead, as any invalid line is. A project config may name your palette files in any `project-config` mode; it cannot add its own.
+- `set color.good|warn|bad` and `set ramp` still beat the file's values.
+- The [web configurator](web.md) and the `bar edit` palette picker list the built-in palettes; a palette file is read by the CLI only (`bar edit` previews one set in the file).
 
 ### Icons
 

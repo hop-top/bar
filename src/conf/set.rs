@@ -152,9 +152,7 @@ pub(super) fn apply_set(c: &mut Config, key: &str, val: &str) -> Result<(), Stri
             }
         }
         "palette" => {
-            c.palette = palette::by_name(val)
-                .ok_or_else(|| format!("invalid palette `{val}` ({})", palette::NAMES.join("|")))?
-                .name;
+            c.palette = palette::find(val)?;
         }
         "color-depth" => {
             c.color_depth = ColorDepth::parse(val).ok_or_else(|| {
@@ -215,20 +213,20 @@ pub(super) fn apply_price(c: &mut Config, a: &[String]) -> Result<(), String> {
 /// Palette values for every colour setting the file did not set itself,
 /// wherever in the file `set palette` appears.
 pub(super) fn apply_palette(c: &mut Config, explicit: &[String]) {
-    let p = palette::by_name(c.palette).unwrap_or_else(palette::default);
+    let p = &c.palette;
     let unset = |k: &str| !explicit.iter().any(|e| e == k);
     c.muted = p.muted;
-    c.bgs = p.bgs;
+    c.bgs = p.bgs.to_vec();
     if unset("color.good") {
-        c.colors.good = p.good.into();
+        c.colors.good = p.good;
     }
     if unset("color.warn") {
-        c.colors.warn = p.warn.into();
+        c.colors.warn = p.warn;
     }
     if unset("color.bad") {
-        c.colors.bad = p.bad.into();
+        c.colors.bad = p.bad;
     }
     if unset("ramp") {
-        c.ramp = p.ramp.map(Color::Idx);
+        c.ramp = p.ramp;
     }
 }

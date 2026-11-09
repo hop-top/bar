@@ -40,7 +40,7 @@ impl ColorSpec {
             ColorSpec::Good => config.colors.good,
             ColorSpec::Warn => config.colors.warn,
             ColorSpec::Bad => config.colors.bad,
-            ColorSpec::Muted => muted().into(),
+            ColorSpec::Muted => muted(),
             ColorSpec::Accent => accent().into(),
         }
     }

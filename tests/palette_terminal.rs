@@ -1,3 +1,4 @@
+use hop_bar::color::Color::Idx;
 use hop_bar::conf::{parse, LoadResult};
 use hop_bar::palette;
 use hop_bar::style::{bg_code, fg, use_ansi};
@@ -11,14 +12,17 @@ fn preview(conf: &str, cols: usize) -> String {
 fn terminal_palette_is_ansi16_with_three_step_ramp() {
     let p = palette::by_name("terminal").unwrap();
     assert!(palette::NAMES.contains(&"terminal"));
-    assert_eq!((p.muted, p.good, p.warn, p.bad), (8, 2, 3, 1));
-    assert_eq!(p.ramp, [1, 1, 1, 3, 3, 3, 3, 2, 2, 2, 2]);
-    assert!(p.bgs.iter().all(|&b| b < 16 && b != p.muted));
-    let c = parse("set palette terminal").unwrap();
     assert_eq!(
-        (c.muted, c.ramp, c.bgs),
-        (p.muted, p.ramp.map(Into::into), p.bgs)
+        (p.muted, p.good, p.warn, p.bad),
+        (Idx(8), Idx(2), Idx(3), Idx(1))
     );
+    assert_eq!(p.ramp, [1, 1, 1, 3, 3, 3, 3, 2, 2, 2, 2].map(Idx));
+    assert!(p
+        .bgs
+        .iter()
+        .all(|&b| matches!(b, Idx(n) if n < 16) && b != p.muted));
+    let c = parse("set palette terminal").unwrap();
+    assert_eq!((c.muted, c.ramp, c.bgs), (p.muted, p.ramp, p.bgs.to_vec()));
 }
 
 #[test]
@@ -77,7 +81,8 @@ fn terminal_skins_use_40_47_and_100_107_backgrounds() {
             200,
         );
         assert!(!out.contains("48;5;") && !out.contains("38;5;"), "{out:?}");
-        for &b in p.bgs {
+        for &b in p.bgs.iter() {
+            let Idx(b) = b else { panic!("{b:?}") };
             let sgr = if b < 8 {
                 40 + b as u32
             } else {

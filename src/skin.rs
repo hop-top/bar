@@ -134,7 +134,7 @@ pub fn paint(paint: Paint, set: SkinGlyphs, segs: &[Seg], side: Side) -> Group {
         return Group::default();
     }
     let g = glyphs(set);
-    let thin = |c: char| fg_glyph(muted().into(), c);
+    let thin = |c: char| fg_glyph(muted(), c);
     // backgrounds compare as drawn: two codes may share one colour at depth 16
     let d = depth();
     let same = |i: usize| i > 0 && segs[i - 1].bg.at(d) == segs[i].bg.at(d);

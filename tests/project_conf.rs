@@ -90,7 +90,7 @@ fn project_lines_apply_after_user_lines() {
     );
     // a colour the user set explicitly survives the project's palette
     assert_eq!(c.colors.good, 10);
-    assert_eq!(c.palette, "nord");
+    assert_eq!(c.palette.name, "nord");
 }
 
 #[test]

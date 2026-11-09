@@ -53,6 +53,7 @@ fn read(path: &Path) -> Result<String, String> {
 }
 
 pub fn run(m: &ArgMatches) {
+    let _palettes = hop_bar::palette::use_dir(conf::palette_dir_default());
     match m.subcommand() {
         Some(("export", e)) => export(e),
         Some(("import", i)) => import(i),

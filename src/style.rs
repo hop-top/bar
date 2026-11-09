@@ -54,11 +54,11 @@ pub fn accent() -> u8 {
 
 /// Text colour for values with no configured colour: 250, or the muted
 /// colour under the terminal palette.
-pub fn neutral() -> u8 {
+pub fn neutral() -> Color {
     if ANSI_NOW.with(std::cell::Cell::get) {
         muted()
     } else {
-        250
+        Color::Idx(250)
     }
 }
 
@@ -71,7 +71,7 @@ pub fn bold(text: &str) -> String {
 pub const MUTED: u8 = 250;
 
 thread_local! {
-    static MUTED_NOW: std::cell::Cell<u8> = const { std::cell::Cell::new(MUTED) };
+    static MUTED_NOW: std::cell::Cell<Color> = const { std::cell::Cell::new(Color::Idx(MUTED)) };
     static ANSI_NOW: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static DEPTH_NOW: std::cell::Cell<Depth> = const { std::cell::Cell::new(Depth::Ansi256) };
 }
@@ -111,7 +111,7 @@ pub fn use_ansi(on: bool) -> AnsiGuard {
 }
 
 /// Restores the previous muted colour when dropped.
-pub struct MutedGuard(u8);
+pub struct MutedGuard(Color);
 
 impl Drop for MutedGuard {
     fn drop(&mut self) {
@@ -120,12 +120,12 @@ impl Drop for MutedGuard {
 }
 
 /// Uses `code` for `dim` on this thread until the guard drops.
-pub fn use_muted(code: u8) -> MutedGuard {
+pub fn use_muted(code: Color) -> MutedGuard {
     MutedGuard(MUTED_NOW.with(|m| m.replace(code)))
 }
 
 /// The muted colour in effect on this thread.
-pub fn muted() -> u8 {
+pub fn muted() -> Color {
     MUTED_NOW.with(std::cell::Cell::get)
 }
 

@@ -192,7 +192,7 @@ fn settings(c: &Config) -> Value {
             SkinGlyphs::Nerd => "nerd",
             SkinGlyphs::Ascii => "ascii",
         },
-        "palette": c.palette,
+        "palette": c.palette.name,
         "icons": match c.icons {
             Icons::None => "none",
             Icons::Nerdfont => "nerdfont",

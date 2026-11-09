@@ -289,7 +289,7 @@ fn render_impl(
         memo: Default::default(),
     };
     let _muted = style::use_muted(config.muted);
-    let _ansi = style::use_ansi(palette::by_name(config.palette).is_some_and(|p| p.ansi));
+    let _ansi = style::use_ansi(config.palette.ansi);
     let depth = config.color_depth.resolve(|k| std::env::var(k).ok());
     let _depth = style::use_depth(depth);
     // without colour a skin is only its glyphs: draw the plain layout
@@ -379,16 +379,16 @@ fn draw(config: &Config, paint: Option<Paint>, segs: &[Seg], side: Side) -> Grou
 /// `bg` option takes its place. Plain lines ignore them. `set gradient`
 /// recolours the segment text as one run across the line.
 fn segs(config: &Config, groups: [Vec<Rendered>; 3]) -> [Vec<Seg>; 3] {
-    let bgs = if config.bgs.is_empty() {
-        palette::default().bgs
+    let bgs: &[Color] = if config.bgs.is_empty() {
+        &palette::default().bgs
     } else {
-        config.bgs
+        &config.bgs
     };
     let mut n = 0;
     let mut out = groups.map(|g| {
         g.into_iter()
             .map(|s| {
-                let bg = s.bg.unwrap_or(Color::Idx(bgs[n % bgs.len()]));
+                let bg = s.bg.unwrap_or(bgs[n % bgs.len()]);
                 n += 1;
                 Seg {
                     width: visible_width_with(&s.text, config.icon_width),
@@ -477,7 +477,7 @@ fn row_impl(
         memo: Default::default(),
     };
     let _muted = style::use_muted(config.muted);
-    let _ansi = style::use_ansi(palette::by_name(config.palette).is_some_and(|p| p.ansi));
+    let _ansi = style::use_ansi(config.palette.ansi);
     let rendered = render_group(layout, &ctx, &ex, from.sample);
     let groups = [rendered, Vec::new(), Vec::new()];
     let [mut l, _, _] = segs(config, groups);
