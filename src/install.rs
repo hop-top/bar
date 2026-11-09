@@ -31,6 +31,15 @@ pub fn settings_path(scope: Scope, claude: Option<PathBuf>, cwd: &Path) -> Resul
     }
 }
 
+/// The `bar` that `scope`'s settings run: plain `bar` (found on `PATH`)
+/// for the project settings, which are shared, else this binary.
+pub fn bar_for(scope: Scope, exe: Option<PathBuf>) -> PathBuf {
+    match (scope, exe) {
+        (Scope::Project, _) | (_, None) => PathBuf::from("bar"),
+        (_, Some(exe)) => exe,
+    }
+}
+
 pub struct Opts {
     pub uninstall: bool,
     /// `statusLine.refreshInterval`, seconds (at least 1).
@@ -42,6 +51,7 @@ pub struct Opts {
 }
 
 pub struct Env {
+    /// The binary the commands run; plain `bar` is written unquoted.
     pub bar: PathBuf,
     pub settings: PathBuf,
     pub state_dir: PathBuf,
@@ -82,16 +92,7 @@ pub fn render_command(bar: &str, windows: bool) -> String {
 /// Whether `cmd` runs `bar render` (any path to a `bar` binary, quoted
 /// or not).
 pub fn is_bar_command(cmd: &str) -> bool {
-    let Some(prog) = cmd.trim().strip_suffix(" render") else {
-        return false;
-    };
-    let prog = prog.trim();
-    let prog = match prog.strip_prefix('\'').and_then(|p| p.strip_suffix('\'')) {
-        Some(q) => q.replace(r"'\''", "'"),
-        None => prog.to_string(),
-    };
-    let name = prog.rsplit(['/', '\\']).next().unwrap_or_default();
-    name == "bar" || name.eq_ignore_ascii_case("bar.exe")
+    settings::runs_bar(cmd, "render")
 }
 
 fn is_bar_status_line(v: Option<&Value>) -> bool {
@@ -221,8 +222,7 @@ fn plan_uninstall(env: &Env, o: &Opts) -> Result<Plan, String> {
         notes.push("statusLine does not run bar; left as is".into());
     }
     if o.hooks {
-        let bar = env.bar.display().to_string();
-        remove_hooks(&mut root, &command_for(&bar, "click hook", env.windows));
+        remove_hooks(&mut root);
     }
     Ok(Plan {
         path: l.path,

@@ -36,7 +36,12 @@ pub fn hook_command_for(bar: &str, windows: bool) -> String {
 /// slashes (Git Bash drops unquoted ones), and a path of plain characters
 /// stays unquoted, which both shells run as is. Other paths are
 /// single-quoted, which only Git Bash accepts.
+///
+/// A bare `bar` stays bare: Claude Code finds it on `PATH`.
 pub fn command_for(bar: &str, args: &str, windows: bool) -> String {
+    if bar == "bar" {
+        return format!("bar {args}");
+    }
     let p = if windows {
         bar.replace('\\', "/")
     } else {
@@ -47,6 +52,37 @@ pub fn command_for(bar: &str, args: &str, windows: bool) -> String {
         return format!("{p} {args}");
     }
     format!("'{}' {args}", p.replace('\'', r"'\''"))
+}
+
+/// Whether `cmd` runs `<bar> <args>` for any path to a `bar` binary
+/// (quoted or not), as [`command_for`] writes it.
+pub fn runs_bar(cmd: &str, args: &str) -> bool {
+    let Some(prog) = cmd
+        .trim()
+        .strip_suffix(args)
+        .and_then(|p| p.strip_suffix(' '))
+    else {
+        return false;
+    };
+    let prog = prog.trim();
+    let prog = match prog.strip_prefix('\'').and_then(|p| p.strip_suffix('\'')) {
+        Some(q) => q.replace(r"'\''", "'"),
+        None => prog.to_string(),
+    };
+    let name = prog.rsplit(['/', '\\']).next().unwrap_or_default();
+    name == "bar" || name.eq_ignore_ascii_case("bar.exe")
+}
+
+/// Whether every hook of entry `e` runs `bar click hook` (any path).
+fn is_bar_hook_entry(e: &Value) -> bool {
+    e.get("hooks").and_then(Value::as_array).is_some_and(|hs| {
+        !hs.is_empty()
+            && hs.iter().all(|h| {
+                h.get("command")
+                    .and_then(Value::as_str)
+                    .is_some_and(|c| runs_bar(c, "click hook"))
+            })
+    })
 }
 
 pub struct SettingsPlan {
@@ -109,9 +145,10 @@ pub(crate) fn load(path: &Path) -> Result<Loaded, String> {
     Ok(Loaded { path, text, root })
 }
 
-/// Adds a `command` hook entry for every event lacking one; returns the
-/// events that gained one. Anything not shaped as Claude Code expects is
-/// an error.
+/// Adds a `command` hook entry for every event lacking one, dropping
+/// entries that run `bar click hook` from another path (an old install);
+/// returns the events that gained one. Anything not shaped as Claude Code
+/// expects is an error.
 pub(crate) fn add_hooks(
     root: &mut Value,
     command: &str,
@@ -133,6 +170,7 @@ pub(crate) fn add_hooks(
             .as_array_mut()
             .ok_or_else(|| format!("{shown}: `hooks.{ev}` is not an array"))?;
         if !has_command(list, command) {
+            list.retain(|e| !is_bar_hook_entry(e));
             list.push(json!({"hooks": [{"type": "command", "command": command}]}));
             added.push(ev);
         }
@@ -140,18 +178,15 @@ pub(crate) fn add_hooks(
     Ok(added)
 }
 
-/// Drops hook entries whose every hook runs `command`, then any event
-/// list and `hooks` object this leaves empty; returns the events changed.
-pub(crate) fn remove_hooks(root: &mut Value, command: &str) -> Vec<&'static str> {
+/// Drops hook entries whose every hook runs `bar click hook` (from any
+/// path), then any event list and `hooks` object this leaves empty;
+/// returns the events changed.
+pub(crate) fn remove_hooks(root: &mut Value) -> Vec<&'static str> {
     let mut removed = Vec::new();
     let Some(hooks) = root.get_mut("hooks").and_then(Value::as_object_mut) else {
         return removed;
     };
-    let ours = |e: &Value| {
-        e.get("hooks").and_then(Value::as_array).is_some_and(|hs| {
-            !hs.is_empty() && hs.iter().all(|h| h.get("command") == Some(&json!(command)))
-        })
-    };
+    let ours = is_bar_hook_entry;
     for ev in HOOK_EVENTS {
         let Some(list) = hooks.get_mut(ev).and_then(Value::as_array_mut) else {
             continue;
