@@ -62,6 +62,13 @@ pub(super) fn apply_set(c: &mut Config, key: &str, val: &str) -> Result<(), Stri
                 format!("invalid compact-at `{val}` (tokens like 200k, or 1%..100%)")
             })?)
         }
+        "update-check" => {
+            c.update_check = match val {
+                "on" => true,
+                "off" => false,
+                _ => return Err(format!("invalid update-check `{val}` (on|off)")),
+            }
+        }
         "color.good" => c.colors.good = code(val)?,
         "color.warn" => c.colors.warn = code(val)?,
         "color.bad" => c.colors.bad = code(val)?,

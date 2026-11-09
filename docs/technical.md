@@ -47,6 +47,10 @@ Measured on macOS 15, release build, 20 MB synthetic transcript (a third of the 
 
 The offset, inode, size and mtime logic (`linescan::Mark`) is shared with `transcript`. Local dates use `libc::localtime_r` on Unix and `GetDynamicTimeZoneInformation` + `SystemTimeToTzSpecificLocalTimeEx` on Windows (`src/platform/`), memoised per half hour; there is no date-time dependency.
 
+## Update check
+
+`src/update.rs` backs `#{update}` and `bar update`, both off unless `set update-check on`. `bar refresh` runs `Job::Update { prerelease }` (cache key `update:stable` or `update:prerelease`, by whether the running version has a SemVer prerelease part; ttl 1 day): `curl` fetches `GET /repos/hop-top/bar/releases?per_page=30` from the GitHub API (no token; 4 MiB cap; the refresh time limit as `--max-time`), drafts and, on the stable channel, prereleases are dropped, and the tag with the highest SemVer precedence is stored. A failure stores an empty value rather than failing the job, so it waits a day instead of the 60 s backoff and stays well under GitHub's unauthenticated rate limit. The render compares the stored tag with `CARGO_PKG_VERSION`. `src/net.rs` holds the one `curl` invocation the price snapshot and the update check share.
+
 ## Check and preview
 
 `check` reuses the parsers the renderer uses (`conf`, `format`, `expr`, `gh::plan`, `plugin::validate`), so it flags what render would silently drop. Core option names and value kinds live in one table in `check.rs`; adding a core option means adding it there.

@@ -40,6 +40,8 @@ pub enum Job {
     },
     /// `bar prices update`: fetch models.dev into the data-dir snapshot.
     Prices,
+    /// Newest bar release tag of a channel from GitHub (`set update-check on`).
+    Update { prerelease: bool },
 }
 
 impl Job {
@@ -62,6 +64,7 @@ impl Job {
                 json!({"kind": "spendhist", "dir": dir, "state": state, "utc": utc})
             }
             Job::Prices => json!({"kind": "prices"}),
+            Job::Update { prerelease } => json!({"kind": "update", "prerelease": prerelease}),
         }
     }
 
@@ -109,6 +112,9 @@ impl Job {
                 utc: v["utc"].as_bool().unwrap_or(false),
             }),
             Some("prices") => Ok(Job::Prices),
+            Some("update") => Ok(Job::Update {
+                prerelease: v["prerelease"].as_bool().unwrap_or(false),
+            }),
             other => Err(format!("unknown job kind {other:?}")),
         }
     }
@@ -172,6 +178,7 @@ impl Job {
             Job::Prices => crate::prices::update::run_within(None, limit.as_secs())
                 .ok()
                 .map(|(_, n)| n.to_string()),
+            Job::Update { prerelease } => Some(crate::update::check(*prerelease, limit)),
         }
     }
 }

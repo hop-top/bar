@@ -18,6 +18,7 @@ pub mod spend;
 pub mod spendhist;
 pub mod tmux;
 pub mod tokens;
+pub mod update;
 pub mod usage;
 
 use crate::cache::Cache;
@@ -97,6 +98,7 @@ static REGISTRY: &[(&str, &(dyn Placeholder + Sync))] = &[
     ("skills", &niche::Skills),
     ("msgs", &niche::Msgs),
     ("tmux", &tmux::Tmux),
+    ("update", &update::Update),
 ];
 
 /// Names of all core placeholders, in registry order.

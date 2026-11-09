@@ -127,6 +127,8 @@ pub struct Config {
     /// `set compact-at`: where auto-compaction runs, overriding what
     /// bar reads from Claude Code's environment and settings.
     pub compact_at: Option<CompactAt>,
+    /// `set update-check on`: `#{update}` checks GitHub daily, in the background.
+    pub update_check: bool,
 }
 
 impl Default for Config {
@@ -160,6 +162,7 @@ impl Default for Config {
             claude_dir: None,
             prices: Vec::new(),
             compact_at: None,
+            update_check: false,
         }
     }
 }
