@@ -88,3 +88,32 @@ fn modes_ignore_malformed_settings() {
     );
     assert_eq!(go(&t, CONF).trim(), "");
 }
+
+#[test]
+fn modes_reads_project_settings_from_the_launch_dir() {
+    let t = Tmp::new();
+    t.write(
+        "proj/.claude/settings.json",
+        r#"{"sandbox":{"enabled":true}}"#,
+    );
+    t.write("proj/sub/.keep", "");
+    let (proj, sub) = (t.path().join("proj"), t.path().join("proj/sub"));
+    let stdin = |project: Option<&std::path::Path>| {
+        let mut ws = serde_json::json!({"current_dir": sub});
+        if let Some(p) = project {
+            ws["project_dir"] = serde_json::json!(p);
+        }
+        serde_json::json!({"cwd": sub, "workspace": ws}).to_string()
+    };
+    let o = run(&t).conf(CONF).stdin(&stdin(Some(&proj))).go();
+    assert_eq!(o.plain.trim(), "sandbox");
+    // without project_dir: the working directory
+    let o = run(&t).conf(CONF).stdin(&stdin(None)).go();
+    assert_eq!(o.plain.trim(), "");
+    t.write(
+        "proj/sub/.claude/settings.json",
+        r#"{"sandbox":{"enabled":true}}"#,
+    );
+    let o = run(&t).conf(CONF).stdin(&stdin(None)).go();
+    assert_eq!(o.plain.trim(), "sandbox");
+}
