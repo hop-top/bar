@@ -1,0 +1,45 @@
+//! One-line descriptions of the core placeholders, for `bar edit` and the
+//! web configurator's pickers.
+
+/// One-line descriptions of the core placeholders, for the picker.
+pub fn describe(name: &str) -> &'static str {
+    match name {
+        "account" => "account label from the config's account rules",
+        "repo" => "repository name",
+        "branch" => "git branch",
+        "model" => "model name",
+        "effort" => "reasoning effort level",
+        "agents" => "running subagents",
+        "ctx" => "context window used",
+        "usage" => "5-hour or weekly usage window",
+        "sessions" => "open Claude Code sessions by state",
+        "spend" => "time left on a monthly spend limit",
+        "spendhist" => "estimated spend today and this month",
+        "tokens" => "transcript token counts",
+        "cache" => "prompt cache reads and writes",
+        "cachettl" => "time the prompt cache has left",
+        "cost" => "session cost",
+        "burn" => "cost per hour",
+        "duration" => "session time",
+        "lines" => "lines added and removed",
+        "version" => "Claude Code version",
+        "style" => "output style",
+        "vim" => "vim mode",
+        "agent" => "agent name",
+        "thinking" => "thinking on",
+        "fast" => "fast mode on",
+        "cwd" => "working directory",
+        "root" => "project root directory",
+        "prs" => "open pull requests with checks",
+        "issues" => "open issues",
+        "dirty" => "staged, modified and untracked files",
+        "ahead" => "commits ahead of and behind upstream",
+        "worktree" => "git worktree name",
+        "sid" => "session id",
+        "compactions" => "context compactions",
+        "skills" => "skill calls",
+        "tmux" => "tmux session and window",
+        "update" => "newer bar release, when the update check is on",
+        _ => "",
+    }
+}

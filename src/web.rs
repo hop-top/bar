@@ -9,7 +9,7 @@ use crate::format::{self, Token};
 use crate::options::Options;
 use crate::plugin::{self, ExtInfo, OptType, RESERVED};
 use crate::render::CONFIG_ERROR;
-use crate::{palette, placeholders, presets, preview, session};
+use crate::{describe, palette, placeholders, presets, preview, session};
 use serde_json::{json, Value};
 
 /// The status line `config_text` draws for the statusLine JSON
@@ -231,12 +231,18 @@ pub fn tokens(src: &str) -> Value {
     }
 }
 
-/// What the page offers: core placeholders with their options (as
-/// `bar check` validates them), presets, and the `set` keys with a fixed
-/// set of values.
+/// What the page offers: core placeholders with their description and
+/// options (as `bar check` validates them, with default and help),
+/// presets, and the `set` keys with a fixed set of values.
 pub fn schema() -> Value {
     let placeholders: Vec<Value> = placeholders::names()
-        .map(|name| json!({"name": name, "options": check::option_schema(name)}))
+        .map(|name| {
+            json!({
+                "name": name,
+                "description": describe::describe(name),
+                "options": check::option_schema(name),
+            })
+        })
         .collect();
     json!({
         "placeholders": placeholders,

@@ -7,6 +7,7 @@ pub mod click;
 pub mod compact;
 pub mod conf;
 pub mod confio;
+pub mod describe;
 pub mod diff;
 #[cfg(feature = "edit")]
 pub mod edit;

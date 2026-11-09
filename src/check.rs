@@ -103,7 +103,49 @@ pub fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
     })
 }
 
-/// A core placeholder's options as JSON: `[{"key", "kind", "values"}]`,
+/// Default value (empty when there is none) and one-line help of option
+/// `key` of core placeholder `name`, for the editors; `None` when it takes
+/// no such option. Every option in `core_options` has an entry.
+pub fn option_help(name: &str, key: &str) -> Option<(&'static str, &'static str)> {
+    Some(match (name, key) {
+        ("cost", "fmt") => ("usd", "number format; usd is the only one"),
+        ("cwd" | "root", "base") => ("0", "1 shows the last path component only"),
+        ("spendhist", "period") => ("both", "today, this month, or both"),
+        ("spendhist", "tz") => ("local", "bucket days by local or UTC date"),
+        ("tokens", "show") => ("both", "input, output, their total, or both"),
+        ("cache", "show") => ("both", "cache reads, writes, hit rate, or reads and writes"),
+        ("cachettl", "ttl") => ("300", "seconds the cache lives; 3600 for the 1 h cache"),
+        ("agents", "names") => ("0", "1 appends the running subagents' types"),
+        ("agents", "max") => ("", "truncate the names to this many characters"),
+        ("model" | "effort" | "ctx", "click") => ("", "none turns the command link off"),
+        ("repo" | "branch", "max") => ("", "truncate to this many characters"),
+        ("repo" | "branch", "link") => ("", "false, no, off or 0 give plain text"),
+        ("usage", "type") => ("5h", "the 5-hour or the weekly window"),
+        ("usage", "view") => ("bar", "alias of show: bar, pct or time"),
+        ("usage", "show") => ("time,bar", "components, in order"),
+        ("usage", "alt") => ("", "components after a click; show, bar and pct swapped"),
+        ("usage", "count") => ("left", "show what is left or what is used"),
+        ("usage", "glyphs") => ("blocks", "glyph set of the bar"),
+        ("usage", "color") => ("solid", "one colour, or a gradient along the filled cells"),
+        ("usage", "width") => ("5", "bar cells (1-40) and spark samples"),
+        ("usage", "click") => ("toggle", "none turns the toggle link off"),
+        ("dirty", "show") => ("", "parts to show; all when unset"),
+        ("dirty" | "ahead", "ttl") => ("10", "seconds before git status is refreshed"),
+        ("sid", "len") => ("8", "characters of the session id; 0 hides it"),
+        ("tmux", "max") => ("", "truncate session:window to this many characters"),
+        ("prs" | "issues", "limit") => ("5", "most items shown; 0 hides the placeholder"),
+        ("prs" | "issues", "author") => ("", "author expression, e.g. @me"),
+        ("issues", "assignee") => ("", "assignee expression, e.g. @me"),
+        ("issues", "label") => ("", "label expression, e.g. bug|p1"),
+        ("prs" | "issues", "status") => ("open", "which items to list"),
+        ("prs" | "issues", "link") => ("", "false, no, off or 0 give plain text"),
+        ("prs", "checks") => ("fail", "CI states marked after the number"),
+        _ => return None,
+    })
+}
+
+/// A core placeholder's options as JSON: `[{"key", "kind", "values",
+/// "default", "help"}]` (`default` empty when there is none),
 /// `kind` one of `any`, `int`, `pos`, `one`, `list`; `icon` and `bg`
 /// apply to every placeholder and are not listed. Empty for plugins.
 pub fn option_schema(name: &str) -> Value {
@@ -118,7 +160,8 @@ pub fn option_schema(name: &str) -> Value {
                 Val::OneOf(set) => ("one", set),
                 Val::List(set) => ("list", set),
             };
-            json!({"key": key, "kind": kind, "values": values})
+            let (default, help) = option_help(name, key).unwrap_or(("", ""));
+            json!({"key": key, "kind": kind, "values": values, "default": default, "help": help})
         })
         .collect();
     Value::Array(opts)
