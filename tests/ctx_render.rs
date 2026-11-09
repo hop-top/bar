@@ -128,12 +128,13 @@ fn renders_growth_from_transcript() {
 fn compact_point_from_env_and_user_settings() {
     let t = Tmp::new();
     let conf = "set left \"#{ctx[show=left]}\"";
-    let s = stdin(&t, "claude-x", 1_000_000, 400_000);
+    // a native 1M-window model: compacts at about 967k by default
+    let s = stdin(&t, "claude-opus-5-5", 1_000_000, 400_000);
     let o = clean(run(&t), "").conf(conf).stdin(&s).go();
     assert_eq!(o.plain.trim(), "ctx 567k left");
     t.write(
         ".claude/settings.json",
-        r#"{"modelSettings":{"claude-x":{"autoCompactWindow":500000}}}"#,
+        r#"{"modelSettings":{"claude-opus-5-5":{"autoCompactWindow":500000}}}"#,
     );
     let o = clean(run(&t), "").conf(conf).stdin(&s).go();
     assert_eq!(o.plain.trim(), "ctx 100k left");

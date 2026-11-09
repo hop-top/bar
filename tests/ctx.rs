@@ -321,6 +321,37 @@ fn threshold_model_settings_match_the_canonical_name() {
 }
 
 #[test]
+fn threshold_native_1m_default_only_for_native_models() {
+    for id in [
+        "claude-opus-5-5",
+        "claude-opus-4-7",
+        "claude-opus-4-8[1m]",
+        "claude-sonnet-5",
+        "claude-sonnet-5-5",
+        "claude-haiku-5-5",
+        "claude-fable-5",
+        "us.anthropic.claude-opus-4-8-v1:0",
+    ] {
+        assert_eq!(
+            thr_m(1_000_000, id, &[], None),
+            Some(NATIVE_1M_DEFAULT),
+            "{id}"
+        );
+    }
+    // 1M only through the [1m] variant, or an unknown id: at the limit
+    for id in [
+        "claude-opus-4-6[1m]",
+        "claude-sonnet-4-6[1m]",
+        "claude-sonnet-4-5[1m]",
+        "claude-haiku-4-5",
+        "my-gateway-model[1m]",
+        "",
+    ] {
+        assert_eq!(thr_m(1_000_000, id, &[], None), Some(1_000_000), "{id}");
+    }
+}
+
+#[test]
 fn threshold_off_switches() {
     let on = Some(json!({"autoCompactEnabled": true}));
     assert_eq!(thr(200_000, &[], on), Some(200_000));
