@@ -12,7 +12,7 @@ use crate::placeholders::ctx::parts::SHOW_ITEMS as CTX_ITEMS;
 use crate::placeholders::gh::{self, Kind};
 use crate::placeholders::money::SHOW as MONEY_ITEMS;
 use crate::placeholders::usage::glyphs::{GLYPH_SETS, SHOW_ITEMS};
-use crate::placeholders::{gitst, jj, modes, speed, task};
+use crate::placeholders::{gitst, jj, modes, remotes, speed, task};
 use crate::plugin;
 use crate::render::builtin_config;
 use serde_json::{json, Value};
@@ -63,7 +63,12 @@ pub fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
             ("glyphs", OneOf(&GLYPH_SETS)),
             ("width", Int),
         ],
-        "cwd" | "root" => &[("base", OneOf(&["0", "1"]))],
+        "cwd" | "root" => &[
+            ("base", OneOf(&["0", "1"])),
+            ("fish", Int),
+            ("full", Int),
+            ("depth", Int),
+        ],
         "spendhist" => &[
             ("period", OneOf(&["today", "month", "both"])),
             ("tz", OneOf(&["local", "utc"])),
@@ -92,7 +97,10 @@ pub fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
             ("color", OneOf(&["solid", "gradient"])),
             ("width", Int),
         ],
-        "repo" | "branch" => &[("max", Int), ("link", Any)],
+        "repo" => &[("max", Int), ("link", Any)],
+        "branch" => &[("max", Int), ("link", Any), ("fish", Int), ("full", Int)],
+        "origin" | "fork" => &[("show", List(remotes::SHOW)), ("max", Int), ("link", Any)],
+        "upstream" => &[("max", Int), ("link", Any)],
         "usage" => &[
             ("type", OneOf(&["5h", "7d", "h", "d"])),
             ("view", OneOf(&["bar", "pct", "time"])),
@@ -146,6 +154,12 @@ pub fn option_help(name: &str, key: &str) -> Option<(&'static str, &'static str)
     Some(match (name, key) {
         ("cost", "fmt") => ("usd", "number format; usd is the only one"),
         ("cwd" | "root", "base") => ("0", "1 shows the last path component only"),
+        ("cwd" | "root" | "branch", "fish") => (
+            "0",
+            "cut each component but the last to this many cells; 0 keeps them whole",
+        ),
+        ("cwd" | "root" | "branch", "full") => ("1", "trailing components fish leaves whole"),
+        ("cwd" | "root", "depth") => ("0", "show only the last this many components; 0 shows all"),
         ("spendhist", "period") => ("both", "today, this month, or both"),
         ("spendhist", "tz") => ("local", "bucket days by local or UTC date"),
         ("budget", "type") => (
@@ -183,8 +197,13 @@ pub fn option_help(name: &str, key: &str) -> Option<(&'static str, &'static str)
         ("status", "hours") => ("6", "hours per cell of the strip"),
         ("status", "max") => ("", "truncate the incident text to this many characters"),
         ("status", "link") => ("", "false, no, off or 0 give plain text"),
-        ("repo" | "branch", "max") => ("", "truncate to this many characters"),
-        ("repo" | "branch", "link") => ("", "false, no, off or 0 give plain text"),
+        ("repo" | "branch" | "origin" | "upstream" | "fork", "max") => {
+            ("", "truncate to this many characters")
+        }
+        ("repo" | "branch" | "origin" | "upstream" | "fork", "link") => {
+            ("", "false, no, off or 0 give plain text")
+        }
+        ("origin" | "fork", "show") => ("owner,repo", "parts of the remote: host, owner, repo"),
         ("usage", "type") => ("5h", "the 5-hour or the weekly window"),
         ("usage", "view") => ("bar", "alias of show: bar, pct or time"),
         ("usage", "show") => ("time,bar", "components, in order"),

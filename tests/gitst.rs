@@ -68,6 +68,8 @@ fn parse_clean() {
     let s = parse(CLEAN);
     assert_eq!(counts(&s), (0, 0, 0));
     assert_eq!(s.ahead_behind, Some((0, 0)));
+    assert_eq!(s.upstream.as_deref(), Some("origin/main"));
+    assert_eq!(parse(NO_UPSTREAM).upstream, None);
 }
 
 #[test]

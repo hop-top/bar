@@ -62,7 +62,7 @@ pub fn refresh_timeout(env: Option<&str>) -> Duration {
 }
 
 /// Cuts to `MAX_VALUE` bytes on a char boundary.
-fn cap(mut s: String) -> String {
+pub(crate) fn cap(mut s: String) -> String {
     if s.len() > MAX_VALUE {
         let mut end = MAX_VALUE;
         while !s.is_char_boundary(end) {

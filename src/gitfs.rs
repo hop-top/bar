@@ -1,8 +1,9 @@
-//! Minimal read-only view of a git repository: branch, refs, origin URL,
-//! in-progress operation and unmerged index entries from plain files, no
+//! Minimal read-only view of a git repository: branch, refs, remote URLs,
+//! upstream, in-progress operation and unmerged index entries from plain files, no
 //! process spawn. Anything it cannot read exactly the way git would
 //! reports `Unsupported`; callers then ask git itself.
 
+mod config;
 mod index;
 mod ops;
 mod refs;
@@ -10,6 +11,16 @@ mod refs;
 pub use index::{unmerged, MAX_INDEX};
 pub use ops::{Op, Step};
 pub use refs::{best_tag, is_oid, TagScan};
+
+/// A remote name safe to pass to `git remote get-url`.
+pub fn valid_remote(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 256
+        && !name.starts_with('-')
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'/'))
+}
 
 use std::cell::OnceCell;
 use std::fs;
@@ -162,16 +173,106 @@ impl Repo {
 
     /// `remote.origin.url` as git would report it.
     pub fn origin_url(&self) -> Result<Option<String>, Unsupported> {
+        self.remote_url("origin")
+    }
+
+    /// First `url` of remote `name`, as `git remote get-url` prints it;
+    /// `Unsupported` when URL rewrites could change it.
+    pub fn remote_url(&self, name: &str) -> Result<Option<String>, Unsupported> {
+        self.with_config(true, |c| {
+            if c.rewrites {
+                return Err(Unsupported);
+            }
+            c.first("remote", name, "url")
+        })
+    }
+
+    /// The current branch's upstream, as `git status` names it; `None`
+    /// when HEAD is detached or the branch tracks nothing.
+    pub fn upstream(&self) -> Result<Option<Upstream>, Unsupported> {
+        let Some(branch) = self.branch()? else {
+            return Ok(None);
+        };
+        let tracked = self.with_config(false, |c| {
+            let remote = c.last("branch", &branch, "remote")?;
+            let merge = c.first("branch", &branch, "merge")?;
+            let (Some(remote), Some(merge)) = (remote, merge) else {
+                return Ok(None);
+            };
+            if remote == "." {
+                return Ok(Some((remote, merge.clone(), merge)));
+            }
+            let fetch = c.all("remote", &remote, "fetch")?;
+            Ok(config::track(&fetch, &merge)?.map(|dst| (remote, merge, dst)))
+        })?;
+        let Some((remote, merge, dst)) = tracked else {
+            return Ok(None);
+        };
+        let name = self.shorten(&dst)?;
+        let branch = merge
+            .strip_prefix("refs/heads/")
+            .unwrap_or(&merge)
+            .to_string();
+        Ok(Some(Upstream {
+            name,
+            remote,
+            branch,
+        }))
+    }
+
+    /// `full` as `git status` prints it (`shorten_unambiguous_ref`): the
+    /// prefix dropped unless the short name would also name another ref,
+    /// which is left to git.
+    fn shorten(&self, full: &str) -> Result<String, Unsupported> {
+        let (short, earlier): (&str, &[&str]) = if let Some(s) = full.strip_prefix("refs/heads/") {
+            (s, &["refs/", "refs/tags/"])
+        } else if let Some(s) = full.strip_prefix("refs/remotes/") {
+            (s, &["refs/", "refs/tags/", "refs/heads/"])
+        } else if let Some(s) = full.strip_prefix("refs/tags/") {
+            (s, &["refs/"])
+        } else {
+            return Err(Unsupported);
+        };
+        if short.is_empty() || self.git_dir.join(short).exists() {
+            return Err(Unsupported);
+        }
+        for p in earlier {
+            if self.resolve(&format!("{p}{short}"))?.is_some() {
+                return Err(Unsupported);
+            }
+        }
+        Ok(short.to_string())
+    }
+
+    /// `f` over the repository config, after the global configs are checked
+    /// for anything that would change it (`urls`: URL rewrites too).
+    fn with_config<T>(
+        &self,
+        urls: bool,
+        f: impl FnOnce(&config::Config) -> Result<Option<T>, Unsupported>,
+    ) -> Result<Option<T>, Unsupported> {
         for g in global_configs() {
-            if read(&g)?.is_some_and(|body| rewrites_or_includes(&body)) {
+            if read(&g)?.is_some_and(|body| global_overrides(&body, urls)) {
                 return Err(Unsupported);
             }
         }
         match read(&self.common_dir.join("config"))? {
-            Some(body) => origin_from_config(&body),
+            Some(body) => f(&config::parse(&body)?),
             None => Ok(None),
         }
     }
+}
+
+/// A branch's upstream.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Upstream {
+    /// As `git status` shows it: `origin/main`, or `main` for a local
+    /// branch (remote `.`).
+    pub name: String,
+    /// `branch.<name>.remote`: a remote name, or `.`.
+    pub remote: String,
+    /// The branch on the remote, `refs/heads/` dropped.
+    pub branch: String,
 }
 
 fn global_configs() -> Vec<PathBuf> {
@@ -225,72 +326,18 @@ fn system_configs() -> Vec<PathBuf> {
     v
 }
 
-/// Sections whose presence can change what `remote get-url` prints.
-fn rewrites_or_includes(body: &str) -> bool {
+/// Header lines in a global config that change what the repository
+/// config alone says: includes and `remote` subsections, plus URL
+/// rewrites when reading a URL (`urls`), else `branch` subsections.
+fn global_overrides(body: &str, urls: bool) -> bool {
     body.lines().any(|l| {
         let l = l.trim_start().to_ascii_lowercase();
-        l.starts_with("[url") || l.starts_with("[include")
-    })
-}
-
-/// First `url` of `[remote "origin"]`. Constructs this parser does not model
-/// (includes, rewrites, old-style headers, continuations) are `Unsupported`.
-fn origin_from_config(body: &str) -> Result<Option<String>, Unsupported> {
-    let mut in_origin = false;
-    for raw in body.lines() {
-        let mut line = raw.trim();
-        if raw.ends_with('\\') {
-            return Err(Unsupported);
-        }
-        while let Some(rest) = line.strip_prefix('[') {
-            let (head, tail) = rest.split_once(']').ok_or(Unsupported)?;
-            let lower = head.to_ascii_lowercase();
-            if lower.starts_with("include")
-                || lower.starts_with("url")
-                || lower.starts_with("remote.")
-                || lower.starts_with("extensions")
-            {
-                return Err(Unsupported);
+        l.starts_with("[include")
+            || l.starts_with("[remote \"")
+            || if urls {
+                l.starts_with("[url")
+            } else {
+                l.starts_with("[branch \"")
             }
-            in_origin = head
-                .split_once(char::is_whitespace)
-                .is_some_and(|(s, sub)| {
-                    s.eq_ignore_ascii_case("remote") && sub.trim() == "\"origin\""
-                });
-            line = tail.trim();
-        }
-        if !in_origin || line.is_empty() || line.starts_with(['#', ';']) {
-            continue;
-        }
-        let Some((key, val)) = line.split_once('=') else {
-            continue;
-        };
-        if key.trim().eq_ignore_ascii_case("url") {
-            return value(val).map(Some).ok_or(Unsupported);
-        }
-    }
-    Ok(None)
-}
-
-/// Config value: trimmed, quotes removed, `#`/`;` outside quotes start a
-/// comment, `\\ \" \n \t \b` escapes.
-fn value(v: &str) -> Option<String> {
-    let mut out = String::new();
-    let mut quoted = false;
-    let mut chars = v.trim().chars();
-    while let Some(c) = chars.next() {
-        match c {
-            '"' => quoted = !quoted,
-            '\\' => out.push(match chars.next()? {
-                'n' => '\n',
-                't' => '\t',
-                'b' => '\u{8}',
-                c @ ('\\' | '"') => c,
-                _ => return None,
-            }),
-            '#' | ';' if !quoted => break,
-            c => out.push(c),
-        }
-    }
-    (!quoted).then(|| out.trim_end().to_string())
+    })
 }

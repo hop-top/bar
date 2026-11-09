@@ -1,3 +1,4 @@
+use super::abbrev::Abbrev;
 use super::{link_enabled, truncate, work_dir, Ctx, Placeholder};
 use crate::cache::Job;
 use crate::gitfs::{self, Found};
@@ -61,32 +62,51 @@ pub fn remote_key(top: &Path) -> String {
     format!("gitremote:{}", top.display())
 }
 
+/// Cache key of the URL of remote `name`; `origin` is [`remote_key`].
+pub fn remote_key_named(top: &Path, name: &str) -> String {
+    match name {
+        "origin" => remote_key(top),
+        _ => format!("gitremote:{name}:{}", top.display()),
+    }
+}
+
 /// As `remote_url`, never spawning: when the files cannot tell, the
 /// cached result of a background `git remote get-url origin`, nothing
 /// until it is in. Computed once per render.
 pub(crate) fn cached_remote(ctx: &Ctx) -> Option<String> {
     ctx.memo
         .remote
-        .get_or_init(|| {
-            let dir = work_dir(ctx);
-            let top = match gitfs::discover(&dir) {
-                Found::NotRepo => return None,
-                Found::Repo(r) => match r.origin_url() {
-                    Ok(u) => return web_url(&u?),
-                    Err(_) => r.top,
-                },
-                Found::Unsupported => dir,
-            };
-            let top = top.canonicalize().unwrap_or(top);
-            let job = Job::GitRemote {
-                dir: top.to_str()?.to_string(),
-            };
-            let raw = ctx
-                .cache?
-                .read_or_refresh(&remote_key(&top), REMOTE_TTL, &job)?;
-            web_url(&raw)
-        })
+        .get_or_init(|| web_url(&cached_remote_raw(ctx, "origin")?))
         .clone()
+}
+
+/// URL of remote `name` as configured (not yet a web address), never
+/// spawning: from the files, else the cached background `git remote
+/// get-url <name>`. `None` when there is no such remote, or until the
+/// background result is in.
+pub(crate) fn cached_remote_raw(ctx: &Ctx, name: &str) -> Option<String> {
+    if !gitfs::valid_remote(name) {
+        return None;
+    }
+    let dir = work_dir(ctx);
+    let top = match gitfs::discover(&dir) {
+        Found::NotRepo => return None,
+        Found::Repo(r) => match r.remote_url(name) {
+            Ok(u) => return u,
+            Err(_) => r.top,
+        },
+        Found::Unsupported => dir,
+    };
+    let top = top.canonicalize().unwrap_or(top);
+    let job = Job::GitRemote {
+        dir: top.to_str()?.to_string(),
+        name: name.to_string(),
+    };
+    let raw = ctx
+        .cache?
+        .read_or_refresh(&remote_key_named(&top, name), REMOTE_TTL, &job)?;
+    let raw = raw.trim();
+    (!raw.is_empty()).then(|| raw.to_string())
 }
 
 /// A remote URL as the web address of the repository; an https port other
@@ -225,6 +245,16 @@ impl Placeholder for Repo {
     }
 }
 
+/// A branch name as `branch` shows it: `fish`, then `max`.
+pub fn branch_text(branch: &str, opts: &Options) -> String {
+    let short = Abbrev {
+        depth: 0,
+        ..Abbrev::from(opts)
+    }
+    .apply(branch, |c| c == '/');
+    truncate(short, opts)
+}
+
 impl Placeholder for Branch {
     fn render(&self, ctx: &Ctx, opts: &Options) -> Option<String> {
         let dir = work_dir(ctx);
@@ -233,7 +263,7 @@ impl Placeholder for Branch {
         if branch.is_empty() {
             return None;
         }
-        let text = dim(&truncate(branch.clone(), opts));
+        let text = dim(&branch_text(&branch, opts));
         Some(match remote_url_with(&dir, spawn) {
             Some(u) if link_enabled(opts) => {
                 link(&format!("{}/tree/{branch}", sanitize(&u)), &text)

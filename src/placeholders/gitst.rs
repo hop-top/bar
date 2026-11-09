@@ -31,6 +31,8 @@ pub struct Status {
     pub ahead_behind: Option<(usize, usize)>,
     /// HEAD's commit id; `None` on an unborn branch.
     pub oid: Option<String>,
+    /// The branch's upstream (`origin/main`); `None` without one.
+    pub upstream: Option<String>,
     /// Stash entries; `None` when git reports none (or predates the line).
     pub stash: Option<usize>,
     /// Input hit the cache size cap: the counts are lower bounds.
@@ -52,6 +54,8 @@ pub fn parse(text: &str) -> Status {
     for line in text.lines() {
         if let Some(oid) = line.strip_prefix("# branch.oid ") {
             s.oid = gitfs::is_oid(oid).then(|| oid.to_ascii_lowercase());
+        } else if let Some(u) = line.strip_prefix("# branch.upstream ") {
+            s.upstream = Some(u.to_string()).filter(|u| !u.is_empty());
         } else if let Some(n) = line.strip_prefix("# stash ") {
             s.stash = n.trim().parse().ok();
         } else if let Some(ab) = line.strip_prefix("# branch.ab ") {

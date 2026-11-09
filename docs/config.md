@@ -509,7 +509,7 @@ Limits and failures:
 
 ### Git and directories
 
-Repository, branch, commit, tag, stash, operation in progress, working-tree state, the [Jujutsu](#jujutsu) working-copy commit and the session directory. The git ones are read from the repository files ([Performance](technical.md#performance)).
+Repository, branch, remotes, upstream, commit, tag, stash, operation in progress, working-tree state, the [Jujutsu](#jujutsu) working-copy commit and the session directory. The git ones are read from the repository files ([Performance](technical.md#performance)).
 
 Links point at the `origin` remote's web address: ssh and scp remotes become `https://<host>/<path>`, an https remote keeps a port other than 443 (`https://git.example.com:8443/g/p`). When the config needs git to tell the URL (an `include` or `insteadOf`), `sha`, `tag`, `prs` and `issues` use a background `git remote get-url origin`, cached for 60 s, and show no link until it is in.
 
@@ -517,6 +517,13 @@ Links point at the `origin` remote's web address: ssh and scp remotes become `ht
 |---|---|---|---|
 | `repo`, `branch` | `link` | on | Link to the repository / branch page |
 | | `max` | none | Truncate to this many characters with `…` |
+| `branch` | `fish` | `0` | [Abbreviate](#abbreviated-branches-and-paths) each `/`-separated part but the last to this many cells: `feature/very-long` → `f/very-long`; `0` keeps them whole. The link keeps the full name |
+| | `full` | `1` | Trailing parts `fish` leaves whole |
+| `origin` | `show` | `owner,repo` | The `origin` remote: comma list of `host`, `owner`, `repo`, drawn in that order and joined with `/` (`github.com/o/proj`). Links to the repository page; hidden without an `origin` remote. See [Remotes and upstream](#remotes-and-upstream) |
+| | `link`, `max` | on, none | As `repo` |
+| `upstream` | `link`, `max` | on, none | Upstream (tracking) branch of the current branch, as `git status` names it: `origin/main`, or `main` for a local branch. Links to `<remote>/tree/<branch>`; hidden when detached or without an upstream |
+| `fork` | `show` | `owner,repo` | As `origin`, for the `upstream` remote, shown only when the repository is a fork: an `upstream` remote that names another repository than `origin` |
+| | `link`, `max` | on, none | As `repo` |
 | `dirty` | `show` | all | Comma list of `staged`, `modified`, `untracked`, e.g. `show=staged,modified`. Output `+2 ~3 ?1`; each part omitted at 0, hidden when clean. Unmerged paths count as modified; a `+` suffix on a count (`?2000+`) marks a lower bound when git's output was cut at 64 KiB |
 | | `ttl` | `10` | Seconds before the cached `git status` is refreshed in the background (minimum 1) |
 | `ahead` | `ttl` | `10` | As `dirty`. Output `↑2 ↓1`; hidden at 0/0 or without an upstream |
@@ -529,11 +536,32 @@ Links point at the `origin` remote's web address: ssh and scp remotes become `ht
 | `stash` | none | | Stash entries, `$2`; hidden when the stash is empty |
 | `gitop` | `step` | on | Operation in progress in this worktree: `merge`, `rebase 2/5`, `am 1/3`, `am/rebase`, `cherry-pick`, `revert`, `bisect`; hidden when there is none. `false`, `no`, `off`, `0` leave out the step count |
 | `conflicts` | `ttl` | `10` | Unmerged paths, `✗3`; hidden at 0. As `dirty` for an index the files cannot give (see below) |
-| `cwd` | `base` | `0` | Session directory with home as `~`; `1` shows the last component only |
+| `cwd` | `base` | `0` | Session directory with home as `~`; `1` shows the last component only (then `fish` and `depth` do nothing) |
+| | `fish` | `0` | [Abbreviate](#abbreviated-branches-and-paths) each directory but the last to this many cells: `~/src/bar/docs` → `~/s/b/docs`; `0` keeps them whole |
+| | `full` | `1` | Trailing directories `fish` leaves whole |
+| | `depth` | `0` | Show only the last this many directories, after `…`: `depth=2` gives `…/bar/docs`; `0` shows all |
 | `jj` | `show` | `change,bookmarks,state` | Comma list of `change`, `commit`, `bookmarks`, `workspace`, `state`, `desc`, drawn in that order ([Jujutsu](#jujutsu)) |
 | | `ttl` | `10` | Seconds before the cached `jj log` is refreshed in the background (minimum 1) |
 | | `max` | none | Truncate the description to this many characters with `…` |
 | `root` | `base` | `0` | Git top-level directory of the session directory, read without running `git`, or the Jujutsu workspace root when that is nearer; hidden outside a repository |
+| | `fish`, `full`, `depth` | `0`, `1`, `0` | As `cwd` |
+
+#### Remotes and upstream
+
+- `origin` and `fork` read `remote.<name>.url` from the repository config. The parts come from the remote's web address (see links above): `owner` is the path up to the last component (`group/subgroup` on GitLab), `repo` the last. A local path remote (`/srv/git/o/proj.git`) has no host and no link; its last two directories are `owner` and `repo`.
+- `fork` compares the web addresses of `upstream` and `origin` (host case ignored), or the URLs as written when either is not a web address. No `upstream` remote, or one naming the same repository, is not a fork. Whether a hosting service records the repository as a fork of another is not consulted.
+- `upstream` reads `branch.<name>.remote` and `branch.<name>.merge`, and maps the merged branch through the remote's `fetch` refspecs, as git does: with a custom refspec `+refs/heads/*:refs/remotes/mirror/*` the upstream reads `mirror/main`. A branch whose remote is missing or has no matching refspec has no upstream. An upstream branch deleted on the remote is still named (`ahead` then shows nothing).
+- When the config needs git to tell a URL (an `include` or `url.*.insteadOf`), `origin` and `fork` show the cached result of a background `git remote get-url origin` / `git remote get-url upstream` (60 s each), and nothing until it is in. URL rewrites do not change `upstream`, which still reads the files.
+- When the files cannot tell the upstream (an `include`, a short name that another ref also has, see [Performance](technical.md#performance)), `upstream` shows the name from the cached `git status` that `dirty` uses, without a link.
+
+#### Abbreviated branches and paths
+
+`fish=N` shortens every component but the last `full` ones to `N` cells, as the fish shell's `prompt_pwd` does: `#{cwd[fish=1]}` turns `~/.config/bar/presets` into `~/.c/b/presets`, `#{branch[fish=1]}` turns `feature/auth/very-long` into `f/a/very-long`.
+
+- Widths are terminal cells: a two-cell character (`機`) fills `fish=2`; a component always keeps at least one character, so `fish=1` keeps `機` too. Emoji sequences and combining accents stay whole.
+- A leading `.` is kept in addition (`.config` → `.c`), as are `~` and a Windows drive (`C:`). Separators stay as written (`\` on Windows).
+- `depth` (paths only) drops leading directories first, then `fish` applies to what is left: `#{cwd[depth=3,fish=1]}` gives `…/b/d/x` for `~/src/bar/docs/x`.
+- `max` on `branch` applies after `fish`.
 
 #### Jujutsu
 
@@ -814,6 +842,9 @@ set backgrounds "#202030 236 #303048"
 | `stash` | `nf-fa-archive` U+F187 | 📦 |
 | `gitop` | `nf-oct-git_merge` U+F419 | 🔄 |
 | `conflicts` | `nf-fa-warning` U+F071 | ⚠️ |
+| `origin` | `nf-fa-cloud` U+F0C2 | ☁️ |
+| `upstream` | `nf-fa-level_up` U+F148 | ⏫ |
+| `fork` | `nf-oct-repo_forked` U+F402 | 🍴 |
 | `jj` | `nf-oct-versions` U+F454 | 🥋 |
 | `agents` | `nf-fa-users` U+F0C0 | 👥 |
 | `cost` | `nf-fa-credit_card` U+F09D | 💳 |
