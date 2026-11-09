@@ -701,6 +701,7 @@ A render prints at most 4 rows, all lines together. Rows past the fourth are dro
 - With a project file applied, each finding is labelled `config line N` or `project line N`; otherwise `line N`.
 
 - It also prints the models.dev snapshot state: its date and path, `not fetched`, or why the file was ignored.
+- On macOS, with the [click handler](#click-handler-macos) installed: a warning when the handler uses another state dir than this environment or the last `bar render` (toggles would not apply), or another Claude Code config dir, or records no dirs at all. Re-running `bar click install` from the environment Claude Code runs in clears it. These warnings have no file (`null`) and line 0.
 
 Exit 0 when there are no errors (warnings allowed), 2 on a config error. `--format json` prints `{path, project: {path, mode, applied}, prices: {path, fetched, ignored}, ok, issues: [{level, file, line, message}]}`; `path` (top level) is `null` when no config file is in use, `project` is `null` when no project file was found, an issue's `file` is the file it is in (`null` for the built-in layout), `prices.fetched` is the snapshot date or `null` when there is no usable file, and `line` is 0 when an issue has no line. `--format yaml`, `csv` and `text` give the same data in that format; the default, `table`, is the plain report.
 
@@ -773,6 +774,9 @@ Six example configs ship in the binary and in [`presets/`](../presets): `minimal
 `bar click install` builds `~/Applications/bar-click.app` (`BAR_APP_DIR` overrides the directory) from an AppleScript `on open location` handler (source kept as `click-handler.applescript` in the state directory), sets `LSUIElement`, the bundle id `top.hop.bar-click` and the `bar` URL scheme with `plutil`, signs it ad hoc, registers it with `lsregister`, adds the [hooks](#hooks) to Claude Code's `settings.json`, then writes the marker `click-installed` (content `cmd`) in the state directory.
 
 - The handler passes `bar://toggle/<key>` to `bar toggle <key>` and `bar://cmd/...` to `bar click run`, using the absolute path of the `bar` that ran the install; reinstall after moving the binary.
+- Directories: macOS starts the handler with the login session's environment, not your shell's, so variables set in a shell profile (`XDG_STATE_HOME`, say) are not there. The install therefore bakes the dir variables of its own environment into the handler: `BAR_STATE_DIR`, `XDG_STATE_HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `CLAUDE_CONFIG_DIR` and `TMUX_TMPDIR`. Each call sets the ones that were set at install (single-quoted for the shell) and unsets the rest. Run the install from the same environment as Claude Code (normally the shell you start `claude` from); after changing one of these variables, run it again.
+- The resolved dirs are recorded in the bundle (`Contents/Resources/bar-dirs.json`); [`bar check`](#bar-check) compares them with the current environment and warns on a mismatch. The install prints the state dir it baked in, and the same warnings.
+- Renderer pointer: when `bar render` uses a state dir other than the macOS default and the handler is installed there, it keeps a symlink `state-dir` in `~/Library/Application Support/bar` pointing at that dir. `bar toggle` and `bar click run` whose own environment resolves to the default follow it (when the target still holds `click-installed`), so a handler installed with neither `BAR_STATE_DIR` nor `XDG_STATE_HOME` set still reaches the renderer's toggles. A render costs one `readlink`; the link is written only when the dir changes, and not again within a minute (two sessions with different state dirs do not rewrite it on every render). A render in the default dir removes it.
 - Elsewhere it writes nothing, prints that it needs macOS and exits 2; `--hooks-only` registers just the hooks on any platform and writes no marker.
 - `--dry-run` prints the script, commands and hook additions and changes nothing; with `--hooks-only`, the hook additions only.
 - Exit codes: 0 done; 2 unsupported platform, or the home dir (`HOME`, or `BAR_APP_DIR`) or `CLAUDE_CONFIG_DIR` is not absolute; 1 when a step fails (a command, an unparsable `settings.json`, a write).
@@ -901,6 +905,7 @@ In the state directory:
 | `hist-5h`, `hist-7d` | render | usage samples for `spark` |
 | `pct-5h`, `pct-7d`, `toggle-<plugin>`, `toggle-<plugin>.<toggle>` | `bar toggle` | toggle state: present means on |
 | `click-installed`, `click-handler.applescript` | `bar click install` | handler marker, handler source |
+| `state-dir` (macOS default state dir only) | render | symlink to the state dir `bar render` uses, for the [click handler](#click-handler-macos) |
 | `install/<hash>.json` | `bar install` | the status line it replaced, per settings file |
 | `click.log` | `bar click run` | refusals |
 | `sessions/`, `agents/`, `records/` | `bar click hook` | [Hooks](#hooks) |
@@ -921,6 +926,7 @@ Environment variables bar reads:
 | `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`, `DISABLE_AUTO_COMPACT`, `DISABLE_COMPACT` | [Auto-compaction point](#auto-compaction-point) for `ctx` |
 | `ANTHROPIC_API_KEY` | Only tested for presence, by `account` |
 | `TMUX`, `TMUX_PANE` | `tmux` placeholder |
+| `TMUX_TMPDIR` | Baked into the click handler, so `bar click run` finds the tmux server |
 | `TZ` | Local zone for `spendhist` (Unix) |
 | `PATH`, `PATHEXT` (Windows) | Plugins, `gh`, `git`, `tmux` |
 | `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, `GIT_CONFIG_COUNT`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_SYSTEM`, `GIT_CONFIG_NOSYSTEM` | When any is set, `repo` and `branch` run `git` instead of reading the repository files, and `dirty`, `ahead`, `worktree` render empty ([Performance](technical.md#performance)) |

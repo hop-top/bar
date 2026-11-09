@@ -35,12 +35,13 @@ fn cfg(t: &Tmp) -> InstallCfg {
         state_dir: t.path().join("state"),
         app: t.path().join("apps/bar.app"),
         settings: t.path().join("claude/settings.json"),
+        env: Vec::new(),
     }
 }
 
 #[test]
 fn applescript_dispatches_toggle_urls_only() {
-    let s = applescript(Path::new("/opt/bar dir/bar\"x"));
+    let s = applescript(Path::new("/opt/bar dir/bar\"x"), &[]);
     assert!(s.contains("on open location"));
     assert!(s.contains("\"bar://toggle/\""));
     assert!(s.contains("quoted form of theKey"));
@@ -50,7 +51,7 @@ fn applescript_dispatches_toggle_urls_only() {
 
 #[test]
 fn applescript_toggle_call_is_wrapped_in_try() {
-    let s = applescript(Path::new("/opt/bar"));
+    let s = applescript(Path::new("/opt/bar"), &[]);
     let lines: Vec<&str> = s.lines().map(str::trim).collect();
     let at = lines
         .iter()
@@ -201,7 +202,7 @@ fn install_cli_dry_run_is_safe() {
 
 #[test]
 fn applescript_routes_cmd_urls_to_click_run() {
-    let s = applescript(Path::new("/opt/bar"));
+    let s = applescript(Path::new("/opt/bar"), &[]);
     assert!(s.contains("\"bar://cmd/\""));
     assert!(s.contains("\" click run \" & quoted form of theURL"));
     assert!(s.contains("try"), "a refusal must not raise a dialog");

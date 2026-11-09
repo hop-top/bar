@@ -455,6 +455,7 @@ pub fn check_layers(user: Option<Source>, project: Option<Source>, dirs: &[PathB
                 path,
                 project: None,
                 issues: c.issues,
+                notes: Vec::new(),
             };
         }
         Some(Ok(t)) => Some(t),
@@ -514,6 +515,7 @@ pub fn check_layers(user: Option<Source>, project: Option<Source>, dirs: &[PathB
         path,
         project: project.map(|(path, _)| ProjectInfo { path, mode }),
         issues: c.issues,
+        notes: Vec::new(),
     }
 }
 

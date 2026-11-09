@@ -95,6 +95,8 @@ FFI: on Unix the `libc` crate, two `unsafe` sites (`localtime_r`, `kill(pid, 0)`
 | `localtime_r` (`TZ` honoured) | `SystemTimeToTzSpecificLocalTimeEx` (system zone) |
 | `/etc/gitconfig` | `%PROGRAMDATA%\Git\config`, `<git install>\etc\gitconfig` |
 
+Click handler dirs (`src/click/dirs.rs`, `src/click/pointer.rs`): LaunchServices starts the applet with the launchd environment, so the shell's `XDG_*` and `BAR_STATE_DIR` are missing there. `bar click install` bakes `HANDLER_ENV` into the AppleScript as a shell prefix (`unset <unset vars>; VAR='value' … '<bar>'`, POSIX single quotes, then AppleScript string escaping) and records the resolved dirs in `Contents/Resources/bar-dirs.json`, written after `osacompile` and before `codesign`. `bar check` (macOS) reads that record; nothing on the render path does. The render path keeps `<macOS default state dir>/state-dir`, a symlink to its state dir: after the output is flushed, one `readlink` (or `lstat` from the default dir); a write only on change, via a temp symlink renamed over the old one, and not within 60 s of the last change. `bar toggle` and `bar click run` follow it only when their own state dir resolves to the default and the target holds `click-installed`.
+
 Clickable commands (`src/click/`, the `bar://` app bundle, `osascript`) are macOS-only: on other systems `bar click install` writes nothing, prints that it needs macOS (and points at `--hooks-only`) and exits 2; on Windows `bar click run` exits 2 at once. `bar click install --hooks-only` registers only the Claude Code hooks and works on Linux and Windows. Plugin tests and the reference plugins need `jq`.
 
 Windows check from macOS (no Windows machine needed for the build and lint; nothing is executed):

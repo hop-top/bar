@@ -2,7 +2,7 @@
 //! handler starts `bar` with a minimal `PATH`, so tools are looked up on
 //! `PATH` first, then in the usual install dirs.
 
-use super::{claude_dir, state_dir, Env};
+use super::{claude_dir, handler_state_dir, Env};
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -53,7 +53,7 @@ impl System {
             sessions: claude_dir()
                 .unwrap_or_else(|| PathBuf::from(".claude"))
                 .join("sessions"),
-            state: state_dir(),
+            state: handler_state_dir(),
         }
     }
 }
