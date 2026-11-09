@@ -5,7 +5,6 @@ mod common;
 #[path = "common/render_fx.rs"]
 mod render_fx;
 
-use assert_cmd::Command;
 use hop_bar::cache::{Cache, Job, Request};
 use hop_bar::conf::{parse, Config};
 use hop_bar::options::Options;
@@ -15,10 +14,8 @@ use hop_bar::session::Session;
 use hop_bar::style::strip_codes;
 use hop_bar::usageapi::{self, Data, Extra, Model};
 use render_fx::Tmp;
-use std::path::Path;
 
 const FIXTURE: &str = include_str!("fixtures/usage-api/usage.json");
-const TOKEN: &str = "sk-ant-oat01-SYNTHETIC-test-token-0000";
 
 fn now() -> i64 {
     std::time::SystemTime::now()
@@ -309,9 +306,15 @@ fn job_round_trips() {
 
 // ---- the background job, end to end through `bar refresh` ----
 
-#[cfg(unix)]
+// fakes `curl` and `security` on `PATH`: without `test-tools` the job
+// runs the system tools, which would read the real keychain
+#[cfg(all(unix, feature = "test-tools"))]
 mod job {
     use super::*;
+    use assert_cmd::Command;
+    use std::path::Path;
+
+    const TOKEN: &str = "sk-ant-oat01-SYNTHETIC-test-token-0000";
 
     fn exe(path: &Path, body: &str) {
         std::fs::write(path, body).unwrap();

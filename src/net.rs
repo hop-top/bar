@@ -110,6 +110,8 @@ fn split_trailer(out: &[u8]) -> Option<Response> {
 /// GET `url` like `get`, with `config` (curl config-file lines, e.g. a
 /// secret header) written to curl's stdin and read with `-K -`, so it
 /// never appears in argv or the environment. Any HTTP status is returned.
+/// The system curl runs (`platform::system_program`), never one found
+/// on `PATH`.
 pub(crate) fn request(
     url: &str,
     headers: &[&str],
@@ -117,7 +119,8 @@ pub(crate) fn request(
     max_time: u64,
     cap: usize,
 ) -> Result<Response, String> {
-    let mut c = Command::new(crate::platform::program("curl"));
+    // a fixed path: this request carries a secret
+    let mut c = Command::new(crate::platform::system_program("curl"));
     crate::platform::hide_window(&mut c);
     c.args(request_args(url, headers, max_time, cap));
     let mut child = c
