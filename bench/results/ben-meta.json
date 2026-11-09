@@ -1,22 +1,22 @@
 {
- "bar_commit": "c862ce07654d451ab869f1db64d0fe567f883922",
- "inputs": "sha256:a7909c63c20f971e9314c79b40491bc4d9114106e2a7a150f4c276d41e0225f3",
+ "bar_commit": "5344476cb3bc88e859ed378ac80480c03a0e1f45",
+ "inputs": "sha256:e155924d23984e6b05461449ed5625b82076d00858937989c733a887689c7010",
  "date": "2026-11-09",
+ "runner": "native",
  "host": {
-  "os": "macOS",
-  "cpu": "Apple M1 Pro",
-  "engine": "docker"
+  "cpu": "Apple M4 Max"
  },
  "container": {
-  "os": "Debian 13.7",
+  "os": "Arch Linux ARM",
   "arch": "aarch64",
   "kernel": "7.2.12",
-  "cpus": 5,
+  "cpu": "Apple (model not exposed)",
+  "cpus": 10,
   "cpu_quota": "none",
-  "mem_gib": 12,
-  "libc": "glibc 2.41",
-  "base_image": "python:3.14.8-slim-trixie@sha256:fbecd461fc72d21b2143c6eaba25143738079154a6d0ea3da3aec724f50eed4a",
-  "debian_snapshot": "20261020T000000Z"
+  "mem_gib": 31,
+  "libc": "glibc 2.43",
+  "base_image": null,
+  "debian_snapshot": null
  },
  "versions": {
   "node": "26.12.0",
@@ -27,8 +27,8 @@
   "python": "3.14.8",
   "hyperfine": "2.0.0",
   "gnu_time": "1.10",
-  "ccstatusline": "2.2.32",
-  "claude-powerline": "1.32.5",
+  "ccstatusline": "2.2.34",
+  "claude-powerline": "1.32.8",
   "ccline": "2.0.1",
   "ben_commit": "2b24904f43489450f378df106e2cc96da013f640"
  }
