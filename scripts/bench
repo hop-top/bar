@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# make bench: the benchmark in a pinned container, on any machine with Docker or Podman.
+#
+#   1. refuses when the measured inputs (scripts/bench-inputs --list) or the
+#      files it writes have uncommitted changes: results belong to a commit
+#   2. builds bench/image (tagged by its content, so it is built once per change)
+#   3. runs `git archive HEAD` in it: bar built from the commit, then
+#      `bench/run.sh ben`; the container never sees the working tree
+#   4. replaces bench/results/ben-*, records the commit and inputs hash in
+#      bench/results/ben-meta.json, redraws the generated sections of
+#      bench/README.md and README.md and the badge, and stages the lot
+#
+# Env: BENCH_ENGINE (docker or podman; default: whichever answers `info`).
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+cd "$ROOT"
+RESULTS=bench/results
+OUTPUTS=("$RESULTS" bench/README.md README.md docs/badges/bench.svg)
+
+die() { echo "make bench: $*" >&2; exit 1; }
+
+# 1. clean tree for inputs and outputs
+inputs=$(python3 scripts/bench-inputs --paths)
+# shellcheck disable=SC2086
+dirty=$(git status --porcelain --untracked-files=all -- $inputs "${OUTPUTS[@]}")
+if [ -n "$dirty" ]; then
+  printf '%s\n' "$dirty" >&2
+  die "uncommitted changes in benchmark inputs or outputs; commit or stash them first"
+fi
+
+# 2. engine and image
+engine=${BENCH_ENGINE:-}
+if [ -z "$engine" ]; then
+  for e in docker podman; do
+    if command -v "$e" > /dev/null && "$e" info > /dev/null 2>&1; then engine=$e; break; fi
+  done
+fi
+[ -n "$engine" ] || die "needs Docker or Podman (a running engine: \`docker info\` or \`podman info\` must succeed)"
+sha256() { if command -v sha256sum > /dev/null; then sha256sum; else shasum -a 256; fi; }
+tag=bar-bench:$(cat bench/image/* | sha256 | cut -c1-12)
+if ! "$engine" image inspect "$tag" > /dev/null 2>&1; then
+  echo "== building $tag"
+  # ben's build fetches a private module (hop.top/uri): pass a GitHub token as a
+  # build secret, from GITHUB_TOKEN or the gh CLI.
+  token=${GITHUB_TOKEN:-$(gh auth token 2> /dev/null || true)}
+  secret=()
+  if [ -n "$token" ]; then
+    tokfile=$(mktemp "${TMPDIR:-/tmp}/bar-bench-token.XXXXXX")
+    trap 'rm -f "$tokfile"' EXIT
+    printf '%s' "$token" > "$tokfile"
+    secret=(--secret "id=github_token,src=$tokfile")
+  fi
+  "$engine" build ${secret[@]+"${secret[@]}"} -t "$tag" bench/image \
+    || die "image build failed (ben needs read access to github.com/hop-top/uri: set GITHUB_TOKEN or log in with gh)"
+  [ -z "${tokfile:-}" ] || rm -f "$tokfile"
+fi
+
+# 3. run
+commit=$(git rev-parse HEAD)
+inputs_hash=$(python3 scripts/bench-inputs)
+out=$(mktemp -d "${TMPDIR:-/tmp}/bar-bench.XXXXXX")
+trap 'rm -rf "$out"' EXIT
+echo "== benchmarking ${commit:0:12} (inputs ${inputs_hash:0:19}) with $engine"
+if ! git archive --format=tar HEAD \
+  | "$engine" run --rm -i --hostname container \
+      -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" -v "$out:/out" "$tag"; then
+  die "benchmark run failed; bench/results left unchanged"
+fi
+
+[ -s "$out/ben-warm.json" ] && [ -s "$out/ben-env.json" ] || die "run produced no results"
+
+# 4. results, metadata, docs, badge
+host_cpu=unknown
+case $(uname -s) in
+  Darwin) host_cpu=$(sysctl -n machdep.cpu.brand_string 2> /dev/null || echo unknown) ;;
+  Linux) host_cpu=$(sed -n 's/^model name[[:space:]]*: //p' /proc/cpuinfo | head -n1)
+         [ -n "$host_cpu" ] || host_cpu=$(LC_ALL=C lscpu 2> /dev/null | sed -n 's/^Model name:[[:space:]]*//p' | head -n1)
+         [ -n "$host_cpu" ] || host_cpu=unknown ;;
+esac
+find "$RESULTS" -maxdepth 1 -name 'ben-*' -type f -delete
+find "$out" -maxdepth 1 -name 'ben-*' ! -name ben-env.json -type f -exec cp {} "$RESULTS/" \;
+python3 - "$out/ben-env.json" "$RESULTS/ben-meta.json" "$commit" "$inputs_hash" "$(uname -s)" "$host_cpu" "$engine" <<'PY'
+import datetime, json, sys
+env_path, meta_path, commit, inputs, host_os, host_cpu, engine = sys.argv[1:]
+env = json.load(open(env_path))
+meta = {
+    "bar_commit": commit,
+    "inputs": inputs,
+    "date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d"),
+    "host": {"os": {"Darwin": "macOS"}.get(host_os, host_os), "cpu": host_cpu, "engine": engine},
+    **env,
+}
+with open(meta_path, "w") as f:
+    json.dump(meta, f, indent=1)
+    f.write("\n")
+PY
+python3 scripts/bench-render
+python3 scripts/bench-badge
+git add -A -- "${OUTPUTS[@]}"
+echo
+echo "== staged:"
+git diff --cached --stat -- "${OUTPUTS[@]}"
+echo
+echo "Check the numbers, then commit:"
+echo "  git commit -m \"chore(bench): results for ${commit:0:7}\""
