@@ -614,9 +614,10 @@ Pane:
 
 Empty box:
 
-- A box opens where a border (only `─`, at least 20 cells) sits right above a line holding the `❯` prompt marker.
+- A box opens where a top border (at least 20 cells) sits right above a line holding the `❯` prompt marker.
+- The top border is only `─`, or carries the session name: at least two `─`, a space, the name, a space, at least one `─` (Claude Code 2.1.319 draws named sessions this way). The name may be any visible text without `─`, `❯` or control characters; SGR codes around or inside it are ignored.
 - The real box always opens that way, so a draft that types a fake box adds a second opening, and ambiguity refuses: there must be exactly one opening on screen and no `❯` line below its marker.
-- The very next line must be the bottom border (same width, and the last such line on screen), so any draft of more than one line refuses.
+- The very next line must be the bottom border (only `─`, as many cells as the top border including any name, and the last such line on screen), so any draft of more than one line refuses.
 - After the marker only dim placeholder text may follow (outside dim spans only whitespace and SGR codes; reverse video refuses; `\e[0m`, `\e[00m` and `\e[m` all reset).
 ### Hooks
 
