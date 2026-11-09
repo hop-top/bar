@@ -35,7 +35,8 @@ pub fn hook_command_for(bar: &str, windows: bool) -> String {
 /// without it; commands are written for both: backslashes become forward
 /// slashes (Git Bash drops unquoted ones), and a path of plain characters
 /// stays unquoted, which both shells run as is. Other paths are
-/// single-quoted, which only Git Bash accepts.
+/// single-quoted, which only Git Bash accepts; [`crate::install::command_bar`]
+/// writes plain `bar` instead when it can.
 ///
 /// A bare `bar` stays bare: Claude Code finds it on `PATH`.
 pub fn command_for(bar: &str, args: &str, windows: bool) -> String {

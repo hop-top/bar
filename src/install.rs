@@ -62,6 +62,30 @@ pub fn stable_exe(exe: &Path, path: Option<&std::ffi::OsStr>) -> PathBuf {
     }
 }
 
+/// The `bar` a command written into Claude Code's settings runs:
+/// [`stable_exe`], except on Windows a path that would need quoting
+/// becomes plain `bar` when that path is the `bar` found on `path`.
+/// Claude Code runs commands through Git Bash or PowerShell, and no
+/// quoting works in both; a bare `bar` does.
+pub fn command_bar(exe: &Path, path: Option<&std::ffi::OsStr>, windows: bool) -> PathBuf {
+    let stable = stable_exe(exe, path);
+    let shown = stable.display().to_string();
+    let quoted = command_for(&shown, "", windows).starts_with('\'');
+    let first_on_path = || {
+        let name = stable.file_name().unwrap_or_default();
+        crate::plugin::path_dirs(path)
+            .into_iter()
+            .map(|d| d.join(name))
+            .find(|p| p.is_file())
+            .is_some_and(|p| p == stable)
+    };
+    if windows && quoted && first_on_path() {
+        PathBuf::from("bar")
+    } else {
+        stable
+    }
+}
+
 /// The `bar` that `scope`'s settings run: plain `bar` (found on `PATH`)
 /// for the project settings, which are shared, else this binary.
 pub fn bar_for(scope: Scope, exe: Option<PathBuf>) -> PathBuf {

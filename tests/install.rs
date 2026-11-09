@@ -477,3 +477,24 @@ fn stable_exe_survives_a_homebrew_upgrade() {
     t.write("brew/bin/bar", "different");
     assert_eq!(stable_exe(&cellar, None), cellar);
 }
+
+#[test]
+fn windows_path_with_spaces_falls_back_to_bar_on_path() {
+    use install::command_bar;
+    let t = Tmp::new();
+    t.write("my bin/bar", "bin");
+    let exe = t.path().join("my bin/bar");
+    let path = std::env::join_paths([t.path().join("my bin")]).unwrap();
+    // both shells run a bare `bar` found on PATH
+    assert_eq!(command_bar(&exe, Some(&path), true), PathBuf::from("bar"));
+    // not on PATH: the path itself (single-quoted, Git Bash only)
+    assert_eq!(command_bar(&exe, None, true), exe);
+    // elsewhere quoting works: the path
+    assert_eq!(command_bar(&exe, Some(&path), false), exe);
+    t.write("plain/bar", "bin");
+    let plain = t.path().join("plain/bar");
+    if !plain.display().to_string().contains(' ') {
+        let path = std::env::join_paths([t.path().join("plain")]).unwrap();
+        assert_eq!(command_bar(&plain, Some(&path), true), plain);
+    }
+}

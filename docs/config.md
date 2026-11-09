@@ -868,7 +868,7 @@ Registering the hooks:
 - A symlinked `settings.json` is written through to its target; a link to a missing file is refused.
 - A file that does not parse as Claude Code settings is left untouched and the install stops (exit 1).
 - `--dry-run` prints the additions and writes nothing.
-- On Windows the hook command is the path to `bar.exe` with forward slashes, unquoted (`C:/Users/you/.cargo/bin/bar.exe click hook`), which Git Bash and PowerShell both run; a path with spaces or other shell characters is single-quoted, which only Git Bash accepts.
+- On Windows Claude Code runs commands through Git Bash when it is installed, else PowerShell. The hook command is the path to `bar.exe` with forward slashes, unquoted (`C:/Users/you/.cargo/bin/bar.exe click hook`), which both shells run. No quoting works in both, so a path with spaces or other shell characters becomes plain `bar click hook` when that `bar.exe` is the first `bar` on `PATH`; otherwise it is single-quoted, which only Git Bash accepts (install `bar` in a path without spaces, or put it first on `PATH`). `bar install` writes the status line command the same way.
 
 Check clickable commands, in a Claude Code session inside tmux after `bar click install`:
 

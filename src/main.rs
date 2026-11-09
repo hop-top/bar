@@ -362,9 +362,9 @@ fn install(m: &ArgMatches) {
     let env = install::Env {
         bar: install::bar_for(
             scope,
-            std::env::current_exe()
-                .ok()
-                .map(|e| install::stable_exe(&e, std::env::var_os("PATH").as_deref())),
+            std::env::current_exe().ok().map(|e| {
+                install::command_bar(&e, std::env::var_os("PATH").as_deref(), cfg!(windows))
+            }),
         ),
         settings,
         state_dir: click::state_dir(),
