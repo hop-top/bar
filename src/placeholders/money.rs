@@ -54,9 +54,14 @@ fn decimal(minor: i64) -> String {
     format!("{sign}{}.{:02}", m / 100, m % 100)
 }
 
-/// `$1.23` from dollars, rounded to the cent.
+/// `$1.23` from dollars, rounded to the cent; `-$0.50` below zero.
 pub fn dollars(usd: f64) -> String {
-    format!("${usd:.2}")
+    let n = format!("{:.2}", usd.abs());
+    if usd < 0.0 && n != "0.00" {
+        format!("-${n}")
+    } else {
+        format!("${n}")
+    }
 }
 
 /// `$1.23`; `<$0.01` for a positive amount under a cent.
@@ -81,7 +86,10 @@ pub fn usd_whole(cents: u64) -> String {
 pub fn amount(minor: i64, currency: &str) -> String {
     let n = decimal(minor);
     if currency == "USD" {
-        format!("${n}")
+        match n.strip_prefix('-') {
+            Some(abs) => format!("-${abs}"),
+            None => format!("${n}"),
+        }
     } else {
         format!("{n} {currency}")
     }
@@ -189,8 +197,12 @@ mod tests {
         assert_eq!(amount(1234, "USD"), "$12.34");
         assert_eq!(amount(5, "USD"), "$0.05");
         assert_eq!(amount(5000, "EUR"), "50.00 EUR");
-        assert_eq!(amount(-50, "USD"), "$-0.50");
-        assert_eq!(amount(-1250, "USD"), "$-12.50");
+        assert_eq!(amount(-50, "USD"), "-$0.50");
+        assert_eq!(amount(-1250, "USD"), "-$12.50");
+        assert_eq!(amount(-50, "EUR"), "-0.50 EUR");
+        assert_eq!(dollars(-1.5), "-$1.50");
+        assert_eq!(dollars(-0.001), "$0.00");
+        assert_eq!(usd(-2.0), "-$2.00");
         assert_eq!(
             (usd(0.004), usd(0.0), usd(3.126)),
             ("<$0.01".into(), "$0.00".into(), "$3.13".into())
