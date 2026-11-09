@@ -144,5 +144,6 @@ Binary size: the release `bar` grows by about 390 KB (2.11 MB to 2.50 MB on macO
 | Claude Code (native installer, `claude.ai/install.sh`) | latest at build time; `CLAUDE_CODE_VERSION` pins one | not pinned | the installer's checksum check against the release manifest |
 
 - Claude Code is not held to the age gate: the container is for trying bar against the newest Claude Code. A pinned `CLAUDE_CODE_VERSION` also sets `DISABLE_AUTOUPDATER` in `/etc/claude-code/managed-settings.json` so the pin holds.
-- git comes from Debian: 2.47.3 reads and writes reftable repositories (2.45 or later), which the git reader's fallback path covers.
+- git comes from Debian: 2.47.3 creates reftable repositories (2.45 or later), so the reftable test in `tests/gitrefs.rs` runs instead of returning early.
+- jj 0.46.0 meets the `jj` placeholder's 0.32 minimum, so the tests in `tests/render_jj.rs` that need the real CLI run instead of skipping. `glab` is not installed: its tests use a fake.
 - gh 2.103.3 (2026-10-26) and jj 0.47 (2026-11-04) were under the age gate when the image was pinned.
