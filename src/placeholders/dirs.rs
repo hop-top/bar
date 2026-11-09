@@ -1,3 +1,4 @@
+use super::abbrev::Abbrev;
 use super::{work_dir, Ctx, Placeholder};
 use crate::gitfs::{self, Found};
 use crate::options::Options;
@@ -40,7 +41,8 @@ fn base_on(opts: &Options) -> bool {
     opts.get("base") == Some("1")
 }
 
-/// `path` as `cwd` / `root` show it, given the home directory.
+/// `path` as `cwd` / `root` show it, given the home directory: `base=1`
+/// the last component only, else `depth` and `fish` applied.
 pub fn shown(path: &str, opts: &Options, home: &str) -> Option<String> {
     let full = abbrev_home(path, home);
     let out = if base_on(opts) {
@@ -54,7 +56,7 @@ pub fn shown(path: &str, opts: &Options, home: &str) -> Option<String> {
                 .to_owned(),
         }
     } else {
-        full
+        Abbrev::from(opts).apply(&full, is_sep)
     };
     let out = sanitize(&out);
     (!out.is_empty()).then(|| dim(&out))

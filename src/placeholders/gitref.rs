@@ -39,7 +39,7 @@ fn head(ctx: &Ctx, dir: &Path) -> Option<String> {
 }
 
 /// `%`, `#` and `?` escaped, so a ref name stays one path in a URL.
-fn url_part(s: &str) -> String {
+pub(super) fn url_part(s: &str) -> String {
     s.replace('%', "%25")
         .replace('#', "%23")
         .replace('?', "%3F")

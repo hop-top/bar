@@ -9,8 +9,8 @@ use crate::options::Options;
 use crate::placeholders::ctx as ctxp;
 use crate::placeholders::money::Budget;
 use crate::placeholders::{
-    budget, dirs, extra, gh, gitst, jj, lookup, model, modes, niche, speed, spendhist, status,
-    task, tokens, update, usage, Ctx,
+    budget, dirs, extra, gh, gitst, jj, lookup, model, modes, niche, remotes, repo, speed,
+    spendhist, status, task, tokens, update, usage, Ctx,
 };
 use crate::plugin::{self, ExtInfo};
 use crate::render::{builtin_config, render_sample};
@@ -231,7 +231,7 @@ fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Op
     };
     match name {
         "repo" => Some(bold(&fg(accent(), "bar"))),
-        "branch" => Some(dim("main")),
+        "branch" => Some(dim(&repo::branch_text("main", opts))),
         // a clean tree in the last stretch
         "dirty" if state == "final" => None,
         "dirty" => Some(format!(
@@ -280,6 +280,9 @@ fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Op
         "stash" => Some(dim("$1")),
         "gitop" => Some(fg(c.warn, "rebase 2/5")),
         "conflicts" => Some(fg(c.bad, "✗2")),
+        "origin" => remotes::sample("git@github.com:you/bar.git", opts),
+        "fork" => remotes::sample("https://github.com/hop-top/bar", opts),
+        "upstream" => Some(dim("origin/main")),
         "jj" => {
             let show = match opts.get("show") {
                 Some(v) => gitst::parse_show(v, jj::SHOW)?,

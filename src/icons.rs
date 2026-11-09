@@ -82,6 +82,9 @@ pub fn builtin(set: Icons, name: &str, opts: &Options) -> Option<&'static str> {
         "stash" => ("\u{f187}", "📦"),             // nf-fa-archive
         "gitop" => ("\u{f419}", "🔄"),             // nf-oct-git_merge
         "conflicts" => ("\u{f071}", "⚠️"),         // nf-fa-warning
+        "origin" => ("\u{f0c2}", "☁️"),            // nf-fa-cloud
+        "upstream" => ("\u{f148}", "⏫"),          // nf-fa-level_up
+        "fork" => ("\u{f402}", "🍴"),              // nf-oct-repo_forked
         "jj" => ("\u{f454}", "🥋"),                // nf-oct-versions
         "prs" => ("\u{f407}", "🔀"),               // nf-oct-git_pull_request
         "issues" => ("\u{f41b}", "🐛"),            // nf-oct-issue_opened

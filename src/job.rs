@@ -34,8 +34,9 @@ pub enum Job {
     /// (absolute), no shell; `commit` is a full object id. Output: the
     /// commit, then one `<objecttype> <tag>` line per tag.
     GitTags { dir: String, commit: String },
-    /// `git remote get-url origin` in `dir` (absolute), no shell.
-    GitRemote { dir: String },
+    /// `git remote get-url <name>` in `dir` (absolute), no shell. A
+    /// remote other than `origin` that does not exist gives an empty value.
+    GitRemote { dir: String, name: String },
     /// `jj log` of the working-copy commit of the workspace at `dir`
     /// (absolute), no shell, never snapshotting the working copy.
     Jj { dir: String },
@@ -90,7 +91,9 @@ impl Job {
             Job::GitTags { dir, commit } => {
                 json!({"kind": "git-tags", "dir": dir, "commit": commit})
             }
-            Job::GitRemote { dir } => json!({"kind": "git-remote", "dir": dir}),
+            Job::GitRemote { dir, name } => {
+                json!({"kind": "git-remote", "dir": dir, "name": name})
+            }
             Job::Jj { dir } => json!({"kind": "jj", "dir": dir}),
             Job::PluginInfo { path } => json!({"kind": "plugin-info", "path": path}),
             Job::PluginRender { path, input } => {
@@ -147,6 +150,14 @@ impl Job {
             }),
             Some("git-remote") => Ok(Job::GitRemote {
                 dir: abs_path(v, "dir")?,
+                name: match v.get("name") {
+                    None => "origin".into(),
+                    Some(n) => n
+                        .as_str()
+                        .filter(|n| crate::gitfs::valid_remote(n))
+                        .ok_or("git-remote job with an invalid remote name")?
+                        .into(),
+                },
             }),
             Some("jj") => Ok(Job::Jj {
                 dir: abs_path(v, "dir")?,
@@ -225,12 +236,20 @@ impl Job {
                     .env("GIT_OPTIONAL_LOCKS", "0");
                 run_child(c, None, limit).map(|out| format!("{commit}\n{out}"))
             }
-            Job::GitRemote { dir } => {
+            Job::GitRemote { dir, name } => {
                 let mut c = Command::new(crate::platform::program("git"));
-                c.args(["remote", "get-url", "origin"])
+                c.args(["remote", "get-url", name])
                     .current_dir(dir)
                     .env("GIT_OPTIONAL_LOCKS", "0");
-                run_child(c, None, limit)
+                match crate::cache::run_child_raw(c, None, limit) {
+                    crate::cache::Child::Out(b) => {
+                        Some(crate::cache::cap(String::from_utf8_lossy(&b).into_owned()))
+                    }
+                    // no such remote: known absent, unlike origin's link
+                    // source, which keeps its last value
+                    crate::cache::Child::Failed if name != "origin" => Some(String::new()),
+                    _ => None,
+                }
             }
             Job::Jj { dir } => {
                 let mut c = Command::new(crate::platform::program("jj"));

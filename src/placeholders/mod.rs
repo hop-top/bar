@@ -1,5 +1,6 @@
 //! Placeholder trait, shared context and the name registry.
 
+pub mod abbrev;
 pub mod account;
 pub mod agents;
 pub mod budget;
@@ -18,6 +19,7 @@ pub mod model;
 pub mod modes;
 pub mod money;
 pub mod niche;
+pub mod remotes;
 pub mod repo;
 pub mod sessions;
 pub mod speed;
@@ -118,6 +120,9 @@ static REGISTRY: &[(&str, &(dyn Placeholder + Sync))] = &[
     ("stash", &gitref::Stash),
     ("gitop", &gitop::GitOp),
     ("conflicts", &gitop::Conflicts),
+    ("origin", &remotes::Origin),
+    ("upstream", &remotes::Upstream),
+    ("fork", &remotes::Fork),
     ("jj", &jj::Jj),
     ("sid", &niche::Sid),
     ("compactions", &niche::Compactions),
