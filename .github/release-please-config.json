@@ -83,6 +83,71 @@
         {
           "type": "generic",
           "path": "docs/comparison.md"
+        },
+        {
+          "type": "json",
+          "path": "packaging/npm/bar/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packaging/npm/bar/package.json",
+          "jsonpath": "$.optionalDependencies['@hop-top/bar-darwin-arm64']"
+        },
+        {
+          "type": "json",
+          "path": "packaging/npm/bar/package.json",
+          "jsonpath": "$.optionalDependencies['@hop-top/bar-darwin-x64']"
+        },
+        {
+          "type": "json",
+          "path": "packaging/npm/bar/package.json",
+          "jsonpath": "$.optionalDependencies['@hop-top/bar-linux-arm64']"
+        },
+        {
+          "type": "json",
+          "path": "packaging/npm/bar/package.json",
+          "jsonpath": "$.optionalDependencies['@hop-top/bar-linux-x64']"
+        },
+        {
+          "type": "json",
+          "path": "packaging/npm/bar/package.json",
+          "jsonpath": "$.optionalDependencies['@hop-top/bar-win32-arm64']"
+        },
+        {
+          "type": "json",
+          "path": "packaging/npm/bar/package.json",
+          "jsonpath": "$.optionalDependencies['@hop-top/bar-win32-x64']"
+        },
+        {
+          "type": "json",
+          "path": "packaging/npm/bar-darwin-arm64/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packaging/npm/bar-darwin-x64/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packaging/npm/bar-linux-arm64/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packaging/npm/bar-linux-x64/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packaging/npm/bar-win32-arm64/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packaging/npm/bar-win32-x64/package.json",
+          "jsonpath": "$.version"
         }
       ]
     }

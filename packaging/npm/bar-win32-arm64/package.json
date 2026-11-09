@@ -1,0 +1,24 @@
+{
+  "name": "@hop-top/bar-win32-arm64",
+  "version": "0.1.0-beta.0",
+  "description": "bar binary for win32 arm64 (aarch64-pc-windows-msvc), installed by @hop-top/bar",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hop-top/bar.git"
+  },
+  "homepage": "https://github.com/hop-top/bar",
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "files": [
+    "bin/bar.exe"
+  ],
+  "preferUnplugged": true,
+  "publishConfig": {
+    "access": "public"
+  }
+}

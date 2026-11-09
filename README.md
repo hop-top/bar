@@ -52,6 +52,13 @@ cd bar
 cargo install --path . --locked
 ```
 
+With Node or Bun, from npm (prebuilt binary, no install script):
+
+```sh
+npx @hop-top/bar preview --preset   # or: bunx @hop-top/bar preview --preset
+npm install -g @hop-top/bar         # then `bar install`; the status line runs the binary, not Node
+```
+
 Guided setup inside Claude Code: `/plugin marketplace add hop-top/bar`, then `/plugin install bar@hop-top` and `/bar` ([docs](docs/claude-plugin.md)).
 
 Optional: `gh` (GitHub) or `glab` (GitLab) for PRs and issues, `jq` for the reference plugins.

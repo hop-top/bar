@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# Offline test of the npm packages: stages them from fake release archives
+# (scripts/npm-stage), packs each with `npm pack`, unpacks the tarballs into
+# a node_modules tree the way npm lays them out, and runs the launcher.
+# Skips without node and npm. No registry access.
+set -euo pipefail
+
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  echo "node or npm not found: npm packages not checked"
+  exit 0
+fi
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+version="$(node -p 'require(process.argv[1]).version' "$root/packaging/npm/bar/package.json")"
+host="$(node -p 'process.platform + "-" + process.arch')"
+fail() { echo "npm-check: $*" >&2; exit 1; }
+
+case "$host" in
+  win32-*) echo "npm-check: Windows host not supported, skipped"; exit 0 ;;
+esac
+
+# Fake binary: echoes its arguments and stdin, exits 3.
+mkdir -p "$tmp/assets" "$tmp/fake"
+printf '#!/bin/sh\necho "fake bar $*"\ncat\nexit 3\n' > "$tmp/fake/bar"
+cp "$tmp/fake/bar" "$tmp/fake/bar.exe"
+chmod 755 "$tmp/fake/bar"
+sha() { python3 -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest(), sys.argv[1].rsplit("/",1)[-1])' "$1"; }
+for t in aarch64-apple-darwin x86_64-apple-darwin aarch64-unknown-linux-musl x86_64-unknown-linux-musl; do
+  a="$tmp/assets/bar-$version-$t.tar.gz"
+  tar -czf "$a" -C "$tmp/fake" bar
+  sha "$a" > "$a.sha256"
+done
+for t in aarch64-pc-windows-msvc x86_64-pc-windows-msvc; do
+  a="$tmp/assets/bar-$version-$t.zip"
+  python3 -c 'import sys,zipfile;zipfile.ZipFile(sys.argv[1],"w").write(sys.argv[2],"bar.exe")' "$a" "$tmp/fake/bar.exe"
+  sha "$a" > "$a.sha256"
+done
+
+"$root/scripts/npm-stage" "$version" "$tmp/assets" "$tmp/stage" > "$tmp/order"
+[ "$(tail -n1 "$tmp/order")" = "$tmp/stage/bar" ] || fail "launcher is not published last"
+
+# A tampered archive is refused.
+cp -R "$tmp/assets" "$tmp/bad"
+echo x >> "$tmp/bad/bar-$version-x86_64-unknown-linux-musl.tar.gz"
+if "$root/scripts/npm-stage" "$version" "$tmp/bad" "$tmp/bad-stage" 2>/dev/null; then
+  fail "a checksum mismatch was not refused"
+fi
+# A version that differs from the package.json files is refused.
+if "$root/scripts/npm-stage" "0.0.0-x" "$tmp/assets" "$tmp/bad-stage2" 2>/dev/null; then
+  fail "a version mismatch was not refused"
+fi
+
+mkdir -p "$tmp/packs" "$tmp/app/node_modules/@hop-top"
+while read -r dir; do
+  (cd "$dir" && npm pack --silent --pack-destination "$tmp/packs" >/dev/null)
+done < "$tmp/order"
+
+for tgz in "$tmp/packs"/*.tgz; do
+  list="$(tar -tzvf "$tgz")"
+  echo "$list" | grep -q ' package/LICENSE$' || fail "$(basename "$tgz"): no LICENSE"
+  echo "$list" | grep -q ' package/package.json$' || fail "$(basename "$tgz"): no package.json"
+  name="$(tar -xzOf "$tgz" package/package.json | node -p 'JSON.parse(require("fs").readFileSync(0)).name')"
+  dest="$tmp/app/node_modules/$name"
+  mkdir -p "$dest"
+  tar -xzf "$tgz" -C "$dest" --strip-components=1
+done
+tar -tzvf "$tmp/packs/hop-top-bar-$host-$version.tgz" | grep -Eq '^-rwx.* package/bin/bar$' \
+  || fail "bar-$host: bin/bar is not packed executable"
+tar -tzf "$tmp/packs/hop-top-bar-$version.tgz" | grep -qx 'package/bin/bar.js' \
+  || fail "launcher: bin/bar.js not packed"
+tar -tzf "$tmp/packs/hop-top-bar-$version.tgz" | grep -qx 'package/README.md' \
+  || fail "launcher: README.md not packed"
+
+launcher="$tmp/app/node_modules/@hop-top/bar/bin/bar.js"
+set +e
+out="$(printf 'stdin line\n' | node "$launcher" render 'two words')"
+status=$?
+set -e
+[ "$status" = 3 ] || fail "launcher exit $status, binary exited 3"
+[ "$out" = "$(printf 'fake bar render two words\nstdin line')" ] || fail "launcher output: $out"
+
+rm -rf "$tmp/app/node_modules/@hop-top/bar-$host"
+set +e
+err="$(node "$launcher" --version 2>&1)"
+status=$?
+set -e
+[ "$status" = 1 ] || fail "missing platform package: exit $status, want 1"
+echo "$err" | grep -q "@hop-top/bar-$host is not installed" || fail "missing platform package: $err"
+
+echo "npm packages ok ($host, $version)"

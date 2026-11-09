@@ -1,0 +1,37 @@
+{
+  "name": "@hop-top/bar",
+  "version": "0.1.0-beta.0",
+  "description": "Fast, configurable and extensible status line for Claude Code",
+  "keywords": [
+    "claude-code",
+    "statusline",
+    "status-line"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hop-top/bar.git"
+  },
+  "homepage": "https://github.com/hop-top/bar",
+  "bugs": "https://github.com/hop-top/bar/issues",
+  "bin": {
+    "bar": "bin/bar.js"
+  },
+  "files": [
+    "bin/bar.js"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "optionalDependencies": {
+    "@hop-top/bar-darwin-arm64": "0.1.0-beta.0",
+    "@hop-top/bar-darwin-x64": "0.1.0-beta.0",
+    "@hop-top/bar-linux-arm64": "0.1.0-beta.0",
+    "@hop-top/bar-linux-x64": "0.1.0-beta.0",
+    "@hop-top/bar-win32-arm64": "0.1.0-beta.0",
+    "@hop-top/bar-win32-x64": "0.1.0-beta.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
