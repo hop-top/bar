@@ -3,7 +3,7 @@ use crate::click::{self, Term};
 use crate::options::Options;
 use crate::style::{dim, sanitize};
 use serde_json::Value;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 pub struct Model;
 pub struct Effort;
@@ -28,13 +28,9 @@ pub fn model_with(
     Some(click::with_cmd_link(body, "model", sid, opts, state, term))
 }
 
-fn settings_path() -> Option<PathBuf> {
-    Some(click::claude_dir()?.join("settings.json"))
-}
-
 /// `modelSettings[<model id>].effortLevel`, then global `effortLevel`.
 fn settings_effort(model_id: &str) -> Option<String> {
-    let v: Value = serde_json::from_str(&std::fs::read_to_string(settings_path()?).ok()?).ok()?;
+    let v = crate::settings::user()?;
     let level = |v: Option<&Value>| {
         v.and_then(|l| l.as_str())
             .filter(|s| !s.is_empty())
