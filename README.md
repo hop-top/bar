@@ -16,8 +16,8 @@ A status line for [Claude Code](https://code.claude.com/docs/en/statusline) that
 
 - **Plugins are plain programs.** Any executable that prints one JSON object is a placeholder. bar runs it in the background and caches the result ([Plugins](docs/plugins.md)).
 - **The layout is a config file.** tmux-style, options on every placeholder, linted by `bar check`, previewed by `bar preview`.
-- **It knows your Claude usage.** 5-hour and 7-day bars coloured by pace, projections, sparklines; cost, burn rate, tokens, spend history.
-- **It knows your repo.** Branch and dirty state from files, PRs and issues from `gh` (merge requests from `glab` on GitLab), failing CI marked.
+- **It knows your Claude usage.** 5-hour and 7-day bars coloured by pace, projections, sparklines; context, cost, burn rate, tokens, prompt cache, spend history and budgets.
+- **It knows your repo.** Branch, dirty state, commit, tag, stash and operation in progress from files, Jujutsu changes, PRs and issues from `gh` (merge requests from `glab` on GitLab), failing CI marked.
 
 ### Benchmarks
 
