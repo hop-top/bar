@@ -178,23 +178,22 @@ fn sample_model(ctx: &Ctx, model: &str) -> Option<Window> {
     })
 }
 
-/// Extra usage of a $50 monthly limit, the calendar month in UTC.
+/// Extra usage of a $50 monthly limit over the local calendar month, as
+/// `extra` counts it.
 fn sample_extra(state: &str, now: i64) -> Budget {
-    let (start, end) = crate::tz::month_bounds(now, crate::tz::Tz::Utc);
     let used = match state {
         "burning" => 4_120,
         "final" => 1_480,
         _ => 1_234,
     };
-    Budget {
+    extra::month_budget(
         used,
-        limit: 5_000,
-        util: used as f64 * 100.0 / 5_000.0,
-        currency: "USD".into(),
-        resets_at: end,
-        period: end - start,
-        today: Some(210),
-    }
+        5_000,
+        used as f64 * 100.0 / 5_000.0,
+        "USD",
+        Some(210),
+        now,
+    )
 }
 
 fn limit(opts: &Options) -> usize {
