@@ -188,19 +188,26 @@ fn skills_hidden_at_zero() {
 #[test]
 fn old_state_without_counts_is_rebuilt() {
     let t = Tmp::new();
-    t.write("t.jsonl", &(boundary().to_string() + boundary()));
+    t.write(
+        "t.jsonl",
+        &(boundary().to_string() + boundary() + &user("\"hi\"", "")),
+    );
     let state = t.path().join("state");
     let p = transcript::update(&state, &t.path().join("t.jsonl"), u64::MAX, None).unwrap();
-    assert_eq!(p.stats.compactions, 2);
+    assert_eq!((p.stats.compactions, p.stats.user_msgs), (2, 1));
     // downgrade the stored state to the earlier format
     let dir = state.join("transcript");
     for e in std::fs::read_dir(&dir).unwrap().flatten() {
         let s = std::fs::read_to_string(e.path()).unwrap();
         assert!(s.contains("\"v\":3"), "{s}");
-        std::fs::write(e.path(), s.replace("\"v\":3", "\"v\":2")).unwrap();
+        // a v2 state has no message counts and would undercount
+        let old = s
+            .replace("\"v\":3", "\"v\":2")
+            .replace("\"usr\":1", "\"usr\":0");
+        std::fs::write(e.path(), old).unwrap();
     }
     let p = transcript::update(&state, &t.path().join("t.jsonl"), u64::MAX, None).unwrap();
-    assert_eq!(p.stats.compactions, 2);
+    assert_eq!((p.stats.compactions, p.stats.user_msgs), (2, 1));
 }
 
 // tmux
@@ -336,4 +343,95 @@ fn tmux_job_round_trips_and_rejects_bad_pane() {
     assert_eq!(Request::from_json(&r.to_json()).unwrap(), r);
     let bad = r.to_json().replace("%12", "-t");
     assert!(Request::from_json(&bad).is_err());
+}
+
+fn user(content: &str, extra: &str) -> String {
+    format!(
+        "{{\"type\":\"user\"{extra},\"message\":{{\"role\":\"user\",\"content\":{content}}}}}\n"
+    )
+}
+
+const TOOL_RESULT: &str = "[{\"type\":\"tool_result\",\"tool_use_id\":\"t1\",\"content\":\"ok\"}]";
+
+fn msgs_transcript() -> String {
+    let text = asst("a1", "{\"type\":\"text\",\"text\":\"hi\"}", false);
+    let split = asst("a2", "{\"type\":\"text\",\"text\":\"x\"}", false)
+        + &asst(
+            "a2",
+            "{\"type\":\"tool_use\",\"id\":\"t1\",\"name\":\"Bash\"}",
+            false,
+        );
+    user("\"hello\"", "")
+        + &text
+        + &split
+        + &user(TOOL_RESULT, "")
+        + &user("[{\"type\":\"text\",\"text\":\"again\"}]", "")
+        + &user("\"meta\"", ",\"isMeta\":true")
+        + &user("\"sum\"", ",\"isCompactSummary\":true")
+        + &user("\"side\"", ",\"isSidechain\":true")
+        + &asst("s1", "{\"type\":\"text\",\"text\":\"s\"}", true)
+}
+
+#[test]
+fn msgs_counts_user_prompts_only_by_default() {
+    let t = Tmp::new();
+    t.write("t.jsonl", &msgs_transcript());
+    let o = run(&t).conf("set left \"#{msgs}\"").stdin(&tstdin(&t)).go();
+    assert_eq!(o.plain.trim(), "msgs 2");
+}
+
+#[test]
+fn msgs_counts_escaped_text_and_skips_odd_content() {
+    let t = Tmp::new();
+    let body = user("\"line one\\nline \\\"two\\\"\"", "")
+        + &user("[{\"type\":\"text\",\"text\":\"tab\\there\"}]", "")
+        + &user("{\"text\":\"obj\"}", "")
+        + &user("42", "");
+    t.write("t.jsonl", &body);
+    let o = run(&t).conf("set left \"#{msgs}\"").stdin(&tstdin(&t)).go();
+    assert_eq!(o.plain.trim(), "msgs 2");
+}
+
+#[test]
+fn msgs_total_adds_main_chain_assistant_messages() {
+    let t = Tmp::new();
+    t.write("t.jsonl", &msgs_transcript());
+    let o = run(&t)
+        .conf("set left \"#{msgs[show=total]}\"")
+        .stdin(&tstdin(&t))
+        .go();
+    // 2 prompts + a1 + a2 (one id over two lines)
+    assert_eq!(o.plain.trim(), "msgs 4");
+}
+
+#[test]
+fn msgs_ignores_quoted_marker_and_hides_at_zero() {
+    let t = Tmp::new();
+    let quote = asst(
+        "q",
+        "{\"type\":\"text\",\"text\":\"\\\"type\\\":\\\"user\\\"\"}",
+        false,
+    );
+    t.write("t.jsonl", &quote);
+    let o = run(&t).conf("set left \"#{msgs}\"").stdin(&tstdin(&t)).go();
+    assert_eq!(o.plain.trim(), "");
+    let o = run(&t).conf("set left \"#{msgs}\"").go();
+    assert_eq!(o.plain.trim(), "");
+}
+
+#[test]
+fn msgs_accumulate_incrementally() {
+    let t = Tmp::new();
+    t.write("t.jsonl", &user("\"one\"", ""));
+    let go = || {
+        run(&t)
+            .conf("set left \"#{msgs}\"")
+            .stdin(&tstdin(&t))
+            .go()
+            .plain
+    };
+    assert_eq!(go().trim(), "msgs 1");
+    let more = std::fs::read_to_string(t.path().join("t.jsonl")).unwrap() + &user("\"two\"", "");
+    t.write("t.jsonl", &more);
+    assert_eq!(go().trim(), "msgs 2");
 }

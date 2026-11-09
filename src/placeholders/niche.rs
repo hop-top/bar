@@ -1,4 +1,4 @@
-//! `sid`, `compactions`, `skills`: small session facts. The first reads
+//! `sid`, `compactions`, `skills`, `msgs`: small session facts. The first reads
 //! the statusline JSON, the others the transcript scan.
 
 use super::{Ctx, Placeholder};
@@ -10,6 +10,8 @@ const DEFAULT_SID_LEN: usize = 8;
 
 /// `abcdef01`: the first `len` chars of the session id.
 pub struct Sid;
+/// `msgs 12`: user turns, or with `show=total` all messages; hidden at 0.
+pub struct Msgs;
 /// `compact 2`: context compactions so far; hidden at 0.
 pub struct Compactions;
 /// `skills 3`: skill calls so far; hidden at 0.
@@ -61,11 +63,35 @@ impl Placeholder for Skills {
     }
 }
 
+impl Placeholder for Msgs {
+    fn render(&self, ctx: &Ctx, opts: &Options) -> Option<String> {
+        self.render_labeled(ctx, opts, true)
+    }
+
+    fn render_labeled(&self, ctx: &Ctx, opts: &Options, label: bool) -> Option<String> {
+        let s = stats(ctx)?;
+        let n = match opts.get("show") {
+            Some("total") => s.user_msgs.saturating_add(s.assistant_msgs),
+            _ => s.user_msgs,
+        };
+        counted("msgs", n, label)
+    }
+}
+
 /// Stand-in values for `bar preview`.
-pub fn sample(name: &str, label: bool) -> Option<String> {
+pub fn sample(name: &str, opts: &Options, label: bool) -> Option<String> {
     match name {
         "compactions" => counted("compact", 2, label),
         "skills" => counted("skills", 3, label),
+        "msgs" => counted(
+            "msgs",
+            if opts.get("show") == Some("total") {
+                52
+            } else {
+                26
+            },
+            label,
+        ),
         _ => None,
     }
 }

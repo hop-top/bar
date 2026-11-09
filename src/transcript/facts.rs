@@ -30,9 +30,11 @@ pub(super) struct Facts<'a> {
 pub(super) enum Rec {
     #[default]
     Other,
-    /// A user entry the person typed.
+    /// A user entry the person typed: text, or blocks none of which is a
+    /// tool result.
     Prompt,
-    /// A user entry Claude Code wrote: tool results, injected context.
+    /// A user entry Claude Code wrote: tool results, injected context,
+    /// compaction summaries.
     ToolResult,
     Assistant,
 }
@@ -65,6 +67,8 @@ struct Entry<'a, C> {
     sidechain: Option<bool>,
     #[serde(rename = "isMeta")]
     meta: Option<bool>,
+    #[serde(rename = "isCompactSummary")]
+    summary: Option<bool>,
     #[serde(borrow)]
     timestamp: Option<Cow<'a, str>>,
     #[serde(borrow)]
@@ -122,16 +126,18 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for Obj<T> {
     }
 }
 
-/// What `message.content` holds: `Skill` calls and whether any block is
-/// a tool result. Anything but an array has no blocks; array items that
-/// are not objects are passed over.
+/// What `message.content` holds: `Skill` calls, whether any block is a
+/// tool result, and whether it is text or an array (what a prompt can
+/// be). Anything but an array has no blocks; array items that are not
+/// objects are passed over.
 #[derive(Default)]
 struct Content {
     skills: u64,
     tool_result: bool,
+    text: bool,
 }
 
-/// Ignores whatever value comes; `$ok` builds the result.
+/// Ignores whatever scalar comes but a string; `$ok` builds the result.
 macro_rules! accept_scalars {
     ($ok:expr) => {
         fn visit_bool<E>(self, _: bool) -> Result<Self::Value, E> {
@@ -144,9 +150,6 @@ macro_rules! accept_scalars {
             Ok($ok)
         }
         fn visit_f64<E>(self, _: f64) -> Result<Self::Value, E> {
-            Ok($ok)
-        }
-        fn visit_str<E>(self, _: &str) -> Result<Self::Value, E> {
             Ok($ok)
         }
         fn visit_unit<E>(self) -> Result<Self::Value, E> {
@@ -167,12 +170,21 @@ impl<'de> Deserialize<'de> for Content {
                 f.write_str("message content")
             }
             accept_scalars!(Content::default());
+            fn visit_str<E>(self, _: &str) -> Result<Content, E> {
+                Ok(Content {
+                    text: true,
+                    ..Content::default()
+                })
+            }
             fn visit_map<A: MapAccess<'de>>(self, mut m: A) -> Result<Content, A::Error> {
                 while m.next_entry::<IgnoredAny, IgnoredAny>()?.is_some() {}
                 Ok(Content::default())
             }
             fn visit_seq<A: SeqAccess<'de>>(self, mut s: A) -> Result<Content, A::Error> {
-                let mut c = Content::default();
+                let mut c = Content {
+                    text: true,
+                    ..Content::default()
+                };
                 while let Some(b) = s.next_element::<AnyBlock>()? {
                     let Some(b) = b.0 else { continue };
                     match b.kind.as_deref() {
@@ -200,6 +212,9 @@ impl<'de: 'a, 'a> Deserialize<'de> for AnyBlock<'a> {
                 f.write_str("a content block")
             }
             accept_scalars!(AnyBlock(None));
+            fn visit_str<E>(self, _: &str) -> Result<AnyBlock<'a>, E> {
+                Ok(AnyBlock(None))
+            }
             fn visit_seq<A: SeqAccess<'de>>(self, mut s: A) -> Result<AnyBlock<'a>, A::Error> {
                 while s.next_element::<IgnoredAny>()?.is_some() {}
                 Ok(AnyBlock(None))
@@ -217,11 +232,19 @@ fn one_hour(m5: u64, h1: u64) -> Option<bool> {
     (m5 > 0 || h1 > 0).then_some(h1 > 0 && m5 == 0)
 }
 
-fn rec(kind: Option<&str>, main: bool, has_msg: bool, meta: bool, tool_result: bool) -> Rec {
+/// A user entry's flags and content.
+struct UserBits {
+    meta: bool,
+    summary: bool,
+    tool_result: bool,
+    text: bool,
+}
+
+fn rec(kind: Option<&str>, main: bool, has_msg: bool, u: UserBits) -> Rec {
     match kind {
         _ if !main || !has_msg => Rec::Other,
-        Some("user") if meta || tool_result => Rec::ToolResult,
-        Some("user") => Rec::Prompt,
+        Some("user") if u.meta || u.summary || u.tool_result => Rec::ToolResult,
+        Some("user") if u.text => Rec::Prompt,
         Some("assistant") => Rec::Assistant,
         _ => Rec::Other,
     }
@@ -232,7 +255,7 @@ fn rec(kind: Option<&str>, main: bool, has_msg: bool, meta: bool, tool_result: b
 fn facts_typed<'a, C: Deserialize<'a>>(
     text: &'a str,
     boundary: bool,
-    blocks: impl Fn(&C) -> (u64, bool),
+    blocks: impl Fn(&C) -> (u64, bool, bool),
 ) -> Option<Facts<'a>> {
     let e: Obj<Entry<'a, C>> = serde_json::from_str(text).ok()?;
     let e = e.0;
@@ -242,10 +265,10 @@ fn facts_typed<'a, C: Deserialize<'a>>(
         && e.subtype.as_deref() == Some("compact_boundary")
         && main;
     let msg = e.message.map(|m| m.0);
-    let (skills, tool_result) = msg
+    let (skills, tool_result, text) = msg
         .as_ref()
         .and_then(|m| m.content.as_ref())
-        .map_or((0, false), blocks);
+        .map_or((0, false, false), blocks);
     let skills = if e.kind.as_deref() == Some("assistant") && main {
         skills
     } else {
@@ -256,8 +279,12 @@ fn facts_typed<'a, C: Deserialize<'a>>(
         e.kind.as_deref(),
         main,
         msg.is_some(),
-        e.meta == Some(true),
-        tool_result,
+        UserBits {
+            meta: e.meta == Some(true),
+            summary: e.summary == Some(true),
+            tool_result,
+            text,
+        },
     );
     let usage = msg.and_then(|m| {
         let u = m.usage?.0;
@@ -316,8 +343,12 @@ fn facts_tree(text: &str, boundary: bool, skill: bool) -> Option<Facts<'static>>
         v["type"].as_str(),
         main,
         msg.is_some(),
-        v["isMeta"] == true,
-        count("tool_result", None) > 0,
+        UserBits {
+            meta: v["isMeta"] == true,
+            summary: v["isCompactSummary"] == true,
+            tool_result: count("tool_result", None) > 0,
+            text: msg.is_some_and(|m| m["content"].is_string() || m["content"].is_array()),
+        },
     );
     let usage = msg
         .and_then(|m| m.get("usage"))
@@ -369,8 +400,10 @@ pub(super) fn facts(
         .any(|i| matches!(line.get(i + 2), Some(b'd' | b'D')));
     let typed = match (surrogate, skill || user) {
         (true, _) => None,
-        (false, true) => facts_typed(text, boundary, |c: &Content| (c.skills, c.tool_result)),
-        (false, false) => facts_typed(text, boundary, |_: &IgnoredAny| (0, false)),
+        (false, true) => facts_typed(text, boundary, |c: &Content| {
+            (c.skills, c.tool_result, c.text)
+        }),
+        (false, false) => facts_typed(text, boundary, |_: &IgnoredAny| (0, false, false)),
     };
     let mut f = typed.or_else(|| facts_tree(text, boundary, skill))?;
     // the byte checks gate what they stand for

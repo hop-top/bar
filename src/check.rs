@@ -8,7 +8,7 @@ use crate::options::Options;
 use crate::placeholders::ctx::parts::SHOW_ITEMS as CTX_ITEMS;
 use crate::placeholders::gh::{self, Kind};
 use crate::placeholders::usage::glyphs::{GLYPH_SETS, SHOW_ITEMS};
-use crate::placeholders::{gitst, speed};
+use crate::placeholders::{gitst, modes, speed};
 use crate::plugin;
 use crate::prices::models;
 use crate::render::builtin_config;
@@ -129,8 +129,8 @@ const STATUS_ISSUE: &[&str] = &["open", "closed"];
 fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
     use Val::*;
     Some(match name {
-        "account" | "sessions" | "spend" | "burn" | "duration" | "lines" | "version" | "style"
-        | "vim" | "agent" | "thinking" | "fast" => &[],
+        "account" | "sessions" | "spend" | "burn" | "duration" | "api" | "lines" | "version"
+        | "style" | "vim" | "agent" | "thinking" | "fast" => &[],
         "cost" => &[("fmt", OneOf(&["usd"]))],
         "cwd" | "root" => &[("base", OneOf(&["0", "1"]))],
         "spendhist" => &[
@@ -167,6 +167,9 @@ fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
         ],
         "dirty" => &[("show", List(gitst::SHOW)), ("ttl", Pos)],
         "ahead" => &[("ttl", Pos)],
+        "name" => &[("max", Int)],
+        "msgs" => &[("show", OneOf(&["user", "total"]))],
+        "modes" => &[("show", List(modes::SHOW))],
         "worktree" | "compactions" | "skills" => &[],
         "sid" => &[("len", Int)],
         "tmux" => &[("max", Int)],

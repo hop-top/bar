@@ -17,6 +17,8 @@ pub struct Cost;
 pub struct Burn;
 /// Session wall time: `45s`, `12m`, `1h05m`.
 pub struct Duration;
+/// Time spent waiting on API responses, formatted like `duration`.
+pub struct Api;
 /// `+120 -14`: lines added and removed; hidden when both are 0.
 pub struct Lines;
 
@@ -54,6 +56,12 @@ fn compact(ms: f64) -> String {
 impl Placeholder for Duration {
     fn render(&self, ctx: &Ctx, _opts: &Options) -> Option<String> {
         Some(dim(&compact(ctx.session.duration_ms?)))
+    }
+}
+
+impl Placeholder for Api {
+    fn render(&self, ctx: &Ctx, _opts: &Options) -> Option<String> {
+        Some(dim(&compact(ctx.session.api_duration_ms?)))
     }
 }
 

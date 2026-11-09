@@ -29,6 +29,8 @@ pub struct Session {
     pub model_id: String,
     pub effort: String,
     pub session_id: String,
+    /// `session_name`: the custom name or the generated title.
+    pub name: String,
     pub transcript_path: String,
     pub context_used: Option<f64>,
     /// `context_window.context_window_size`; positive or `None`.
@@ -44,6 +46,8 @@ pub struct Session {
     pub cost_usd: Option<f64>,
     /// `cost.total_duration_ms`; finite and non-negative or `None`.
     pub duration_ms: Option<f64>,
+    /// `cost.total_api_duration_ms`; finite and non-negative or `None`.
+    pub api_duration_ms: Option<f64>,
     pub lines_added: u64,
     pub lines_removed: u64,
     pub version: String,
@@ -123,6 +127,7 @@ pub fn parse(input: &str) -> Session {
         model_id: str_at(&v, &["model", "id"]).unwrap_or_default(),
         effort: str_at(&v, &["effort", "level"]).unwrap_or_default(),
         session_id: str_at(&v, &["session_id"]).unwrap_or_default(),
+        name: str_at(&v, &["session_name"]).unwrap_or_default(),
         transcript_path: str_at(&v, &["transcript_path"]).unwrap_or_default(),
         context_used: v
             .get("context_window")
@@ -138,6 +143,7 @@ pub fn parse(input: &str) -> Session {
         spend_limit: spend_limit(&v),
         cost_usd: num_at(&v, &["cost", "total_cost_usd"]),
         duration_ms: num_at(&v, &["cost", "total_duration_ms"]),
+        api_duration_ms: num_at(&v, &["cost", "total_api_duration_ms"]),
         lines_added: count_at(&v, &["cost", "total_lines_added"]),
         lines_removed: count_at(&v, &["cost", "total_lines_removed"]),
         version: str_at(&v, &["version"]).unwrap_or_default(),

@@ -262,6 +262,8 @@ fn stats() -> Stats {
         ctx_prev: 0,
         ctx_last: 0,
         ctx_reqs: 0,
+        user_msgs: 0,
+        assistant_msgs: 0,
         last_ts: Some(10_000),
         mtime: 9_000,
         partial: false,

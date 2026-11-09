@@ -9,6 +9,7 @@ pub mod gh;
 pub mod gitst;
 pub mod misc;
 pub mod model;
+pub mod modes;
 pub mod niche;
 pub mod repo;
 pub mod sessions;
@@ -74,7 +75,10 @@ static REGISTRY: &[(&str, &(dyn Placeholder + Sync))] = &[
     ("cost", &cost::Cost),
     ("burn", &cost::Burn),
     ("duration", &cost::Duration),
+    ("api", &cost::Api),
     ("lines", &cost::Lines),
+    ("name", &misc::Name),
+    ("modes", &modes::Modes),
     ("version", &misc::Version),
     ("style", &misc::Style),
     ("vim", &misc::Vim),
@@ -91,6 +95,7 @@ static REGISTRY: &[(&str, &(dyn Placeholder + Sync))] = &[
     ("sid", &niche::Sid),
     ("compactions", &niche::Compactions),
     ("skills", &niche::Skills),
+    ("msgs", &niche::Msgs),
     ("tmux", &tmux::Tmux),
 ];
 
