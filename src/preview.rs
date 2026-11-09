@@ -7,7 +7,8 @@ use crate::icons;
 use crate::options::Options;
 use crate::placeholders::ctx as ctxp;
 use crate::placeholders::{
-    dirs, gh, lookup, model, modes, niche, speed, spendhist, task, tokens, update, usage, Ctx,
+    dirs, gh, lookup, model, modes, niche, speed, spendhist, status, task, tokens, update, usage,
+    Ctx,
 };
 use crate::plugin::{self, ExtInfo};
 use crate::render::{builtin_config, render_sample};
@@ -102,6 +103,35 @@ fn session(state: &str, now: i64) -> Session {
 }
 
 /// `gh pr list` rows: #131 failing CI, #129 checks running, #128 green.
+/// An active minor incident and a resolved major one a day ago.
+fn sample_status(now: i64) -> crate::status::Snapshot {
+    use crate::status::{Impact, Incident, Snapshot};
+    let h = 3600;
+    let inc = |title: &str, impact, start, end| Incident {
+        title: title.into(),
+        impact,
+        start,
+        end,
+        components: vec!["claude.ai".into()],
+    };
+    Snapshot {
+        indicator: Some(Impact::Minor),
+        components: vec![
+            ("claude.ai".into(), Impact::Minor),
+            ("Claude Code".into(), Impact::None),
+        ],
+        incidents: vec![
+            inc(
+                "Elevated errors on claude.ai",
+                Impact::Minor,
+                now - 3 * h,
+                0,
+            ),
+            inc("Login failures", Impact::Major, now - 30 * h, now - 27 * h),
+        ],
+    }
+}
+
 fn sample_prs() -> [Value; 3] {
     let pr = |n: u32, rollup: Value| {
         json!({
@@ -184,6 +214,7 @@ fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Op
         "sid" => Some(dim("a1b2c3d4")),
         "tmux" => Some(dim("work:1")),
         "update" => Some(update::fmt(ctx, "0.2.0")),
+        "status" => status::fmt(ctx, opts, &sample_status(ctx.now), label),
         "compactions" | "skills" | "msgs" => niche::sample(name, opts, label),
         "modes" => Some(dim(&modes::sample(opts).join(" "))),
         "sessions" => Some(format!(

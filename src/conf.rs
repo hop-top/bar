@@ -144,6 +144,9 @@ pub struct Config {
     pub compact_at: Option<CompactAt>,
     /// `set update-check on`: `#{update}` checks GitHub daily, in the background.
     pub update_check: bool,
+    /// `set service-status on`: `#{status}` reads status.claude.com every 5
+    /// minutes, in the background.
+    pub service_status: bool,
     /// What a project `.bar.conf` may do (`set project-config`).
     pub project_config: ProjectMode,
     /// `set color-depth`: colours the output uses.
@@ -188,6 +191,7 @@ impl Default for Config {
             prices: Vec::new(),
             compact_at: None,
             update_check: false,
+            service_status: false,
             project_config: ProjectMode::default(),
             color_depth: ColorDepth::default(),
             gradient: String::new(),

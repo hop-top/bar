@@ -42,6 +42,9 @@ pub enum Job {
     Prices,
     /// Newest bar release tag of a channel from GitHub (`set update-check on`).
     Update { prerelease: bool },
+    /// Claude service status from status.claude.com (`set service-status on`);
+    /// `strip` also reads the incident history.
+    Status { strip: bool },
 }
 
 impl Job {
@@ -65,6 +68,7 @@ impl Job {
             }
             Job::Prices => json!({"kind": "prices"}),
             Job::Update { prerelease } => json!({"kind": "update", "prerelease": prerelease}),
+            Job::Status { strip } => json!({"kind": "status", "strip": strip}),
         }
     }
 
@@ -114,6 +118,9 @@ impl Job {
             Some("prices") => Ok(Job::Prices),
             Some("update") => Ok(Job::Update {
                 prerelease: v["prerelease"].as_bool().unwrap_or(false),
+            }),
+            Some("status") => Ok(Job::Status {
+                strip: v["strip"].as_bool().unwrap_or(false),
             }),
             other => Err(format!("unknown job kind {other:?}")),
         }
@@ -179,6 +186,7 @@ impl Job {
                 .ok()
                 .map(|(_, n)| n.to_string()),
             Job::Update { prerelease } => Some(crate::update::check(*prerelease, limit)),
+            Job::Status { strip } => crate::status::fetch(*strip, limit),
         }
     }
 }

@@ -438,3 +438,15 @@ fn read_refuses_a_file_someone_else_owns() {
     assert!(e.contains("owned by another user"), "{e}");
     assert!(project::read_as(&f, Some(mine)).is_ok());
 }
+
+#[test]
+fn safe_refuses_turning_on_the_service_status() {
+    let (c, e) = dropping(None, "set service-status on\n");
+    assert!(!c.service_status);
+    assert!(e[0].message.contains("set project-config full"));
+    let c = layered(Some("set project-config full\n"), "set service-status on\n").unwrap();
+    assert!(c.service_status);
+    // the user config may
+    let (c, e) = dropping(Some("set service-status on\n"), "");
+    assert!(c.service_status && e.is_empty());
+}

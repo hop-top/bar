@@ -45,6 +45,14 @@ pub fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
     Some(match name {
         "account" | "sessions" | "spend" | "burn" | "duration" | "api" | "lines" | "version"
         | "style" | "vim" | "agent" | "thinking" | "fast" | "update" => &[],
+        "status" => &[
+            ("show", List(&["state", "text", "strip"])),
+            ("components", Any),
+            ("ok", OneOf(&["0", "1"])),
+            ("hours", Pos),
+            ("max", Int),
+            ("link", Any),
+        ],
         "cost" => &[("fmt", OneOf(&["usd"]))],
         "cwd" | "root" => &[("base", OneOf(&["0", "1"]))],
         "spendhist" => &[
@@ -135,6 +143,15 @@ pub fn option_help(name: &str, key: &str) -> Option<(&'static str, &'static str)
         ("ctx", "glyphs") => ("blocks", "glyph set of the bar"),
         ("ctx", "color") => ("solid", "one colour, or a gradient along the filled cells"),
         ("ctx", "width") => ("5", "bar cells (1-40)"),
+        ("status", "show") => (
+            "state",
+            "components, in order: state, text (the active incident), strip (48 h history)",
+        ),
+        ("status", "components") => ("", "only these components, matched by name (`code|api`)"),
+        ("status", "ok") => ("0", "1 shows a check mark when all is operational"),
+        ("status", "hours") => ("6", "hours per cell of the strip"),
+        ("status", "max") => ("", "truncate the incident text to this many characters"),
+        ("status", "link") => ("", "false, no, off or 0 give plain text"),
         ("repo" | "branch", "max") => ("", "truncate to this many characters"),
         ("repo" | "branch", "link") => ("", "false, no, off or 0 give plain text"),
         ("usage", "type") => ("5h", "the 5-hour or the weekly window"),
