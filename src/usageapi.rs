@@ -11,6 +11,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use crate::cache::{Cache, Job};
+use crate::secret::Secret;
 use crate::session::Window;
 use crate::tz::{self, Tz};
 
@@ -28,6 +29,8 @@ pub const RATE_LIMIT_WAIT: i64 = 600;
 const MAX_WAIT: i64 = 86_400;
 /// Wait after the token is refused (401, 403), seconds.
 const AUTH_WAIT: i64 = 900;
+/// Wait after a keychain read timed out (an unanswered prompt), seconds.
+const BLOCKED_WAIT: i64 = 3600;
 /// Wait after the first failed fetch, doubling with each one after it.
 const FAIL_WAIT: i64 = 300;
 /// Longest wait after failures, seconds.
@@ -298,6 +301,17 @@ pub fn merge(prev: Option<&Data>, mut fresh: Data, now: i64, tz: Tz) -> Data {
     fresh
 }
 
+/// The curl config line carrying the token, in a buffer wiped on drop.
+fn curl_config(token: &Secret) -> Secret {
+    const HEAD: &[u8] = b"header = \"Authorization: Bearer ";
+    const TAIL: &[u8] = b"\"\n";
+    let mut c = Secret::with_capacity(HEAD.len() + token.as_bytes().len() + TAIL.len());
+    c.push(HEAD);
+    c.push(token.as_bytes());
+    c.push(TAIL);
+    c
+}
+
 /// Body of the background job: the new cache value, or `None` (no token)
 /// to keep the old one and retry after the cache's 60 s backoff. `prev` is
 /// the cache file of the last value. A 429, a refused token or a failed
@@ -310,17 +324,6 @@ pub fn fetch(dir: &Path, hashed: bool, prev: &Path, now: i64, limit: Duration) -
     if old.as_ref().is_some_and(|o| o.retry_at > now) {
         return None;
     }
-    // the keychain read and the request share `limit`
-    let end = Instant::now() + limit;
-    let token = creds::access_token(dir, hashed, now.saturating_mul(1000), limit)?;
-    let config = format!("header = \"Authorization: Bearer {token}\"\n");
-    drop(token);
-    let left = end.saturating_duration_since(Instant::now()).as_secs();
-    if left == 0 {
-        return None;
-    }
-    let r = crate::net::request(URL, &HEADERS, &config, left, MAX_BYTES);
-    drop(config);
     let wait = |secs: i64, failed: bool| {
         let mut d = old.clone().unwrap_or_default();
         d.retry_at = now + secs;
@@ -331,6 +334,21 @@ pub fn fetch(dir: &Path, hashed: bool, prev: &Path, now: i64, limit: Duration) -
         Some(d.to_json())
     };
     let failed = || wait(0, true);
+    // the keychain read and the request share `limit`
+    let end = Instant::now() + limit;
+    let token = match creds::access_token(dir, hashed, now.saturating_mul(1000), limit) {
+        Ok(t) => t,
+        Err(creds::NoToken::Missing) => return None,
+        Err(creds::NoToken::Blocked) => return wait(BLOCKED_WAIT, false),
+    };
+    let config = curl_config(&token);
+    drop(token);
+    let left = end.saturating_duration_since(Instant::now()).as_secs();
+    if left == 0 {
+        return None;
+    }
+    let r = crate::net::request(URL, &HEADERS, config.as_bytes(), left, MAX_BYTES);
+    drop(config);
     let Ok(r) = r else {
         return failed();
     };

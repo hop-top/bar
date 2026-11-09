@@ -37,6 +37,7 @@ pub mod preview;
 pub mod prices;
 pub mod render;
 pub mod rewrite;
+pub mod secret;
 pub mod session;
 pub mod settings;
 pub mod skin;

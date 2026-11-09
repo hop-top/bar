@@ -115,7 +115,7 @@ fn split_trailer(out: &[u8]) -> Option<Response> {
 pub(crate) fn request(
     url: &str,
     headers: &[&str],
-    config: &str,
+    config: &[u8],
     max_time: u64,
     cap: usize,
 ) -> Result<Response, String> {
@@ -131,7 +131,7 @@ pub(crate) fn request(
         .map_err(|e| format!("curl: {e}"))?;
     if let Some(mut stdin) = child.stdin.take() {
         // curl reads all of its config before it connects; dropped = EOF
-        let _ = stdin.write_all(config.as_bytes());
+        let _ = stdin.write_all(config);
     }
     let out = child.stdout.take().ok_or("curl: no output")?;
     // body plus the short trailer

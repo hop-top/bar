@@ -445,6 +445,54 @@ mod job {
         assert!(cache.read_fresh(&key, 3600).is_some());
     }
 
+    /// Order: the keychain entry for the user's account, the credentials
+    /// file, then the keychain entry of any account.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn credentials_file_comes_before_any_account() {
+        let t = Tmp::new();
+        let (envs, cwd) = setup(&t, "200", "");
+        let d = t.path();
+        let other = "sk-ant-oat01-OTHER-account-token-0000";
+        t.write(
+            "security.out",
+            &creds((now() + 3600) * 1000).replace(TOKEN, other),
+        );
+        // answers only the lookup without an account
+        exe(
+            &d.join("fake-bin/security"),
+            &format!(
+                "#!/bin/sh\nfor a in \"$@\"; do [ \"$a\" = -a ] && exit 44; done\ncat '{0}/security.out'\n",
+                d.display()
+            ),
+        );
+        t.write("claude/.credentials.json", &creds((now() + 3600) * 1000));
+        let (cache, key) = refresh(&t, &envs, &cwd);
+        token_nowhere(&t, &cache, &key);
+        // without the file, the any-account entry is used
+        std::fs::remove_file(d.join("claude/.credentials.json")).unwrap();
+        std::fs::remove_file(cache.path_for(&key)).unwrap();
+        refresh(&t, &envs, &cwd);
+        let stdin = std::fs::read_to_string(d.join("curl.stdin")).unwrap();
+        assert!(stdin.contains(other), "{stdin}");
+    }
+
+    /// A keychain read that hangs (a prompt nobody answers) waits an hour.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn blocked_keychain_waits_an_hour() {
+        let t = Tmp::new();
+        let (mut envs, cwd) = setup(&t, "200", "");
+        envs.push(("BAR_REFRESH_TIMEOUT", "2".into()));
+        let d = t.path();
+        exe(&d.join("fake-bin/security"), "#!/bin/sh\nsleep 5\n");
+        let (cache, key) = refresh(&t, &envs, &cwd);
+        assert!(!d.join("curl.argv").exists());
+        let v = Data::from_json(&cache.read_fresh(&key, 3600).unwrap()).unwrap();
+        let wait = v.retry_at - now();
+        assert!((3500..=3600).contains(&wait), "{wait}");
+    }
+
     /// The keychain read and the request share the refresh time limit, so
     /// a slow keychain leaves curl only what is left of it.
     #[cfg(target_os = "macos")]
