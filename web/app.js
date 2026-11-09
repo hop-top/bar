@@ -67,8 +67,9 @@
     for (const p of bundled.concat(userPlugins)) if (p && typeof p.name === "string") byName.set(p.name, p);
     manifest = JSON.stringify({ plugins: [...byName.values()] });
     pluginList = JSON.parse(bar.plugins(manifest));
-    $("plugins-status").textContent = `${pluginList.length} plugin${pluginList.length === 1 ? "" : "s"}` +
+    $("plugins-count").textContent = `${pluginList.length} plugin${pluginList.length === 1 ? "" : "s"}` +
       (userPlugins.length ? ` (${userPlugins.length} from your plugins.json)` : "");
+    $("clear-plugins").hidden = !userPlugins.length;
   }
 
   function store() {
@@ -90,27 +91,117 @@
     }
   }
 
+  // Errors of the text, for the line over the preview.
+  let errorSummary = "";
+
+  // While the text does not parse, the preview keeps the last valid
+  // config's line, dimmed, under a message saying what is wrong.
   function renderPreview() {
     const cols = parseInt(ui.columns.value, 10);
     $("columns-out").value = cols;
-    const out = bar.render(text, ui.session.value, cols, Date.now() / 1000, manifest);
+    const broken = lastInspect && !lastInspect.ok;
+    const shown = broken ? lastValid : text;
+    $("preview-error").hidden = !broken;
+    $("preview-error").textContent = broken ? errorSummary : "";
+    ui.term.classList.toggle("stale", broken);
+    if (shown === null) {
+      ui.term.innerHTML = "";
+      return;
+    }
+    const out = bar.render(shown, ui.session.value, cols, Date.now() / 1000, manifest);
     const rows = Ansi.toHtml(out).map((h) => `<span class="row">${h || " "}</span>`);
     ui.term.innerHTML = rows.join("") + `<span class="cols" style="width:${cols}ch"></span>`;
   }
 
+  // Did-you-mean: the closest name within a third of its length, by
+  // edit distance with swapped neighbours counting as one edit.
+  function distance(a, b) {
+    const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+    for (let j = 1; j <= b.length; j++) d[0][j] = j;
+    for (let i = 1; i <= a.length; i++) {
+      for (let j = 1; j <= b.length; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+        if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+      }
+    }
+    return d[a.length][b.length];
+  }
+  function closest(word, names) {
+    let best = null;
+    let bestD = Math.max(1, Math.floor(word.length / 3)) + 1;
+    for (const n of names) {
+      const dd = distance(word.toLowerCase(), n.toLowerCase());
+      if (dd < bestD) [best, bestD] = [n, dd];
+    }
+    return best;
+  }
+  // `set` keys bar knows: candidates the renderer does not reject as
+  // unknown, so a stale entry here never suggests a wrong key.
+  const SET_KEYS = [
+    "left", "center", "right", "separator", "gap", "wrap", "refresh", "icons", "icon-width", "claude-dir",
+    "update-check", "project-config", "color.good", "color.warn", "color.bad", "skin", "skin-glyphs",
+    "palette", "ramp", "price",
+  ].filter((k) => !JSON.stringify(JSON.parse(bar.inspect(`set ${k} x`))).includes("unknown set key"));
+  const DIRECTIVES = ["set", "default", "rule", "account", "plugin"];
+  function suggest(message) {
+    const names = () => schema.placeholders.map((p) => p.name).concat(pluginList.map((p) => p.name));
+    const rules = [
+      [/unknown set key `([^`]+)`/, () => SET_KEYS],
+      [/unknown directive `([^`]+)`/, () => DIRECTIVES],
+      [/unknown placeholder `([^`]+)`/, names],
+      [/^`([^`]+)` is not a core placeholder/, names],
+      [/unknown option `([^`]+)` for `([^`]+)`/, (m) => (Compose.optionKeys(m[2]) || [])],
+    ];
+    for (const [re, list] of rules) {
+      const m = re.exec(message);
+      if (!m) continue;
+      const hit = closest(m[1], list(m).filter((n) => n !== m[1]));
+      return hit ? `${message} (did you mean \`${hit}\`?)` : message;
+    }
+    return message;
+  }
+
+  // Selects line `n` of bar.conf.
+  function jumpTo(n) {
+    const lines = ui.conf.value.split("\n");
+    const start = lines.slice(0, n - 1).reduce((a, l) => a + l.length + 1, 0);
+    ui.conf.focus();
+    ui.conf.setSelectionRange(start, start + (lines[n - 1] || "").length);
+    const lh = parseFloat(getComputedStyle(ui.conf).lineHeight) || 18;
+    ui.conf.scrollTop = Math.max(0, (n - 3) * lh);
+  }
+
   function renderIssues() {
     const report = JSON.parse(bar.check(text, manifest));
+    const issues = report.issues.map((i) => ({ ...i, message: suggest(i.message) }));
     ui.issues.replaceChildren(
-      ...report.issues.map((i) => {
+      ...issues.map((i) => {
         const li = document.createElement("li");
         li.className = i.level;
-        li.textContent = `${i.line ? "line " + i.line + ": " : ""}${i.level}: ${i.message}`;
+        const body = `${i.level}: ${i.message}`;
+        if (i.line) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "issue-line";
+          b.textContent = `line ${i.line}`;
+          b.setAttribute("aria-label", `go to line ${i.line}`);
+          b.onclick = () => jumpTo(i.line);
+          li.append(b, " ", body);
+        } else li.textContent = body;
         return li;
       }),
     );
-    const errors = report.issues.filter((i) => i.level === "error").length;
+    const errs = issues.filter((i) => i.level === "error");
+    const errors = errs.length;
     ui.status.textContent = errors ? `${errors} error${errors > 1 ? "s" : ""}` : "valid";
     ui.status.classList.toggle("bad", errors > 0);
+    if (errors) {
+      const e = errs[0];
+      errorSummary =
+        `${errors} error${errors > 1 ? "s" : ""} in bar.conf — ${e.line ? "line " + e.line + ": " : ""}${e.message}` +
+        (lastValid !== null ? ". Showing the last valid version." : ".");
+    } else errorSummary = "";
     if (!errors) lastValid = text;
     $("revert").hidden = !errors || lastValid === null || lastValid === text;
     return errors;
@@ -335,20 +426,58 @@
 
   // The user's plugins.json (`bar web plugins -o plugins.json`)
   $("load-plugins").onclick = () => $("load-plugins-file").click();
+  const pluginsSay = (msg, bad = false) => {
+    $("plugins-say").textContent = msg;
+    $("plugins-say").classList.toggle("bad", bad);
+  };
+  function pluginsChanged() {
+    setText(text, null, { record: false });
+    drawPresetThumbs();
+  }
+  // Keeps the entries bar reads; says what was skipped and why.
   $("load-plugins-file").onchange = async (e) => {
     const f = e.target.files[0];
     e.target.value = "";
     if (!f) return;
+    let list;
     try {
       const v = JSON.parse(await f.text());
-      const list = Array.isArray(v) ? v : v.plugins;
-      if (!Array.isArray(list)) throw new Error("no plugins list");
-      setPlugins(list);
-      setText(text);
-      drawPresetThumbs();
+      list = Array.isArray(v) ? v : v && v.plugins;
+      if (!Array.isArray(list)) throw new Error("it has no plugins list");
     } catch (err) {
-      alert(`Not a plugins.json: ${err.message}`);
+      return pluginsSay(`${f.name} is not a plugins.json (${err.message}); your plugins are unchanged.`, true);
     }
+    if (!list.length) {
+      return pluginsSay(`${f.name} lists no plugins; your plugins are unchanged. Use Clear my plugins to remove them.`, true);
+    }
+    const kept = [];
+    const skipped = [];
+    list.forEach((p, i) => {
+      const at = `entry ${i + 1}`;
+      if (!p || typeof p !== "object" || Array.isArray(p)) return skipped.push(`${at} is not an object`);
+      if (typeof p.name !== "string" || !/^[A-Za-z0-9_.-]+$/.test(p.name)) return skipped.push(`${at} has no valid name`);
+      if (JSON.parse(bar.plugins(JSON.stringify({ plugins: [p] }))).length !== 1) {
+        return skipped.push(`${at} (${p.name}) is not a placeholder plugin as bar web plugins writes it`);
+      }
+      kept.push(p);
+    });
+    if (!kept.length) {
+      return pluginsSay(`No plugins loaded from ${f.name}; skipped ${skipped.length}: ${skipped.join("; ")}. Your plugins are unchanged.`, true);
+    }
+    setPlugins(kept);
+    pluginsChanged();
+    pluginsSay(
+      `Loaded ${kept.length} of ${list.length} plugin${list.length === 1 ? "" : "s"} from ${f.name}` +
+        (skipped.length ? `; skipped ${skipped.length}: ${skipped.join("; ")}.` : "."),
+      skipped.length > 0,
+    );
+  };
+  $("clear-plugins").onclick = () => {
+    const n = userPlugins.length;
+    setPlugins([]);
+    pluginsChanged();
+    pluginsSay(`Removed your ${n} plugin${n === 1 ? "" : "s"}; the bundled ones stay.`);
+    $("load-plugins").focus();
   };
 
   // Load, copy, download

@@ -36,7 +36,7 @@ Plugins run on your machine, not in the page, so the page works from a manifest 
 bar web plugins -o plugins.json
 ```
 
-and load the file with **Load plugins.json**; its entries replace bundled ones of the same name, and the page keeps it for the next visit. Plugins appear in the placeholder picker under their category, with their options and hints; options a plugin does not accept preview as nothing, as in `bar render`. A name in no manifest previews as itself.
+and load the file with **Load plugins.json** (in the Plugins section); its entries replace bundled ones of the same name, and the page keeps it for the next visit. The page says how many entries it loaded and why it skipped any (not an object, no valid name, not a placeholder plugin). A file with no usable entry, `[]` included, changes nothing; **Clear my plugins** removes yours. Plugins appear in the placeholder picker under their category, with their options and hints; options a plugin does not accept preview as nothing, as in `bar render`. A name in no manifest previews as itself.
 
 ## Editing
 
@@ -46,7 +46,7 @@ Keyboard: each group's chips are one tab stop. Arrow keys move between chips, Al
 
 The `bar.conf` text is the state. Layout, preset and look controls rewrite only the `set` lines they own (`set left`, `set center@2`, `set skin`, ...), so comments, `default`, `rule`, `account`, `plugin` and `set price` lines stay as written. Edit the text directly for anything the controls do not cover; the controls follow.
 
-Issues come from `bar check`, with the options of manifest plugins checked against their schema. A name that is neither a core placeholder nor in the manifest is a warning. While the text has errors the layout and look controls are locked, so nothing rewrites what you typed; **Revert to last valid** goes back to the last text without errors. A config with errors previews as the line `bar render` prints for one.
+Issues come from `bar check`, with the options of manifest plugins checked against their schema. A name that is neither a core placeholder nor in the manifest is a warning. While the text has errors the layout and look controls are locked, so nothing rewrites what you typed; **Revert to last valid** goes back to the last text without errors. Over the preview the page says what is wrong (`2 errors in bar.conf — line 1: unknown set key `palete` (did you mean `palette`?)`) and keeps drawing the last valid config, dimmed. Unknown set keys, directives, placeholders and options get a did-you-mean from the names bar knows; each issue's line number selects that line in the text.
 
 **Undo** and **Redo** (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z) step through every change, from the controls or typed. The page keeps the config, its undo history and the last valid text in the browser's local storage, so a reload can still undo.
 

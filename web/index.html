@@ -18,8 +18,6 @@
       <button id="redo" class="btn" type="button" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z" disabled>Redo</button>
       <button id="load" class="btn" type="button">Load bar.conf</button>
       <input id="load-file" type="file" accept=".conf,text/plain" hidden>
-      <button id="load-plugins" class="btn" type="button" title="Output of: bar web plugins -o plugins.json">Load plugins.json</button>
-      <input id="load-plugins-file" type="file" accept=".json,application/json" hidden>
       <button id="copy" class="btn" type="button">Copy</button>
       <button id="download" class="btn primary" type="button">Download bar.conf</button>
     </div>
@@ -68,6 +66,7 @@
           <output id="columns-out">120</output>
         </label>
       </div>
+      <p id="preview-error" class="preview-error" aria-live="polite" hidden></p>
       <div class="term-wrap"><div id="term" class="term" role="img" aria-label="status line preview"></div></div>
       <p class="note">Rendered by bar itself (compiled to WebAssembly). Session fields come from the JSON below; git, GitHub, transcript and account values are bar's preview samples; plugins draw the sample from their manifest entry, or their name.</p>
       <details>
@@ -79,7 +78,7 @@
 
     <section class="compose card">
       <div class="card-head">
-        <h2>Layout <span id="plugins-status" class="status"></span></h2>
+        <h2>Layout</h2>
         <div id="line-tabs" class="tabs" role="tablist" aria-label="Status line"></div>
       </div>
       <p id="chip-keys" class="hint">Keyboard: Tab to a group's items, arrows to move between them, Alt+arrows to reorder, Delete to remove, Enter to edit.</p>
@@ -101,6 +100,19 @@
       <div class="card-head"><h2>bar.conf</h2><span class="row"><span id="status" class="status"></span><button id="revert" class="btn small" type="button" hidden>Revert to last valid</button></span></div>
       <textarea id="conf" spellcheck="false" rows="14" aria-label="bar.conf"></textarea>
       <ul id="issues" class="issues"></ul>
+    </section>
+    <section class="plugins card" aria-labelledby="plugins-h">
+      <div class="card-head">
+        <h2 id="plugins-h">Plugins</h2>
+        <span id="plugins-count" class="status"></span>
+      </div>
+      <p class="note">Your own <code>bar-&lt;name&gt;</code> plugins: run <code>bar web plugins -o plugins.json</code> and load the file. The page keeps it for your next visit.</p>
+      <div class="row wrap">
+        <button id="load-plugins" class="btn" type="button">Load plugins.json</button>
+        <input id="load-plugins-file" type="file" accept=".json,application/json" hidden>
+        <button id="clear-plugins" class="btn" type="button" hidden>Clear my plugins</button>
+      </div>
+      <p id="plugins-say" class="say" role="status" aria-live="polite"></p>
     </section>
   </main>
 

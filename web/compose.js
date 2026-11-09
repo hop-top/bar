@@ -403,5 +403,10 @@ const Compose = (() => {
     return el("div", { className: "adders" }, el("div", { className: "row wrap" }, pick, sep, text), host);
   }
 
-  return { init, update };
+  // Option keys placeholder `name` takes, the generic ones included.
+  function optionKeys(name) {
+    return ui.options(name).map((o) => o.key).concat(["icon", "bg"]);
+  }
+
+  return { init, update, optionKeys };
 })();
