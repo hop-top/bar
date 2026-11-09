@@ -7,11 +7,12 @@ Rust edition 2021, stable toolchain. `hop-top-kit` is pinned exactly.
 ```sh
 make setup   # cargo fetch
 make build   # release build
-make check   # fmt-check + clippy -D warnings + tests + gallery-check
+make check   # fmt-check + clippy -D warnings + tests + gallery-check + bench-badge-check
 make gallery # redraw docs/gallery.md and docs/gallery/*.svg
+make bench-badge # redraw docs/badges/bench.svg from bench/results/
 ```
 
-`make check` needs `python3` for `gallery-check`, which fails when [docs/gallery.md](docs/gallery.md) no longer matches `bar` output; run `make gallery` after changing what a render looks like. `make gallery` also needs fontTools and Hack Nerd Font Mono ([docs/dependencies.md](docs/dependencies.md#gallery-tooling-not-built-into-bar)).
+`make check` needs `python3` for `gallery-check`, which fails when [docs/gallery.md](docs/gallery.md) no longer matches `bar` output; run `make gallery` after changing what a render looks like. `bench-badge-check` fails when [docs/badges/bench.svg](docs/badges/bench.svg) no longer matches the results in `bench/results/`; run `make bench-badge` after committing a new run. `make gallery` also needs fontTools and Hack Nerd Font Mono ([docs/dependencies.md](docs/dependencies.md#gallery-tooling-not-built-into-bar)).
 
 `make check` must pass before a change goes up.
 

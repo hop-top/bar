@@ -1,6 +1,6 @@
-.PHONY: build test lint format check setup gallery gallery-check
+.PHONY: build test lint format check setup gallery gallery-check bench-badge bench-badge-check
 
-check: lint test gallery-check
+check: lint test gallery-check bench-badge-check
 
 build:
 	cargo build --release
@@ -25,3 +25,11 @@ gallery:
 # fails when the gallery no longer matches bar's output
 gallery-check:
 	scripts/gallery --check
+
+# docs/badges/bench.svg from the results in bench/results/
+bench-badge:
+	scripts/bench-badge
+
+# fails when the badge no longer matches the recorded results
+bench-badge-check:
+	scripts/bench-badge --check

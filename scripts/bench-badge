@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""Builds docs/badges/bench.svg from the benchmark results in bench/results/.
+
+A case is one (group, metric, rival) cell of the README Benchmarks tables;
+bar wins it when its value is strictly lower. Badge colour: green with no
+losses, orange with one, red with two or more.
+
+    scripts/bench-badge            print the cases, write the badge
+    scripts/bench-badge --check    exit 1 when the committed badge is stale
+    scripts/bench-badge --results DIR --out FILE   other inputs / output
+
+Sources (medians unless noted):
+  warm, cold      ben-warm.json, ben-cold.json: latency_ms
+  cold total CPU  ben-total-cold-<tool>.json: cpu_ms + bg_cpu_ms
+  memory, MiB     ben-time-v-<tool>.txt when present (GNU time, mean max RSS
+                  of the recorded runs), else ben-warm.json max_rss_kb; ben's
+                  RSS includes ben's own, so it is used only for tools whose
+                  footprint dwarfs it (the Node tools)
+"""
+
+import argparse
+import json
+import re
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+RESULTS = ROOT / "bench" / "results"
+BADGE = ROOT / "docs" / "badges" / "bench.svg"
+
+GROUPS = [
+    ("tokens", "bar", ["claude-powerline", "ccstatusline"]),
+    ("no tokens", "bar-notokens", ["ccline"]),
+]
+METRICS = [
+    ("warm ms", "warm"),
+    ("cold ms", "cold"),
+    ("cold CPU ms", "total"),
+    ("memory MiB", "memory"),
+]
+
+COLOURS = {0: "#4c1", 1: "#fe7d37"}
+RED = "#e05d44"
+LABEL = "bench"
+
+
+# --- data ---------------------------------------------------------------
+
+
+def load_ben(path):
+    data = json.loads(path.read_text())
+    return {c["name"]: c["metrics"] for c in data["candidates"]}
+
+
+def time_v_rss(path):
+    kb = [int(x) for x in re.findall(r"Maximum resident set size \(kbytes\): (\d+)", path.read_text())]
+    if not kb:
+        sys.exit(f"bench-badge: no max RSS in {path}")
+    return sum(kb) / len(kb) / 1024
+
+
+def value(results, ben, metric, tool):
+    if metric == "warm":
+        return ben["warm"][tool]["latency_ms"]
+    if metric == "cold":
+        return ben["cold"][tool]["latency_ms"]
+    if metric == "total":
+        s = json.loads((results / f"ben-total-cold-{tool}.json").read_text())["summary"]
+        return s["cpu_ms"]["median"] + s["bg_cpu_ms"]["median"]
+    tv = results / f"ben-time-v-{tool}.txt"
+    if tv.exists():
+        return time_v_rss(tv)
+    return ben["warm"][tool]["max_rss_kb"] / 1024
+
+
+def cases(results):
+    ben = {k: load_ben(results / f"ben-{k}.json") for k in ("warm", "cold")}
+    rows = []
+    for group, own, rivals in GROUPS:
+        for name, metric in METRICS:
+            mine = value(results, ben, metric, own)
+            for rival in rivals:
+                theirs = value(results, ben, metric, rival)
+                rows.append((group, name, own, mine, rival, theirs, mine < theirs))
+    return rows
+
+
+# --- badge --------------------------------------------------------------
+
+# Verdana 11px advance widths, as shields.io measures badge text.
+WIDTHS = {
+    " ": 3.87, "/": 4.95, "0": 7.0, "1": 7.0, "2": 7.0, "3": 7.0, "4": 7.0,
+    "5": 7.0, "6": 7.0, "7": 7.0, "8": 7.0, "9": 7.0, "a": 6.65, "b": 6.86,
+    "c": 5.73, "e": 6.68, "h": 7.09, "i": 3.02, "l": 3.02, "n": 7.09,
+    "o": 6.79, "s": 5.76, "w": 9.0,
+}
+
+
+def text_width(s):
+    return round(sum(WIDTHS[c] for c in s))
+
+
+def message(rows):
+    wins = sum(r[6] for r in rows)
+    return f"{wins}/{len(rows)} wins"
+
+
+def colour(rows):
+    losses = sum(not r[6] for r in rows)
+    return COLOURS.get(losses, RED)
+
+
+def svg(msg, fill):
+    lw, mw = text_width(LABEL) + 10, text_width(msg) + 10
+    w = lw + mw
+    title = f"{LABEL}: {msg}"
+
+    def text(s, x0, width):
+        x, tl = (x0 + width / 2) * 10, (width - 10) * 10
+        return (
+            f'<text aria-hidden="true" x="{x:g}" y="150" fill="#010101" fill-opacity=".3" textLength="{tl}">{s}</text>'
+            f'<text x="{x:g}" y="140" textLength="{tl}">{s}</text>'
+        )
+
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="20" role="img" aria-label="{title}">'
+        f"<title>{title}</title>"
+        '<linearGradient id="s" x2="0" y2="100%"><stop offset="0" stop-color="#bbb" stop-opacity=".1"/>'
+        '<stop offset="1" stop-opacity=".1"/></linearGradient>'
+        f'<clipPath id="r"><rect width="{w}" height="20" rx="3"/></clipPath>'
+        f'<g clip-path="url(#r)"><rect width="{lw}" height="20" fill="#555"/>'
+        f'<rect x="{lw}" width="{mw}" height="20" fill="{fill}"/>'
+        f'<rect width="{w}" height="20" fill="url(#s)"/></g>'
+        '<g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" '
+        'text-rendering="geometricPrecision" font-size="110"><g transform="scale(.1)">'
+        f"{text(LABEL, 0, lw)}{text(msg, lw, mw)}</g></g></svg>\n"
+    )
+
+
+# --- main ---------------------------------------------------------------
+
+
+def table(rows):
+    out = ["| group | metric | bar | value | rival | value | result |", "|---|---|---|---|---|---|---|"]
+    for group, name, own, mine, rival, theirs, win in rows:
+        out.append(f"| {group} | {name} | {own} | {mine:.2f} | {rival} | {theirs:.2f} | {'win' if win else 'LOSS'} |")
+    return "\n".join(out)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--check", action="store_true", help="fail when the badge is stale")
+    ap.add_argument("--results", type=Path, default=RESULTS)
+    ap.add_argument("--out", type=Path, default=BADGE)
+    args = ap.parse_args()
+
+    rows = cases(args.results)
+    msg, fill = message(rows), colour(rows)
+    want = svg(msg, fill)
+    print(table(rows))
+    print(f"\nbadge: {LABEL} | {msg} | {fill}")
+
+    if args.check:
+        have = args.out.read_text() if args.out.exists() else ""
+        if have != want:
+            print(f"{args.out} is stale; run scripts/bench-badge", file=sys.stderr)
+            return 1
+        return 0
+    args.out.write_text(want)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

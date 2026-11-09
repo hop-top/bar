@@ -186,6 +186,14 @@ GOWORK=off CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o ben ./cmd/ben
 
 `run.sh ben` runs ben with `HOME=/opt/slbench/benhome`, so ben's run store stays out of the tools' `HOME`s. The suites take the work root from `task.input.slb` (`/opt/slbench`).
 
+### Badge
+
+The `bench` badge in the top-level README reads the ben results committed here and counts cases: one per cell of the README Benchmarks tables, that is `bar` against claude-powerline and ccstatusline, and `bar-notokens` against ccline, each on warm latency, cold latency, cold total CPU including detached jobs, and memory (12 cases). bar wins a case when its value is strictly lower. The badge shows wins out of cases: green with no losses, orange with one, red with two or more.
+
+Values: warm and cold latency medians from `ben-warm.json` and `ben-cold.json`; cold total CPU as the `cpu_ms` plus `bg_cpu_ms` medians from `ben-total-cold-<tool>.json`; memory as the mean max RSS of the GNU time runs in `ben-time-v-<tool>.txt` where present (bar, bar-notokens, ccline), otherwise the warm `max_rss_kb` median from `ben-warm.json` (the Node tools; it includes ben's own 16.5 MiB, see above). These are the README values.
+
+`scripts/bench-badge` prints the cases and writes `docs/badges/bench.svg`; `scripts/bench-badge --check` (part of `make check`) fails when the committed badge no longer matches the results. After committing a new run, run `make bench-badge`.
+
 ## Reproducing
 
 Inside a Linux container (root), with Node/npm, git, jq and Python 3:
