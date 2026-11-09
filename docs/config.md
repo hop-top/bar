@@ -661,7 +661,7 @@ Claude Code runs the status line command as a child process, so these variables 
 
 `gradient=<value>` on a placeholder colours its value character by character, first stop on the first character, last stop on the last; `set gradient <value>` colours every line the same way, across all its segments, left group first.
 
-A value is a preset or 2 to 8 colours split by `:` (or `,`): `gradient=ember`, `gradient=#ff8800:#0088ff`, `gradient=good:warn:bad`, `set gradient "#5e81ac,#b48ead"`.
+A value is a preset or 2 to 8 colours split by `:`: `gradient=ember`, `gradient=#ff8800:#0088ff`, `gradient=good:warn:bad`, `set gradient "#5e81ac:#b48ead"`.
 
 | Preset | From | To |
 |---|---|---|

@@ -46,12 +46,12 @@ impl ColorSpec {
     }
 }
 
-/// Stops of a gradient value: a preset, or colours split by `:` or `,`,
-/// roles included.
+/// Stops of a gradient value: a preset, or colours split by `:`, roles
+/// included.
 fn gradient_stops(s: &str, config: &Config) -> Option<Vec<Color>> {
     parse_stops(s).or_else(|| {
         let stops: Option<Vec<Color>> = s
-            .split([':', ','])
+            .split(':')
             .map(|p| ColorSpec::parse(p).map(|c| c.resolve(config)))
             .collect();
         stops.filter(|v| (2..=crate::gradient::MAX_STOPS).contains(&v.len()))
