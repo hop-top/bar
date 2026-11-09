@@ -259,3 +259,23 @@ fn first_save_backs_up_the_old_file_once() {
         .count();
     assert_eq!(baks, 1);
 }
+
+#[test]
+fn save_refuses_once_when_the_file_changed_on_disk() {
+    let t = TmpDir::new("race");
+    let path = t.0.join("bar.conf");
+    std::fs::write(&path, CONF).unwrap();
+    let mut ed = Editor::new(path.clone(), Some(CONF.into()));
+    ed.set_style("skin", "plain");
+    std::fs::write(&path, "set skin capsule\n").unwrap();
+    let e = ed.save().unwrap_err();
+    assert!(e.contains("changed since it was read"), "{e}");
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "set skin capsule\n"
+    );
+    assert!(ed.dirty());
+    // saving again overwrites the change it was told about
+    ed.save().unwrap();
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), ed.text());
+}

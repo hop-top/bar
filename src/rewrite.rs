@@ -15,6 +15,25 @@ pub fn target(path: &Path) -> Result<PathBuf, String> {
     }
 }
 
+/// Refuses when `path` (a [`target`]) no longer holds `expected`, the
+/// text it was read as (`None`: it did not exist), so a change made by
+/// someone else since then is never overwritten.
+pub fn unchanged(path: &Path, expected: Option<&str>) -> Result<(), String> {
+    let now = match std::fs::read_to_string(path) {
+        Ok(s) => Some(s),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(format!("{}: {e}", path.display())),
+    };
+    if now.as_deref() == expected {
+        Ok(())
+    } else {
+        Err(format!(
+            "{} changed since it was read; nothing written",
+            path.display()
+        ))
+    }
+}
+
 /// Backups kept per file; a new backup removes the older ones.
 pub const KEEP: usize = 5;
 
@@ -163,7 +182,7 @@ pub fn replace(path: &Path, body: &str, to: Backups) -> std::io::Result<Option<P
 
 #[cfg(test)]
 mod tests {
-    use super::{replace, target, Backups, KEEP};
+    use super::{replace, target, unchanged, Backups, KEEP};
 
     fn tmp() -> std::path::PathBuf {
         let d = std::env::temp_dir().join(format!(
@@ -284,6 +303,22 @@ mod tests {
         assert!(!old.exists());
         assert!(keep.exists());
         assert!(last.unwrap().exists());
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    #[test]
+    fn unchanged_compares_with_the_text_read() {
+        let d = tmp();
+        let f = d.join("f.conf");
+        assert!(unchanged(&f, None).is_ok());
+        std::fs::write(&f, "a\n").unwrap();
+        assert!(unchanged(&f, Some("a\n")).is_ok());
+        let e = unchanged(&f, None).unwrap_err();
+        assert!(e.contains("changed since it was read"), "{e}");
+        std::fs::write(&f, "b\n").unwrap();
+        assert!(unchanged(&f, Some("a\n")).is_err());
+        std::fs::remove_file(&f).unwrap();
+        assert!(unchanged(&f, Some("a\n")).is_err());
         let _ = std::fs::remove_dir_all(d);
     }
 }

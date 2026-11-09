@@ -274,6 +274,8 @@ pub fn run(
             return Err(Error::Declined);
         }
     }
+    crate::rewrite::unchanged(&plan.path, plan.text.as_deref())
+        .map_err(|e| Error::Failed(format!("{e}; run bar install again")))?;
     let rec = record_path(&env.state_dir, &plan.path);
     if let Record::Write(prev) = &plan.record {
         let body = json!({"settings": plan.path.display().to_string(), "statusLine": prev});
