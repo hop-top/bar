@@ -128,6 +128,12 @@ fn when_value(spec: &super::OptSpec, v: &Value) -> Option<Value> {
 /// the first sample whose `when` matches them all, else a generic one,
 /// the plugin name as text.
 pub fn sample(info: &ExtInfo, options: &Map<String, Value>) -> Output {
+    matching_sample(info, options).unwrap_or_else(|| generic(&info.name))
+}
+
+/// The first sample whose `when` matches typed `options`; `None` when the
+/// plugin gives none that does.
+pub fn matching_sample(info: &ExtInfo, options: &Map<String, Value>) -> Option<Output> {
     let samples = info
         .web
         .as_ref()
@@ -147,7 +153,6 @@ pub fn sample(info: &ExtInfo, options: &Map<String, Value>) -> Output {
         .flatten()
         .filter(|s| matches(s))
         .find_map(|s| parse_output(&s.get("output")?.to_string()))
-        .unwrap_or_else(|| generic(&info.name))
 }
 
 fn generic(name: &str) -> Output {

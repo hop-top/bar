@@ -51,10 +51,11 @@ pub fn run() -> Result<(), String> {
         .into_iter()
         .map(|f| f.name)
         .collect();
+    // as `bar web plugins`: the cached `--ext-info` when fresh, else run now
+    let cache = crate::cache::Cache::new(&crate::click::state_dir());
     let load: app::InfoLoader = Box::new(move |name| {
         let f = plugin::find(&dirs, name)?;
-        let info = plugin::info(&f);
-        Some(info)
+        Some(plugin::info_now(&cache, &f))
     });
     let mut app = App::new(Editor::new(path, text), plugins, load);
     let mut term = ratatui::try_init().map_err(|e| e.to_string())?;
