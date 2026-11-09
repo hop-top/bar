@@ -1,0 +1,27 @@
+name: bench-fresh
+
+# Release PRs (release-please branches `release-please--*`, on next, main and
+# release/<major>.<minor>) must carry a fresh `make bench` run: the inputs hash
+# recorded in bench/results/ben-meta.json must equal the release commit's
+# (scripts/bench-inputs; the version bump itself is not an input). Results are
+# committed to the release PR's base branch, not the release PR branch:
+# release-please recreates that branch from its base on every run.
+#
+# Required check `bench-fresh`. On other PRs the job is skipped, which GitHub
+# counts as passing, so requiring it blocks only stale release PRs.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  bench-fresh:
+    if: startsWith(github.head_ref, 'release-please--')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Benchmarks match the release's inputs
+        run: make bench-check
