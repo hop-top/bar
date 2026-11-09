@@ -293,6 +293,12 @@ fn set_line(
     obj.insert(key.name.into(), line);
 }
 
+/// A binary run through `npx` (or `npm exec`): under a `_npx` directory
+/// of npm's cache.
+fn in_npx_cache(bar: &Path) -> bool {
+    bar.components().any(|c| c.as_os_str() == "_npx")
+}
+
 fn plan_install(env: &Env, o: &Opts) -> Result<Plan, String> {
     let l = load(&env.settings)?;
     let shown = l.path.display().to_string();
@@ -316,6 +322,12 @@ fn plan_install(env: &Env, o: &Opts) -> Result<Plan, String> {
         );
     }
     let mut notes = Vec::new();
+    if in_npx_cache(&env.bar) {
+        notes.push(format!(
+            "warning: {bar} is in the npx cache, which npm may clear; \
+             install it with npm install -g @hop-top/bar and run bar install again"
+        ));
+    }
     for key in [&STATUS, &SUBAGENT] {
         if kept.contains_key(key.name) {
             notes.push(format!(
