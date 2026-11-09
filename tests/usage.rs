@@ -145,7 +145,7 @@ fn bar_cells_share_exact_value_colour() {
         let colors = cell_colors(&go(&s, &[("type", "5h")], t.path()).unwrap());
         assert!(!colors.is_empty());
         assert!(
-            colors.iter().all(|c| *c == want),
+            colors.iter().all(|c| want == *c),
             "{used}: {colors:?} != {want}"
         );
     }

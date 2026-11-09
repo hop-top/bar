@@ -141,7 +141,7 @@
   const SET_KEYS = [
     "left", "center", "right", "separator", "gap", "wrap", "max-rows", "refresh", "icons", "icon-width", "claude-dir",
     "compact-at", "update-check", "project-config", "color.good", "color.warn", "color.bad", "skin",
-    "skin-glyphs", "palette", "ramp", "price",
+    "skin-glyphs", "palette", "color-depth", "gradient", "ramp", "price",
   ].filter((k) => !JSON.stringify(JSON.parse(bar.inspect(`set ${k} x`))).includes("unknown set key"));
   const DIRECTIVES = ["set", "default", "rule", "account", "plugin"];
   function suggest(message) {
@@ -375,6 +375,7 @@
       const plugin = pluginList.find((p) => p.name === name);
       return plugin ? plugin.options : [];
     },
+    generic: () => schema.generic,
     separator: () => (lastInspect && lastInspect.ok ? lastInspect.set.separator : "│"),
     describe: (name) => {
       const core = schema.placeholders.find((p) => p.name === name);

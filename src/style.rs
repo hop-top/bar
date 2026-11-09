@@ -1,17 +1,45 @@
 //! SGR colouring, OSC 8 links, text sanitising and visible-width measuring.
 
+use crate::color::{Color, Depth};
+use std::fmt::Write;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-pub fn fg(code: u8, text: &str) -> String {
+pub fn fg(code: impl Into<Color>, text: &str) -> String {
     format!("{}{text}\x1b[39m", fg_code(code))
 }
 
 /// The SGR that starts foreground `code`.
-pub fn fg_code(code: u8) -> String {
-    match ansi16(code) {
-        Some(n) => format!("\x1b[{}m", if n < 8 { 30 + n } else { 82 + n }),
-        None => format!("\x1b[38;5;{code}m"),
-    }
+pub fn fg_code(code: impl Into<Color>) -> String {
+    let mut s = String::with_capacity(12);
+    push_sgr(&mut s, code.into(), false);
+    s
+}
+
+/// Appends the SGR that starts foreground `c`.
+pub fn push_fg(out: &mut String, c: Color) {
+    push_sgr(out, c, false);
+}
+
+/// The SGR for `c` at the depth in effect: codes 0-15 as ANSI 16-colour
+/// SGR under the terminal palette or at depth 16, RGB as `38;2` only at
+/// truecolor, everything else quantised (`Color::at`).
+fn push_sgr(out: &mut String, c: Color, bg: bool) {
+    let d = depth();
+    let c = c.at(d);
+    let _ = match c {
+        Color::Idx(n) if n < 16 && (d == Depth::Ansi16 || ANSI_NOW.with(std::cell::Cell::get)) => {
+            let base = if bg { 40 } else { 30 };
+            write!(
+                out,
+                "\x1b[{}m",
+                if n < 8 { base + n } else { base + 52 + n }
+            )
+        }
+        Color::Idx(n) if bg => write!(out, "\x1b[48;5;{n}m"),
+        Color::Idx(n) => write!(out, "\x1b[38;5;{n}m"),
+        Color::Rgb([r, g, b]) if bg => write!(out, "\x1b[48;2;{r};{g};{b}m"),
+        Color::Rgb([r, g, b]) => write!(out, "\x1b[38;2;{r};{g};{b}m"),
+    };
 }
 
 /// Accent for names (repo): 256-colour blue, or ANSI cyan under the terminal
@@ -34,11 +62,6 @@ pub fn neutral() -> u8 {
     }
 }
 
-/// The code when it is one of the 16 and the terminal palette is in effect.
-fn ansi16(code: u8) -> Option<u8> {
-    (code < 16 && ANSI_NOW.with(std::cell::Cell::get)).then_some(code)
-}
-
 pub fn bold(text: &str) -> String {
     format!("\x1b[1m{text}\x1b[22m")
 }
@@ -50,6 +73,26 @@ pub const MUTED: u8 = 250;
 thread_local! {
     static MUTED_NOW: std::cell::Cell<u8> = const { std::cell::Cell::new(MUTED) };
     static ANSI_NOW: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static DEPTH_NOW: std::cell::Cell<Depth> = const { std::cell::Cell::new(Depth::Ansi256) };
+}
+
+/// Restores the previous depth when dropped.
+pub struct DepthGuard(Depth);
+
+impl Drop for DepthGuard {
+    fn drop(&mut self) {
+        DEPTH_NOW.with(|d| d.set(self.0));
+    }
+}
+
+/// Draws colours at `depth` on this thread until the guard drops.
+pub fn use_depth(depth: Depth) -> DepthGuard {
+    DepthGuard(DEPTH_NOW.with(|d| d.replace(depth)))
+}
+
+/// The colour depth in effect on this thread.
+pub fn depth() -> Depth {
+    DEPTH_NOW.with(std::cell::Cell::get)
 }
 
 /// Restores the previous ANSI mode when dropped.
@@ -90,11 +133,10 @@ pub fn dim(text: &str) -> String {
     fg(muted(), text)
 }
 
-pub fn bg_code(code: u8) -> String {
-    match ansi16(code) {
-        Some(n) => format!("\x1b[{}m", if n < 8 { 40 + n } else { 92 + n }),
-        None => format!("\x1b[48;5;{code}m"),
-    }
+pub fn bg_code(code: impl Into<Color>) -> String {
+    let mut s = String::with_capacity(12);
+    push_sgr(&mut s, code.into(), true);
+    s
 }
 
 /// OSC 8 hyperlink; no SGR underline, the terminal draws it. A URL holding
@@ -107,7 +149,7 @@ pub fn link(url: &str, text: &str) -> String {
 }
 
 /// Picks `ramp[(score + 9) / 10]` with the score clamped to 0..=100.
-pub fn ramp(score: i32, ramp: &[u8; 11]) -> u8 {
+pub fn ramp(score: i32, ramp: &[Color; 11]) -> Color {
     ramp[((score.clamp(0, 100) + 9) / 10) as usize]
 }
 
@@ -277,4 +319,55 @@ pub fn strip_codes(text: &str) -> String {
         }
     }
     plain
+}
+
+/// The text with SGR colour parameters removed (`NO_COLOR`); other
+/// attributes and OSC 8 links stay, and an SGR left empty is dropped.
+pub fn strip_colors(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find("\x1b[") {
+        out.push_str(&rest[..at]);
+        let seq = &rest[at + 2..];
+        let Some(end) = seq.find(|c: char| ('\x40'..='\x7e').contains(&c)) else {
+            out.push_str(&rest[at..]);
+            return out;
+        };
+        if seq.as_bytes()[end] == b'm' {
+            let kept = without_colors(&seq[..end]);
+            if !kept.is_empty() || seq[..end].is_empty() {
+                out.push_str("\x1b[");
+                out.push_str(&kept);
+                out.push('m');
+            }
+        } else {
+            out.push_str(&rest[at..at + 2 + end + 1]);
+        }
+        rest = &seq[end + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// An SGR parameter list without its colour parameters.
+fn without_colors(params: &str) -> String {
+    let p: Vec<&str> = params.split(';').collect();
+    let mut kept: Vec<&str> = Vec::new();
+    let mut i = 0;
+    while i < p.len() {
+        match p[i].parse::<u16>().unwrap_or(0) {
+            38 | 48 | 58 => {
+                i += match p.get(i + 1).copied() {
+                    Some("5") => 3,
+                    Some("2") => 5,
+                    _ => 1,
+                };
+                continue;
+            }
+            30..=37 | 39 | 40..=47 | 49 | 59 | 90..=97 | 100..=107 => {}
+            _ => kept.push(p[i]),
+        }
+        i += 1;
+    }
+    kept.join(";")
 }

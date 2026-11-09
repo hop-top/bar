@@ -140,7 +140,7 @@ fn colours_follow_config() {
     let t = Tmp::new();
     t.session("1.json", &live(), "a", "busy");
     let mut cfg = Config::default();
-    cfg.colors.warn = 99;
+    cfg.colors.warn = 99.into();
     let s = Session::default();
     let runner = ColdRunner;
     let ctx = Ctx {

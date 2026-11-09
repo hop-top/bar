@@ -164,7 +164,7 @@ fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Op
                 .config
                 .accounts
                 .first()
-                .map_or(("work", accent()), |a| (a.label.as_str(), a.color));
+                .map_or(("work", accent().into()), |a| (a.label.as_str(), a.color));
             Some(bold(&fg(color, label)))
         }
         "agents" if label => Some(format!("{} 2", dim("agents"))),

@@ -4,7 +4,7 @@ How to write `bar.conf`: where it lives, the directives, every placeholder and i
 
 - [Overview](#overview): [config file](#config-file), [project config](#project-config), [directives](#directives), [rules](#rules), [minimal example](#minimal-example)
 - [Placeholders](#placeholders): [session](#session), [ctx](#ctx), [usage](#usage), [tokens, cache, cachettl](#tokens-cache-cachettl), [ttft, tps, misses](#ttft-tps-misses), [spendhist](#spendhist), [git and directories](#git-and-directories), [prs and issues](#prs-and-issues), [account, agents, sessions, tmux](#account-agents-sessions-tmux), [update](#update), [every placeholder](#options-on-every-placeholder), [values](#values)
-- [Styling](#styling): [skins](#skins), [palettes](#palettes), [icons](#icons), [glyphs](#glyphs), [colours](#colours)
+- [Styling](#styling): [skins](#skins), [palettes](#palettes), [icons](#icons), [glyphs](#glyphs), [colours](#colours), [colour depth](#colour-depth), [gradients](#gradients)
 - [Layout](#layout): [lines and wrapping](#lines-and-wrapping), [subagent rows](#subagent-rows)
 - [Commands](#commands): [bar install](#bar-install), [bar update](#update), [bar check](#bar-check), [bar config](#bar-config), [bar preview](#bar-preview), [bar edit](#bar-edit), [presets and bar init](#presets), [click handler](#click-handler-macos), [clickable commands](#clickable-commands), [hooks](#hooks)
 - [Files and environment](#files-and-environment)
@@ -59,13 +59,13 @@ A project file comes with the repository, so what it may do is set in your confi
 
 | Directive | Form |
 |-----------|------|
-| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-64) `subagent subagent-hide separator gap wrap max-rows refresh icons icon-width skin skin-glyphs palette claude-dir compact-at project-config update-check color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
+| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-64) `subagent subagent-hide separator gap wrap max-rows refresh icons icon-width skin skin-glyphs palette color-depth gradient claude-dir compact-at project-config update-check color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
 | `default` | `default <placeholder> key=value ...` |
 | `account` | `account "<glob>" <label> <color>` |
 | `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%`; see [Rules](#rules) |
 | `plugin` | `plugin <name> key=value ...`; see [plugins](plugins.md#render) |
 
-Quote values with spaces (double quotes; a value is one token). `#` outside quotes starts a comment. A later `default` line for the same placeholder merges over an earlier one; a later `plugin` line for the same name replaces it; a later `set` wins.
+Quote values with spaces (double quotes; a value is one token). `#` outside quotes starts a comment, so quote hex colours: `set color.good "#a3be8c"`, `default repo fg="#88c0d0"`. A later `default` line for the same placeholder merges over an earlier one; a later `plugin` line for the same name replaces it; a later `set` wins.
 
 | `set` key | Values |
 |---|---|
@@ -82,11 +82,13 @@ Quote values with spaces (double quotes; a value is one token). `#` outside quot
 | `skin` | `plain` (default), `powerline` or `capsule`. See [Skins](#skins) |
 | `skin-glyphs` | `nerd` (default) or `ascii`. See [Glyphs](#glyphs) |
 | `palette` | `default`, `nord`, `gruvbox`, `dracula`, `solarized`, `mono` or `terminal`. See [Palettes](#palettes) |
+| `color-depth` | `256` (default), `truecolor`, `16`, `none` or `auto`. See [Colour depth](#colour-depth) |
+| `gradient` | `off` (default), a preset or colours painted across every line. See [Gradients](#gradients) |
 | `claude-dir` | Claude Code config dir read by [spendhist](#spendhist) |
 | `compact-at` | Where Claude Code auto-compacts, for [ctx](#ctx): tokens (`200000`, `200k`, `1M`) or a percent of the context window (`1%`-`100%`). Unset, bar works it out; see [Auto-compaction point](#auto-compaction-point) |
 | `update-check` | `off` (default) or `on`: a daily check for a newer bar release, shown by [`update`](#update) |
 | `project-config` | `off`, `safe` (default) or `full`: what a project `.bar.conf` may do. See [Project config](#project-config) |
-| `color.good`, `color.warn`, `color.bad`, `ramp` | State colours (one code `0`-`255`) and usage ramp (exactly 11 codes, quoted, worst score first). See [Colours](#colours) |
+| `color.good`, `color.warn`, `color.bad`, `ramp` | State colours (one colour) and usage ramp (exactly 11 colours, quoted, worst score first). See [Colours](#colours) |
 | `price` | Model price override for [spendhist](#spendhist) |
 
 `set` takes one value; quote it when it holds spaces. An unknown key or a bad value is a config error.
@@ -481,9 +483,12 @@ Who is signed in, running subagents, other open sessions and the tmux window.
 | Option | Default | Meaning |
 |---|---|---|
 | `icon` | set default | A glyph (at most 2 cells), or `none` to hide it. See [Icons](#icons) |
-| `bg` | palette | Segment background, `0`-`255`, under a `powerline` or `capsule` skin. See [Skins](#skins) |
+| `bg` | palette | Segment background under a `powerline` or `capsule` skin, a [colour](#colours). See [Skins](#skins) |
+| `fg` | none | Text colour of the whole value, a [colour](#colours) |
+| `bold` | `off` | `on` (or bare `bold`) draws the value bold |
+| `gradient` | none | Colours the value cell by cell along a gradient; beats `fg`. See [Gradients](#gradients) |
 
-Plugins included: both are handled by bar and never sent to a plugin. `click` is reserved the same way on `usage`, `model`, `effort`, `ctx` and every plugin (`toggle` or `none` on `usage` and plugins; `none` turns links off). `show` and `alt` are comma lists wherever they appear (see above).
+Plugins included: all are handled by bar and never sent to a plugin. `click` is reserved the same way on `usage`, `model`, `effort`, `ctx` and every plugin (`toggle` or `none` on `usage` and plugins; `none` turns links off). `show` and `alt` are comma lists wherever they appear (see above).
 
 ### Values
 
@@ -508,8 +513,8 @@ Powerline and capsule glyphs need a Nerd Font or a Powerline-patched font; `set 
 Backgrounds:
 
 - Backgrounds come from the palette's list, in order across the whole line (left, centre, right) and cycled.
-- `bg=<0-255>` on a placeholder sets its segment's background; in a segment holding several placeholders the first `bg` wins. `plain` ignores `bg`.
-- `bg` is reserved on every placeholder, plugins included; plugins never see it, and `bar check` warns when a plugin declares it. `bar check` rejects a value outside 0-255.
+- `bg=<colour>` on a placeholder sets its segment's background (any [colour](#colours)); in a segment holding several placeholders the first `bg` wins. `plain` ignores `bg`.
+- `bg` is reserved on every placeholder, plugins included; plugins never see it, and `bar check` warns when a plugin declares it. `bar check` rejects a value that is not a colour.
 
 Colours and width:
 
@@ -542,7 +547,7 @@ Colours and width:
 - Muted is bright black (`90`), good green (`32`), warn yellow (`33`), bad red (`31`), repo names cyan (`36`).
 - The skin backgrounds are black and blue only, the two that keep green, yellow and red text readable in most themes (contrast still depends on the theme; use `bg=` per placeholder to override).
 - Its ramp has three steps (bad, warn, good).
-- Colours you set to 0-15 yourself (`color.*`, `ramp`, `bg=`, account colours) are drawn the same way under this palette; codes from 16 up keep the 256-colour form.
+- Colours you set to 0-15 yourself (`color.*`, `ramp`, `bg=`, `fg=`, account colours, ANSI names) are drawn the same way under this palette; codes from 16 up keep the 256-colour form.
 
 ### Icons
 
@@ -621,10 +626,56 @@ Skin separators, `set skin-glyphs`: `nerd` (default) uses the Nerd Font / Powerl
 
 ### Colours
 
-- `set color.good`, `color.warn`, `color.bad`: the state colours; `set ramp`: the usage ramp. Values are 256-colour codes.
+- `set color.good`, `color.warn`, `color.bad`: the state colours; `set ramp`: the usage ramp.
+- A colour is a 256-colour code `0`-`255`, `#rrggbb` (quoted on a `set`, `default` or `account` line), or an ANSI name: `black red green yellow blue magenta cyan white` and the same with `bright-` (`bright-black` ... `bright-white`), codes 0-15.
+- `fg=`, `bg=` and gradient stops also take a palette role: `good`, `warn`, `bad` (the state colours above), `muted` and `accent` (repo names).
+- `#rrggbb` is drawn exactly at `set color-depth truecolor` and as the nearest 256-colour code (or of the 16) below it; see [Colour depth](#colour-depth).
 - An explicit `set color.good|warn|bad` or `set ramp` beats the [palette](#palettes) wherever it appears in the file.
 - `account "<glob>" <label> <color>` sets the label and colour [`account`](#account-agents-sessions-tmux) shows.
 - The usage colour follows the pace score of `rule usage[...]`; see [usage](#usage).
+- `fg=<colour>` paints a whole placeholder value in one colour, its label, icon and own colours included; `bold` draws it bold: `#{repo[fg=accent,bold]}`. Inside a quoted layout a hex value needs no quotes of its own: `set left "#{model[fg=#d08770]}"`.
+
+### Colour depth
+
+`set color-depth` picks how colours are written:
+
+| Value | Output |
+|---|---|
+| `256` (default) | 256-colour SGR (`38;5;n`); `#rrggbb` becomes the nearest code from the colour cube or the grey ramp (16-255) |
+| `truecolor` | `#rrggbb` as 24-bit SGR (`38;2;r;g;b`); codes stay `38;5;n` |
+| `16` | Every colour as the nearest of the 16 ANSI colours (`30`-`37`, `90`-`97`; backgrounds `40`-`47`, `100`-`107`), measured against xterm's default values |
+| `none` | No colour: colour SGR is left out; bold, links and text stay |
+| `auto` | From the environment, below |
+
+`auto`, in order:
+
+1. `FORCE_COLOR` set and not empty: `0` or `false` gives `none`, `1` `16`, `2` `256`, `3` `truecolor`; any other value turns colour on at the depth `COLORTERM` gives.
+2. `NO_COLOR` set and not empty: `none`.
+3. `COLORTERM` `truecolor` or `24bit`: `truecolor`; otherwise `256`.
+
+The fixed values ignore the environment, `NO_COLOR` included, so the default output never changes with it. Any config draws at any depth: hex colours, gradients and 256-colour codes are quantised to what the depth allows.
+
+Claude Code runs the status line command with the environment it was started in: `COLORTERM`, `NO_COLOR` and `FORCE_COLOR` reach bar only when they are set where `claude` starts (Claude Code sets none of them itself). Terminals with 24-bit colour usually set `COLORTERM=truecolor`; inside tmux it is often unset, so `auto` draws 256 colours there unless tmux passes it on (`set -ga update-environment COLORTERM`) or the config says `truecolor`.
+
+### Gradients
+
+`gradient=<value>` on a placeholder colours its value cell by cell, first cell to last; `set gradient <value>` colours every line the same way, across all its segments, left group first.
+
+A value is a preset or 2 to 8 colours split by `:` (or `,`): `gradient=ember`, `gradient=#ff8800:#0088ff`, `gradient=good:warn:bad`, `set gradient "#5e81ac,#b48ead"`.
+
+| Preset | From | To |
+|---|---|---|
+| `ember` | `#d7263d` | `#f49d37` |
+| `lagoon` | `#1b998b` | `#b8f2e6` |
+| `dusk` | `#5f4bb6` | `#e0607e` |
+| `moss` | `#3a6b35` | `#c5d86d` |
+| `frost` | `#4a6fa5` | `#dbe9f6` |
+| `ash` | `#5c5c5c` | `#d0d0d0` |
+
+- Colours are interpolated in OKLab, so the middle of a gradient does not turn muddy or dark the way a plain RGB blend can, then quantised to the [colour depth](#colour-depth). At `256` neighbouring cells that land on one code share one SGR; at `truecolor` every cell gets its own colour.
+- Only the foreground changes: links, backgrounds, bold, widths and layout stay as they are. Values are cut (`max=`) before they are painted; zero-width characters (combining marks) stay with the character before them.
+- On a placeholder a gradient beats `fg`. `set gradient` repaints all segment text, so it beats placeholder colours (state colours, ramps, `fg=`, `gradient=`); separators, joiners and skin glyphs keep theirs. `set gradient off` turns it off.
+- `bar check` rejects an unknown preset, a bad colour, or fewer than 2 or more than 8 stops.
 
 ## Layout
 
@@ -982,6 +1033,7 @@ Environment variables bar reads:
 | `TMUX`, `TMUX_PANE` | `tmux` placeholder |
 | `TMUX_TMPDIR` | Baked into the click handler, so `bar click run` finds the tmux server |
 | `TZ` | Local zone for `spendhist` (Unix) |
+| `COLORTERM`, `NO_COLOR`, `FORCE_COLOR` | Only with `set color-depth auto`; see [Colour depth](#colour-depth) |
 | `PATH`, `PATHEXT` (Windows) | Plugins, `gh`, `git`, `tmux` |
 | `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, `GIT_CONFIG_COUNT`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_SYSTEM`, `GIT_CONFIG_NOSYSTEM` | When any is set, `repo` and `branch` run `git` instead of reading the repository files, and `dirty`, `ahead`, `worktree` render empty ([Performance](technical.md#performance)) |
 

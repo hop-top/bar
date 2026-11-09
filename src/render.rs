@@ -1,11 +1,14 @@
 //! Wires config, placeholders and layout into the status line text.
 
 use crate::cache::Cache;
+use crate::color::{Color, Depth};
 use crate::conf::{Config, LoadResult, Wrap};
 use crate::expand::{CommandRunner, Expander};
 use crate::format::{parse, segments, Token};
+use crate::gradient::{self, Ink};
 use crate::icons;
 use crate::layout::{flow, join, place_groups, plain_joiner, Group};
+use crate::look::{self, Look};
 use crate::options::Options;
 use crate::palette;
 use crate::placeholders::{lookup_in, Ctx};
@@ -49,16 +52,16 @@ pub fn builtin_config() -> Config {
 pub type Sample<'a> = &'a dyn Fn(&str, &Options, &Ctx, bool) -> Option<String>;
 
 /// Core names first; anything else is a `bar-<name>` plugin. Returns the
-/// value and the `bg` option.
+/// value, styled by `fg`, `bold` and `gradient`, and the `bg` option.
 fn render_placeholder(
     name: &str,
     inline: &Options,
     ctx: &Ctx,
     ex: &Expander,
     sample: Option<Sample>,
-) -> (String, Option<u8>) {
-    let (bg, opts) = skin::split_bg(&expanded(name, inline, ctx, ex));
-    (render_value(name, &opts, ctx, sample), bg)
+) -> (String, Option<Color>) {
+    let (look, opts) = Look::split(&expanded(name, inline, ctx, ex), ctx.config);
+    (look.paint(render_value(name, &opts, ctx, sample)), look.bg)
 }
 
 fn render_value(name: &str, opts: &Options, ctx: &Ctx, sample: Option<Sample>) -> String {
@@ -118,7 +121,7 @@ fn expanded(name: &str, inline: &Options, ctx: &Ctx, ex: &Expander) -> Options {
 /// A rendered segment and the first `bg` among its placeholders.
 struct Rendered {
     text: String,
-    bg: Option<u8>,
+    bg: Option<Color>,
 }
 
 /// Text tokens survive only beside non-empty placeholders, so `repo:` loses
@@ -280,6 +283,8 @@ fn render_impl(
     };
     let _muted = style::use_muted(config.muted);
     let _ansi = style::use_ansi(palette::by_name(config.palette).is_some_and(|p| p.ansi));
+    let depth = config.color_depth.resolve(|k| std::env::var(k).ok());
+    let _depth = style::use_depth(depth);
     let mut rows: Vec<String> = Vec::new();
     for src in config.lines() {
         let budget = config.max_rows.saturating_sub(rows.len());
@@ -292,7 +297,12 @@ fn render_impl(
         }
         rows.extend(line_rows(config, groups, columns, budget));
     }
-    rows.join("\n")
+    let out = rows.join("\n");
+    if depth == Depth::None {
+        style::strip_colors(&out)
+    } else {
+        out
+    }
 }
 
 /// One status line as at most `budget` rows: placed as usual, or, with
@@ -353,7 +363,8 @@ fn draw(config: &Config, paint: Option<Paint>, segs: &[Seg], side: Side) -> Grou
 
 /// Segments with their widths and backgrounds. Backgrounds cycle through
 /// the palette across all groups of the line, left to right; a segment's
-/// `bg` option takes its place. Plain lines ignore them.
+/// `bg` option takes its place. Plain lines ignore them. `set gradient`
+/// recolours the segment text as one run across the line.
 fn segs(config: &Config, groups: [Vec<Rendered>; 3]) -> [Vec<Seg>; 3] {
     let bgs = if config.bgs.is_empty() {
         palette::default().bgs
@@ -361,10 +372,10 @@ fn segs(config: &Config, groups: [Vec<Rendered>; 3]) -> [Vec<Seg>; 3] {
         config.bgs
     };
     let mut n = 0;
-    groups.map(|g| {
+    let mut out = groups.map(|g| {
         g.into_iter()
             .map(|s| {
-                let bg = s.bg.unwrap_or(bgs[n % bgs.len()]);
+                let bg = s.bg.unwrap_or(Color::Idx(bgs[n % bgs.len()]));
                 n += 1;
                 Seg {
                     width: visible_width_with(&s.text, config.icon_width),
@@ -372,8 +383,23 @@ fn segs(config: &Config, groups: [Vec<Rendered>; 3]) -> [Vec<Seg>; 3] {
                     bg,
                 }
             })
-            .collect()
-    })
+            .collect::<Vec<Seg>>()
+    });
+    if let Some(g) = look::line_gradient(config) {
+        let total: usize = out.iter().flatten().map(|s| gradient::span(&s.text)).sum();
+        let mut start = 0;
+        for s in out.iter_mut().flatten() {
+            let span = gradient::span(&s.text);
+            let ink = Ink::Ramp {
+                gradient: &g,
+                start,
+                span: total,
+            };
+            s.text = gradient::recolor(&s.text, Some(&ink), false);
+            start += span;
+        }
+    }
+    out
 }
 
 /// One `bar subagent` row: `layout` as a single left group, painted like

@@ -4,6 +4,7 @@
 //! `manifest` is a `plugins.json` (`bar web plugins`), or empty.
 
 use crate::check::{self, Level};
+use crate::color::ColorDepth;
 use crate::conf::{self, layout_key, tokenize, Config, Icons, Skin, SkinGlyphs, Wrap};
 use crate::format::{self, Token};
 use crate::options::Options;
@@ -204,6 +205,8 @@ fn settings(c: &Config) -> Value {
         },
         "separator": c.separator,
         "gap": c.gap.to_string(),
+        "color-depth": c.color_depth.name(),
+        "gradient": if c.gradient.is_empty() { "off" } else { &c.gradient },
     })
 }
 
@@ -233,8 +236,9 @@ pub fn tokens(src: &str) -> Value {
 }
 
 /// What the page offers: core placeholders with their description and
-/// options (as `bar check` validates them, with default and help),
-/// presets, and the `set` keys with a fixed set of values.
+/// options (as `bar check` validates them, with default and help), the
+/// options on every placeholder, presets, and the `set` keys with a fixed
+/// set of values.
 pub fn schema() -> Value {
     let placeholders: Vec<Value> = placeholders::names()
         .map(|name| {
@@ -245,8 +249,12 @@ pub fn schema() -> Value {
             })
         })
         .collect();
+    let gradients: Vec<&str> = std::iter::once("off")
+        .chain(crate::gradient::preset_names())
+        .collect();
     json!({
         "placeholders": placeholders,
+        "generic": crate::look::schema(),
         "presets": presets::NAMES,
         "settings": [
             {"key": "skin", "values": ["plain", "powerline", "capsule"]},
@@ -255,6 +263,8 @@ pub fn schema() -> Value {
             {"key": "icons", "values": ["none", "nerdfont", "emoji"]},
             {"key": "icon-width", "values": ["1", "2"]},
             {"key": "wrap", "values": ["off", "on"]},
+            {"key": "color-depth", "values": ColorDepth::NAMES},
+            {"key": "gradient", "values": gradients},
         ],
     })
 }

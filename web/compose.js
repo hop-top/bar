@@ -340,10 +340,7 @@ const Compose = (() => {
       }
       return el("label", {}, ...kids, help);
     };
-    const generic = [
-      { key: "icon", kind: "any", values: [], help: "a glyph (at most 2 cells), or none to hide it" },
-      { key: "bg", kind: "int", values: [], help: "segment background 0-255 under powerline or capsule" },
-    ];
+    const generic = ui.generic();
     const known = new Set(spec.map((o) => o.key).concat(generic.map((o) => o.key)));
     const extra = t.options.filter(([k]) => !known.has(k)).map(([k]) => ({ key: k, kind: "any", values: [] }));
     const desc = ui.describe(t.name);
@@ -418,7 +415,7 @@ const Compose = (() => {
 
   // Option keys placeholder `name` takes, the generic ones included.
   function optionKeys(name) {
-    return ui.options(name).map((o) => o.key).concat(["icon", "bg"]);
+    return ui.options(name).map((o) => o.key).concat(ui.generic().map((o) => o.key));
   }
 
   return { init, update, optionKeys };

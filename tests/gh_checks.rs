@@ -159,7 +159,7 @@ fn icon_set_picks_mark_glyph() {
 fn palette_colours_the_mark() {
     let f = four();
     let mut cfg = Config::default();
-    cfg.colors.bad = 9;
+    cfg.colors.bad = 9.into();
     let out = f.show_with(&cfg, Kind::Pr, &[]);
     assert!(out.contains("\x1b[38;5;9m✗\x1b[39m"), "{out:?}");
 }

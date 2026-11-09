@@ -34,10 +34,10 @@ fn link_adds_no_underline_code() {
 #[test]
 fn ramp_steps() {
     for (score, want) in [(0, 196), (1, 202), (50, 226), (90, 82), (91, 46), (100, 46)] {
-        assert_eq!(ramp(score, &RAMP), want, "score {score}");
+        assert_eq!(ramp(score, &RAMP.map(Into::into)), want, "score {score}");
     }
-    assert_eq!(ramp(-29, &RAMP), 196);
-    assert_eq!(ramp(130, &RAMP), 46);
+    assert_eq!(ramp(-29, &RAMP.map(Into::into)), 196);
+    assert_eq!(ramp(130, &RAMP.map(Into::into)), 46);
 }
 
 #[test]

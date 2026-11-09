@@ -76,7 +76,7 @@ fn seed(state: &Path, used: &[f64]) {
     }
 }
 
-fn col(left: i64, secs: i64) -> u8 {
+fn col(left: i64, secs: i64) -> hop_bar::color::Color {
     ramp(
         score(left, Some(secs), P5, &builtin_rule("5h")),
         &Config::default().ramp,
@@ -214,7 +214,7 @@ fn gauge_is_one_cell_in_the_value_colour() {
 /// Filled cells ramp from the bad end to the current score; equal
 /// neighbours share one SGR run.
 fn expected_bar(filled: usize, w: usize, used: bool, left: i64, secs: i64) -> String {
-    let codes: Vec<u8> = (0..filled)
+    let codes: Vec<hop_bar::color::Color> = (0..filled)
         .map(|i| {
             let reach = |v: i64| v * (i as i64 + 1) / filled as i64;
             col(
