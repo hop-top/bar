@@ -6,6 +6,7 @@ A status line for [Claude Code](https://code.claude.com/docs/en/statusline) that
 
 <p align="center">
   <a href="https://github.com/hop-top/bar/actions/workflows/test-rs-caller.yml"><img alt="CI" src="https://github.com/hop-top/bar/actions/workflows/test-rs-caller.yml/badge.svg?branch=next"></a>
+  <a href="bench/README.md#ben-results"><img alt="bench" src="docs/badges/bench.svg"></a>
 </p>
 <p align="center">
   <img alt="macOS" src="docs/badges/macos.svg"> <img alt="Linux" src="docs/badges/linux.svg"> <img alt="Windows" src="docs/badges/windows.svg">
