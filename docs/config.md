@@ -3,7 +3,7 @@
 How to write `bar.conf`: where it lives, the directives, every placeholder and its options, styling, layout and the commands around the config. Pictures of skins, skin glyphs, segment backgrounds, palettes, bar glyphs, usage components, pace states, icons, lines and wrapping, and PR checks: [Gallery](gallery.md).
 
 - [Overview](#overview): [config file](#config-file), [project config](#project-config), [directives](#directives), [rules](#rules), [minimal example](#minimal-example)
-- [Placeholders](#placeholders): [session](#session), [ctx](#ctx), [usage](#usage), [tokens, cache, cachettl](#tokens-cache-cachettl), [ttft, tps, misses](#ttft-tps-misses), [spendhist](#spendhist), [git and directories](#git-and-directories), [prs and issues](#prs-and-issues), [account, agents, sessions, tmux](#account-agents-sessions-tmux), [update](#update), [every placeholder](#options-on-every-placeholder), [values](#values)
+- [Placeholders](#placeholders): [session](#session), [ctx](#ctx), [usage](#usage), [tokens, cache, cachettl](#tokens-cache-cachettl), [ttft, tps, misses](#ttft-tps-misses), [spendhist](#spendhist), [git and directories](#git-and-directories), [prs and issues](#prs-and-issues), [account, agents, sessions, tmux](#account-agents-sessions-tmux), [update](#update), [status](#status), [every placeholder](#options-on-every-placeholder), [values](#values)
 - [Styling](#styling): [skins](#skins), [palettes](#palettes), [icons](#icons), [glyphs](#glyphs), [colours](#colours), [colour depth](#colour-depth), [gradients](#gradients)
 - [Layout](#layout): [lines and wrapping](#lines-and-wrapping), [subagent rows](#subagent-rows)
 - [Commands](#commands): [bar install](#bar-install), [bar update](#update), [bar check](#bar-check), [bar config](#bar-config), [bar preview](#bar-preview), [bar edit](#bar-edit), [presets and bar init](#presets), [click handler](#click-handler-macos), [clickable commands](#clickable-commands), [hooks](#hooks)
@@ -48,7 +48,7 @@ A project file comes with the repository, so what it may do is set in your confi
 | Value | Project file |
 |---|---|
 | `off` | never looked for |
-| `safe` (default) | applied, except: no `%…%` values (commands or environment variables) in placeholder options or `default` lines, no `plugin` lines, no `set update-check` or `set claude-dir`, and no plugin placeholder your config does not name (in a layout, a `default` line or a `plugin` line). Each such line is left out |
+| `safe` (default) | applied, except: no `%…%` values (commands or environment variables) in placeholder options or `default` lines, no `plugin` lines, no `set update-check`, `set service-status` or `set claude-dir`, and no plugin placeholder your config does not name (in a layout, a `default` line or a `plugin` line). Each such line is left out |
 | `full` | applied like your own config, `%cmd%` values and any plugin included |
 
 `set project-config` is read from your config only; in a project file it is left out.
@@ -59,7 +59,7 @@ A project file comes with the repository, so what it may do is set in your confi
 
 | Directive | Form |
 |-----------|------|
-| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-64) `subagent subagent-hide separator gap wrap max-rows refresh icons icon-width skin skin-glyphs palette color-depth gradient claude-dir compact-at project-config update-check color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
+| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-64) `subagent subagent-hide separator gap wrap max-rows refresh icons icon-width skin skin-glyphs palette color-depth gradient claude-dir compact-at project-config update-check service-status color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
 | `default` | `default <placeholder> key=value ...` |
 | `account` | `account "<glob>" <label> <color>` |
 | `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%`; see [Rules](#rules) |
@@ -87,6 +87,7 @@ Quote values with spaces (double quotes; a value is one token). `#` outside quot
 | `claude-dir` | Claude Code config dir read by [spendhist](#spendhist) |
 | `compact-at` | Where Claude Code auto-compacts, for [ctx](#ctx): tokens (`200000`, `200k`, `1M`) or a percent of the context window (`1%`-`100%`). Unset, bar works it out; see [Auto-compaction point](#auto-compaction-point) |
 | `update-check` | `off` (default) or `on`: a daily check for a newer bar release, shown by [`update`](#update) |
+| `service-status` | `off` (default) or `on`: reads the Claude status page every 5 minutes in the background, shown by [`status`](#status) |
 | `project-config` | `off`, `safe` (default) or `full`: what a project `.bar.conf` may do. See [Project config](#project-config) |
 | `color.good`, `color.warn`, `color.bad`, `ramp` | State colours (one colour) and usage ramp (exactly 11 colours, quoted, worst score first). See [Colours](#colours) |
 | `price` | Model price override for [spendhist](#spendhist) |
@@ -392,7 +393,7 @@ Snapshot fetch:
 - Never fetched when `spendhist` is not in the layout or every model in it is priced by a rule or the built-in table. To avoid the fetch, add a `set price` rule for each such model.
 - `bar prices update` fetches the same file on request.
 - A file that is invalid or dated in the future is ignored (`bar check` says why) and fetched again.
-- The download is capped at 64 MiB. It runs `curl` (`-fsS`, https only; `--max-time 60` for `bar prices update`, the refresh time limit in the background) and, with the opt-in [update check](#update), is one of the two places core bar uses the network (plugins have their own).
+- The download is capped at 64 MiB. It runs `curl` (`-fsS`, https only; `--max-time 60` for `bar prices update`, the refresh time limit in the background) and, with the opt-in [update check](#update) and [service status](#status), is one of the three places core bar uses the network (plugins have their own).
 
 ### Git and directories
 
@@ -477,6 +478,25 @@ Who is signed in, running subagents, other open sessions and the tmux window.
 - On, a render starts a background job at most once a day (cache key `update:stable` or `update:prerelease`) that asks the GitHub API for the releases of `hop-top/bar` with `curl` (`-q` so no `.curlrc` applies, `-fsS`, https only, the refresh time limit as `--max-time`, `--` before the URL) and caches the newest release tag (only tags `v<version>` or `bar-v<version>` with a semantic version count). A render never waits on it, so the first render after enabling it is empty. A failed check stores an empty result and runs again the next day.
 - Channel: a stable build (`0.2.0`) looks at stable releases only; a prerelease build (`0.3.0-alpha.1`, `-beta.N`, `-rc.N`) also at prereleases, so it is told about both the next prerelease and the stable release of its line. Drafts are skipped. Versions compare by SemVer precedence.
 - bar never downloads or replaces itself. `bar update` prints the running version, what the last check found (and starts the daily check in the background when it is due and the check is on), and how to upgrade: `brew upgrade bar` for a Homebrew install, `cargo install --git … --tag <tag> --locked --force` for a binary under `~/.cargo/bin`, else the release page to download the archive from. With the check off it only prints the version and how to upgrade. A development build (version `0.0.0`, built from source outside a release) is not compared with releases: `#{update}` stays empty and `bar update` says so.
+
+### status
+
+`#{status[show=state|text|strip, components=code|api, ok=0, hours=6, max=40, link=true]}`: the state of the Claude services from [status.claude.com](https://status.claude.com). Hidden while everything is operational.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `show` | `state` | Parts, in order, space separated: `state` (`status minor`), `text` (the title of the active incident) and `strip` (the 48-hour history) |
+| `components` | all | Only these components count: names separated by `\|`, matched case-insensitively as substrings of the status page's component names (`code\|api` matches `Claude Code` and `Claude API (api.anthropic.com)`) |
+| `ok` | `0` | `1` shows `status ✓` (good colour) while everything is operational, and the strip while it has no incident |
+| `hours` | `6` | Hours per cell of the strip; `ceil(48 / hours)` cells |
+| `max` | none | Truncate the incident text to this many characters, with `…` |
+| `link` | `true` | `false`, `no`, `off` or `0` give plain text instead of a link to the status page |
+
+- Off unless the config says `set service-status on`. Off, it renders nothing and nothing touches the network. A project config cannot turn it on unless `set project-config full` ([project config](#project-config)).
+- The state is the page's overall indicator, or with `components` the worst of the matching components: `minor` (degraded performance, warn colour), `major` (partial outage) or `critical` (major outage), both in the bad colour (`critical` bold). Scheduled maintenance is not shown. The text is the worst, then newest, unresolved incident (that affects a matching component when `components` is set), in the colour of its impact.
+- The strip has one cell per `hours`, oldest first, ending now: `▁` (muted) when no incident overlapped the block, else `█` in the colour of the worst incident overlapping it (`minor` warn, `major` bad, `critical` bold bad). Incidents are those of the status page's incident list (the latest 50), filtered by `components` too. It is hidden while no incident overlaps the 48 hours, unless `ok=1`.
+- The whole output is a link to `https://status.claude.com` (OSC 8) unless `link=false`.
+- What is fetched: with the option on, a render starts a background job at most every 5 minutes (cache key `status:summary`, or `status:strip` when a `status` placeholder asks for `strip`) that reads `https://status.claude.com/api/v2/summary.json` with `curl` (`-q` so no `.curlrc` applies, `-fsS`, https only, the refresh time limit as `--max-time`, `--` before the URL), and for the strip also `https://status.claude.com/api/v2/incidents.json`. Both are the status page's public JSON (no account, key or cookie is sent); only the component names and states, and incident titles, impacts and times of the last 72 hours are cached. A render never waits on it, so the first render after enabling it is empty. A failed fetch keeps the last result and is retried after 60 seconds.
 
 ### Options on every placeholder
 
@@ -605,6 +625,7 @@ Colours and width:
 | `skills` | `nf-fa-magic` U+F0D0 | ✨ |
 | `tmux` | `nf-fa-columns` U+F0DB | 🪟 |
 | `update` | `nf-fa-arrow_circle_up` U+F0AA | 🆙 |
+| `status` | `nf-fa-heartbeat` U+F21E | 🩺 |
 
 ### Glyphs
 
@@ -1005,7 +1026,7 @@ In the state directory:
 
 | Path | Written by | Holds |
 |---|---|---|
-| `cache/` | render, `bar refresh` | cached `gh`, `git status`, `tmux`, `%cmd%`, plugin and update check results, locks and failure markers |
+| `cache/` | render, `bar refresh` | cached `gh`, `git status`, `tmux`, `%cmd%`, plugin, update check and service status results, locks and failure markers |
 | `transcript/<hash>.json` | render, `bar refresh` | per-transcript offsets, token totals and recent context sizes ([tokens](#tokens-cache-cachettl), [ctx](#ctx)) |
 | `spendhist/<hash>.json` | `bar refresh` | spend history scan ([spendhist](#spendhist)) |
 | `hist-5h`, `hist-7d` | render | usage samples for `spark` |

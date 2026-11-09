@@ -16,6 +16,7 @@ pub mod sessions;
 pub mod speed;
 pub mod spend;
 pub mod spendhist;
+pub mod status;
 pub mod task;
 pub mod tmux;
 pub mod tokens;
@@ -100,6 +101,7 @@ static REGISTRY: &[(&str, &(dyn Placeholder + Sync))] = &[
     ("msgs", &niche::Msgs),
     ("tmux", &tmux::Tmux),
     ("update", &update::Update),
+    ("status", &status::Status),
 ];
 
 /// Names of all core placeholders, in registry order.

@@ -175,6 +175,9 @@ pub(super) fn guard(
         "set" if t.get(1).map(String::as_str) == Some("update-check") => {
             Err(format!("`set update-check` {NEEDS_FULL}"))
         }
+        "set" if t.get(1).map(String::as_str) == Some("service-status") => {
+            Err(format!("`set service-status` {NEEDS_FULL}"))
+        }
         // which transcripts and accounts are read is the user's choice
         "set" if t.get(1).map(String::as_str) == Some("claude-dir") => {
             Err(format!("`set claude-dir` {NEEDS_FULL}"))

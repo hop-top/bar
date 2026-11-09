@@ -40,6 +40,7 @@ pub mod session;
 pub mod settings;
 pub mod skin;
 pub mod spendhist;
+pub mod status;
 pub mod style;
 pub mod subagent;
 pub mod transcript;

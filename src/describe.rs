@@ -47,6 +47,7 @@ pub fn describe(name: &str) -> &'static str {
         "modes" => "voice, sandbox and remote modes that are on",
         "tmux" => "tmux session and window",
         "update" => "newer bar release, when the update check is on",
+        "status" => "Claude service status, when the service status is on",
         _ => "",
     }
 }
