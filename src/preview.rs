@@ -49,6 +49,7 @@ fn session(state: &str, now: i64) -> Session {
     };
     Session {
         cwd: String::new(),
+        project_dir: String::new(),
         model: "Claude Opus 4.7".into(),
         model_id: "sample".into(),
         effort: "high".into(),

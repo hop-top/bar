@@ -2,7 +2,9 @@
 //! on. The statusline JSON carries none of them, so they come from the
 //! Claude Code settings files: the user's `settings.json`, then the
 //! project's `.claude/settings.json` and `.claude/settings.local.json`,
-//! a later file overriding an earlier one.
+//! a later file overriding an earlier one. The project is the launch
+//! directory (`workspace.project_dir`), where Claude Code reads them,
+//! else the working directory.
 
 use super::{work_dir, Ctx, Placeholder};
 use crate::click;
@@ -73,7 +75,13 @@ pub fn render_with(claude: Option<&Path>, project: &Path, opts: &Options) -> Opt
 
 impl Placeholder for Modes {
     fn render(&self, ctx: &Ctx, opts: &Options) -> Option<String> {
-        render_with(click::claude_dir().as_deref(), &work_dir(ctx), opts)
+        let launch = PathBuf::from(&ctx.session.project_dir);
+        let project = if !ctx.session.project_dir.is_empty() && launch.is_dir() {
+            launch
+        } else {
+            work_dir(ctx)
+        };
+        render_with(click::claude_dir().as_deref(), &project, opts)
     }
 }
 

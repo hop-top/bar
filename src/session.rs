@@ -25,6 +25,8 @@ pub struct CtxUsage {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Session {
     pub cwd: String,
+    /// `workspace.project_dir`: where Claude Code was launched.
+    pub project_dir: String,
     pub model: String,
     pub model_id: String,
     pub effort: String,
@@ -118,6 +120,7 @@ pub fn parse(input: &str) -> Session {
         return Session::default();
     };
     Session {
+        project_dir: str_at(&v, &["workspace", "project_dir"]).unwrap_or_default(),
         cwd: str_at(&v, &["workspace", "current_dir"])
             .or_else(|| str_at(&v, &["cwd"]))
             .unwrap_or_default(),
