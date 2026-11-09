@@ -52,6 +52,9 @@ pub(super) struct Usage<'a> {
     /// The cache write went to the 1-hour cache (`Some(false)`: 5-minute);
     /// `None` when `usage.cache_creation` gives no split.
     pub one_hour: Option<bool>,
+    /// Written by Claude Code, not the API (an error, a usage limit):
+    /// model `<synthetic>`, or no tokens at all.
+    pub synthetic: bool,
 }
 
 /// The fields `Facts` needs, read without building a JSON tree. `C` is
@@ -79,6 +82,8 @@ struct Entry<'a, C> {
 struct Message<'a, C> {
     #[serde(borrow)]
     id: Option<Cow<'a, str>>,
+    #[serde(borrow)]
+    model: Option<Cow<'a, str>>,
     usage: Option<Obj<Counts>>,
     content: Option<C>,
 }
@@ -227,6 +232,12 @@ impl<'de: 'a, 'a> Deserialize<'de> for AnyBlock<'a> {
     }
 }
 
+/// No request reached the API: Claude Code's own `<synthetic>` entries,
+/// or usage that counts nothing.
+fn synthetic(model: Option<&str>, u: &Usage) -> bool {
+    model == Some("<synthetic>") || (u.input | u.cache_creation | u.cache_read | u.output) == 0
+}
+
 fn one_hour(m5: u64, h1: u64) -> Option<bool> {
     // a mixed write expires with its 5-minute part
     (m5 > 0 || h1 > 0).then_some(h1 > 0 && m5 == 0)
@@ -289,7 +300,7 @@ fn facts_typed<'a, C: Deserialize<'a>>(
     let usage = msg.and_then(|m| {
         let u = m.usage?.0;
         let split = u.cache_creation.map(|s| s.0);
-        Some(Usage {
+        let mut usage = Usage {
             ts: ts_ms.map(|t| t.div_euclid(1000)),
             main,
             id: m.id.unwrap_or_default(),
@@ -303,7 +314,10 @@ fn facts_typed<'a, C: Deserialize<'a>>(
                     s.ephemeral_1h_input_tokens.unwrap_or(0),
                 )
             }),
-        })
+            synthetic: false,
+        };
+        usage.synthetic = synthetic(m.model.as_deref(), &usage);
+        Some(usage)
     });
     Some(Facts {
         compaction,
@@ -356,7 +370,7 @@ fn facts_tree(text: &str, boundary: bool, skill: bool) -> Option<Facts<'static>>
         .map(|u| {
             let n = |k: &str| u[k].as_u64().unwrap_or(0);
             let split = u.get("cache_creation").filter(|s| s.is_object());
-            Usage {
+            let mut usage = Usage {
                 ts: ts_ms.map(|t| t.div_euclid(1000)),
                 main,
                 id: Cow::Owned(v["message"]["id"].as_str().unwrap_or_default().into()),
@@ -371,7 +385,10 @@ fn facts_tree(text: &str, boundary: bool, skill: bool) -> Option<Facts<'static>>
                         n("ephemeral_1h_input_tokens"),
                     )
                 }),
-            }
+                synthetic: false,
+            };
+            usage.synthetic = synthetic(v["message"]["model"].as_str(), &usage);
+            usage
         });
     Some(Facts {
         compaction,

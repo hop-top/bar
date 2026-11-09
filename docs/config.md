@@ -283,6 +283,7 @@ What the timestamps measure:
 - Claude Code stamps each transcript entry with the time it writes it. A prompt's user entry is written when the prompt is submitted; a tool result's user entry when the tool finishes; an assistant entry when one content block (thinking, text or tool call) has finished streaming. One API response is split over several assistant entries that share a `message.id`.
 - There are no per-token times. Both numbers are therefore built from these write times and include more than generation alone.
 - Only main-conversation entries count (`isSidechain` not `true`).
+- Assistant entries Claude Code writes itself, with no API request behind them (model `<synthetic>`, such as an API error or a usage-limit notice, or usage with no tokens at all), are not responses: they leave timing, misses, `msgs` and `ctx` `growth` and `trend` untouched.
 
 `ttft`:
 
