@@ -9,6 +9,7 @@ pub mod ctx;
 pub mod dirs;
 pub mod extra;
 pub mod gh;
+pub mod gitage;
 pub mod gitdiff;
 pub mod gitop;
 pub mod gitref;
@@ -119,6 +120,7 @@ static REGISTRY: &[(&str, &(dyn Placeholder + Sync))] = &[
     ("diff", &gitdiff::Diff),
     ("sha", &gitref::Sha),
     ("tag", &gitref::Tag),
+    ("age", &gitage::Age),
     ("stash", &gitref::Stash),
     ("gitop", &gitop::GitOp),
     ("conflicts", &gitop::Conflicts),

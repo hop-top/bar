@@ -45,6 +45,9 @@ pub enum Job {
         scope: String,
         stamp: String,
     },
+    /// `git cat-file commit <commit>` in `dir` (absolute), no shell; `commit`
+    /// is a full object id. Output: the commit, then its committer time.
+    GitCommitTime { dir: String, commit: String },
     /// `jj log` of the working-copy commit of the workspace at `dir`
     /// (absolute), no shell, never snapshotting the working copy.
     Jj { dir: String },
@@ -104,6 +107,9 @@ impl Job {
             }
             Job::GitDiff { dir, scope, stamp } => {
                 json!({"kind": "git-diff", "dir": dir, "scope": scope, "stamp": stamp})
+            }
+            Job::GitCommitTime { dir, commit } => {
+                json!({"kind": "git-commit-time", "dir": dir, "commit": commit})
             }
             Job::Jj { dir } => json!({"kind": "jj", "dir": dir}),
             Job::PluginInfo { path } => json!({"kind": "plugin-info", "path": path}),
@@ -181,6 +187,14 @@ impl Job {
                     .as_str()
                     .filter(|s| crate::placeholders::gitdiff::valid_stamp(s))
                     .ok_or("git-diff job without a valid stamp")?
+                    .into(),
+            }),
+            Some("git-commit-time") => Ok(Job::GitCommitTime {
+                dir: abs_path(v, "dir")?,
+                commit: v["commit"]
+                    .as_str()
+                    .filter(|c| crate::gitfs::is_oid(c))
+                    .ok_or("git-commit-time job without a commit id")?
                     .into(),
             }),
             Some("jj") => Ok(Job::Jj {
@@ -277,6 +291,9 @@ impl Job {
             }
             Job::GitDiff { dir, scope, stamp } => {
                 crate::placeholders::gitdiff::run(dir, scope, stamp, limit)
+            }
+            Job::GitCommitTime { dir, commit } => {
+                crate::placeholders::gitage::run(dir, commit, limit)
             }
             Job::Jj { dir } => {
                 let mut c = Command::new(crate::platform::program("jj"));
