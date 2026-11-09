@@ -10,9 +10,36 @@ use std::path::{Path, PathBuf};
 pub fn target(path: &Path) -> Result<PathBuf, String> {
     match std::fs::symlink_metadata(path) {
         Ok(m) if m.file_type().is_symlink() => std::fs::canonicalize(path)
+            .map(|p| plain_path(&p))
             .map_err(|e| format!("{}: symlink target unusable: {e}", path.display())),
         _ => Ok(path.to_path_buf()),
     }
+}
+
+/// `p` without the Windows verbatim prefix `canonicalize` adds:
+/// `\\?\C:\x` becomes `C:\x`, `\\?\UNC\host\share` becomes
+/// `\\host\share`. Paths that need the prefix (too long, or a final
+/// part Windows would change) keep it.
+pub fn plain_path(p: &Path) -> PathBuf {
+    let s = p.to_string_lossy();
+    let plain = if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{rest}")
+    } else if let Some(rest) = s
+        .strip_prefix(r"\\?\")
+        .filter(|r| r.as_bytes().get(1) == Some(&b':') && r.as_bytes()[0].is_ascii_alphabetic())
+    {
+        rest.to_string()
+    } else {
+        return p.to_path_buf();
+    };
+    let reserved = plain
+        .rsplit('\\')
+        .next()
+        .is_some_and(|n| n.ends_with(['.', ' ']));
+    if plain.len() >= 260 || reserved {
+        return p.to_path_buf();
+    }
+    PathBuf::from(plain)
 }
 
 /// Refuses when `path` (a [`target`]) no longer holds `expected`, the
@@ -182,7 +209,7 @@ pub fn replace(path: &Path, body: &str, to: Backups) -> std::io::Result<Option<P
 
 #[cfg(test)]
 mod tests {
-    use super::{replace, target, unchanged, Backups, KEEP};
+    use super::{plain_path, replace, target, unchanged, Backups, KEEP};
 
     fn tmp() -> std::path::PathBuf {
         let d = std::env::temp_dir().join(format!(
@@ -320,5 +347,21 @@ mod tests {
         std::fs::remove_file(&f).unwrap();
         assert!(unchanged(&f, Some("a\n")).is_err());
         let _ = std::fs::remove_dir_all(d);
+    }
+
+    #[test]
+    fn verbatim_prefix_is_dropped() {
+        use std::path::{Path, PathBuf};
+        let p = |s: &str| plain_path(Path::new(s));
+        assert_eq!(
+            p(r"\\?\C:\Users\me\bar.conf"),
+            PathBuf::from(r"C:\Users\me\bar.conf")
+        );
+        assert_eq!(p(r"\\?\UNC\host\share\f"), PathBuf::from(r"\\host\share\f"));
+        assert_eq!(p("/home/me/bar.conf"), PathBuf::from("/home/me/bar.conf"));
+        let long = format!(r"\\?\C:\{}", "a".repeat(300));
+        assert_eq!(p(&long), PathBuf::from(&long));
+        assert_eq!(p(r"\\?\C:\x\name."), PathBuf::from(r"\\?\C:\x\name."));
+        assert_eq!(p(r"\\?\Volume{x}\f"), PathBuf::from(r"\\?\Volume{x}\f"));
     }
 }
