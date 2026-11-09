@@ -312,3 +312,59 @@ fn real_jj_workspace_end_to_end() {
     // a described change with no files: empty, default workspace hidden
     assert_eq!(one(&o.plain), "feat empty hello world real");
 }
+
+#[test]
+fn real_jj_output_unaffected_by_log_word_wrap() {
+    let Some(jj) = real_jj() else {
+        eprintln!("jj not installed: skipped");
+        return;
+    };
+    let t = Tmp::new();
+    let d = t.path().join("real");
+    std::fs::create_dir_all(&d).unwrap();
+    let cfg = t.path().join("jj-config.toml");
+    // wraps template output at the terminal width (`COLUMNS`, else 80)
+    std::fs::write(&cfg, "[ui]\nlog-word-wrap = true\n").unwrap();
+    let jjc = |args: &[&str]| {
+        let st = std::process::Command::new(&jj)
+            .args(["--config", "git.colocate=false"])
+            .args(args)
+            .current_dir(&d)
+            .env("HOME", t.path())
+            .env("JJ_CONFIG", &cfg)
+            .env("JJ_USER", "t")
+            .env("JJ_EMAIL", "t@t")
+            .output()
+            .unwrap();
+        assert!(st.status.success(), "jj {args:?}: {st:?}");
+    };
+    jjc(&["git", "init"]);
+    jjc(&["describe", "-m", "short"]);
+    let names: Vec<String> = (0..12)
+        .map(|i| format!("long-bookmark-name-number-{i}"))
+        .collect();
+    for n in &names {
+        jjc(&["bookmark", "create", n, "-r", "@"]);
+    }
+    let mut path = std::ffi::OsString::from(jj.parent().unwrap());
+    path.push(":/usr/bin:/bin");
+    let path = path.to_string_lossy().to_string();
+    let render = || {
+        run(&t)
+            .conf("set left \"#{jj[show=bookmarks,state,desc]}\"")
+            .env("PATH", &path)
+            .env("JJ_CONFIG", cfg.to_str().unwrap())
+            .cwd(&d)
+            .go()
+    };
+    render();
+    let file = Cache::new(&t.path().join("state")).path_for(&cache_key(&d));
+    assert!(!wait_for(&file).is_empty(), "jj refresh stored nothing");
+    // jj lists bookmarks by name
+    let mut sorted = names.clone();
+    sorted.sort();
+    assert_eq!(
+        one(&render().plain),
+        format!("{} empty short", sorted.join(" "))
+    );
+}
