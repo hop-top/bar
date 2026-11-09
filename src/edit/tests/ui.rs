@@ -158,6 +158,24 @@ fn ansi_to_styled_spans() {
 }
 
 #[test]
+fn ansi_24_bit_colours() {
+    use crate::edit::ansi::lines;
+    use ratatui::style::{Color, Modifier};
+    let l = lines("\x1b[38;2;255;136;0mA\x1b[48;2;1;2;3mB\x1b[0mC\x1b[38;2;9;8;7;1mD");
+    let s = &l[0].spans;
+    assert_eq!(s[0].content, "A");
+    assert_eq!(s[0].style.fg, Some(Color::Rgb(255, 136, 0)));
+    assert!(!s[0].style.add_modifier.contains(Modifier::DIM));
+    assert_eq!(s[1].style.fg, Some(Color::Rgb(255, 136, 0)));
+    assert_eq!(s[1].style.bg, Some(Color::Rgb(1, 2, 3)));
+    assert_eq!(s[2].style.fg, None);
+    assert_eq!(s[3].content, "D");
+    assert_eq!(s[3].style.fg, Some(Color::Rgb(9, 8, 7)));
+    assert!(s[3].style.add_modifier.contains(Modifier::BOLD));
+    assert!(!s[3].style.add_modifier.contains(Modifier::DIM));
+}
+
+#[test]
 fn preview_draws_plugin_web_samples_else_the_name() {
     use crate::edit::app::InfoLoader;
     let ci = r#"{"name":"ci","version":"1","capabilities":["placeholder"],"options":{"name":{"type":"bool"}},"web":{"samples":[{"when":{"name":"true"},"output":{"text":"ok build-and-test"}},{"output":{"text":"ok-mark"}}]}}"#;
