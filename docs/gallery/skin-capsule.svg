@@ -2,10 +2,10 @@
 <title>Capsule skin, dracula palette: each segment in a rounded pill.</title>
 <rect width="100%" height="100%" rx="6" fill="#1c1c1c"/>
 <rect x="19" y="10" width="162" height="17.4" fill="#303030"/>
-<rect x="208" y="10" width="45" height="17.4" fill="#5f0087"/>
+<rect x="208" y="10" width="45" height="17.4" fill="#5f5faf"/>
 <rect x="280" y="10" width="108" height="17.4" fill="#444444"/>
-<rect x="478" y="10" width="117" height="17.4" fill="#5f00af"/>
-<rect x="622" y="10" width="90" height="17.4" fill="#3a3a3a"/>
+<rect x="478" y="10" width="117" height="17.4" fill="#875faf"/>
+<rect x="622" y="10" width="90" height="17.4" fill="#4e4e4e"/>
 <rect x="811" y="10" width="54" height="17.4" fill="#303030"/>
 <rect x="550" y="10" width="45" height="17.4" fill="#5fff87"/>
 <rect x="667" y="10" width="36" height="17.4" fill="#5fff87"/>
@@ -54,21 +54,21 @@
 <g fill="#303030"><use href="#g0" x="1370" y="-3271"/></g>
 <g fill="#afafd7"><use href="#g1" x="2603" y="-3271"/><use href="#g2" x="5069" y="-3271"/><use href="#g3" x="6302" y="-3271"/><use href="#g4" x="7535" y="-3271"/><use href="#g5" x="8768" y="-3271"/><use href="#g6" x="11234" y="-3271"/><use href="#g7" x="12467" y="-3271"/><use href="#g8" x="13700" y="-3271"/><use href="#g9" x="14933" y="-3271"/><use href="#g10" x="17399" y="-3271"/><use href="#g11" x="18632" y="-3271"/><use href="#g12" x="19865" y="-3271"/><use href="#g13" x="21098" y="-3271"/><use href="#g11" x="22331" y="-3271"/><use href="#g14" x="23564" y="-3271"/></g>
 <g fill="#303030"><use href="#g15" x="24797" y="-3271"/></g>
-<g fill="#5f0087"><use href="#g0" x="27263" y="-3271"/></g>
+<g fill="#5f5faf"><use href="#g0" x="27263" y="-3271"/></g>
 <g fill="#afafd7"><use href="#g16" x="28496" y="-3271"/></g>
 <g fill="#ffff87"><use href="#g17" x="30962" y="-3271"/><use href="#g18" x="32195" y="-3271"/><use href="#g19" x="33428" y="-3271"/></g>
-<g fill="#5f0087"><use href="#g15" x="34661" y="-3271"/></g>
+<g fill="#5f5faf"><use href="#g15" x="34661" y="-3271"/></g>
 <g fill="#444444"><use href="#g0" x="37127" y="-3271"/></g>
 <g fill="#afafd7"><use href="#g20" x="38360" y="-3271"/></g>
 <g fill="#5fafff"><use href="#g21" x="40826" y="-3271"/><use href="#g22" x="42059" y="-3271"/><use href="#g23" x="43292" y="-3271"/></g>
 <g fill="#afafd7"><use href="#g24" x="44525" y="-3271"/><use href="#g25" x="45758" y="-3271"/><use href="#g26" x="48224" y="-3271"/><use href="#g27" x="49457" y="-3271"/><use href="#g12" x="50690" y="-3271"/><use href="#g28" x="51923" y="-3271"/></g>
 <g fill="#444444"><use href="#g15" x="53156" y="-3271"/></g>
-<g fill="#5f00af"><use href="#g0" x="64253" y="-3271"/></g>
+<g fill="#875faf"><use href="#g0" x="64253" y="-3271"/></g>
 <g fill="#afafd7"><use href="#g29" x="65486" y="-3271"/><use href="#g6" x="67952" y="-3271"/><use href="#g11" x="69185" y="-3271"/><use href="#g6" x="70418" y="-3271"/><use href="#g30" x="71651" y="-3271"/><use href="#g26" x="72884" y="-3271"/></g>
-<g fill="#5f00af"><use href="#g15" x="81515" y="-3271"/></g>
-<g fill="#3a3a3a"><use href="#g0" x="83981" y="-3271"/></g>
+<g fill="#875faf"><use href="#g15" x="81515" y="-3271"/></g>
+<g fill="#4e4e4e"><use href="#g0" x="83981" y="-3271"/></g>
 <g fill="#afafd7"><use href="#g31" x="85214" y="-3271"/><use href="#g32" x="87680" y="-3271"/><use href="#g33" x="88913" y="-3271"/><use href="#g34" x="96311" y="-3271"/></g>
-<g fill="#3a3a3a"><use href="#g15" x="97544" y="-3271"/></g>
+<g fill="#4e4e4e"><use href="#g15" x="97544" y="-3271"/></g>
 <g fill="#303030"><use href="#g0" x="109874" y="-3271"/></g>
 <g fill="#afafd7"><use href="#g35" x="111107" y="-3271"/></g>
 <g fill="#5fafff"><use href="#g36" x="113573" y="-3271"/><use href="#g37" x="114806" y="-3271"/><use href="#g23" x="116039" y="-3271"/><use href="#g38" x="117272" y="-3271"/></g>

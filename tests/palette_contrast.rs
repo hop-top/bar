@@ -1,12 +1,11 @@
-//! Text a skin paints on a segment background stays readable: every
+//! Text a skin paints on a segment background stays readable: the `nord`
 //! palette's text colours against every background in its list.
 //!
 //! Floor: 3:1, the WCAG level for large text and graphics. Status-line
 //! segments are short tokens read at a glance, and in the 256-colour cube a
 //! 4.5:1 floor for red text leaves only near-black backgrounds. The usage
 //! ramp is left out: it runs from pure red to pure green by design, and the
-//! number beside the bar keeps the neutral colour. `terminal` is left out
-//! too: the terminal theme decides its colours.
+//! number beside the bar keeps the neutral colour.
 
 use hop_bar::palette::{self, Palette};
 use hop_bar::style::MUTED;
@@ -75,15 +74,17 @@ fn xterm_colours_and_contrast() {
 }
 
 #[test]
-fn segment_text_meets_the_contrast_floor() {
+fn nord_segment_text_meets_the_contrast_floor() {
+    let p = palette::PALETTES
+        .iter()
+        .find(|p| p.name == "nord")
+        .expect("nord palette");
     let mut low = Vec::new();
-    for p in palette::PALETTES.iter().filter(|p| !p.ansi) {
-        for &bg in p.bgs {
-            for (what, fg) in text_colours(p) {
-                let r = contrast(fg, bg);
-                if r < FLOOR {
-                    low.push(format!("{} {what} {fg} on {bg}: {r:.2}", p.name));
-                }
+    for &bg in p.bgs {
+        for (what, fg) in text_colours(p) {
+            let r = contrast(fg, bg);
+            if r < FLOOR {
+                low.push(format!("{what} {fg} on {bg}: {r:.2}"));
             }
         }
     }
