@@ -1,6 +1,6 @@
 //! `bar check`: lints the config file without rendering anything.
 
-use crate::conf::{layout_key, parse, parse_options, tokenize};
+use crate::conf::{layout_key, parse_layers, parse_options, project, tokenize, Layer};
 use crate::expr;
 use crate::format::{self, Token};
 use crate::icons;
@@ -10,106 +10,14 @@ use crate::placeholders::gh::{self, Kind};
 use crate::placeholders::usage::glyphs::{GLYPH_SETS, SHOW_ITEMS};
 use crate::placeholders::{gitst, modes, speed};
 use crate::plugin;
-use crate::prices::models;
 use crate::render::builtin_config;
 use crate::skin;
-use serde_json::{json, Value};
 use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Level {
-    Error,
-    Warning,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Issue {
-    pub level: Level,
-    /// 1-based; 0 when the problem has no line (I/O, built-in layout).
-    pub line: usize,
-    pub message: String,
-}
-
-#[derive(Debug)]
-pub struct Report {
-    /// The config file in use; `None` means the built-in layout.
-    pub path: Option<PathBuf>,
-    pub issues: Vec<Issue>,
-}
-
-impl Report {
-    pub fn has_errors(&self) -> bool {
-        self.issues.iter().any(|i| i.level == Level::Error)
-    }
-
-    pub fn to_json(&self) -> Value {
-        let issues: Vec<Value> = self
-            .issues
-            .iter()
-            .map(|i| {
-                json!({
-                    "level": level_name(i.level),
-                    "line": i.line,
-                    "message": i.message,
-                })
-            })
-            .collect();
-        let a = models::active();
-        json!({
-            "path": self.path.as_ref().map(|p| p.display().to_string()),
-            "prices": {
-                "path": models::user_path().display().to_string(),
-                "fetched": a.user_file.as_ref().map(|_| a.snapshot.fetched()),
-                "ignored": a.ignored,
-            },
-            "ok": !self.has_errors(),
-            "issues": issues,
-        })
-    }
-
-    pub fn to_text(&self) -> String {
-        let mut out = match &self.path {
-            Some(p) => format!("config: {}\n", p.display()),
-            None => "config: none found, using the built-in layout\n".to_string(),
-        };
-        let a = models::active();
-        let path = models::user_path();
-        out.push_str(&match (&a.user_file, &a.ignored) {
-            (Some(_), _) => format!(
-                "prices: models.dev snapshot {} ({})\n",
-                a.snapshot.fetched(),
-                path.display()
-            ),
-            (None, Some(why)) => format!("prices: {} ignored, {why}\n", path.display()),
-            (None, None) => format!("prices: models.dev not fetched ({})\n", path.display()),
-        });
-        for i in &self.issues {
-            let at = if i.line == 0 {
-                String::new()
-            } else {
-                format!("line {}: ", i.line)
-            };
-            out.push_str(&format!("{at}{}: {}\n", level_name(i.level), i.message));
-        }
-        let count = |l| self.issues.iter().filter(|i| i.level == l).count();
-        let (e, w) = (count(Level::Error), count(Level::Warning));
-        out.push_str(&if e + w == 0 {
-            "ok\n".to_string()
-        } else {
-            format!("{e} error(s), {w} warning(s)\n")
-        });
-        out
-    }
-}
-
-fn level_name(l: Level) -> &'static str {
-    match l {
-        Level::Error => "error",
-        Level::Warning => "warning",
-    }
-}
+mod report;
+pub use report::{Issue, Level, ProjectInfo, Report};
 
 /// How an option value is checked.
 #[derive(Clone, Copy)]
@@ -209,6 +117,8 @@ struct Checker<'a> {
     gh_missing: bool,
     gh_warned: Cell<bool>,
     issues: Vec<Issue>,
+    /// File of the lines being linted.
+    layer: Layer,
 }
 
 impl Checker<'_> {
@@ -217,6 +127,7 @@ impl Checker<'_> {
             level,
             line,
             message,
+            layer: self.layer,
         });
     }
 
@@ -393,62 +304,51 @@ impl Checker<'_> {
     }
 }
 
-/// Lints `text`, a config file's contents.
-pub fn check_text(text: &str, path: Option<PathBuf>, dirs: &[PathBuf]) -> Report {
-    let parsed = parse(text);
-    let mut c = Checker {
-        dirs,
-        icon_width: parsed.as_ref().map_or(1, |cfg| cfg.icon_width),
-        defaults: parsed
-            .as_ref()
-            .map(|cfg| cfg.defaults.clone())
-            .unwrap_or_default(),
-        gh_missing: !dirs
-            .iter()
-            .any(|d| crate::platform::executable_in(d, "gh").is_some()),
-        gh_warned: Cell::new(false),
-        issues: Vec::new(),
-    };
-    if let Err(errs) = &parsed {
-        for e in errs {
-            c.error(e.line, e.message.clone());
-        }
-    }
-    for (i, raw) in text.lines().enumerate() {
-        let Ok(t) = tokenize(raw) else { continue };
-        match t.first().map(String::as_str) {
-            // a bad line number is already a parse error
-            Some("set") if t.len() == 3 && matches!(layout_key(&t[1]), Some(Ok(_))) => {
-                c.layout(&t[2], i + 1);
-            }
-            Some("set") if t.len() == 3 && t[1] == "claude-dir" => {
-                if !Path::new(&t[2]).is_absolute() && !t[2].starts_with("~/") {
-                    c.add(
-                        Level::Warning,
-                        i + 1,
-                        "claude-dir must be an absolute path (or start with ~/); it is ignored"
-                            .into(),
-                    );
+impl Checker<'_> {
+    /// Lints every line of `text`, a config file's contents.
+    fn lint(&mut self, text: &str) {
+        for (i, raw) in text.lines().enumerate() {
+            let Ok(t) = tokenize(raw) else { continue };
+            match t.first().map(String::as_str) {
+                // a bad line number is already a parse error
+                Some("set") if t.len() == 3 && matches!(layout_key(&t[1]), Some(Ok(_))) => {
+                    self.layout(&t[2], i + 1);
                 }
-            }
-            Some("default") if t.len() >= 2 => {
-                if let Ok(o) = parse_options(&t[2..]) {
-                    c.placeholder(&t[1], &o, i + 1, false);
+                Some("set") if t.len() == 3 && t[1] == "claude-dir" => {
+                    if !Path::new(&t[2]).is_absolute() && !t[2].starts_with("~/") {
+                        self.add(
+                            Level::Warning,
+                            i + 1,
+                            "claude-dir must be an absolute path (or start with ~/); it is ignored"
+                                .into(),
+                        );
+                    }
                 }
+                Some("default") if t.len() >= 2 => {
+                    if let Ok(o) = parse_options(&t[2..]) {
+                        self.placeholder(&t[1], &o, i + 1, false);
+                    }
+                }
+                _ => {}
             }
-            _ => {}
         }
-    }
-    c.issues.sort_by_key(|i| i.line);
-    Report {
-        path,
-        issues: c.issues,
     }
 }
 
-/// Lints the built-in layout, used when no config file exists.
-pub fn check_builtin(dirs: &[PathBuf]) -> Report {
-    let cfg = builtin_config();
+/// A config file and its contents, or why it could not be read.
+pub type Source = (PathBuf, Result<String, String>);
+
+/// Reads `path` for `check_layers`.
+pub fn source(path: &Path) -> Source {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()));
+    (path.to_path_buf(), text)
+}
+
+/// Lints the user config (`None`: the built-in layout) and the project
+/// config over it, as `bar render` would apply them. An unreadable file
+/// is one error without a line.
+pub fn check_layers(user: Option<Source>, project: Option<Source>, dirs: &[PathBuf]) -> Report {
+    let path = user.as_ref().map(|(p, _)| p.clone());
     let mut c = Checker {
         dirs,
         icon_width: 1,
@@ -458,27 +358,73 @@ pub fn check_builtin(dirs: &[PathBuf]) -> Report {
             .any(|d| crate::platform::executable_in(d, "gh").is_some()),
         gh_warned: Cell::new(false),
         issues: Vec::new(),
+        layer: Layer::User,
     };
-    for src in [&cfg.left, &cfg.center, &cfg.right] {
-        c.layout(src, 0);
+    let user_text = match user.map(|(_, t)| t) {
+        Some(Err(e)) => {
+            c.error(0, e);
+            return Report {
+                path,
+                project: None,
+                issues: c.issues,
+            };
+        }
+        Some(Ok(t)) => Some(t),
+        None => None,
+    };
+    let mut applied = None;
+    let mut mode = project::ProjectMode::Off;
+    let parsed = parse_layers(user_text.as_deref(), |m| {
+        mode = m;
+        let text = project.as_ref()?.1.clone();
+        applied = text.as_ref().ok().cloned();
+        Some(text)
+    });
+    if let Ok(cfg) = &parsed {
+        c.icon_width = cfg.icon_width;
+        c.defaults = cfg.defaults.clone();
     }
+    for e in parsed.err().unwrap_or_default() {
+        c.layer = e.layer;
+        c.error(e.error.line, e.error.message);
+    }
+    c.layer = Layer::User;
+    match &user_text {
+        Some(text) => c.lint(text),
+        None => {
+            let cfg = builtin_config();
+            for src in [&cfg.left, &cfg.center, &cfg.right] {
+                c.layout(src, 0);
+            }
+        }
+    }
+    if let Some(text) = &applied {
+        c.layer = Layer::Project;
+        c.lint(text);
+    }
+    c.issues
+        .sort_by_key(|i| (i.layer == Layer::Project, i.line));
     Report {
-        path: None,
+        path,
+        project: project.map(|(path, _)| ProjectInfo { path, mode }),
         issues: c.issues,
     }
 }
 
+/// Lints `text`, a user config file's contents, on its own.
+pub fn check_text(text: &str, path: Option<PathBuf>, dirs: &[PathBuf]) -> Report {
+    let p = path.unwrap_or_default();
+    let mut r = check_layers(Some((p, Ok(text.to_string()))), None, dirs);
+    r.path = r.path.filter(|p| !p.as_os_str().is_empty());
+    r
+}
+
+/// Lints the built-in layout, used when no config file exists.
+pub fn check_builtin(dirs: &[PathBuf]) -> Report {
+    check_layers(None, None, dirs)
+}
+
 /// Lints the file at `path`; an unreadable file is one error without a line.
 pub fn check_file(path: &Path, dirs: &[PathBuf]) -> Report {
-    match std::fs::read_to_string(path) {
-        Ok(text) => check_text(&text, Some(path.to_path_buf()), dirs),
-        Err(e) => Report {
-            path: Some(path.to_path_buf()),
-            issues: vec![Issue {
-                level: Level::Error,
-                line: 0,
-                message: format!("{}: {e}", path.display()),
-            }],
-        },
-    }
+    check_layers(Some(source(path)), None, dirs)
 }
