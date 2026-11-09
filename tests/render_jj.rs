@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 const SAMPLE: &str =
-    "kp\tqxywon\n3f2a\t1b9c\nfeat\nmain feat\nother\nempty conflict\nfix: the thing\n";
+    "kp\0qxywon\x003f2a\x001b9c\0feat\0main\x1ffeat\0other\0empty conflict\0fix: the thing\0";
 
 /// Non-colocated workspace `name`: a `.jj` dir and nothing else.
 fn workspace(t: &Tmp, name: &str) -> PathBuf {
@@ -159,7 +159,15 @@ fn cold_cache_refresh_runs_jj_without_snapshot() {
     let conf = "set left \"#{jj[show=change,bookmarks]}\"";
     let o = run(&t).conf(conf).env("PATH", &path).cwd(&d).go();
     assert_eq!(one(&o.plain), "", "cold cache renders empty");
-    let calls = wait_for(&log);
+    let mut calls = wait_for(&log);
+    // the fake writes one argument per line: wait for the last one
+    for _ in 0..200 {
+        if calls.lines().any(|l| l.starts_with("self.")) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+        calls = std::fs::read_to_string(&log).unwrap_or_default();
+    }
     let argv: Vec<&str> = calls.lines().collect();
     assert_eq!(argv.first(), Some(&"--ignore-working-copy"), "{calls}");
     let root = d.display().to_string();
@@ -213,6 +221,27 @@ fn colocated_repo_keeps_git_output() {
         .go();
     assert_eq!(one(&before.plain), "colo colo main");
     assert_eq!(before.raw, after.raw);
+}
+
+#[test]
+fn colocated_repo_through_a_symlink_keeps_git_output() {
+    let t = Tmp::new();
+    let d = repo(&t, "colo");
+    git(
+        &d,
+        &["remote", "add", "origin", "https://github.com/o/colo.git"],
+    );
+    std::fs::create_dir_all(d.join(".jj")).unwrap();
+    let link = t.path().join("via");
+    std::os::unix::fs::symlink(&d, &link).unwrap();
+    let o = run(&t)
+        .conf("set left \"#{repo}\"")
+        .env("PATH", "/nonexistent")
+        .cwd(&link)
+        .unset("GIT_CONFIG_NOSYSTEM")
+        .go();
+    assert_eq!(one(&o.plain), "colo");
+    assert!(o.raw.contains("https://github.com/o/colo"), "{:?}", o.raw);
 }
 
 #[test]
@@ -367,4 +396,61 @@ fn real_jj_output_unaffected_by_log_word_wrap() {
         one(&render().plain),
         format!("{} empty short", sorted.join(" "))
     );
+}
+
+#[test]
+fn real_jj_template_immune_to_aliases_and_spaced_names() {
+    let Some(jj) = real_jj() else {
+        eprintln!("jj not installed: skipped");
+        return;
+    };
+    let t = Tmp::new();
+    let d = t.path().join("real");
+    std::fs::create_dir_all(&d).unwrap();
+    let cfg = t.path().join("jj-config.toml");
+    std::fs::write(&cfg, "").unwrap();
+    let jjc = |args: &[&str]| {
+        let o = std::process::Command::new(&jj)
+            .args(["--config", "git.colocate=false"])
+            .args(args)
+            .current_dir(&d)
+            .env("HOME", t.path())
+            .env("JJ_CONFIG", &cfg)
+            .env("JJ_USER", "t")
+            .env("JJ_EMAIL", "t@t")
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "jj {args:?}: {o:?}");
+        String::from_utf8(o.stdout).unwrap()
+    };
+    jjc(&["git", "init"]);
+    jjc(&["describe", "-m", "hello  world"]);
+    jjc(&["bookmark", "create", "\"a b\"", "-r", "@"]);
+    jjc(&["bookmark", "create", "feat", "-r", "@"]);
+    // aliases named after the keywords the template reads
+    std::fs::write(
+        &cfg,
+        concat!(
+            "[template-aliases]\n",
+            "change_id = '\"SHADOW\"'\n",
+            "description = '\"SHADOW\"'\n",
+            "empty = 'false'\n",
+            "local_bookmarks = '\"\"'\n",
+        ),
+    )
+    .unwrap();
+    let dir = d.to_str().unwrap();
+    let raw = jjc(&hop_bar::placeholders::jj::args(dir)
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>());
+    let info = hop_bar::placeholders::jj::parse(&raw).expect("template output parses");
+    assert!(
+        info.change.0.chars().all(|c| c.is_ascii_lowercase()),
+        "{info:?}"
+    );
+    assert_eq!(info.desc, "hello  world");
+    assert!(info.empty);
+    assert_eq!(info.bookmarks.len(), 2, "{info:?}");
+    assert!(info.bookmarks.iter().any(|b| b.contains("a b")), "{info:?}");
 }

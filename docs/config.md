@@ -548,10 +548,10 @@ Links point at the `origin` remote's web address: ssh and scp remotes become `ht
 | `state` | `conflict` (red), `divergent` (amber), `empty` (muted): `@` has conflicts, its change id has several visible commits, it changes no files |
 | `desc` | First line of the description; option `max` truncates it |
 
-- Source: one `jj --ignore-working-copy log -r @ --no-graph -T <template>` in the workspace root, run in the background like `git status` (cache key `jj:<workspace root>`, `ttl` 10 s, 60 s backoff after a failure). A render only looks for the `.jj` directory; it never runs `jj` or reads jj's files.
+- Source: one `jj --ignore-working-copy log -r @ --no-graph -T <template>` in the workspace root, run in the background like `git status` (cache key `jj:<workspace root>`, `ttl` 10 s, 60 s backoff after a failure). A render only looks for the `.jj` directory; it never runs `jj` or reads jj's files. The template reads every keyword as a method of `self`, so `template-aliases` in your jj config cannot change it, and separates fields with NUL bytes, so bookmark and workspace names with spaces stay whole.
 - `--ignore-working-copy`: bar never snapshots the working copy and, in a colocated repository, never imports or exports git refs. `@` is as of the last snapshot, which any other `jj` command takes, so files edited since then (`empty`, the commit id) show after the next `jj` command.
 - Requires `jj` 0.32 or newer on `PATH`; `bar check` warns when it is missing.
-- `repo` and `root` in a workspace that is not colocated with git, or that sits inside another git work tree: the workspace root (`repo` without a link). In a colocated repository both are unchanged.
+- `repo` and `root` in a workspace that is not colocated with git, or that sits inside another git work tree: the workspace root (`repo` without a link). In a colocated repository both are unchanged, also when the session directory reaches it through a symlink.
 - `branch` always shows git's branch. In a colocated repository jj keeps git's `HEAD` detached, so `branch` is usually empty there; `#{jj[show=bookmarks]}` shows the bookmarks instead.
 
 Commit, tags and stash:

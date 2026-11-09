@@ -5,8 +5,7 @@ use hop_bar::placeholders::jj::{
 use std::path::{Path, PathBuf};
 
 /// Output of `TEMPLATE` for a change with bookmarks on `@` and `@-`.
-pub const SAMPLE: &str =
-    "kp\tqxywon\n3f2a\t1b9c\nfeat\nmain feat\nother default\nempty conflict\nfix: the thing\n";
+pub const SAMPLE: &str = "kp\0qxywon\x003f2a\x001b9c\0feat\0main\x1ffeat\0other\x1fdefault\0empty conflict\0fix: the thing\0";
 
 fn tmp(tag: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!("bar-jj-{tag}-{}", std::process::id()));
@@ -29,7 +28,7 @@ fn parses_every_field() {
 
 #[test]
 fn empty_fields_parse() {
-    let i = parse("ab\tcdefgh\n0123\t4567\n\n\ndefault\n\n\n").unwrap();
+    let i = parse("ab\0cdefgh\x000123\x004567\0\0\x1f\0default\0\0\0").unwrap();
     assert!(i.all_bookmarks().is_empty());
     assert!(!i.empty && !i.conflict && !i.divergent);
     assert_eq!(i.desc, "");
@@ -40,8 +39,19 @@ fn empty_fields_parse() {
 fn rejects_other_shapes() {
     assert_eq!(parse(""), None);
     assert_eq!(parse("Error: There is no jj repo in \".\"\n"), None);
-    assert_eq!(parse("kp\tqx\n3f\t1b\nfeat\n"), None, "cut short");
-    assert_eq!(parse("\tqx\n3f\t1b\n\n\n\n\n\n"), None, "no id prefix");
+    assert_eq!(parse("kp\0qx\x003f\x001b\0feat\0"), None, "cut short");
+    assert_eq!(parse("\0qx\x003f\x001b\0\0\0\0\0\0"), None, "no id prefix");
+    // the line-based shape of older bar versions
+    assert_eq!(parse("kp\tqx\n3f\t1b\n\n\n\n\n\n"), None);
+}
+
+#[test]
+fn whitespace_in_names_stays_in_one_name() {
+    let i = parse("kp\0qx\x003f\x001b\0\"a b\"\x1fc\td\0x y\0my ws\0\0two  words \0").unwrap();
+    assert_eq!(i.bookmarks, vec!["\"a b\"", "c\td"]);
+    assert_eq!(i.parent_bookmarks, vec!["x y"]);
+    assert_eq!(i.workspaces, vec!["my ws"]);
+    assert_eq!(i.desc, "two  words ");
 }
 
 #[test]
@@ -67,15 +77,21 @@ fn args_never_snapshot_and_log_only_at() {
 }
 
 #[test]
-fn template_has_one_line_per_field() {
-    // 2 ids + 2 bookmark lists + workspaces + state + description
-    assert_eq!(TEMPLATE.matches("\\n\"").count(), 7);
+fn template_has_one_field_per_nul() {
+    // 2 ids of 2 parts + 2 bookmark lists + workspaces + state + description
+    assert_eq!(TEMPLATE.matches("\\0\"").count(), 9);
+    assert!(!TEMPLATE.contains("\\n"), "no line separators");
+    // keywords as methods of `self`: a template alias cannot shadow them
     for w in [
-        "empty",
-        "conflict",
-        "divergent",
-        "first_line",
-        "working_copies",
+        "self.change_id()",
+        "self.commit_id()",
+        "self.local_bookmarks()",
+        "self.parents()",
+        "self.working_copies()",
+        "self.empty()",
+        "self.conflict()",
+        "self.divergent()",
+        "self.description()",
     ] {
         assert!(TEMPLATE.contains(w), "{w}");
     }
@@ -112,6 +128,11 @@ fn nearer_than_git() {
     assert_eq!(nearer_than(&ws, Some(&outer)), Some(ws.clone()), "nested");
     assert_eq!(nearer_than(&ws, Some(&ws)), None, "colocated");
     assert_eq!(nearer_than(&ws.join("x"), Some(&ws.join("x"))), None);
+    // reached through a symlink, compared to the canonical git top
+    let link = d.join("link");
+    std::os::unix::fs::symlink(&ws, &link).unwrap();
+    assert_eq!(nearer_than(&link, Some(&ws)), None, "colocated via symlink");
+    assert_eq!(nearer_than(&ws, Some(&link)), None);
     let _ = std::fs::remove_dir_all(&d);
 }
 

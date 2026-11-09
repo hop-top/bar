@@ -23,18 +23,22 @@ pub const DEFAULT_SHOW: &[&str] = &["change", "bookmarks", "state"];
 /// Workspace name jj gives the first workspace; not shown.
 const DEFAULT_WORKSPACE: &str = "default";
 
-/// `jj log` template: one field per line, in the order `parse` reads.
-/// Ids as shortest unique prefix (at least 8 characters) and the rest,
-/// tab-separated; bookmarks on `@`, then on its parents; workspaces whose
-/// working copy is `@`; state words; first line of the description.
+/// `jj log` template: each field ends in a NUL, list items are split by
+/// `\x1f`, so no name or description can shift a field. Keywords are
+/// read as methods of `self`, which a template alias cannot shadow.
+/// Ids as shortest unique prefix (at least 8 characters) and the rest;
+/// bookmarks on `@`, then on its parents; workspaces whose working copy
+/// is `@`; state words; first line of the description.
 pub const TEMPLATE: &str = concat!(
-    "change_id.shortest(8).prefix() ++ \"\\t\" ++ change_id.shortest(8).rest() ++ \"\\n\"",
-    " ++ commit_id.shortest(8).prefix() ++ \"\\t\" ++ commit_id.shortest(8).rest() ++ \"\\n\"",
-    " ++ local_bookmarks.map(|b| b.name()).join(\" \") ++ \"\\n\"",
-    " ++ parents.map(|p| p.local_bookmarks().map(|b| b.name()).join(\" \")).join(\" \") ++ \"\\n\"",
-    " ++ working_copies.map(|w| w.name()).join(\" \") ++ \"\\n\"",
-    " ++ separate(\" \", if(empty, \"empty\"), if(conflict, \"conflict\"), if(divergent, \"divergent\")) ++ \"\\n\"",
-    " ++ description.first_line() ++ \"\\n\"",
+    "self.change_id().shortest(8).prefix() ++ \"\\0\"",
+    " ++ self.change_id().shortest(8).rest() ++ \"\\0\"",
+    " ++ self.commit_id().shortest(8).prefix() ++ \"\\0\"",
+    " ++ self.commit_id().shortest(8).rest() ++ \"\\0\"",
+    " ++ self.local_bookmarks().map(|b| b.name()).join(\"\\x1f\") ++ \"\\0\"",
+    " ++ self.parents().map(|p| p.local_bookmarks().map(|b| b.name()).join(\"\\x1f\")).join(\"\\x1f\") ++ \"\\0\"",
+    " ++ self.working_copies().map(|w| w.name()).join(\"\\x1f\") ++ \"\\0\"",
+    " ++ separate(\" \", if(self.empty(), \"empty\"), if(self.conflict(), \"conflict\"), if(self.divergent(), \"divergent\")) ++ \"\\0\"",
+    " ++ self.description().first_line() ++ \"\\0\"",
 );
 
 /// Arguments of the refresh's `jj` call for the workspace at `dir`.
@@ -73,8 +77,10 @@ pub fn discover(dir: &Path) -> Option<PathBuf> {
 /// root `git_top` (or there is none): the directory is jj's, not git's.
 pub fn nearer_than(dir: &Path, git_top: Option<&Path>) -> Option<PathBuf> {
     let root = discover(dir)?;
+    // either side may be reached through a symlink
+    let canon = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
     match git_top {
-        Some(top) if top.starts_with(&root) => None,
+        Some(top) if canon(top).starts_with(canon(&root)) => None,
         _ => Some(root),
     }
 }
@@ -99,21 +105,27 @@ pub struct Info {
 
 /// Output of `TEMPLATE`; `None` when it is not that shape.
 pub fn parse(text: &str) -> Option<Info> {
-    let mut lines = text.split('\n');
-    let mut id = || -> Option<(String, String)> {
-        let line = lines.next()?;
-        let (p, r) = line.split_once('\t')?;
-        (!p.is_empty()).then(|| (p.to_string(), r.to_string()))
+    let mut fields = text.split('\0');
+    let mut next = || fields.next();
+    let change = (next()?.to_string(), next()?.to_string());
+    let commit = (next()?.to_string(), next()?.to_string());
+    if change.0.is_empty() || commit.0.is_empty() {
+        return None;
+    }
+    let list = |f: &str| {
+        f.split('\x1f')
+            .filter(|n| !n.is_empty())
+            .map(String::from)
+            .collect::<Vec<_>>()
     };
-    let change = id()?;
-    let commit = id()?;
-    let words = |l: &str| l.split_whitespace().map(String::from).collect::<Vec<_>>();
-    let bookmarks = words(lines.next()?);
-    let parent_bookmarks = words(lines.next()?);
-    let workspaces = words(lines.next()?);
-    let state = words(lines.next()?);
-    let desc = lines.next()?.to_string();
-    let has = |w: &str| state.iter().any(|s| s == w);
+    let bookmarks = list(next()?);
+    let parent_bookmarks = list(next()?);
+    let workspaces = list(next()?);
+    let state: Vec<&str> = next()?.split_whitespace().collect();
+    let desc = next()?.to_string();
+    // the terminator of the last field
+    next()?;
+    let has = |w: &str| state.contains(&w);
     Some(Info {
         change,
         commit,
