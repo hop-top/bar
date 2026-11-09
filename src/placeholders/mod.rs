@@ -12,6 +12,7 @@ pub mod model;
 pub mod niche;
 pub mod repo;
 pub mod sessions;
+pub mod speed;
 pub mod spend;
 pub mod spendhist;
 pub mod tmux;
@@ -67,6 +68,9 @@ static REGISTRY: &[(&str, &(dyn Placeholder + Sync))] = &[
     ("tokens", &tokens::Tokens),
     ("cache", &tokens::CacheStats),
     ("cachettl", &tokens::CacheTtl),
+    ("misses", &speed::Misses),
+    ("ttft", &speed::Ttft),
+    ("tps", &speed::Tps),
     ("cost", &cost::Cost),
     ("burn", &cost::Burn),
     ("duration", &cost::Duration),

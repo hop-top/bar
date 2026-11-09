@@ -196,8 +196,8 @@ fn old_state_without_counts_is_rebuilt() {
     let dir = state.join("transcript");
     for e in std::fs::read_dir(&dir).unwrap().flatten() {
         let s = std::fs::read_to_string(e.path()).unwrap();
-        assert!(s.contains("\"v\":2"), "{s}");
-        std::fs::write(e.path(), s.replace("\"v\":2", "\"v\":1")).unwrap();
+        assert!(s.contains("\"v\":3"), "{s}");
+        std::fs::write(e.path(), s.replace("\"v\":3", "\"v\":2")).unwrap();
     }
     let p = transcript::update(&state, &t.path().join("t.jsonl"), u64::MAX, None).unwrap();
     assert_eq!(p.stats.compactions, 2);

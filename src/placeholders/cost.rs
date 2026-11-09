@@ -3,7 +3,7 @@ use crate::options::Options;
 use crate::style::{dim, fg};
 
 /// `$1.23`; `<$0.01` for a positive amount under a cent.
-fn usd(amount: f64) -> String {
+pub(super) fn usd(amount: f64) -> String {
     if amount > 0.0 && amount < 0.01 {
         "<$0.01".into()
     } else {

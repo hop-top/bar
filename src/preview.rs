@@ -3,7 +3,7 @@
 
 use crate::conf::{Config, LoadResult};
 use crate::options::Options;
-use crate::placeholders::{dirs, gh, lookup, niche, spendhist, tokens, usage, Ctx};
+use crate::placeholders::{dirs, gh, lookup, niche, speed, spendhist, tokens, usage, Ctx};
 use crate::render::{builtin_config, render_sample};
 use crate::session::{Session, SpendLimit, Window};
 use crate::style::{accent, bold, dim, fg};
@@ -148,6 +148,9 @@ fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Op
         "tokens" => tokens::tokens(ctx, opts, &tokens::sample_stats(ctx.now)),
         "cache" => tokens::cache(ctx, opts, &tokens::sample_stats(ctx.now)),
         "cachettl" => tokens::cachettl(ctx, opts, &tokens::sample_stats(ctx.now)),
+        "ttft" => speed::ttft(opts, &tokens::sample_stats(ctx.now).turns, label),
+        "tps" => speed::tps(opts, &tokens::sample_stats(ctx.now).turns),
+        "misses" => speed::misses(ctx, opts, &tokens::sample_stats(ctx.now).turns, label),
         "worktree" => Some(dim("bar-feat")),
         "sid" => Some(dim("a1b2c3d4")),
         "tmux" => Some(dim("work:1")),

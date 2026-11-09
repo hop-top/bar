@@ -6,8 +6,8 @@ use crate::format::{self, Token};
 use crate::icons;
 use crate::options::Options;
 use crate::placeholders::gh::{self, Kind};
-use crate::placeholders::gitst;
 use crate::placeholders::usage::glyphs::{GLYPH_SETS, SHOW_ITEMS};
+use crate::placeholders::{gitst, speed};
 use crate::plugin;
 use crate::prices::models;
 use crate::render::builtin_config;
@@ -139,6 +139,8 @@ fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
         "tokens" => &[("show", OneOf(&["in", "out", "total", "both"]))],
         "cache" => &[("show", OneOf(&["read", "write", "hit", "both"]))],
         "cachettl" => &[("ttl", Pos)],
+        "ttft" | "tps" => &[("show", OneOf(&["last", "avg", "both"]))],
+        "misses" => &[("show", List(speed::SHOW))],
         "agents" => &[("names", OneOf(&["0", "1"])), ("max", Int)],
         "model" | "effort" | "ctx" => &[("click", Any)],
         "repo" | "branch" => &[("max", Int), ("link", Any)],

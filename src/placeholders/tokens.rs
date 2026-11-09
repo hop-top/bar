@@ -5,8 +5,6 @@ use crate::options::Options;
 use crate::style::{dim, fg};
 use crate::transcript::{self, Stats};
 
-/// The prompt cache lives five minutes after the last request.
-const DEFAULT_TTL: i64 = 300;
 /// Last stretch before the cache goes cold.
 const WARN_BELOW: i64 = 60;
 
@@ -17,7 +15,7 @@ pub struct CacheStats;
 /// `4m12s`: time left on the prompt cache; `cold` once expired.
 pub struct CacheTtl;
 
-fn stats(ctx: &Ctx) -> Option<Stats> {
+pub(super) fn stats(ctx: &Ctx) -> Option<Stats> {
     transcript::load(ctx.cache?, &ctx.session.transcript_path)
 }
 
@@ -104,7 +102,7 @@ pub fn cachettl(ctx: &Ctx, opts: &Options, s: &Stats) -> Option<String> {
         .get("ttl")
         .and_then(|t| t.trim().parse::<i64>().ok())
         .filter(|&t| t > 0)
-        .unwrap_or(DEFAULT_TTL);
+        .unwrap_or_else(|| s.turns.ttl());
     let mtime = (s.mtime > 0).then_some(s.mtime);
     // an unfinished scan has only seen older messages; the file's mtime
     // is the better guess for the latest request
@@ -139,5 +137,6 @@ pub fn sample_stats(now: i64) -> Stats {
         last_ts: Some(now - 48),
         mtime: now,
         partial: false,
+        turns: transcript::Turns::sample(),
     }
 }

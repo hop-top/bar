@@ -88,6 +88,9 @@ pub fn builtin(set: Icons, name: &str, opts: &Options) -> Option<&'static str> {
         "tokens" => ("\u{f0ec}", "🔢"),            // nf-fa-exchange
         "cache" => ("\u{f1c0}", "💾"),             // nf-fa-database
         "cachettl" => ("\u{f253}", "🕐"),          // nf-fa-hourglass_end
+        "misses" => ("\u{f127}", "🧊"),            // nf-fa-chain_broken
+        "ttft" => ("\u{f251}", "⏱️"),              // nf-fa-hourglass_start
+        "tps" => ("\u{f201}", "📈"),               // nf-fa-line_chart
         "agents" => ("\u{f0c0}", "👥"),            // nf-fa-users
         "cost" => ("\u{f09d}", "💳"),              // nf-fa-credit_card
         "burn" => ("\u{f06d}", "🔥"),              // nf-fa-fire
