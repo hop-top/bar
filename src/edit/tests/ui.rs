@@ -1,5 +1,6 @@
 use super::app;
 use crate::edit::app::App;
+use crate::edit::model::Editor;
 use crate::edit::ui::draw;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::backend::TestBackend;
@@ -120,8 +121,23 @@ fn quit_prompt_and_modified_marker() {
     key(&mut a, KeyCode::Char('d'));
     key(&mut a, KeyCode::Char('q'));
     let s = screen(&mut a, 100, 20);
-    assert!(s[0].contains("[modified]"));
+    assert!(s[0].contains("[modified]"), "{}", s[0]);
     assert!(s.iter().any(|l| l.contains("save before quitting? y/n")));
+}
+
+#[test]
+fn long_path_keeps_marker_and_file_name() {
+    let deep = "/very/long/checkout/path".repeat(8);
+    let ed = Editor::new(format!("{deep}/bar/bar.conf").into(), None);
+    let load: crate::edit::app::InfoLoader = Box::new(|_| None);
+    let mut a = App::new(ed, Vec::new(), load);
+    let s = screen(&mut a, 60, 20);
+    assert!(s[0].contains("[new]"), "{}", s[0]);
+    assert!(s[0].ends_with("/bar/bar.conf"), "{}", s[0]);
+    assert!(s[0].contains('…'), "{}", s[0]);
+    key(&mut a, KeyCode::Char('d'));
+    let s = screen(&mut a, 60, 20);
+    assert!(s[0].contains("[modified]"), "{}", s[0]);
 }
 
 #[test]
@@ -144,7 +160,6 @@ fn ansi_to_styled_spans() {
 #[test]
 fn preview_draws_plugin_web_samples_else_the_name() {
     use crate::edit::app::InfoLoader;
-    use crate::edit::model::Editor;
     let ci = r#"{"name":"ci","version":"1","capabilities":["placeholder"],"options":{"name":{"type":"bool"}},"web":{"samples":[{"when":{"name":"true"},"output":{"text":"ok build-and-test"}},{"output":{"text":"ok-mark"}}]}}"#;
     let load: InfoLoader =
         Box::new(move |name| (name == "ci").then(|| crate::plugin::parse_info(ci))?);

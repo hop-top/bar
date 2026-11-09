@@ -93,7 +93,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Constraint::Length(2),
     ])
     .areas(area);
-    f.render_widget(Paragraph::new(title_line(app)), title);
+    f.render_widget(Paragraph::new(title_line(app, title.width)), title);
     let block = Block::new().borders(Borders::ALL).title(format!(
         " preview: {} · {} ",
         STATES[app.state],
@@ -116,18 +116,48 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     }
 }
 
-fn title_line(app: &App) -> Line<'static> {
+/// ` bar edit [modified] <path>`: the marker before the path, and a path
+/// too long for `width` cut from the left so the file name stays.
+fn title_line(app: &App, width: u16) -> Line<'static> {
     let ed = &app.ed;
-    let mut spans = vec![
-        Span::styled(" bar edit ", Style::new().add_modifier(Modifier::BOLD)),
-        Span::raw(ed.path.display().to_string()),
-    ];
+    let mut spans = vec![Span::styled(
+        " bar edit ",
+        Style::new().add_modifier(Modifier::BOLD),
+    )];
     if ed.dirty() {
-        spans.push(Span::styled(" [modified]", Style::new().fg(Color::Yellow)));
+        spans.push(Span::styled("[modified] ", Style::new().fg(Color::Yellow)));
     } else if !ed.exists {
-        spans.push(Span::styled(" [new]", MUTED));
+        spans.push(Span::styled("[new] ", MUTED));
     }
+    let used: usize = spans.iter().map(|s| s.width()).sum();
+    let room = usize::from(width).saturating_sub(used);
+    spans.push(Span::raw(left_truncate(
+        &ed.path.display().to_string(),
+        room,
+    )));
     Line::from(spans)
+}
+
+/// `s` in at most `room` cells: whole, or `…` and its tail.
+fn left_truncate(s: &str, room: usize) -> String {
+    use unicode_width::UnicodeWidthChar;
+    if unicode_width::UnicodeWidthStr::width(s) <= room {
+        return s.to_string();
+    }
+    if room == 0 {
+        return String::new();
+    }
+    let mut tail = Vec::new();
+    let mut used = 1;
+    for c in s.chars().rev() {
+        let w = c.width().unwrap_or(0);
+        if used + w > room {
+            break;
+        }
+        used += w;
+        tail.push(c);
+    }
+    std::iter::once('…').chain(tail.into_iter().rev()).collect()
 }
 
 /// `preset full · skin plain · palette default · icons none`.
