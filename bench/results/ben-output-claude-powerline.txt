@@ -1,4 +1,4 @@
-# claude-powerline: /usr/sbin/claude-powerline  (COLUMNS=200)
+# claude-powerline: /usr/local/bin/claude-powerline  (COLUMNS=200)
 ## escapes visible (cat -v)
  M Opus 5.5  C 42%  ~ main (~1 ?1) *  S $4.27 (199.0M tokens)  B 38% (2h 13m)  W 61% (3d 4h)  T 1.0h 
 
