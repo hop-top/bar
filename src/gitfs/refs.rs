@@ -2,13 +2,14 @@
 //! stash reflog.
 
 use super::{read, Repo, Unsupported};
+use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Symbolic refs followed before giving up, as git's own limit.
 const MAX_DEPTH: usize = 5;
 /// More loose tags than this are not walked; git itself is asked instead.
-const MAX_LOOSE_TAGS: usize = 1000;
+const MAX_LOOSE_TAGS: usize = 256;
 
 /// A full object id: 40 (SHA-1) or 64 (SHA-256) hex digits.
 pub fn is_oid(s: &str) -> bool {
@@ -33,38 +34,63 @@ fn valid_name(name: &str) -> bool {
         && !name.contains('\\')
 }
 
-struct Packed {
+/// `packed-refs`, checked once and scanned in place.
+#[derive(Debug)]
+pub(super) struct Packed {
     /// Tags under `refs/tags/` carry their `^` peeled line when annotated.
     peeled: bool,
-    /// `(oid, name, peeled oid)`.
-    refs: Vec<(String, String, Option<String>)>,
+    body: String,
 }
 
-fn parse_packed(body: &str) -> Result<Packed, Unsupported> {
-    let mut p = Packed {
-        peeled: false,
-        refs: Vec::new(),
-    };
-    for line in body.lines() {
-        if let Some(h) = line.strip_prefix("# pack-refs with:") {
-            p.peeled = h
-                .split_whitespace()
-                .any(|t| t == "peeled" || t == "fully-peeled");
-        } else if let Some(oid) = line.strip_prefix('^') {
-            let last = p.refs.last_mut().ok_or(Unsupported)?;
-            if !is_oid(oid) {
-                return Err(Unsupported);
+impl Packed {
+    fn parse(body: String) -> Result<Packed, Unsupported> {
+        let mut peeled = false;
+        let mut after_ref = false;
+        for line in body.lines() {
+            if let Some(h) = line.strip_prefix("# pack-refs with:") {
+                peeled = h
+                    .split_whitespace()
+                    .any(|t| t == "peeled" || t == "fully-peeled");
+            } else if let Some(oid) = line.strip_prefix('^') {
+                if !after_ref || !is_oid(oid) {
+                    return Err(Unsupported);
+                }
+            } else if !line.is_empty() && !line.starts_with('#') {
+                let (oid, _) = line.split_once(' ').ok_or(Unsupported)?;
+                if !is_oid(oid) {
+                    return Err(Unsupported);
+                }
+                after_ref = true;
             }
-            last.2 = Some(oid.to_string());
-        } else if !line.is_empty() && !line.starts_with('#') {
-            let (oid, name) = line.split_once(' ').ok_or(Unsupported)?;
-            if !is_oid(oid) {
-                return Err(Unsupported);
-            }
-            p.refs.push((oid.to_string(), name.to_string(), None));
         }
+        Ok(Packed { peeled, body })
     }
-    Ok(p)
+
+    /// `(oid, name, peeled oid)` in file order.
+    fn refs(&self) -> impl Iterator<Item = (&str, &str, Option<&str>)> {
+        let mut lines = self
+            .body
+            .lines()
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .peekable();
+        std::iter::from_fn(move || loop {
+            let line = lines.next()?;
+            if line.starts_with('^') {
+                continue;
+            }
+            let (oid, name) = line.split_once(' ')?;
+            let peeled = lines.next_if(|l| l.starts_with('^')).map(|l| &l[1..]);
+            return Some((oid, name, peeled));
+        })
+    }
+
+    /// Object id of `name`, without building the list.
+    fn find(&self, name: &str) -> Option<&str> {
+        self.body.lines().find_map(|l| {
+            let (oid, n) = l.split_once(' ')?;
+            (n == name && !l.starts_with(['#', '^'])).then_some(oid)
+        })
+    }
 }
 
 /// Tags pointing at one commit.
@@ -121,24 +147,33 @@ fn natural(a: &str, b: &str) -> std::cmp::Ordering {
 }
 
 impl Repo {
-    fn packed(&self) -> Result<Option<Packed>, Unsupported> {
-        read(&self.common_dir.join("packed-refs"))?
-            .map(|b| parse_packed(&b))
-            .transpose()
+    /// `packed-refs`, read once per `Repo`.
+    fn packed(&self) -> Result<Option<&Packed>, Unsupported> {
+        self.packed
+            .get_or_init(|| {
+                read(&self.common_dir.join("packed-refs"))?
+                    .map(Packed::parse)
+                    .transpose()
+            })
+            .as_ref()
+            .map(Option::as_ref)
+            .map_err(|_| Unsupported)
     }
 
     /// Refs kept in a reftable (a `reftable/` directory, or
     /// `extensions.refStorage = reftable`): not readable as files.
     fn reftable(&self) -> Result<bool, Unsupported> {
-        if self.common_dir.join("reftable").is_dir() {
-            return Ok(true);
-        }
-        Ok(read(&self.common_dir.join("config"))?.is_some_and(|c| {
-            c.lines().any(|l| {
-                let l = l.trim().to_ascii_lowercase();
-                l.starts_with("refstorage") && l.contains("reftable")
-            })
-        }))
+        *self.reftable.get_or_init(|| {
+            if self.common_dir.join("reftable").is_dir() {
+                return Ok(true);
+            }
+            Ok(read(&self.common_dir.join("config"))?.is_some_and(|c| {
+                c.lines().any(|l| {
+                    let l = l.trim().to_ascii_lowercase();
+                    l.starts_with("refstorage") && l.contains("reftable")
+                })
+            }))
+        })
     }
 
     /// Object id `name` points to; `None` when the ref does not exist.
@@ -163,8 +198,8 @@ impl Repo {
                 }
                 return Ok(self
                     .packed()?
-                    .and_then(|p| p.refs.into_iter().find(|r| r.1 == name))
-                    .map(|r| r.0));
+                    .and_then(|p| p.find(&name))
+                    .map(str::to_ascii_lowercase));
             };
             let body = body.trim();
             match body.strip_prefix("ref:") {
@@ -189,6 +224,7 @@ impl Repo {
         let mut scan = TagScan::default();
         let mut loose = Vec::new();
         walk(&self.common_dir.join("refs/tags"), "", &mut loose)?;
+        let shadowed: HashSet<&str> = loose.iter().map(|(n, _)| n.as_str()).collect();
         for (name, body) in &loose {
             let body = body.trim();
             if body == commit {
@@ -200,11 +236,11 @@ impl Repo {
             }
         }
         if let Some(p) = self.packed()? {
-            for (oid, name, peeled) in p.refs {
+            for (oid, name, peeled) in p.refs() {
                 let Some(short) = name.strip_prefix("refs/tags/") else {
                     continue;
                 };
-                if loose.iter().any(|(n, _)| n == short) {
+                if shadowed.contains(short) {
                     continue;
                 }
                 match peeled {
@@ -232,7 +268,17 @@ impl Repo {
 }
 
 /// Loose refs under `dir`, as `(name relative to refs/tags, contents)`.
+/// Names are listed first, so too many are refused before any is read.
 fn walk(dir: &Path, prefix: &str, out: &mut Vec<(String, String)>) -> Result<(), Unsupported> {
+    let mut found = Vec::new();
+    list(dir, prefix, &mut found)?;
+    for (name, path) in found {
+        out.push((name, read(&path)?.ok_or(Unsupported)?));
+    }
+    Ok(())
+}
+
+fn list(dir: &Path, prefix: &str, out: &mut Vec<(String, PathBuf)>) -> Result<(), Unsupported> {
     let entries = match fs::read_dir(dir) {
         Ok(e) => e,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -244,14 +290,14 @@ fn walk(dir: &Path, prefix: &str, out: &mut Vec<(String, String)>) -> Result<(),
         let full = format!("{prefix}{name}");
         let ty = e.file_type().map_err(|_| Unsupported)?;
         if ty.is_dir() {
-            walk(&e.path(), &format!("{full}/"), out)?;
+            list(&e.path(), &format!("{full}/"), out)?;
         } else if name.ends_with(".lock") {
             // a ref being written; git skips these too
         } else {
             if out.len() >= MAX_LOOSE_TAGS {
                 return Err(Unsupported);
             }
-            out.push((full, read(&e.path())?.ok_or(Unsupported)?));
+            out.push((full, e.path()));
         }
     }
     Ok(())

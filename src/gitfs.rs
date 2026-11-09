@@ -11,6 +11,7 @@ pub use index::{unmerged, MAX_INDEX};
 pub use ops::{Op, Step};
 pub use refs::{best_tag, is_oid, TagScan};
 
+use std::cell::OnceCell;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -19,7 +20,7 @@ use std::path::{Path, PathBuf};
 const MAX_FILE: u64 = 1024 * 1024;
 
 /// The files cannot be interpreted faithfully without git.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Unsupported;
 
 #[derive(Debug)]
@@ -35,6 +36,9 @@ pub struct Repo {
     pub top: PathBuf,
     git_dir: PathBuf,
     common_dir: PathBuf,
+    /// Read on first use, then shared by every ref lookup.
+    packed: OnceCell<Result<Option<refs::Packed>, Unsupported>>,
+    reftable: OnceCell<Result<bool, Unsupported>>,
 }
 
 /// `Ok(None)` when the file does not exist (or is `/dev/null`, git's own
@@ -129,6 +133,8 @@ fn open(top: &Path, git_dir: PathBuf) -> Found {
         top: top.to_path_buf(),
         git_dir,
         common_dir,
+        packed: OnceCell::new(),
+        reftable: OnceCell::new(),
     })
 }
 

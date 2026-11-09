@@ -255,3 +255,43 @@ fn real_reftable_repository_is_unsupported() {
     assert_eq!(r.stash_count(), Err(Unsupported));
     assert_eq!(r.tags_at(&"0".repeat(40)), Err(Unsupported));
 }
+
+#[test]
+fn more_than_256_loose_tags_go_to_git() {
+    let t = Tmp::new();
+    let d = repo(&t, "p");
+    let head = out(&d, &["rev-parse", "HEAD"]);
+    let tags = d.join(".git/refs/tags");
+    std::fs::create_dir_all(&tags).unwrap();
+    for i in 0..256 {
+        std::fs::write(tags.join(format!("t{i:03}")), format!("{head}\n")).unwrap();
+    }
+    let scan = open(&d).tags_at(&head).unwrap();
+    assert_eq!(scan.at.len(), 256);
+    // one more, in a subdirectory
+    std::fs::create_dir(tags.join("rel")).unwrap();
+    std::fs::write(tags.join("rel/x"), format!("{head}\n")).unwrap();
+    assert_eq!(open(&d).tags_at(&head), Err(Unsupported));
+}
+
+#[test]
+fn packed_refs_with_thousands_of_tags() {
+    let t = Tmp::new();
+    let d = repo(&t, "p");
+    let head = out(&d, &["rev-parse", "HEAD"]);
+    git(&d, &["tag", "-a", "-m", "r", "v2"]);
+    git(&d, &["pack-refs", "--all"]);
+    let packed = d.join(".git/packed-refs");
+    let mut body = std::fs::read_to_string(&packed).unwrap();
+    for i in 0..15_000 {
+        body.push_str(&format!("{} refs/tags/p{i:05}\n", "1".repeat(40)));
+    }
+    std::fs::write(&packed, body).unwrap();
+    let r = open(&d);
+    assert_eq!(r.head_commit(), Ok(Some(head.clone())));
+    assert_eq!(r.resolve("refs/tags/p14999"), Ok(Some("1".repeat(40))));
+    assert_eq!(r.resolve("refs/tags/nope"), Ok(None));
+    let scan = r.tags_at(&head).unwrap();
+    assert_eq!(scan.at, vec![("v2".to_string(), true)]);
+    assert_eq!(r.stash_count(), Ok(0));
+}
