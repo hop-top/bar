@@ -9,22 +9,55 @@
 </head>
 <body>
   <header class="top">
-    <h1><span class="mark">bar</span> configurator</h1>
+    <div class="title">
+      <h1><span class="mark">bar</span> configurator</h1>
+      <p class="intro">Build your Claude Code status line. Changes preview live.</p>
+    </div>
     <div class="actions">
       <button id="undo" class="btn" type="button" aria-keyshortcuts="Control+Z Meta+Z" disabled>Undo</button>
       <button id="redo" class="btn" type="button" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z" disabled>Redo</button>
       <label class="btn">Load bar.conf<input id="load" type="file" accept=".conf,text/plain" hidden></label>
       <label class="btn" title="Output of: bar web plugins -o plugins.json">Load plugins.json<input id="load-plugins" type="file" accept=".json,application/json" hidden></label>
-      <button id="copy" class="btn">Copy</button>
-      <button id="download" class="btn primary">Download bar.conf</button>
+      <button id="copy" class="btn" type="button">Copy</button>
+      <button id="download" class="btn primary" type="button">Download bar.conf</button>
     </div>
+    <p id="say" class="say" role="status" aria-live="polite"></p>
   </header>
 
   <div id="missing" class="missing" hidden>
     <p>The renderer is not built. Run <code>make web</code> in the bar repository, then reload this page.</p>
   </div>
 
+  <section id="use-it" class="use-it card" hidden aria-labelledby="use-it-h">
+    <div class="card-head">
+      <h2 id="use-it-h">Use it</h2>
+      <button id="use-it-close" class="btn small" type="button">Close</button>
+    </div>
+    <ol class="steps">
+      <li>Install bar: download it from <a href="https://github.com/hop-top/bar/releases" target="_blank" rel="noopener noreferrer">Releases</a> or build it (<a href="https://github.com/hop-top/bar#install" target="_blank" rel="noopener noreferrer">install guide</a>).</li>
+      <li>Save the file as <code>~/.config/bar/bar.conf</code> (or <code>$XDG_CONFIG_HOME/bar/bar.conf</code>):
+        <span class="cmd"><code id="cmd-save">mkdir -p ~/.config/bar &amp;&amp; mv ~/Downloads/bar.conf ~/.config/bar/bar.conf</code><button class="btn small copy-cmd" type="button" data-copy="cmd-save" aria-label="Copy the save command">Copy</button></span>
+        After <b>Copy</b> instead, paste into that file.
+      </li>
+      <li>Make it Claude Code's status line (shows the change to <code>~/.claude/settings.json</code> and asks first):
+        <span class="cmd"><code id="cmd-install">bar install --refresh 5</code><button class="btn small copy-cmd" type="button" data-copy="cmd-install" aria-label="Copy the install command">Copy</button></span>
+        or add it by hand to <code>~/.claude/settings.json</code>:
+        <span class="cmd"><code id="cmd-settings">"statusLine": { "type": "command", "command": "bar render", "refreshInterval": 5 }</code><button class="btn small copy-cmd" type="button" data-copy="cmd-settings" aria-label="Copy the settings entry">Copy</button></span>
+      </li>
+      <li>Check it: <span class="cmd"><code id="cmd-check">bar check</code><button class="btn small copy-cmd" type="button" data-copy="cmd-check" aria-label="Copy the check command">Copy</button></span>
+        Every setting is in the <a href="https://github.com/hop-top/bar/blob/main/docs/config.md" target="_blank" rel="noopener noreferrer">config reference</a>.</li>
+    </ol>
+  </section>
+
   <main id="app" hidden>
+    <section class="presets card" aria-labelledby="presets-h">
+      <div class="card-head">
+        <h2 id="presets-h">Start from a preset</h2>
+        <span id="preset-current" class="status"></span>
+      </div>
+      <div id="preset-list" class="preset-list" role="group" aria-labelledby="presets-h"></div>
+    </section>
+
     <section class="preview card">
       <div class="card-head">
         <h2>Preview</h2>
@@ -55,9 +88,6 @@
       <h2>Look</h2>
       <fieldset id="look" class="grid">
         <legend class="sr-only">Look</legend>
-        <label>preset
-          <span class="row"><select id="preset"></select><button id="preset-apply" class="btn small">Apply</button></span>
-        </label>
         <div id="settings" class="settings"></div>
         <label>separator <input id="separator" type="text" maxlength="4"></label>
         <label>gap <input id="gap" type="number" min="0" max="20"></label>
@@ -70,6 +100,11 @@
       <ul id="issues" class="issues"></ul>
     </section>
   </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden>
+    <span id="toast-text"></span>
+    <button id="toast-undo" class="btn small" type="button">Undo</button>
+  </div>
 
   <script src="pkg/bar_web.js"></script>
   <script src="pkg/bar_web_wasm.js"></script>
