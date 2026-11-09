@@ -2,7 +2,7 @@
 # kit will surface conflicting refreshes as `.kit-suggested` siblings.
 # Runs `make check` on Linux and macOS; Windows runs clippy and tests.
 
-name: test-rs-caller
+name: CI
 
 on:
   pull_request:
