@@ -17,16 +17,36 @@ pub const DEFAULT_SHOW: &str = "used,limit";
 /// off for the account, or without a limit.
 pub fn budget(data: &Data, now: i64) -> Option<Budget> {
     let (e, today) = data.extra(now, Tz::Local).filter(|(e, _)| e.enabled)?;
+    Some(month_budget(
+        e.used,
+        e.limit,
+        e.util,
+        &e.currency,
+        today,
+        now,
+    ))
+}
+
+/// A budget over the local calendar month holding `now`; `bar preview`
+/// draws its sample the same way.
+pub fn month_budget(
+    used: i64,
+    limit: i64,
+    util: f64,
+    currency: &str,
+    today: Option<i64>,
+    now: i64,
+) -> Budget {
     let (start, end) = month_bounds(now, Tz::Local);
-    Some(Budget {
-        used: e.used,
-        limit: e.limit,
-        util: e.util,
-        currency: e.currency.clone(),
+    Budget {
+        used,
+        limit,
+        util,
+        currency: currency.into(),
         resets_at: end,
         period: end - start,
         today,
-    })
+    }
 }
 
 pub fn render_budget(ctx: &Ctx, opts: &Options, b: &Budget) -> Option<String> {
