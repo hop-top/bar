@@ -209,7 +209,10 @@ pub fn replace(path: &Path, body: &str, to: Backups) -> std::io::Result<Option<P
 
 #[cfg(test)]
 mod tests {
-    use super::{plain_path, replace, target, unchanged, Backups, KEEP};
+    use super::{plain_path, replace, unchanged, Backups, KEEP};
+    // only the symlink tests, which are Unix-only, resolve targets
+    #[cfg(unix)]
+    use super::target;
 
     fn tmp() -> std::path::PathBuf {
         let d = std::env::temp_dir().join(format!(
