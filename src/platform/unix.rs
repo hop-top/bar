@@ -65,9 +65,35 @@ pub fn executable_in(dir: &Path, name: &str) -> Option<PathBuf> {
     Some(dir.join(name)).filter(|p| is_executable(p))
 }
 
-/// `name` as given: `Command` searches `PATH` itself.
+/// The first absolute `PATH` dir holding an executable `name`. Relative
+/// and empty entries (which would resolve against the working directory,
+/// often a cloned repository) are skipped. Not found: `name` when `PATH`
+/// has no such entry, else a path that cannot run, so `execvp` never
+/// falls back to the working directory.
 pub fn program(name: &str) -> PathBuf {
-    PathBuf::from(name)
+    program_in(name, std::env::var_os("PATH").as_deref())
+}
+
+fn program_in(name: &str, path: Option<&std::ffi::OsStr>) -> PathBuf {
+    if name.contains('/') {
+        return PathBuf::from(name);
+    }
+    let path = path.unwrap_or_else(|| std::ffi::OsStr::new("/usr/bin:/bin"));
+    let mut relative = false;
+    for d in std::env::split_paths(path) {
+        if !d.is_absolute() {
+            relative = true;
+            continue;
+        }
+        if let Some(p) = executable_in(&d, name) {
+            return p;
+        }
+    }
+    if relative {
+        Path::new("/nonexistent").join(name)
+    } else {
+        PathBuf::from(name)
+    }
 }
 
 /// The plugin name part of a file name in a `PATH` dir, with the rank of
@@ -144,5 +170,40 @@ pub fn local_offset(ts: i64) -> i64 {
         } else {
             tm.tm_gmtoff
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::OsStr;
+
+    fn tool(dir: &Path, name: &str) {
+        fs::create_dir_all(dir).unwrap();
+        let p = dir.join(name);
+        fs::write(&p, "#!/bin/sh\n").unwrap();
+        fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    #[test]
+    fn program_skips_relative_and_empty_path_entries() {
+        let root = std::env::temp_dir().join(format!("bar-prog-{}", std::process::id()));
+        let abs = root.join("abs");
+        tool(&abs, "bar-test-tool");
+        let p = |path: &str| program_in("bar-test-tool", Some(OsStr::new(path)));
+        let joined = format!(":.:rel:{}", abs.display());
+        assert_eq!(p(&joined), abs.join("bar-test-tool"));
+        // only relative entries: never the bare name execvp would look up
+        for path in ["", ":", ".", "rel:", ":rel"] {
+            let got = p(path);
+            assert!(got.is_absolute(), "{path:?} -> {got:?}");
+            assert!(!got.exists());
+        }
+        assert_eq!(p("/nonexistent-dir"), PathBuf::from("bar-test-tool"));
+        assert_eq!(
+            program_in("./x", Some(OsStr::new(""))),
+            PathBuf::from("./x")
+        );
+        let _ = fs::remove_dir_all(&root);
     }
 }
