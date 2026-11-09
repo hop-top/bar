@@ -30,6 +30,19 @@ fn args(url: &str, headers: &[&str], max_time: u64, cap: usize) -> Vec<String> {
     a
 }
 
+/// `program` with `args`, no console window, and no `SSLKEYLOGFILE`: an
+/// inherited one would make curl write the TLS session keys (and with
+/// them the request, token included) to that file. The CA variables
+/// (`CURL_CA_BUNDLE`, `SSL_CERT_FILE`, `SSL_CERT_DIR`) and proxy
+/// variables are kept: networks with their own CA or proxy need them.
+fn curl(program: std::path::PathBuf, args: Vec<String>) -> Command {
+    let mut c = Command::new(program);
+    // no console window when run from a background refresh on Windows
+    crate::platform::hide_window(&mut c);
+    c.args(args).env_remove("SSLKEYLOGFILE");
+    c
+}
+
 /// Body of `url` (HTTPS, redirects HTTPS only) with extra `headers`
 /// (`Name: value`), cut off after `max_time` seconds; a body over `cap`
 /// bytes or a non-2xx status is an error.
@@ -39,10 +52,10 @@ pub(crate) fn get(
     max_time: u64,
     cap: usize,
 ) -> Result<Vec<u8>, String> {
-    let mut c = Command::new(crate::platform::program("curl"));
-    // no console window when run from a background refresh on Windows
-    crate::platform::hide_window(&mut c);
-    c.args(args(url, headers, max_time, cap));
+    let mut c = curl(
+        crate::platform::program("curl"),
+        args(url, headers, max_time, cap),
+    );
     let mut child = c
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -120,9 +133,10 @@ pub(crate) fn request(
     cap: usize,
 ) -> Result<Response, String> {
     // a fixed path: this request carries a secret
-    let mut c = Command::new(crate::platform::system_program("curl"));
-    crate::platform::hide_window(&mut c);
-    c.args(request_args(url, headers, max_time, cap));
+    let mut c = curl(
+        crate::platform::system_program("curl"),
+        request_args(url, headers, max_time, cap),
+    );
     let mut child = c
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -149,7 +163,20 @@ pub(crate) fn request(
 
 #[cfg(test)]
 mod tests {
-    use super::{args, request_args, split_trailer};
+    use super::{args, curl, request_args, split_trailer};
+
+    #[test]
+    fn curl_never_logs_tls_keys() {
+        for c in [
+            curl("curl".into(), vec![]),
+            curl("/usr/bin/curl".into(), vec![]),
+        ] {
+            let removed = c
+                .get_envs()
+                .any(|(k, v)| k == "SSLKEYLOGFILE" && v.is_none());
+            assert!(removed);
+        }
+    }
 
     #[test]
     fn argv_ignores_curlrc_and_ends_options_before_the_url() {
