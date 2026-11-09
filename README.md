@@ -38,6 +38,8 @@ No token counters:
 
 Medians, same session data and equivalent layouts ([method and raw results](bench/README.md#ben-results)).
 
+Full feature comparison: [docs/comparison.md](docs/comparison.md).
+
 ## Install
 
 Download an archive from [Releases](https://github.com/hop-top/bar/releases) and put `bar` on your `PATH`, or build from source with a [Rust toolchain](https://rustup.rs):
