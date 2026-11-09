@@ -261,6 +261,7 @@ fn stats() -> Stats {
         last_ts: Some(10_000),
         mtime: 9_000,
         partial: false,
+        turns: Default::default(),
     }
 }
 

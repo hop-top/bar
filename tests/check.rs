@@ -296,6 +296,32 @@ fn check_validates_transcript_placeholder_options() {
 }
 
 #[test]
+fn check_validates_speed_and_misses_options() {
+    let fx = Fx::new();
+    fx.conf("set left \"#{ttft[show=both]} #{tps[show=avg]} #{misses[show=cold,count]}\"\n");
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_eq!(code, 0, "{stdout}");
+    fx.conf("set left \"#{ttft[show=max]} #{misses[show=count,why]}\"\n");
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_eq!(code, 2, "{stdout}");
+    assert!(stdout.contains("invalid value `max`"), "{stdout}");
+    assert!(stdout.contains("invalid value `count,why`"), "{stdout}");
+}
+
+#[test]
+fn preview_shows_sample_speed_and_misses() {
+    let fx = Fx::new();
+    fx.conf("set left \"#{ttft} #{tps} #{misses}\"\n");
+    let mut c = fx.bar(&["preview"]);
+    c.env("COLUMNS", "200");
+    let (code, stdout) = out(&mut c);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("1.4s"), "{stdout}");
+    assert!(stdout.contains("43"), "{stdout}");
+    assert!(stdout.contains("miss"), "{stdout}");
+}
+
+#[test]
 fn preview_shows_sample_transcript_stats() {
     let fx = Fx::new();
     fx.conf("set left \"#{tokens} #{cache} #{cachettl}\"\n");

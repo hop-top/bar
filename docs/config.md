@@ -3,7 +3,7 @@
 How to write `bar.conf`: where it lives, the directives, every placeholder and its options, styling, layout and the commands around the config. Pictures of skins, skin glyphs, segment backgrounds, palettes, bar glyphs, usage components, pace states, icons, lines and wrapping, and PR checks: [Gallery](gallery.md).
 
 - [Overview](#overview): [config file](#config-file), [directives](#directives), [rules](#rules), [minimal example](#minimal-example)
-- [Placeholders](#placeholders): [session](#session), [usage](#usage), [tokens, cache, cachettl](#tokens-cache-cachettl), [spendhist](#spendhist), [git and directories](#git-and-directories), [prs and issues](#prs-and-issues), [account, agents, sessions, tmux](#account-agents-sessions-tmux), [every placeholder](#options-on-every-placeholder), [values](#values)
+- [Placeholders](#placeholders): [session](#session), [usage](#usage), [tokens, cache, cachettl](#tokens-cache-cachettl), [ttft, tps, misses](#ttft-tps-misses), [spendhist](#spendhist), [git and directories](#git-and-directories), [prs and issues](#prs-and-issues), [account, agents, sessions, tmux](#account-agents-sessions-tmux), [every placeholder](#options-on-every-placeholder), [values](#values)
 - [Styling](#styling): [skins](#skins), [palettes](#palettes), [icons](#icons), [glyphs](#glyphs), [colours](#colours)
 - [Layout](#layout): [lines and wrapping](#lines-and-wrapping)
 - [Commands](#commands): [bar check](#bar-check), [bar preview](#bar-preview), [presets and bar init](#presets), [click handler](#click-handler-macos), [clickable commands](#clickable-commands), [hooks](#hooks)
@@ -184,13 +184,13 @@ Toggle:
 
 Token counts, prompt-cache use and the time the prompt cache has left, from the session transcript.
 
-`#{tokens[show=in|out|total]}`, `#{cache[show=read|write|hit]}`, `#{cachettl[ttl=300]}`
+`#{tokens[show=in|out|total]}`, `#{cache[show=read|write|hit]}`, `#{cachettl[ttl=3600]}`
 
 | Placeholder | Option | Default | Meaning |
 |---|---|---|---|
 | `tokens` | `show` | `both` | `in`, `out`, `total`, `both`; `both` is `12.3k↑ 4.1k↓` |
 | `cache` | `show` | `both` | `read`, `write`, `hit`, `both`; `both` is `r 1.2M w 80k`, `hit` is `hit 93%` |
-| `cachettl` | `ttl` | `300` | Seconds the prompt cache lives (minimum 1); `3600` for the 1 h cache |
+| `cachettl` | `ttl` | detected | Seconds the prompt cache lives (minimum 1). Without it: `3600` when the last cache write that names its lifetime went to the 1-hour cache, else `300` |
 
 Read from the `transcript_path` in the session JSON (assistant messages' `usage`). Nothing renders without a readable transcript.
 
@@ -199,8 +199,49 @@ Read from the `transcript_path` in the session JSON (assistant messages' `usage`
 - Numbers are compact: `999`, `12.3k`, `80k`, `1.2M`, `2.5B`.
 - A message written as several lines (one per content block) counts once, by `message.id`.
 - `cachettl`: `ttl` minus the time since the last assistant message (the transcript mtime when there is none), as `4m12s`; `cold` in muted text once it is over. Green above 60 s left, then the warn colour.
+- The lifetime is detected from `usage.cache_creation`: a write with `ephemeral_1h_input_tokens` and no `ephemeral_5m_input_tokens` means the 1-hour cache; any 5-minute part means the 5-minute cache. A request that writes nothing, or a transcript without the split, keeps the last detected lifetime (5 minutes to begin with).
 - Totals are incremental. A state file per transcript (mode 0600, `transcript/` in the state directory) keeps the byte offset and running totals; a render reads only the bytes appended since. A smaller file, a different inode (on Windows, creation time), or a changed mtime at the same size rescans from the start.
 - A render reads at most 1 MiB. On a bigger backlog it shows the totals so far and a background `bar refresh` finishes the scan, so the numbers catch up within a few renders. Lines over 512 KiB and lines that are not valid JSON are skipped.
+
+### ttft, tps, misses
+
+Time to first token, output speed and prompt-cache misses, from the same transcript read as [`tokens`](#tokens-cache-cachettl).
+
+`#{ttft[show=last|avg|both]}`, `#{tps[show=last|avg|both]}`, `#{misses[show=count,cause,cold]}`
+
+| Placeholder | Option | Default | Meaning |
+|---|---|---|---|
+| `ttft` | `show` | `last` | `last`, `avg`, `both`; `ttft 1.4s`, `ttft avg 1.8s`, `ttft 1.4s avg 1.8s` |
+| `tps` | `show` | `last` | `last`, `avg`, `both`; `43 t/s`, `avg 38 t/s`, `43 avg 38 t/s` |
+| `misses` | `show` | `count,cause` | list of `count` (`miss 2`), `cause` (`ttl 1 inv 1`), `cold` (`cold 180k +$0.68`) |
+
+What the timestamps measure:
+
+- Claude Code stamps each transcript entry with the time it writes it. A prompt's user entry is written when the prompt is submitted; a tool result's user entry when the tool finishes; an assistant entry when one content block (thinking, text or tool call) has finished streaming. One API response is split over several assistant entries that share a `message.id`.
+- There are no per-token times. Both numbers are therefore built from these write times and include more than generation alone.
+- Only main-conversation entries count (`isSidechain` not `true`).
+
+`ttft`:
+
+- From the prompt's user entry to the first assistant entry after it. Since that entry is written when its first block is complete, the time includes generating that whole block (for example the full thinking block), not just the first token.
+- A prompt is a `user` entry whose content holds no `tool_result` block and that is not marked `isMeta`.
+- `last` is the most recent answered prompt; a prompt still waiting for its first entry leaves the previous value shown. `avg` is the mean over every answered prompt in the transcript.
+
+`tps`:
+
+- Per API response: `output_tokens` (from the response's last entry) over the time from the user entry that preceded it (the prompt or the last tool result) to the response's last assistant entry. The span includes the wait for the first token, and output tokens include thinking.
+- `last` sums the responses since the latest answered prompt, tool-calling rounds included; `avg` sums every response in the transcript. A response with no user entry before it, or a span of zero, is left out.
+- One decimal under 10 (`4.2`), whole numbers above.
+
+`misses`:
+
+- A response is a miss when the previous response had at least 1024 cached prompt tokens (cache read plus cache write), and this one reads under half of that and writes more than it reads: the cached prefix had to be written again.
+- Cause `ttl`: the time from the previous response's last entry to the user entry that sent this request is longer than the cache lifetime ([detected](#tokens-cache-cachettl) like `cachettl`: 1 hour or 5 minutes). Cause `inv`: the cache was still in its lifetime, so the prefix changed (another model, edited instructions or tools, a cleared or rewound conversation).
+- The first response after a compaction starts a new prompt and is never counted.
+- `cold`: the cached prefix of the last response, which the next request writes again if the cache has gone cold, and the dollars that adds over reading it: tokens times (cache write rate minus cache read rate) for the session's `model.id`, from the [price table](#spendhist) and `set price` rules. The 1-hour cache writes at twice the input rate. Without a price only the tokens show.
+- `count` and `cause` hide at 0 misses; `cold` hides before the first response; the placeholder hides when every item does.
+
+State lives in the per-transcript file of [`tokens`](#tokens-cache-cachettl): the response being written, the last turn and running sums, a few numbers per transcript whatever its length.
 
 ### spendhist
 
@@ -427,6 +468,9 @@ Colours and width:
 | `tokens` | `nf-fa-exchange` U+F0EC | 🔢 |
 | `cache` | `nf-fa-database` U+F1C0 | 💾 |
 | `cachettl` | `nf-fa-hourglass_end` U+F253 | 🕐 |
+| `misses` | `nf-fa-chain_broken` U+F127 | 🧊 |
+| `ttft` | `nf-fa-hourglass_start` U+F251 | ⏱️ |
+| `tps` | `nf-fa-line_chart` U+F201 | 📈 |
 | `dirty` | `nf-fa-pencil` U+F040 | ✏️ |
 | `ahead` | `nf-fa-arrow_up` U+F062 | ⬆️ |
 | `worktree` | `nf-fa-tree` U+F1BB | 🌳 |
