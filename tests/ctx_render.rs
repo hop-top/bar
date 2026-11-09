@@ -163,11 +163,12 @@ fn oversized_user_settings_are_ignored() {
             "x".repeat(pad)
         )
     };
-    t.write(".claude/settings.json", &body(60 * 1024));
+    // long permission lists: a file of several hundred KiB is read
+    t.write(".claude/settings.json", &body(700 * 1024));
     let o = clean(run(&t), "").conf(conf).stdin(&s).go();
     assert_eq!(o.plain.trim(), "ctx 100k left sandbox");
-    // past 64 KiB: not read at all
-    t.write(".claude/settings.json", &body(64 * 1024));
+    // past 1 MiB: not read at all
+    t.write(".claude/settings.json", &body(1024 * 1024));
     let o = clean(run(&t), "").conf(conf).stdin(&s).go();
     assert_eq!(o.plain.trim(), "ctx 567k left");
 }

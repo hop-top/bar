@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 /// Larger settings files are not read.
-pub const MAX_SETTINGS: u64 = 64 * 1024;
+pub const MAX_SETTINGS: u64 = 1024 * 1024;
 
 /// One settings file, parsed; `None` when missing, too large or not JSON.
 pub fn read(path: &Path) -> Option<Value> {
