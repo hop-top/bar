@@ -279,8 +279,42 @@
       return plugin ? plugin.options : [];
     },
     separator: () => (lastInspect && lastInspect.ok ? lastInspect.set.separator : "│"),
+    describe: (name) => {
+      const core = schema.placeholders.find((p) => p.name === name);
+      if (core) return core.description;
+      const plugin = pluginList.find((p) => p.name === name);
+      return plugin ? plugin.description : "";
+    },
+    pickerItems: () =>
+      schema.placeholders
+        .map((p) => ({ name: p.name, description: p.description }))
+        .concat(pluginList.map((p) => ({ name: p.name, description: p.description, category: p.category, plugin: true }))),
+    sample,
+    announce: (msg) => {
+      $("announce").textContent = msg;
+    },
     onGroup: (side, line, src) => setText(Conf.setGroup(text, side, line, src)),
   });
+
+  // One placeholder alone, as the picker's sample: HTML, or "" when it
+  // draws nothing with the sample data. Cached until the inputs change.
+  let samples = new Map();
+  let samplesKey = "";
+  function sample(name) {
+    const icons = lastInspect && lastInspect.ok ? lastInspect.set.icons : "none";
+    const key = `${icons}\u0000${ui.session.value}\u0000${manifest}`;
+    if (key !== samplesKey) {
+      samples = new Map();
+      samplesKey = key;
+    }
+    if (!samples.has(name)) {
+      const conf = `set icons ${icons}\nset left "#{${name}}"`;
+      const out = bar.render(conf, ui.session.value, 200, Date.now() / 1000, manifest).split("\n")[0];
+      const plain = out.replace(/\x1b\[[0-9;:]*[@-~]/g, "").replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, "");
+      samples.set(name, plain.trim() ? Ansi.toHtml(out)[0] : "");
+    }
+    return samples.get(name);
+  }
 
   // Source, session, columns
   ui.conf.oninput = () => setText(ui.conf.value, ui.conf, { group: "typing" });
@@ -300,7 +334,8 @@
   };
 
   // The user's plugins.json (`bar web plugins -o plugins.json`)
-  $("load-plugins").onchange = async (e) => {
+  $("load-plugins").onclick = () => $("load-plugins-file").click();
+  $("load-plugins-file").onchange = async (e) => {
     const f = e.target.files[0];
     e.target.value = "";
     if (!f) return;
@@ -317,7 +352,8 @@
   };
 
   // Load, copy, download
-  $("load").onchange = async (e) => {
+  $("load").onclick = () => $("load-file").click();
+  $("load-file").onchange = async (e) => {
     const f = e.target.files[0];
     if (f) setText(await f.text());
     e.target.value = "";
