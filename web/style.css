@@ -1,18 +1,18 @@
-/* Nerd Font for icons and skin separators: installed copy first, else
-   Hack Nerd Font Mono from the Nerd Fonts v3.4.0 release via jsDelivr. */
+/* Nerd Font for icons and skin separators: an installed Hack Nerd Font
+   Mono first, else the subset bundled in fonts/ (see fonts/LICENSE). */
 @font-face {
   font-family: "Bar Nerd Mono";
   font-weight: 400;
   font-display: swap;
   src: local("Hack Nerd Font Mono"), local("HackNerdFontMono-Regular"),
-    url("https://cdn.jsdelivr.net/gh/ryanoasis/nerd-fonts@v3.4.0/patched-fonts/Hack/Regular/HackNerdFontMono-Regular.ttf") format("truetype");
+    url("fonts/HackNerdFontMono-Regular.woff") format("woff");
 }
 @font-face {
   font-family: "Bar Nerd Mono";
   font-weight: 700;
   font-display: swap;
   src: local("Hack Nerd Font Mono Bold"), local("HackNerdFontMono-Bold"),
-    url("https://cdn.jsdelivr.net/gh/ryanoasis/nerd-fonts@v3.4.0/patched-fonts/Hack/Bold/HackNerdFontMono-Bold.ttf") format("truetype");
+    url("fonts/HackNerdFontMono-Bold.woff") format("woff");
 }
 
 :root {

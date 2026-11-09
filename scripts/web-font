@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Rebuilds web/fonts/: Hack Nerd Font Mono from the Nerd Fonts v3.4.0
+# release, subset to text ranges and the Nerd Font icons that bar and the
+# reference plugins draw (any private-use character in src/ or plugins/).
+# Needs curl and fontTools (`python3 -m fontTools.subset`).
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+OUT="$ROOT/web/fonts"
+BASE=https://cdn.jsdelivr.net/gh/ryanoasis/nerd-fonts@v3.4.0/patched-fonts/Hack
+TEXT="U+0020-007E,U+00A0-00FF,U+2000-206F,U+2190-23FF,U+2500-27BF,U+2800-28FF,U+E0B0-E0B7"
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+icons=$(python3 - "$ROOT" <<'PY'
+import pathlib, re, sys
+root = pathlib.Path(sys.argv[1])
+cps = set()
+for f in [*root.glob("src/**/*.rs"), *(p for p in root.glob("plugins/**/*") if p.is_file())]:
+    try:
+        s = f.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError):
+        continue
+    for m in re.finditer(r"\\u\{([0-9a-fA-F]+)\}", s):
+        cps.add(int(m.group(1), 16))
+    cps.update(ord(c) for c in s)
+# Nerd Font icons only; U+E000, U+F8FF bound the private-use range in code
+print(",".join("U+%X" % c for c in sorted(cps) if 0xE000 < c < 0xF8FF))
+PY
+)
+
+for w in Regular Bold; do
+	curl -fsSL -o "$tmp/$w.ttf" "$BASE/$w/HackNerdFontMono-$w.ttf"
+	python3 -m fontTools.subset "$tmp/$w.ttf" --unicodes="$TEXT,$icons" \
+		--flavor=woff --layout-features='*' --output-file="$OUT/HackNerdFontMono-$w.woff"
+done
+ls -l "$OUT"

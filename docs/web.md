@@ -10,7 +10,7 @@ cargo install wasm-bindgen-cli --version 0.2.121 --locked   # same version web/w
 make web
 ```
 
-Then open `web/index.html` in a browser. It works from `file://` and from any static file server; nothing is sent anywhere. `make web` prints the size of the WebAssembly module (about 400 KB, 160 KB gzipped). With `wasm-opt` (binaryen) on `PATH` the module is optimised further.
+Then open `web/index.html` in a browser. It works from `file://` and from any static file server. The page loads nothing from elsewhere and sends nothing anywhere; its Content-Security-Policy allows only its own files. `make web` prints the size of the WebAssembly module (about 400 KB, 160 KB gzipped). With `wasm-opt` (binaryen) on `PATH` the module is optimised further.
 
 ## The preview is bar
 
@@ -46,4 +46,4 @@ The page keeps the last config in the browser's local storage.
 
 ## Font
 
-Icons and the powerline and capsule separators need a Nerd Font. The page uses an installed Hack Nerd Font Mono, else loads it from jsDelivr (Nerd Fonts v3.4.0), else falls back to the system monospace font.
+Icons and the powerline and capsule separators need a Nerd Font. The page uses an installed Hack Nerd Font Mono, else the copy in `web/fonts/`: Hack Nerd Font Mono from Nerd Fonts v3.4.0, subset to text and the icons bar and its reference plugins draw (about 80 KB per weight; licences in `web/fonts/LICENSE`). `scripts/web-font` rebuilds it. An icon outside the subset needs the installed font.
