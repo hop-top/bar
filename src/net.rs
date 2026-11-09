@@ -21,6 +21,9 @@ fn args(url: &str, headers: &[&str], max_time: u64, cap: usize) -> Vec<String> {
         .map(String::from),
     );
     a.push(cap.to_string());
+    // say who is asking, rather than curl's own version string
+    a.push("--user-agent".into());
+    a.push(concat!("bar/", env!("CARGO_PKG_VERSION")).into());
     for h in headers {
         a.push("-H".into());
         a.push(h.to_string());
@@ -186,6 +189,10 @@ mod tests {
         assert!(a.windows(2).any(|w| w == ["--max-time", "1"]));
         assert!(a.windows(2).any(|w| w == ["-H", "Accept: x"]));
         assert!(a.windows(2).any(|w| w == ["--proto", "=https"]));
+        let ua = format!("bar/{}", env!("CARGO_PKG_VERSION"));
+        assert!(a.windows(2).any(|w| w == ["--user-agent", ua.as_str()]));
+        let r = request_args("https://x", &[], 5, 10);
+        assert!(r.windows(2).any(|w| w == ["--user-agent", ua.as_str()]));
     }
 
     #[test]
