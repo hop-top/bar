@@ -9,6 +9,9 @@ use crate::render::builtin_config;
 use std::path::PathBuf;
 
 pub const GROUPS: [&str; 3] = ["left", "center", "right"];
+/// `separator` when the file sets none.
+const DEFAULT_SEPARATOR: &str = "│";
+
 /// Style keys a preset owns: applying one sets those it names and drops the
 /// rest, so the preset looks as `bar preview --preset` shows it.
 const PRESET_STYLE: [&str; 5] = ["skin", "skin-glyphs", "palette", "icons", "gap"];
@@ -98,7 +101,7 @@ impl Editor {
     pub fn separator(&self) -> String {
         self.doc
             .get(&is_key("separator"))
-            .unwrap_or_else(|| "│".into())
+            .unwrap_or_else(|| DEFAULT_SEPARATOR.into())
     }
 
     /// Current value of a `set` key, if the file sets it.
@@ -292,10 +295,20 @@ impl Editor {
             return false;
         };
         let theirs = Doc::new(src);
+        // the preset's segments, rejoined with this file's separator
+        let (from, to) = (
+            theirs
+                .get(&is_key("separator"))
+                .unwrap_or_else(|| DEFAULT_SEPARATOR.into()),
+            self.separator(),
+        );
         let changed = self.edit(|d| {
             for row in 0..ROWS {
                 match theirs.get(&is_row(row)) {
-                    Some(v) => d.set(&is_row(row), &row_key(row), &v),
+                    Some(v) => {
+                        let v = group::join(&group::split(&v, &from), &to);
+                        d.set(&is_row(row), &row_key(row), &v)
+                    }
                     None => d.remove(&is_row(row)),
                 };
             }

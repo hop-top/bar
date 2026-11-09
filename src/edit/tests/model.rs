@@ -149,6 +149,25 @@ fn apply_preset_keeps_other_lines() {
 }
 
 #[test]
+fn apply_preset_uses_the_configured_separator() {
+    let mut ed = editor(Some(
+        "set separator \"|\"\nset left \"#{model} | #{ctx}\"\n",
+    ));
+    assert!(ed.apply_preset("full"));
+    let t = ed.text();
+    assert!(!t.contains('│'), "{t}");
+    assert!(
+        t.contains("set center \"#{usage[type=5h]} | #{usage[type=7d]}\""),
+        "{t}"
+    );
+    let full = editor(presets::get("full"));
+    for r in 0..12 {
+        assert_eq!(ed.segments(r), full.segments(r), "row {r}");
+    }
+    assert_eq!(ed.preset(), Some("full"));
+}
+
+#[test]
 fn no_file_starts_from_the_builtin_layout() {
     let ed = editor(None);
     assert!(!ed.exists && !ed.dirty());
