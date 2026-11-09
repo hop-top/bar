@@ -26,6 +26,7 @@ fn go(cache: &Cache, cfg: &Config) -> Option<String> {
         cache: Some(cache),
         columns: None,
         plugin_dirs: &[],
+        memo: Default::default(),
     };
     Update
         .render(&ctx, &Options::default())

@@ -32,6 +32,7 @@ fn three_placeholders_share_one_load() {
         cache: Some(&cache),
         columns: None,
         plugin_dirs: &[],
+        memo: Default::default(),
     };
     let before = LOADS.load(Ordering::Relaxed);
     for n in ["tokens", "cache", "cachettl"] {

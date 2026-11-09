@@ -196,6 +196,7 @@ impl Fx {
             cache: Some(&cache),
             columns: None,
             plugin_dirs: &[],
+            memo: Default::default(),
         };
         let p: &dyn Placeholder = match kind {
             Kind::Pr => &Prs,

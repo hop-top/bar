@@ -197,6 +197,7 @@ pub fn ctx<'a>(s: &'a Session, cfg: &'a Config, cache: &'a Cache, dirs: &'a [Pat
         cache: Some(cache),
         columns: Some(120),
         plugin_dirs: dirs,
+        memo: Default::default(),
     }
 }
 

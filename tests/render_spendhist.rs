@@ -43,6 +43,7 @@ fn go(cache: Option<&Cache>, cfg: &Config, o: &Options) -> Option<String> {
         cache,
         columns: None,
         plugin_dirs: &[],
+        memo: Default::default(),
     };
     SpendHist.render(&ctx, o)
 }

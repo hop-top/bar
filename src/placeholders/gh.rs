@@ -1,8 +1,8 @@
 //! `prs` and `issues`: `gh` (GitHub) or `glab` (GitLab, see `glab`) lists
 //! cached per query, merged at render time.
 
-use super::repo::{may_spawn, remote_url_with};
-use super::{link_enabled, work_dir, Ctx, Placeholder};
+use super::repo::cached_remote;
+use super::{link_enabled, Ctx, Placeholder};
 use crate::cache::{Cache, Job};
 use crate::color::Color;
 use crate::expr;
@@ -272,7 +272,7 @@ fn merged(cache: &Cache, plan: &Plan) -> Vec<Value> {
 
 fn render_kind(kind: Kind, ctx: &Ctx, opts: &Options) -> Option<String> {
     let cache = ctx.cache?;
-    let remote = remote_url_with(&work_dir(ctx), may_spawn(ctx))?;
+    let remote = cached_remote(ctx)?;
     let plan = plan(kind, &remote, opts)
         .or_else(|| super::glab::plan(kind, &remote, &ctx.config.gitlab_hosts, opts))?;
     let (pr_sign, issue_sign) = if plan.gitlab { ('!', '#') } else { ('#', '!') };

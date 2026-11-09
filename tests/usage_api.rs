@@ -42,6 +42,7 @@ fn go(cache: &Cache, cfg: &Config, name: &str, o: &Options, at: i64) -> Option<S
         cache: Some(cache),
         columns: None,
         plugin_dirs: &[],
+        memo: Default::default(),
     };
     lookup(name)?.render(&ctx, o).map(|x| strip_codes(&x))
 }
@@ -203,6 +204,7 @@ fn per_model_rule_and_its_weekly_fallback() {
             cache: Some(&cache),
             columns: None,
             plugin_dirs: &[],
+            memo: Default::default(),
         };
         lookup("usage")
             .unwrap()
@@ -283,6 +285,7 @@ fn spend_components_from_the_statusline_json() {
         cache: None,
         columns: None,
         plugin_dirs: &[],
+        memo: Default::default(),
     };
     let r = |show: &str| {
         lookup("spend")
@@ -313,6 +316,7 @@ fn spend_limits_of_every_period() {
             cache: None,
             columns: None,
             plugin_dirs: &[],
+            memo: Default::default(),
         };
         lookup("spend")
             .unwrap()

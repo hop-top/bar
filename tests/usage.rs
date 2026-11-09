@@ -107,6 +107,7 @@ fn go(s: &Session, o: &[(&str, &str)], state: &Path) -> Option<String> {
         cache: None,
         columns: None,
         plugin_dirs: &[],
+        memo: Default::default(),
     };
     render_with(&ctx, &opts(o), state)
 }
@@ -301,6 +302,7 @@ fn rule_in_config_overrides_builtin() {
         cache: None,
         columns: None,
         plugin_dirs: &[],
+        memo: Default::default(),
     };
     let out = render_with(&ctx, &opts(&[("type", "5h"), ("view", "pct")]), t.path()).unwrap();
     assert!(out.contains("\x1b[38;5;196m70%"), "{out:?}");

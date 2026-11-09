@@ -283,6 +283,7 @@ fn ctx_run<R>(f: impl FnOnce(&Ctx) -> R) -> R {
         cache: None,
         columns: None,
         plugin_dirs: &[],
+        memo: Default::default(),
     };
     f(&ctx)
 }
@@ -359,6 +360,7 @@ fn clone_ctx<'a>(c: &Ctx<'a>) -> Ctx<'a> {
         cache: None,
         columns: None,
         plugin_dirs: &[],
+        memo: Default::default(),
     }
 }
 

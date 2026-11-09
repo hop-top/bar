@@ -33,6 +33,8 @@ pub enum Job {
     /// (absolute), no shell; `commit` is a full object id. Output: the
     /// commit, then one `<objecttype> <tag>` line per tag.
     GitTags { dir: String, commit: String },
+    /// `git remote get-url origin` in `dir` (absolute), no shell.
+    GitRemote { dir: String },
     /// `jj log` of the working-copy commit of the workspace at `dir`
     /// (absolute), no shell, never snapshotting the working copy.
     Jj { dir: String },
@@ -87,6 +89,7 @@ impl Job {
             Job::GitTags { dir, commit } => {
                 json!({"kind": "git-tags", "dir": dir, "commit": commit})
             }
+            Job::GitRemote { dir } => json!({"kind": "git-remote", "dir": dir}),
             Job::Jj { dir } => json!({"kind": "jj", "dir": dir}),
             Job::PluginInfo { path } => json!({"kind": "plugin-info", "path": path}),
             Job::PluginRender { path, input } => {
@@ -140,6 +143,9 @@ impl Job {
                     .filter(|c| crate::gitfs::is_oid(c))
                     .ok_or("git-tags job without a commit id")?
                     .into(),
+            }),
+            Some("git-remote") => Ok(Job::GitRemote {
+                dir: abs_path(v, "dir")?,
             }),
             Some("jj") => Ok(Job::Jj {
                 dir: abs_path(v, "dir")?,
@@ -217,6 +223,13 @@ impl Job {
                     .current_dir(dir)
                     .env("GIT_OPTIONAL_LOCKS", "0");
                 run_child(c, None, limit).map(|out| format!("{commit}\n{out}"))
+            }
+            Job::GitRemote { dir } => {
+                let mut c = Command::new(crate::platform::program("git"));
+                c.args(["remote", "get-url", "origin"])
+                    .current_dir(dir)
+                    .env("GIT_OPTIONAL_LOCKS", "0");
+                run_child(c, None, limit)
             }
             Job::Jj { dir } => {
                 let mut c = Command::new(crate::platform::program("jj"));

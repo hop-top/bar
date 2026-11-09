@@ -49,6 +49,15 @@ pub struct Ctx<'a> {
     pub columns: Option<usize>,
     /// Where `bar-<name>` plugins are looked up, in order.
     pub plugin_dirs: &'a [PathBuf],
+    /// Values several placeholders share, computed once per render.
+    pub memo: Memo,
+}
+
+/// Per-render values, filled on first use.
+#[derive(Debug, Default)]
+pub struct Memo {
+    /// The repository's web address (`repo::cached_remote`).
+    pub(crate) remote: std::cell::OnceCell<Option<String>>,
 }
 
 pub trait Placeholder {

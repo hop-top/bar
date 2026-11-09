@@ -54,6 +54,7 @@ fn go_at(used: f64, secs: i64, o: &[(&str, &str)], state: &Path) -> String {
         cache: None,
         columns: None,
         plugin_dirs: &[],
+        memo: Default::default(),
     };
     let mut opts = Options::default();
     opts.set("type", "5h");

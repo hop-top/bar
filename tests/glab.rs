@@ -253,6 +253,13 @@ fn hosts_and_repos_are_validated() {
         gitlab_repo("https://GitLab.com/g/p", none).as_deref(),
         Some("https://gitlab.com/g/p")
     );
+    // a self-hosted instance on its own port: matched by host name
+    let hosts = vec!["git.example.com".to_string()];
+    assert_eq!(
+        gitlab_repo("https://git.example.com:8443/g/p", &hosts).as_deref(),
+        Some("https://git.example.com:8443/g/p")
+    );
+    assert!(gitlab_repo("https://git.example.com:x/g/p", &hosts).is_none());
     for bad in [
         "https://gitlab.com/p",
         "https://gitlab.com/-g/p",

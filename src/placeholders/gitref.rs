@@ -1,8 +1,9 @@
 //! `sha`, `tag` and `stash`, read from the repository files. Render never
 //! spawns git for them: `tag` hands what the files cannot tell (a loose
-//! annotated tag) to a cached background `git for-each-ref`.
+//! annotated tag) to a cached background `git for-each-ref`, and the
+//! links use the cached remote URL when the config needs git.
 
-use super::repo::{git_if, may_spawn, remote_url_with};
+use super::repo::{cached_remote, git_if, may_spawn};
 use super::{gitst, link_enabled, truncate, work_dir, Ctx, Placeholder};
 use crate::cache::Job;
 use crate::gitfs::{self, best_tag, Found};
@@ -75,7 +76,7 @@ impl Placeholder for Sha {
             return None;
         }
         let text = dim(&id[..len.min(id.len())]);
-        Some(match remote_url_with(&dir, may_spawn(ctx)) {
+        Some(match cached_remote(ctx) {
             Some(u) if link_enabled(opts) => link(&format!("{}/commit/{id}", sanitize(&u)), &text),
             _ => text,
         })
@@ -118,7 +119,7 @@ impl Placeholder for Tag {
             return None;
         }
         let text = fg(ctx.config.colors.good, &truncate(name.clone(), opts));
-        Some(match remote_url_with(&dir, may_spawn(ctx)) {
+        Some(match cached_remote(ctx) {
             Some(u) if link_enabled(opts) => {
                 link(&format!("{}/tree/{}", sanitize(&u), url_part(&name)), &text)
             }

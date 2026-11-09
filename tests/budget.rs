@@ -167,6 +167,7 @@ fn ctx_go(
         cache,
         columns: None,
         plugin_dirs: &[],
+        memo: Default::default(),
     };
     p.render(&ctx, o)
 }

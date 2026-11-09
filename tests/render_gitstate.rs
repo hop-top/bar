@@ -320,3 +320,52 @@ fn conflicts_reuse_the_count_while_the_index_is_unchanged() {
     std::fs::write(&idx, body).unwrap();
     assert_eq!(one(&render().plain), "[✗2]");
 }
+
+#[test]
+fn links_never_spawn_git_when_config_needs_it() {
+    let t = Tmp::new();
+    let d = repo(&t, "proj");
+    git(&d, &["tag", "v1"]);
+    let id = head(&d);
+    // an include: only git can say what `remote get-url` prints
+    let cfg = d.join(".git/config");
+    let mut body = std::fs::read_to_string(&cfg).unwrap();
+    body.push_str(
+        "[include]\n\tpath = extra\n[remote \"origin\"]\n\turl = git@github.com:o/proj.git\n",
+    );
+    std::fs::write(&cfg, body).unwrap();
+    let (path, log) = no_git(&t);
+    let render = || {
+        run(&t)
+            .conf("set left \"#{sha} #{tag}\"")
+            .env("PATH", &path)
+            .cwd(&d)
+            .unset("GIT_CONFIG_NOSYSTEM")
+            .go()
+    };
+    let key = hop_bar::placeholders::repo::remote_key(&d);
+    let cache = Cache::new(&t.path().join("state"));
+    cache.store(&key, "git@github.com:o/proj.git\n").unwrap();
+    let o = render();
+    assert_eq!(one(&o.plain), format!("{} v1", &id[..7]));
+    assert!(
+        o.raw
+            .contains(&format!("https://github.com/o/proj/commit/{id}")),
+        "{:?}",
+        o.raw
+    );
+    assert!(o.raw.contains("https://github.com/o/proj/tree/v1"));
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    assert!(!log.exists(), "render spawned git");
+    // cold: no link yet, git only in the background refresh
+    std::fs::remove_file(cache.path_for(&key)).unwrap();
+    let o = render();
+    assert_eq!(one(&o.plain), format!("{} v1", &id[..7]));
+    assert!(!o.raw.contains("https://"), "{:?}", o.raw);
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let spawned = std::fs::read_to_string(&log).unwrap_or_default();
+    assert!(
+        spawned.lines().all(|l| l == "remote get-url origin"),
+        "{spawned:?}"
+    );
+}
