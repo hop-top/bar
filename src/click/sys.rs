@@ -62,9 +62,6 @@ impl Env for System {
     fn sessions_dir(&self) -> PathBuf {
         self.sessions.clone()
     }
-    fn state_dir(&self) -> PathBuf {
-        self.state.clone()
-    }
     fn alive(&self, pid: u32) -> bool {
         output("ps", &["-o", "pid=", "-p", &pid.to_string()])
             .is_some_and(|s| s.trim() == pid.to_string())

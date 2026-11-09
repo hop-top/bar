@@ -1,7 +1,7 @@
 //! `bar click hook`: Claude Code hook keeping a per-session waiting marker
-//! (`<state>/sessions/<session id>`, content `waiting` or `done`) for `bar click run`,
-//! the running-subagent registry and per-session plugin records. Fast and
-//! silent; never fails the session.
+//! (`<state>/sessions/<session id>`, content `waiting` or `done`) for
+//! `sessions`, the running-subagent registry and per-session plugin records.
+//! Fast and silent; never fails the session.
 
 use super::url::valid_sid;
 use super::write_atomic;

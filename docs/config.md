@@ -597,11 +597,11 @@ Running a click:
   - a command off the list;
   - a session that is missing, dead or on another terminal;
   - no tmux pane showing the session;
-  - a busy session, a session waiting on a permission prompt;
-  - a non-empty input box (draft or open menu).
+  - an input box that is not empty: a draft, or anything drawn in its place (menu, picker, permission prompt, question dialog).
+- Busy or not makes no difference: only the input box gates the keys. A busy session gets them as typed input, and Claude Code decides what runs mid-turn (`/model` opens its picker right away).
 - On Windows it checks nothing, prints that links need macOS and tmux, and exits 2.
 - A refusal posts a notification, appends to `click.log` in the state directory and exits 1 (the handler app wraps the call in `try`, so no error dialog appears); it never touches the terminal.
-- Idle and empty box are checked twice, a second apart, then `tmux send-keys -l "/<command>"` and `Enter`.
+- The empty box (and, for a viewer pane, its status line) is checked twice, a second apart, then `tmux send-keys -l "/<command>"` and `Enter`.
 
 Pane:
 
@@ -633,7 +633,7 @@ Empty box:
 | `SessionEnd` | marker cleared; the session's subagent entries and plugin records dropped |
 | `SubagentStart`, `SubagentStop` | subagent entry added, removed |
 
-Waiting marker: `sessions/<session id>` (mode 0600), content `waiting` or `done`. [`sessions`](#account-agents-sessions-tmux) counts waiting and finished sessions from it, and `bar click run` refuses a waiting session. `Stop`, `PostToolUse`, `PostToolUseFailure` and `PermissionDenied` from a subagent (they carry an `agent_id`) leave it alone.
+Waiting marker: `sessions/<session id>` (mode 0600), content `waiting` or `done`. [`sessions`](#account-agents-sessions-tmux) counts waiting and finished sessions from it. `Stop`, `PostToolUse`, `PostToolUseFailure` and `PermissionDenied` from a subagent (they carry an `agent_id`) leave it alone.
 
 Running subagents:
 
@@ -665,7 +665,7 @@ Check clickable commands, in a Claude Code session inside tmux after `bar click 
 
 1. Click `model`, `effort` and `ctx` with an empty input box: `/model`, `/effort` and `/compact` are typed and run.
 2. Type a draft without sending it, then click `model`: a "not sent" notification appears, the draft is untouched, and `click.log` reads `the input box is not empty`.
-3. Trigger a permission prompt (a tool call needing approval), then click `model`: a "not sent" notification appears, the prompt is untouched, and `click.log` reads `session is waiting for you`.
+3. Trigger a permission prompt (a tool call needing approval), then click `model`: a "not sent" notification appears, the prompt is untouched, and `click.log` reads `the input box is not empty`.
 
 ## Files and environment
 

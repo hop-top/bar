@@ -1,7 +1,6 @@
 //! `bar click run`: fail-closed checks, then the literal keys. A refusal
 //! notifies and logs, and never touches the terminal.
 
-use super::hook::is_waiting;
 use super::url::{parse, parse_syntax};
 use serde_json::Value;
 use std::path::PathBuf;
@@ -11,8 +10,6 @@ use std::time::Duration;
 pub trait Env {
     /// Claude Code's `sessions/` dir (`<pid>.json` per live session).
     fn sessions_dir(&self) -> PathBuf;
-    /// bar's state dir, where the hook writes waiting markers.
-    fn state_dir(&self) -> PathBuf;
     fn alive(&self, pid: u32) -> bool;
     /// Controlling terminal of `pid`, e.g. `ttys004`.
     fn tty_of(&self, pid: u32) -> Option<String>;
@@ -37,8 +34,6 @@ pub enum Refusal {
     Dead,
     OtherTty,
     NoPane,
-    Busy,
-    Waiting,
     NotEmpty,
     SendFailed,
 }
@@ -52,8 +47,6 @@ impl Refusal {
             Refusal::Dead => "session is not running",
             Refusal::OtherTty => "session is on another terminal",
             Refusal::NoPane => "session is not on screen in tmux",
-            Refusal::Busy => "session is busy",
-            Refusal::Waiting => "session is waiting for you",
             Refusal::NotEmpty => "the input box is not empty",
             Refusal::SendFailed => "tmux send-keys failed",
         }
@@ -66,19 +59,15 @@ impl std::fmt::Display for Refusal {
     }
 }
 
-/// `(pid, status)` of the session file whose `sessionId` is `sid`.
-fn session(env: &dyn Env, sid: &str) -> Option<(u32, String)> {
+/// Pid in the session file whose `sessionId` is `sid`.
+fn session(env: &dyn Env, sid: &str) -> Option<u32> {
     let dir = std::fs::read_dir(env.sessions_dir()).ok()?;
     dir.flatten()
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|x| x == "json"))
         .filter_map(|p| serde_json::from_str::<Value>(&std::fs::read_to_string(p).ok()?).ok())
         .find(|v| v.get("sessionId").and_then(Value::as_str) == Some(sid))
-        .and_then(|v| {
-            let pid = u32::try_from(v.get("pid")?.as_u64()?).ok()?;
-            let status = v.get("status")?.as_str()?.to_string();
-            Some((pid, status))
-        })
+        .and_then(|v| u32::try_from(v.get("pid")?.as_u64()?).ok())
 }
 
 fn valid_pane(id: &str) -> bool {
@@ -238,20 +227,16 @@ pub fn box_is_empty(screen: &str) -> bool {
     bottom == Some(i + 1) && only_dim_text(rest)
 }
 
-fn idle_and_empty(
+/// Busy or not, only the box gates the keys: a dialog (permission prompt,
+/// question, picker) replaces the box, so it never parses as empty.
+fn empty_box(
     env: &dyn Env,
     sid: &str,
     tty: &str,
     pane: &Pane,
     by_sid: bool,
 ) -> Result<(), Refusal> {
-    let (_, status) = session(env, sid).ok_or(Refusal::Missing)?;
-    if status != "idle" {
-        return Err(Refusal::Busy);
-    }
-    if is_waiting(&env.state_dir(), sid) {
-        return Err(Refusal::Waiting);
-    }
+    session(env, sid).ok_or(Refusal::Missing)?;
     let screen = capture(env, &pane.0).ok_or(Refusal::NotEmpty)?;
     if by_sid && !shows_session(&screen, sid, tty) {
         return Err(Refusal::NoPane);
@@ -263,10 +248,10 @@ fn idle_and_empty(
     }
 }
 
-/// Every check, the idle/empty pair twice a second apart: dialogs can open
-/// just after a turn ends.
+/// Every check, the empty box twice a second apart: a dialog can open at
+/// any moment.
 pub fn check(env: &dyn Env, sid: &str, tty: &str) -> Result<Pane, Refusal> {
-    let (pid, _) = session(env, sid).ok_or(Refusal::Missing)?;
+    let pid = session(env, sid).ok_or(Refusal::Missing)?;
     if !env.alive(pid) {
         return Err(Refusal::Dead);
     }
@@ -274,9 +259,9 @@ pub fn check(env: &dyn Env, sid: &str, tty: &str) -> Result<Pane, Refusal> {
         return Err(Refusal::OtherTty);
     }
     let (pane, by_sid) = find_pane(env, sid, tty).ok_or(Refusal::NoPane)?;
-    idle_and_empty(env, sid, tty, &pane, by_sid)?;
+    empty_box(env, sid, tty, &pane, by_sid)?;
     env.sleep(Duration::from_secs(1));
-    idle_and_empty(env, sid, tty, &pane, by_sid)?;
+    empty_box(env, sid, tty, &pane, by_sid)?;
     Ok(pane)
 }
 

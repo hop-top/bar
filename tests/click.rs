@@ -394,19 +394,44 @@ fn other_tty_refused() {
     refused(&f, &url("model"), Refusal::OtherTty);
 }
 
-#[test]
-fn busy_refused() {
-    let f = Fake::new();
-    f.set_status("busy");
-    refused(&f, &url("compact"), Refusal::Busy);
+fn sends(f: &Fake, u: &str) {
+    assert_eq!(run(f, u), Ok(Pane("%1".into())), "{u:?}");
+    assert_eq!(f.sent().len(), 2, "not sent: {u:?}");
 }
 
 #[test]
-fn waiting_refused() {
+fn busy_session_with_empty_box_sends() {
+    for status in ["busy", "waiting"] {
+        let f = Fake::new();
+        f.set_status(status);
+        sends(&f, &url("compact"));
+    }
+}
+
+#[test]
+fn busy_session_with_draft_refused() {
+    let f = Fake::new();
+    f.set_status("busy");
+    f.screen("%1", &fixture("draft"));
+    refused(&f, &url("model"), Refusal::NotEmpty);
+}
+
+#[test]
+fn waiting_marker_does_not_gate() {
     let f = Fake::new();
     let ev = format!(r#"{{"session_id":"{SID}","hook_event_name":"PermissionRequest"}}"#);
     hook::run_hook(&f.state(), &ev);
-    refused(&f, &url("model"), Refusal::Waiting);
+    assert!(hook::is_waiting(&f.state(), SID));
+    sends(&f, &url("model"));
+}
+
+#[test]
+fn dialog_on_screen_refused() {
+    for name in ["dialog-permission", "dialog-question", "menu"] {
+        let f = Fake::new();
+        f.screen("%1", &fixture(name));
+        refused(&f, &url("model"), Refusal::NotEmpty);
+    }
 }
 
 #[test]
@@ -559,8 +584,8 @@ fn sid_fallback_pane_rechecked_on_second_pass() {
 #[test]
 fn checks_twice_second_check_can_refuse() {
     let f = Fake::new();
-    *f.on_sleep.borrow_mut() = Some(Box::new(|f: &Fake| f.set_status("busy")));
-    refused(&f, &url("model"), Refusal::Busy);
+    *f.on_sleep.borrow_mut() = Some(Box::new(|f: &Fake| f.screen("%1", &fixture("draft"))));
+    refused(&f, &url("model"), Refusal::NotEmpty);
     assert_eq!(*f.sleeps.borrow(), vec![Duration::from_secs(1)]);
 
     let f = Fake::new();
@@ -569,27 +594,36 @@ fn checks_twice_second_check_can_refuse() {
 
     let f = Fake::new();
     *f.on_sleep.borrow_mut() = Some(Box::new(|f: &Fake| {
-        let ev = format!(
-            r#"{{"session_id":"{SID}","hook_event_name":"Notification","notification_type":"permission_prompt"}}"#
-        );
-        hook::run_hook(&f.state(), &ev);
+        f.screen("%1", &fixture("dialog-permission"))
     }));
-    refused(&f, &url("model"), Refusal::Waiting);
+    refused(&f, &url("model"), Refusal::NotEmpty);
+
+    // A turn starting during the wait does not stop the keys.
+    let f = Fake::new();
+    *f.on_sleep.borrow_mut() = Some(Box::new(|f: &Fake| f.set_status("busy")));
+    sends(&f, &url("model"));
+
+    // Nor does the session file vanishing go unnoticed.
+    let f = Fake::new();
+    *f.on_sleep.borrow_mut() = Some(Box::new(|f: &Fake| {
+        std::fs::remove_file(f.session_file()).unwrap()
+    }));
+    refused(&f, &url("model"), Refusal::Missing);
 }
 
 #[test]
 fn refusal_notifies_logs_never_sends() {
     let f = Fake::new();
-    f.set_status("busy");
-    assert_eq!(run(&f, &url("model")), Err(Refusal::Busy));
+    f.screen("%1", &fixture("draft"));
+    assert_eq!(run(&f, &url("model")), Err(Refusal::NotEmpty));
     let notes = f.notes.borrow();
     assert_eq!(notes.len(), 1);
     assert!(notes[0].0.contains("model") && notes[0].0.contains("not sent"));
-    assert_eq!(notes[0].1, "session is busy");
+    assert_eq!(notes[0].1, "the input box is not empty");
     let logs = f.logs.borrow();
     assert_eq!(logs.len(), 1);
     assert!(
-        logs[0].contains("refused model: session is busy"),
+        logs[0].contains("refused model: the input box is not empty"),
         "{logs:?}"
     );
     assert!(f.sent().is_empty());
