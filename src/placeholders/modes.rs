@@ -7,8 +7,8 @@
 //! else the working directory.
 
 use super::{work_dir, Ctx, Placeholder};
-use crate::click;
 use crate::options::Options;
+use crate::settings;
 use crate::style::dim;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -32,16 +32,12 @@ fn setting(v: &Value, i: usize) -> Option<bool> {
     }
 }
 
-fn read(path: &Path) -> Option<Value> {
-    serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
-}
-
 /// Per flag, the last file that sets it decides.
-fn states(files: &[PathBuf]) -> [bool; 3] {
+fn states(files: &[Option<&Value>]) -> [bool; 3] {
     let mut out = [false; 3];
-    for v in files.iter().filter_map(|f| read(f)) {
+    for v in files.iter().flatten() {
         for (i, flag) in out.iter_mut().enumerate() {
-            if let Some(on) = setting(&v, i) {
+            if let Some(on) = setting(v, i) {
                 *flag = on;
             }
         }
@@ -61,15 +57,11 @@ fn flags(on: [bool; 3], opts: &Options) -> Vec<&'static str> {
         .collect()
 }
 
-/// Flags on in the settings files under `claude` and `project`.
-pub fn render_with(claude: Option<&Path>, project: &Path, opts: &Options) -> Option<String> {
-    let mut files = Vec::new();
-    if let Some(d) = claude {
-        files.push(d.join("settings.json"));
-    }
-    files.push(project.join(".claude/settings.json"));
-    files.push(project.join(".claude/settings.local.json"));
-    let f = flags(states(&files), opts);
+/// Flags on in the `user` settings and the settings files of `project`.
+pub fn render_with(user: Option<&Value>, project: &Path, opts: &Options) -> Option<String> {
+    let shared = settings::read(&project.join(".claude/settings.json"));
+    let local = settings::read(&project.join(".claude/settings.local.json"));
+    let f = flags(states(&[user, shared.as_ref(), local.as_ref()]), opts);
     (!f.is_empty()).then(|| dim(&f.join(" ")))
 }
 
@@ -81,7 +73,7 @@ impl Placeholder for Modes {
         } else {
             work_dir(ctx)
         };
-        render_with(click::claude_dir().as_deref(), &project, opts)
+        render_with(settings::user(), &project, opts)
     }
 }
 

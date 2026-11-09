@@ -153,6 +153,26 @@ fn compact_point_from_env_and_user_settings() {
 }
 
 #[test]
+fn oversized_user_settings_are_ignored() {
+    let t = Tmp::new();
+    let conf = "set left \"#{ctx[show=left]} #{modes}\"";
+    let s = stdin(&t, "claude-opus-5-5", 1_000_000, 400_000);
+    let body = |pad: usize| {
+        format!(
+            r#"{{"sandbox":{{"enabled":true}},"modelSettings":{{"claude-opus-5-5":{{"autoCompactWindow":500000}}}},"pad":"{}"}}"#,
+            "x".repeat(pad)
+        )
+    };
+    t.write(".claude/settings.json", &body(60 * 1024));
+    let o = clean(run(&t), "").conf(conf).stdin(&s).go();
+    assert_eq!(o.plain.trim(), "ctx 100k left sandbox");
+    // past 64 KiB: not read at all
+    t.write(".claude/settings.json", &body(64 * 1024));
+    let o = clean(run(&t), "").conf(conf).stdin(&s).go();
+    assert_eq!(o.plain.trim(), "ctx 567k left");
+}
+
+#[test]
 fn preview_shows_context_parts() {
     let t = Tmp::new();
     t.write(

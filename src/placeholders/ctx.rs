@@ -50,8 +50,7 @@ pub struct Sources<'a> {
 }
 
 fn user_settings() -> Option<Value> {
-    let path = click::claude_dir()?.join("settings.json");
-    serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
+    crate::settings::user().cloned()
 }
 
 /// `state` holds the handler marker; `term` is probed only for a link.
