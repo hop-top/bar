@@ -21,6 +21,21 @@ make web         # web configurator: bar's renderer as wasm in web/pkg/ (docs/we
 
 `make check` must pass before a change goes up.
 
+## Dev container
+
+`.devcontainer/` holds a Debian container (linux/arm64 and linux/amd64) with everything `make check` and `make web` need: the Rust toolchain with clippy, rustfmt and the wasm32 target, `wasm-bindgen-cli`, `wasm-opt`, git, gh, jj and Python, plus Claude Code. Open the repository in an editor that supports dev containers, or use the CLI:
+
+```sh
+devcontainer up --workspace-folder .
+devcontainer exec --workspace-folder . make check
+```
+
+- Claude Code is the latest release when the image is built and updates itself while the container runs. Rebuild without cache for a newer one, or pin a version with the `CLAUDE_CODE_VERSION` build arg in `devcontainer.json`; a pinned version does not auto-update.
+- After creation the container installs bar from the working tree (`cargo install --path . --locked`). Run `bar install` inside to make it Claude Code's status line there, and the same `cargo install` again after a change.
+- Nothing from the host is mounted besides the repository: no credentials and no `~/.claude`. Log in to Claude Code (`claude`) and, when needed, gh inside the container. Claude Code's config dir, bar's config, state and data dirs, the cargo registry and the build dir are named volumes (`bar-devcontainer-*`), so they survive a rebuild; remove the volumes to start fresh.
+- `make bench` needs Docker or Podman and does not run inside the container.
+- Pins and checksums: [docs/dependencies.md](docs/dependencies.md#dev-container).
+
 ## Changes
 
 - Conventional Commits: `type(scope): subject`; types `feat fix refactor build ci chore docs style perf test`.
