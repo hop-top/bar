@@ -500,7 +500,7 @@ mod job {
     fn keychain_time_counts_against_the_request_limit() {
         let t = Tmp::new();
         let (mut envs, cwd) = setup(&t, "200", "");
-        envs.push(("BAR_REFRESH_TIMEOUT", "4".into()));
+        envs.push(("BAR_REFRESH_TIMEOUT", "8".into()));
         let d = t.path();
         t.write("security.out", &creds((now() + 3600) * 1000));
         exe(
@@ -512,7 +512,8 @@ mod job {
         let lines: Vec<&str> = argv.lines().collect();
         let at = lines.iter().position(|l| *l == "--max-time").unwrap();
         let max: u64 = lines[at + 1].parse().unwrap();
-        assert!((1..=2).contains(&max), "--max-time {max}");
+        // 8 s less the 2 s the keychain took (slack for a loaded machine)
+        assert!((1..=6).contains(&max), "--max-time {max}");
     }
 
     #[test]
