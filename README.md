@@ -21,6 +21,7 @@ A status line for [Claude Code](https://code.claude.com/docs/en/statusline) that
 
 ### Benchmarks
 
+<!-- bench:readme:start -->
 With token counters:
 
 | Tool | Warm | Cold | Cold CPU, incl. background | Memory |
@@ -35,6 +36,7 @@ No token counters:
 |---|---|---|---|---|
 | **bar** | **0.75 ms** | **0.95 ms** | **1.7 ms** | **2.8 MiB** |
 | [ccline](https://github.com/Haleclipse/CCometixLine) | 0.92 ms | 6.54 ms | 2.2 ms | 5.3 MiB |
+<!-- bench:readme:end -->
 
 Medians, same session data and equivalent layouts ([method and raw results](bench/README.md#ben-results)).
 

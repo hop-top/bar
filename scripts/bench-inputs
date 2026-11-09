@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+"""Content hash of the inputs that decide benchmark results, at a commit.
+
+    scripts/bench-inputs              print the hash of HEAD's inputs
+    scripts/bench-inputs --rev REV    the same at another commit
+    scripts/bench-inputs --list       print the files that go into it
+    scripts/bench-inputs --paths      print the input paths (files and dirs)
+    scripts/bench-inputs --check      exit 1 when bench/results/ben-meta.json
+                                      records a different hash than HEAD's
+
+Inputs: what is built and measured (src/, presets/ (compiled into the
+binary), Cargo.toml, Cargo.lock) and how (bench/image/, bench/ben/,
+bench/configs/, bench/fixtures/, bench/lib/, bench/run.sh). Results,
+generated docs and the badge are outputs, not inputs.
+
+The package's own `version` is dropped from Cargo.toml and Cargo.lock before
+hashing: a release PR changes it and nothing else that is measured, so a run
+recorded before the release PR stays valid for the release commit.
+
+Read from the commit (git objects), not the working tree.
+"""
+
+import argparse
+import hashlib
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+META = ROOT / "bench" / "results" / "ben-meta.json"
+PACKAGE = "hop-bar"
+INPUTS = [
+    "src",
+    "presets",
+    "Cargo.toml",
+    "Cargo.lock",
+    "bench/image",
+    "bench/ben",
+    "bench/configs",
+    "bench/fixtures",
+    "bench/lib",
+    "bench/run.sh",
+]
+
+
+def git(*args):
+    return subprocess.run(["git", "-C", str(ROOT), *args], check=True, capture_output=True).stdout
+
+
+def drop_toml_version(text):
+    """Cargo.toml: drop `version = ...` in [package] only."""
+    out, section = [], None
+    for line in text.splitlines():
+        m = re.match(r"\s*\[([^\]]+)\]\s*$", line)
+        if m:
+            section = m.group(1).strip()
+        if section == "package" and re.match(r"\s*version\s*=", line):
+            continue
+        out.append(line)
+    return "\n".join(out) + "\n"
+
+
+def drop_lock_version(text):
+    """Cargo.lock: drop the version line of this package's [[package]] entry."""
+    out, mine = [], False
+    for line in text.splitlines():
+        if line.strip() == "[[package]]":
+            mine = False
+        elif line == f'name = "{PACKAGE}"':
+            mine = True
+        elif mine and line.startswith("version = "):
+            continue
+        out.append(line)
+    return "\n".join(out) + "\n"
+
+
+NORMALISE = {"Cargo.toml": drop_toml_version, "Cargo.lock": drop_lock_version}
+
+
+def entries(rev):
+    """(mode, path, digest) per tracked input file at rev."""
+    rows = []
+    for raw in git("ls-tree", "-r", "-z", rev, "--", *INPUTS).split(b"\0"):
+        if not raw:
+            continue
+        meta, path = raw.decode().split("\t", 1)
+        mode, kind, obj = meta.split()
+        if kind != "blob":
+            continue
+        if path in NORMALISE:
+            text = git("cat-file", "blob", obj).decode()
+            digest = "sha256:" + hashlib.sha256(NORMALISE[path](text).encode()).hexdigest()
+        else:
+            digest = "git:" + obj
+        rows.append((mode, path, digest))
+    return sorted(rows, key=lambda r: r[1])
+
+
+def inputs_hash(rev="HEAD"):
+    lines = "".join(f"{m} {p} {d}\n" for m, p, d in entries(rev))
+    return "sha256:" + hashlib.sha256(lines.encode()).hexdigest()
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--rev", default="HEAD")
+    ap.add_argument("--list", action="store_true", help="print the input files")
+    ap.add_argument("--paths", action="store_true", help="print the input paths")
+    ap.add_argument("--check", action="store_true", help="fail when the recorded results are stale")
+    args = ap.parse_args()
+
+    if args.paths:
+        print(" ".join(INPUTS))
+        return 0
+    if args.list:
+        for m, p, d in entries(args.rev):
+            print(f"{m} {d} {p}")
+        return 0
+    have = inputs_hash(args.rev)
+    if not args.check:
+        print(have)
+        return 0
+    try:
+        meta = json.loads(META.read_text())
+        want = meta["inputs"]
+    except (OSError, ValueError, KeyError):
+        print(f"benchmarks stale: no recorded inputs hash in {META.relative_to(ROOT)}; run make bench", file=sys.stderr)
+        return 1
+    if have != want:
+        print(f"benchmarks stale: run make bench (recorded {want[:19]} at {meta.get('bar_commit', '?')[:12]}, "
+              f"{args.rev} has {have[:19]})", file=sys.stderr)
+        return 1
+    print(f"benchmarks fresh: inputs {have[:19]} match the run at {meta.get('bar_commit', '?')[:12]}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

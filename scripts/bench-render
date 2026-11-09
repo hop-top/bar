@@ -1,0 +1,313 @@
+#!/usr/bin/env python3
+"""Writes the generated benchmark sections of bench/README.md and README.md.
+
+Each section sits between `<!-- bench:NAME:start -->` and
+`<!-- bench:NAME:end -->` and is drawn from bench/results/ (ben-*.json,
+ben-total-cold-*, ben-time-v-*, ben-output-*, ben-load-*, ben-meta.json), so
+the numbers in the docs are the numbers in the results.
+
+    scripts/bench-render            rewrite the sections
+    scripts/bench-render --check    exit 1 when a section no longer matches
+"""
+
+import argparse
+import json
+import re
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+RESULTS = ROOT / "bench" / "results"
+DOCS = {"bench": ROOT / "bench" / "README.md", "readme": ROOT / "README.md"}
+
+TOOLS = ["bar", "bar-notokens", "ccline", "claude-powerline", "ccstatusline"]
+LINKS = {
+    "ccstatusline": "https://github.com/sirmalloc/ccstatusline",
+    "claude-powerline": "https://github.com/Owloops/claude-powerline",
+    "ccline": "https://github.com/Haleclipse/CCometixLine",
+}
+GNU_TIME = ["bar", "bar-notokens", "ccline"]  # tools whose RSS is below ben's own
+
+
+# --- data ---------------------------------------------------------------
+
+
+class Results:
+    def __init__(self, d):
+        self.d = d
+        self.meta = json.loads((d / "ben-meta.json").read_text())
+        self.ben = {s: self._ben(s) for s in ("warm", "cold", "floor")}
+        self.suite = {s: json.loads((d / f"ben-{s}.json").read_text()) for s in ("warm", "cold", "floor")}
+        self.total = {t: json.loads((d / f"ben-total-cold-{t}.json").read_text()) for t in TOOLS}
+        self.rss = {t: self._time_v(t) for t in GNU_TIME}
+
+    def _ben(self, suite):
+        data = json.loads((self.d / f"ben-{suite}.json").read_text())
+        return {c["name"]: c["aggregates"] for c in data["candidates"]}
+
+    def _time_v(self, tool):
+        text = (self.d / f"ben-time-v-{tool}.txt").read_text()
+        kb = [int(x) for x in re.findall(r"Maximum resident set size \(kbytes\): (\d+)", text)]
+        return {"mib": sum(kb) / len(kb) / 1024, "runs": len(kb)}
+
+    def agg(self, suite, tool, metric):
+        return self.ben[suite][tool][metric]
+
+    def total_cpu(self, tool):
+        s = self.total[tool]["summary"]
+        return s["cpu_ms"]["median"], s["bg_cpu_ms"]["median"], s["bg_procs"]["median"]
+
+    def memory(self, tool):
+        """README memory: GNU time mean where recorded, else ben's warm max RSS median."""
+        if tool in self.rss:
+            return self.rss[tool]["mib"]
+        return self.agg("warm", tool, "max_rss_kb")["median"] / 1024
+
+    def line(self, tool):
+        text = (self.d / f"ben-output-{tool}.txt").read_text()
+        return text.split("## colour stripped\n", 1)[1].strip("\n").splitlines()[0]
+
+    def load_range(self):
+        vals = []
+        for p in sorted(self.d.glob("ben-load-*.txt")):
+            for m in re.finditer(r"^load: ([\d.]+) ([\d.]+) ([\d.]+)", p.read_text(), re.M):
+                vals.append(float(m.group(1)))
+        return min(vals), max(vals)
+
+
+# --- formatting ---------------------------------------------------------
+
+
+def ms(v):
+    """Latency: two decimals under 10 ms, one above."""
+    return f"{v:.2f}" if v < 10 else f"{v:.1f}"
+
+
+def mib(v):
+    return f"{v:.1f}" if v < 10 else f"{v:.0f}"
+
+
+def bold_min(cells, values):
+    lo = min(values)
+    return [f"**{c}**" if v == lo else c for c, v in zip(cells, values)]
+
+
+def jobs(n):
+    n = int(round(n))
+    return "none" if n == 0 else f"{n} job" + ("s" if n > 1 else "")
+
+
+def table(header, rows):
+    out = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
+    out += ["| " + " | ".join(r) + " |" for r in rows]
+    return "\n".join(out)
+
+
+def name(tool, link=True):
+    if tool in LINKS and link:
+        return f"[{tool}]({LINKS[tool]})"
+    return tool
+
+
+# --- sections -----------------------------------------------------------
+
+
+def s_readme(r):
+    def row(tool):
+        cpu, bg, _ = r.total_cpu(tool)
+        cells = [
+            f"{ms(r.agg('warm', tool, 'latency_ms')['median'])} ms",
+            f"{ms(r.agg('cold', tool, 'latency_ms')['median'])} ms",
+            f"{cpu + bg:.1f} ms",
+            f"{mib(r.memory(tool))} MiB",
+        ]
+        if tool.startswith("bar"):
+            return ["**bar**"] + [f"**{c}**" for c in cells]
+        return [name(tool)] + cells
+
+    head = ["Tool", "Warm", "Cold", "Cold CPU, incl. background", "Memory"]
+    return "\n".join([
+        "With token counters:",
+        "",
+        table(head, [row(t) for t in ("bar", "claude-powerline", "ccstatusline")]),
+        "",
+        "No token counters:",
+        "",
+        table(head, [row(t) for t in ("bar-notokens", "ccline")]),
+    ])
+
+
+def s_tools(r):
+    v, m = r.meta["versions"], r.meta
+    arch = {"aarch64": "arm64", "x86_64": "x64"}.get(m["container"]["arch"], m["container"]["arch"])
+    rows = [
+        ["bar", "Rust", f"commit `{m['bar_commit'][:7]}`", "`cargo build --release --locked` from this repository"],
+        [name("ccstatusline"), "TypeScript (Node)", v["ccstatusline"], "`npm install -g`, registry tarball checked against its sha512"],
+        [name("claude-powerline"), "TypeScript (Node)", v["claude-powerline"], "`npm install -g @owloops/claude-powerline`, registry tarball checked against its sha512"],
+        [f"[CCometixLine]({LINKS['ccline']}) (`ccline`)", "Rust", v["ccline"],
+         f"release binary `ccline-linux-{arch}.tar.gz` (sha256-pinned), placed at `~/.claude/ccline/ccline` as its README says"],
+    ]
+    return table(["Tool", "Language", "Version", "Installed as"], rows)
+
+
+def s_results(r):
+    m, w, c, f = r.meta, r.suite["warm"], r.suite["cold"], r.suite["floor"]
+    lo, hi = r.load_range()
+    intro = (
+        f"bar `{m['bar_commit'][:7]}`, run on {m['date']}; benchmark inputs `{m['inputs'][:19]}…` "
+        f"([scripts/bench-inputs](../scripts/bench-inputs)). Warm: {w['runs']} runs after {w['warmup']} warm-up runs. "
+        f"Cold: {c['runs']} runs, the tool's whole `HOME` reset to config only before each. "
+        f"Load average {lo:.1f} to {hi:.1f} during the run ([results/ben-load-*.txt](results/))."
+    )
+    cols = [("warm", "latency_ms"), ("warm", "cpu_ms"), ("cold", "latency_ms"), ("cold", "cpu_ms")]
+    best = {k: min(r.agg(k[0], t, k[1])["median"] for t in TOOLS) for k in cols}
+
+    def cell(suite, tool, metric, sd=False):
+        a = r.agg(suite, tool, metric)
+        s = f"{a['median']:.2f}"
+        if (suite, metric) in best and a["median"] == best[(suite, metric)]:
+            s = f"**{s}**"
+        return f"{s} ± {a['stddev']:.2f}" if sd else s
+
+    rows = []
+    for t in TOOLS:
+        rows.append([t, cell("warm", t, "latency_ms", True), f"{r.agg('warm', t, 'latency_ms')['p95']:.2f}",
+                     cell("warm", t, "cpu_ms"), cell("cold", t, "latency_ms", True),
+                     f"{r.agg('cold', t, 'latency_ms')['p95']:.2f}", cell("cold", t, "cpu_ms")])
+    fl = r.ben["floor"]["env-true"]
+    rows.append(["floor: `env` → `/usr/bin/true`", f"{fl['latency_ms']['median']:.2f} ± {fl['latency_ms']['stddev']:.2f}",
+                 f"{fl['latency_ms']['p95']:.2f}", f"{fl['cpu_ms']['median']:.2f}", "", "", ""])
+    tbl = table(["Tool", "Warm latency median ± sd", "Warm p95", "Warm CPU median",
+                 "Cold latency median ± sd", "Cold p95", "Cold CPU median"], rows)
+
+    def rss_med(suite, t):
+        return r.agg(suite, t, "max_rss_kb")["median"] / 1024
+
+    rss = ", ".join(f"{t} {rss_med('warm', t):.1f}" for t in TOOLS)
+    floor_rss = fl["max_rss_kb"]["median"] / 1024
+    gnu = ", ".join(f"{t} {r.rss[t]['mib']:.1f}" for t in GNU_TIME)
+    runs = r.rss[GNU_TIME[0]]["runs"]
+    rss_p = (
+        f"Max RSS, ben, warm median (MiB): {rss}; the floor reads {floor_rss:.1f}. "
+        f"GNU time, mean of {runs} warm runs ([results/ben-time-v-*.txt](results/)): {gnu} MiB."
+    )
+
+    def total(t):
+        cpu, bg, n = r.total_cpu(t)
+        if int(round(n)) == 0:
+            return f"{t} {cpu + bg:.1f}"
+        return f"{t} {cpu + bg:.1f} ({cpu:.1f} foreground, {bg:.1f} in {jobs(n)})"
+
+    runs_t = r.total["bar"]["runs"]
+    total_p = (
+        f"Total cold CPU per render, foreground plus detached jobs, `rusage.py`, {runs_t} runs each "
+        f"(`results/ben-total-cold-<tool>.json`, medians, ms): " + ", ".join(total(t) for t in TOOLS) + "."
+    )
+    return "\n\n".join([intro, tbl, rss_p, total_p])
+
+
+def s_like(r):
+    lines = "\n".join(f"{t:<13} {r.line(t)}" for t in ("bar-notokens", "ccline"))
+    cols = ["bar", "bar-notokens", "ccline"]
+
+    def total(t):
+        cpu, bg, n = r.total_cpu(t)
+        extra = "none" if int(round(n)) == 0 else f"{cpu:.1f} + {bg:.1f} in {jobs(n)}"
+        return cpu + bg, f"{cpu + bg:.1f} ({extra})"
+
+    metrics = [
+        ("Warm latency median", lambda t: (r.agg("warm", t, "latency_ms")["median"],) * 2, "{:.2f}"),
+        ("Warm CPU median", lambda t: (r.agg("warm", t, "cpu_ms")["median"],) * 2, "{:.2f}"),
+        ("Cold latency median", lambda t: (r.agg("cold", t, "latency_ms")["median"],) * 2, "{:.2f}"),
+        ("Cold CPU median (render only)", lambda t: (r.agg("cold", t, "cpu_ms")["median"],) * 2, "{:.2f}"),
+        ("Cold total CPU incl. detached jobs, median", total, None),
+        ("Warm max RSS, GNU time (MiB)", lambda t: (r.rss[t]["mib"],) * 2, "{:.1f}"),
+    ]
+    rows, lower = [], {"bar": [], "bar-notokens": []}
+    for label, get, fmt in metrics:
+        vals = [get(t) for t in cols]
+        nums = [v[0] for v in vals]
+        cells = [v[1] if fmt is None else fmt.format(v[1]) for v in vals]
+        rows.append([label] + bold_min(cells, nums))
+        for i, t in enumerate(("bar", "bar-notokens")):
+            lower[t].append((label, nums[i] < nums[2]))
+    tbl = table(["Metric", "bar (with tokens)", "bar-notokens", "ccline"], rows)
+
+    def verdict(t):
+        wins = [l for l, w in lower[t] if w]
+        losses = [l[0].lower() + l[1:] for l, w in lower[t] if not w]
+        s = f"{t} is lower than ccline on {len(wins)} of {len(lower[t])} metrics"
+        return s + (f" (not on: {'; '.join(losses)})" if losses else "")
+
+    return "\n\n".join([
+        "```text\n" + lines + "\n```",
+        tbl,
+        verdict("bar-notokens") + "; " + verdict("bar") + ".",
+    ])
+
+
+def s_lines(r):
+    return "```text\n" + "\n".join(f"{t:<17} {r.line(t)}" for t in TOOLS) + "\n```"
+
+
+def s_env(r):
+    m, c, v, h = r.meta, r.meta["container"], r.meta["versions"], r.meta["host"]
+    quota = "no CPU quota" if c["cpu_quota"] == "none" else f"CPU quota {c['cpu_quota']}"
+    return "\n".join([
+        f"- Host: {h['os']}, {h['cpu']}; {h['engine']}.",
+        f"- Container ([image/Dockerfile](image/Dockerfile)): {c['os']}, Linux {c['arch']}, kernel {c['kernel']}, "
+        f"{c['cpus']} CPUs visible, {quota}, {c['mem_gib']} GiB RAM, {c['libc']}. "
+        f"Base `{c['base_image'].split('@')[0]}` pinned by digest; Debian packages from snapshot.debian.org at {c['debian_snapshot']}.",
+        f"- Node {v['node']}, npm {v['npm']}, Bun {v['bun']}, Rust {v['rust']}, git {v['git']}, Python {v['python']}, "
+        f"hyperfine {v['hyperfine']}, GNU time {v['gnu_time']}.",
+        f"- ben: commit `{v['ben_commit'][:7]}` (reports itself as {r.suite['warm']['metadata'].get('ben_version', '?')}), built `CGO_ENABLED=0` in the image.",
+        f"- Run on {m['date']}, `COLUMNS=200`, bar commit `{m['bar_commit'][:7]}`.",
+    ])
+
+
+SECTIONS = {
+    "bench": {"tools": s_tools, "results": s_results, "like": s_like, "lines": s_lines, "env": s_env},
+    "readme": {"readme": s_readme},
+}
+
+
+# --- main ---------------------------------------------------------------
+
+
+def render(text, sections, r, path):
+    for key, fn in sections.items():
+        start, end = f"<!-- bench:{key}:start -->", f"<!-- bench:{key}:end -->"
+        pat = re.compile(re.escape(start) + r".*?" + re.escape(end), re.S)
+        if len(pat.findall(text)) != 1:
+            sys.exit(f"bench-render: {path.relative_to(ROOT)} needs exactly one {start} … {end}")
+        body = start + "\n" + fn(r) + "\n" + end
+        text = pat.sub(lambda _m: body, text)
+    return text
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--check", action="store_true", help="fail when a section is stale")
+    ap.add_argument("--results", type=Path, default=RESULTS)
+    args = ap.parse_args()
+
+    r = Results(args.results)
+    stale = []
+    for doc, path in DOCS.items():
+        have = path.read_text()
+        want = render(have, SECTIONS[doc], r, path)
+        if have == want:
+            continue
+        if args.check:
+            stale.append(str(path.relative_to(ROOT)))
+        else:
+            path.write_text(want)
+            print(f"wrote {path.relative_to(ROOT)}")
+    if stale:
+        print(f"stale benchmark sections in {', '.join(stale)}; run make bench-docs", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

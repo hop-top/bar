@@ -53,3 +53,28 @@ Vetting record for third-party crates added to `hop-bar`.
 - Use: Regular and Bold faces, `HackNerdFontMono-Regular.ttf` and `HackNerdFontMono-Bold.ttf`, looked up in `~/Library/Fonts`, `/Library/Fonts`, `~/.local/share/fonts`, `/usr/share/fonts` or `GALLERY_FONT_DIR`. Not committed; the images hold only the outlines of the glyphs they show.
 - Source: Nerd Fonts (`ryanoasis/nerd-fonts`), patched Hack. Licences: Hack MIT plus the Bitstream Vera licence; the added glyph sets keep their own (Powerline symbols MIT, Font Awesome SIL OFL 1.1, Octicons MIT).
 - `✗` and `✓` are missing from the font; the script draws them as simple strokes.
+
+## Benchmark image
+
+`bench/image/Dockerfile` builds the container `make bench` runs in ([bench/README.md](../bench/README.md#running)). Nothing in it ships in the binary or release archives. Every pin below was released at least 14 days before it was pinned; checksums are in the Dockerfile.
+
+| Component | Pin | Released | Checked by |
+|---|---|---|---|
+| Base: `python:3.14.8-slim-trixie` (Debian 13) | index digest `sha256:fbecd461…` | 2026-10-21 | digest |
+| Debian packages (gcc, make, zlib, curl, jq, procps, xz, unzip) | snapshot.debian.org `20261020T000000Z` | snapshot date | apt signatures |
+| `golang:1.27.2-trixie` (builds ben only) | index digest `sha256:47667934…` | 2026-10-13 | digest |
+| Node.js | 26.12.0 | 2026-10-14 | sha256 (`SHASUMS256.txt`) |
+| npm | 12.2.1 | 2026-10-15 | registry sha512 |
+| Bun | 1.4.4 | 2026-10-22 | sha256 (release asset digest) |
+| Rust (rustc, cargo, std; standalone installer) | 1.99.1 | 2026-10-15 | sha256 (`.sha256` file) |
+| git (from source, `NO_RUST`) | 2.56.0 | 2026-09-28 | sha256 (`sha256sums.asc`) |
+| GNU time (from source) | 1.10 | 2026-04-15 | sha256 |
+| hyperfine | 2.0.0 | 2026-10-07 | sha256 (release asset digest) |
+| ccstatusline | 2.2.32 | 2026-10-09 | registry sha512; no dependencies, no install scripts; installed with `--ignore-scripts` |
+| @owloops/claude-powerline | 1.32.5 | 2026-10-24 | registry sha512; no dependencies, no install scripts; installed with `--ignore-scripts` |
+| CCometixLine (`ccline`) | 2.0.1 | 2026-10-24 | sha256 (release asset digest) |
+| ben (`hop-top/ben`) | commit `2b24904` | owned, exempt from the age gate | commit id; Go modules against its `go.sum` |
+
+- ccstatusline 2.2.34 and claude-powerline 1.32.8 (both 2026-11-06) were under the age gate when the image was pinned, so the newest releases older than 14 days are used.
+- ben depends on `hop.top/uri`, a private module: building the image needs a GitHub token with read access to `hop-top/uri`, passed as a build secret (`scripts/bench`).
+- The rival tools run in the container with the repository snapshot from `git archive`, never the working tree; results leave through one output directory.
