@@ -222,6 +222,22 @@ fn extra_usage_components() {
 }
 
 #[test]
+fn extra_usage_turned_off_renders_nothing() {
+    let t = Tmp::new();
+    let cache = Cache::with_exe(t.path(), "/nonexistent/bar".into());
+    let at = now();
+    let mut d = sample(at);
+    if let Some(e) = d.extra.as_mut() {
+        e.enabled = false;
+    }
+    cache.store(&key(), &d.to_json()).unwrap();
+    let cfg = parse("set usage-api on\n").unwrap();
+    assert_eq!(go(&cache, &cfg, "extra", &Options::default(), at), None);
+    let o = opts(&[("show", "used,limit,left,pct,bar")]);
+    assert_eq!(go(&cache, &cfg, "extra", &o, at), None);
+}
+
+#[test]
 fn spend_components_from_the_statusline_json() {
     let s = hop_bar::session::parse(&format!(
         r#"{{"rate_limits":{{"spend_limit":{{"used_percentage":62.8,"resets_at":{},"used_usd":314.12,"limit_usd":500,"period":"monthly"}}}}}}"#,

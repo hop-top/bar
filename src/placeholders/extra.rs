@@ -13,9 +13,10 @@ pub struct Extra;
 pub const DEFAULT_SHOW: &str = "used,limit";
 
 /// The month's budget from cached numbers at `now`: the period is the
-/// local calendar month. `None` without extra usage or a limit.
+/// local calendar month. `None` without extra usage, while it is turned
+/// off for the account, or without a limit.
 pub fn budget(data: &Data, now: i64) -> Option<Budget> {
-    let (e, today) = data.extra(now, Tz::Local)?;
+    let (e, today) = data.extra(now, Tz::Local).filter(|(e, _)| e.enabled)?;
     let (start, end) = month_bounds(now, Tz::Local);
     Some(Budget {
         used: e.used,
