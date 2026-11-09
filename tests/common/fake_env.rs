@@ -120,9 +120,6 @@ impl Env for Fake {
     fn sessions_dir(&self) -> PathBuf {
         self.root.join("sessions")
     }
-    fn state_dir(&self) -> PathBuf {
-        self.state()
-    }
     fn alive(&self, pid: u32) -> bool {
         pid == PID && self.alive.get()
     }
