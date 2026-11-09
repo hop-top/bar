@@ -37,7 +37,8 @@ fn url_path(path: &str, windows: bool) -> Option<(String, String)> {
             .then(|| (String::new(), path.to_owned()));
     }
     let p = path.replace('\\', "/");
-    let p = match p.strip_prefix("//?/") {
+    // `\\?\` and `\\.\` (device namespace) prefixes: the path after them
+    let p = match p.strip_prefix("//?/").or_else(|| p.strip_prefix("//./")) {
         Some(rest) => match rest.strip_prefix("UNC/") {
             Some(unc) => format!("//{unc}"),
             None => rest.to_owned(),
@@ -56,9 +57,10 @@ fn url_path(path: &str, windows: bool) -> Option<(String, String)> {
     (valid_host(host) && !rest.is_empty()).then(|| (host.to_owned(), format!("/{rest}")))
 }
 
-/// Host names go into the URL as they are: letters, digits, `-`, `.`, `_`.
+/// Host names go into the URL as they are: letters, digits, `-`, `.`, `_`,
+/// not dots alone.
 fn valid_host(h: &str) -> bool {
-    !h.is_empty()
+    h.bytes().any(|b| b != b'.')
         && h.bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_'))
 }
@@ -183,6 +185,34 @@ mod tests {
         assert_eq!(url(Vscode, "", "", false), None);
         assert_eq!(url(Vscode, r"src\bar", "", true), None);
         assert_eq!(url(Vscode, "C:relative", "", true), None);
+    }
+
+    #[test]
+    fn windows_device_paths() {
+        assert_eq!(
+            url(Vscode, r"\\.\C:\src\bar", "", true).as_deref(),
+            Some("vscode://file/C:/src/bar/")
+        );
+        assert_eq!(
+            url(Files, r"\\.\UNC\srv\share\d", "box", true).as_deref(),
+            Some("file://srv/share/d/")
+        );
+        assert_eq!(url(Files, r"\\.\PhysicalDrive0", "box", true), None);
+        assert_eq!(url(Files, r"\\.\pipe\x", "box", true), None);
+    }
+
+    #[test]
+    fn hosts_of_only_dots_are_not_hosts() {
+        assert_eq!(url(Files, r"\\..\share\d", "", true), None);
+        assert_eq!(url(Files, r"\\.\share", "", true), None);
+        assert_eq!(
+            url(Files, "/tmp/x", "..", false).as_deref(),
+            Some("file:///tmp/x/")
+        );
+        assert_eq!(
+            url(Files, "/tmp/x", ".", false).as_deref(),
+            Some("file:///tmp/x/")
+        );
     }
 
     #[test]
