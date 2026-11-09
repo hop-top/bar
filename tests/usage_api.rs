@@ -441,6 +441,28 @@ mod job {
         assert!(cache.read_fresh(&key, 3600).is_some());
     }
 
+    /// The keychain read and the request share the refresh time limit, so
+    /// a slow keychain leaves curl only what is left of it.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn keychain_time_counts_against_the_request_limit() {
+        let t = Tmp::new();
+        let (mut envs, cwd) = setup(&t, "200", "");
+        envs.push(("BAR_REFRESH_TIMEOUT", "4".into()));
+        let d = t.path();
+        t.write("security.out", &creds((now() + 3600) * 1000));
+        exe(
+            &d.join("fake-bin/security"),
+            &format!("#!/bin/sh\nsleep 2\ncat '{0}/security.out'\n", d.display()),
+        );
+        refresh(&t, &envs, &cwd);
+        let argv = std::fs::read_to_string(d.join("curl.argv")).unwrap();
+        let lines: Vec<&str> = argv.lines().collect();
+        let at = lines.iter().position(|l| *l == "--max-time").unwrap();
+        let max: u64 = lines[at + 1].parse().unwrap();
+        assert!((1..=2).contains(&max), "--max-time {max}");
+    }
+
     #[test]
     fn rate_limit_keeps_the_numbers_and_waits() {
         let t = Tmp::new();

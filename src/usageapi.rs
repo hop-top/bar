@@ -8,7 +8,7 @@ pub mod sha256;
 
 use serde_json::{json, Value};
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::cache::{Cache, Job};
 use crate::session::Window;
@@ -291,10 +291,16 @@ pub fn fetch(dir: &Path, hashed: bool, prev: &Path, now: i64, limit: Duration) -
     if old.as_ref().is_some_and(|o| o.retry_at > now) {
         return None;
     }
+    // the keychain read and the request share `limit`
+    let end = Instant::now() + limit;
     let token = creds::access_token(dir, hashed, now.saturating_mul(1000), limit)?;
     let config = format!("header = \"Authorization: Bearer {token}\"\n");
     drop(token);
-    let r = crate::net::request(URL, &HEADERS, &config, limit.as_secs().max(1), MAX_BYTES);
+    let left = end.saturating_duration_since(Instant::now()).as_secs();
+    if left == 0 {
+        return None;
+    }
+    let r = crate::net::request(URL, &HEADERS, &config, left, MAX_BYTES);
     drop(config);
     let r = r.ok()?;
     let wait = |secs: i64| {
