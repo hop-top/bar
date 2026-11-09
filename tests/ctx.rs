@@ -352,6 +352,17 @@ fn threshold_native_1m_default_only_for_native_models() {
 }
 
 #[test]
+fn threshold_math_does_not_overflow() {
+    let big = u64::MAX / 2;
+    let env = |_: &str| None;
+    let pct = threshold(big, "m", Some(CompactAt::Pct(90)), &env, &|| None);
+    assert_eq!(pct, Some((u128::from(big) * 90 / 100) as u64));
+    let p = "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE";
+    let s = Some(json!({"autoCompactWindow": 400000}));
+    assert_eq!(thr(big, &[(p, "50")], s), Some(200_000));
+}
+
+#[test]
 fn threshold_off_switches() {
     let on = Some(json!({"autoCompactEnabled": true}));
     assert_eq!(thr(200_000, &[], on), Some(200_000));
@@ -368,10 +379,14 @@ fn threshold_off_switches() {
 #[test]
 fn threshold_pct_override_only_lowers_an_early_point() {
     let p = "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE";
-    assert_eq!(
-        thr(1_000_000, &[(p, "50")], None),
-        Some(NATIVE_1M_DEFAULT / 2)
-    );
+    // a percent of the auto-compact window (the context window when unset)
+    assert_eq!(thr(1_000_000, &[(p, "50")], None), Some(500_000));
+    // above the default point: ignored, never raised
+    assert_eq!(thr(1_000_000, &[(p, "98")], None), Some(NATIVE_1M_DEFAULT));
+    assert_eq!(thr(1_000_000, &[(p, "100")], None), Some(NATIVE_1M_DEFAULT));
+    let s = Some(json!({"autoCompactWindow": 400000}));
+    assert_eq!(thr(1_000_000, &[(p, "50")], s.clone()), Some(200_000));
+    assert_eq!(thr(1_000_000, &[(p, "100")], s), Some(400_000));
     // compaction at the limit: the override does not apply
     assert_eq!(thr(200_000, &[(p, "50")], None), Some(200_000));
     assert_eq!(thr(1_000_000, &[(p, "0")], None), Some(NATIVE_1M_DEFAULT));
