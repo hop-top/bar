@@ -76,6 +76,7 @@ fn sample(at: i64) -> Data {
         day: hop_bar::tz::day_of(at, hop_bar::tz::Tz::Local),
         base: Some(1000),
         retry_at: 0,
+        fails: 0,
     }
 }
 
@@ -500,7 +501,7 @@ mod job {
     }
 
     #[test]
-    fn server_error_keeps_the_last_value() {
+    fn failures_keep_the_last_value_and_back_off() {
         let t = Tmp::new();
         let (envs, cwd) = setup(&t, "500", "");
         t.write("claude/.credentials.json", &creds((now() + 3600) * 1000));
@@ -508,11 +509,42 @@ mod job {
         let key = usageapi::cache_key(&t.path().join("claude").to_string_lossy());
         let old = sample(now() - 600);
         cache.store(&key, &old.to_json()).unwrap();
+        // 5 minutes after the first failure, doubling, at most an hour
+        for (fails, wait) in [
+            (0, 300),
+            (1, 600),
+            (2, 1200),
+            (3, 2400),
+            (4, 3600),
+            (9, 3600),
+        ] {
+            let mut prev = old.clone();
+            prev.fails = fails;
+            cache.store(&key, &prev.to_json()).unwrap();
+            refresh(&t, &envs, &cwd);
+            let d = Data::from_json(&cache.read_fresh(&key, 3600).unwrap()).unwrap();
+            assert_eq!(
+                (&d.models, &d.extra, d.at),
+                (&old.models, &old.extra, old.at)
+            );
+            assert_eq!(d.fails, fails + 1);
+            let got = d.retry_at - now();
+            assert!((wait - 5..=wait).contains(&got), "after {fails}: {got}");
+        }
+        // a curl failure backs off the same way
+        t.write("resp/status", "not-a-status");
+        cache.store(&key, &old.to_json()).unwrap();
         refresh(&t, &envs, &cwd);
-        assert_eq!(
-            Data::from_json(&cache.read_fresh(&key, 3600).unwrap()),
-            Some(old)
-        );
-        assert!(cache.fail_path(&key).exists());
+        let d = Data::from_json(&cache.read_fresh(&key, 3600).unwrap()).unwrap();
+        assert_eq!(d.fails, 1);
+        assert!(d.retry_at - now() > 250);
+        // success clears the count
+        t.write("resp/status", "200");
+        let mut prev = old.clone();
+        prev.fails = 3;
+        cache.store(&key, &prev.to_json()).unwrap();
+        refresh(&t, &envs, &cwd);
+        let d = Data::from_json(&cache.read_fresh(&key, 3600).unwrap()).unwrap();
+        assert_eq!((d.fails, d.retry_at), (0, 0));
     }
 }

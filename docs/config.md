@@ -500,7 +500,8 @@ Limits and failures:
 - At most one fetch per 5 minutes, shared by every session with the same Claude Code config dir.
 - HTTP 429: the last numbers are kept and nothing is sent until the `Retry-After` time (seconds; 10 minutes without one, at most a day).
 - HTTP 401 or 403 (a revoked or expired token): the last numbers are kept and nothing is sent for 15 minutes.
-- No token, a network error or another status: the last result is kept and the next try waits 60 seconds; without a token nothing is sent.
+- A network error, a timeout, a server error or another status, or a response that is not the expected JSON: the last numbers are kept and nothing is sent for 5 minutes, doubling with each failure in a row up to an hour; a successful fetch resets it.
+- No token (none found, or expired): nothing is sent and the next try waits 60 seconds.
 - The endpoint is the one Claude Code itself uses for `/usage`; it is not a documented public API and may change. When it does, `extra` and `usage[model=...]` render nothing.
 
 ### Git and directories
