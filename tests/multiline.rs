@@ -334,7 +334,7 @@ fn wrapped_rows_inherit_the_skin() {
     // backgrounds keep cycling across the wrapped rows
     let out = raw(&pl, Some(30));
     let second = out.split('\n').nth(1).unwrap();
-    let bgs = palette::default().bgs;
+    let bgs = &palette::default().bgs;
     assert!(
         second.starts_with(&bg_code(bgs[2 % bgs.len()])),
         "{second:?}"
@@ -367,7 +367,7 @@ fn centre_line_under_skin_with_wrap_on() {
     assert!(strip_codes(&wide).contains(&" ".repeat(5)), "{wide:?}");
     // wrapped: every row a left group that opens and closes its background
     let out = raw(&src, Some(30));
-    let bgs = palette::default().bgs;
+    let bgs = &palette::default().bgs;
     let rows: Vec<&str> = out.split('\n').collect();
     assert_eq!(rows.len(), 3, "{out:?}");
     for (i, r) in rows.iter().enumerate() {

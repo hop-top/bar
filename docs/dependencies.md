@@ -147,3 +147,20 @@ Binary size: the release `bar` grows by about 390 KB (2.11 MB to 2.50 MB on macO
 - git comes from Debian: 2.47.3 creates reftable repositories (2.45 or later), so the reftable test in `tests/gitrefs.rs` runs instead of returning early.
 - jj 0.46.0 meets the `jj` placeholder's 0.32 minimum, so the tests in `tests/render_jj.rs` that need the real CLI run instead of skipping. `glab` is not installed: its tests use a fake.
 - gh 2.103.3 (2026-10-26) and jj 0.47 (2026-11-04) were under the age gate when the image was pinned.
+
+## Palette colours
+
+Not crates: the built-in `#rrggbb` palettes use colour values published by each scheme, mapped to bar's roles (muted, good, warn, bad, backgrounds) by bar. No code, files or assets are copied.
+
+| Palette | Source | Licence |
+|---|---|---|
+| `tokyo-night` | `folke/tokyonight.nvim`, `lua/tokyonight/colors/storm.lua` and `night.lua` | Apache-2.0 |
+| `rose-pine` | `rose-pine/neovim`, `lua/rose-pine/palette.lua` (main) | MIT |
+| `catppuccin` | `catppuccin/palette`, `palette.json` (Mocha) | MIT |
+| `one-dark` | `atom/atom`, `packages/one-dark-syntax/styles/colors.less` and `syntax-variables.less` (HSL values, converted) | MIT |
+| `everforest` | `sainnhe/everforest`, `autoload/everforest.vim` (dark, medium) | MIT |
+| `kanagawa` | `rebelot/kanagawa.nvim`, `lua/kanagawa/colors.lua` (wave) | MIT |
+
+- `one-dark` backgrounds: the syntax background `hsl(220, 13%, 18%)` (`#282c34`) and the same hue and saturation at 22% and 15% lightness (`#31363f`, `#21252b`).
+- Some theme shades were left out where muted, state or repo-name text fell under 3:1 on them, or where two neighbours quantise to the same 256-colour code.
+

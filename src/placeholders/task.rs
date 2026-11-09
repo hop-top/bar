@@ -142,7 +142,7 @@ impl Placeholder for Status {
             "" | "running" => ("●", crate::color::Color::from(crate::style::accent())),
             "completed" => ("✓", c.good),
             "failed" | "killed" => ("✗", c.bad),
-            _ => ("○", crate::color::Color::from(ctx.config.muted)),
+            _ => ("○", ctx.config.muted),
         };
         let word = sanitize(if t.status.is_empty() {
             "running"

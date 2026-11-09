@@ -57,7 +57,7 @@ impl Placeholder for Account {
             .iter()
             .find(|r| glob_match(&r.glob, &email))
             .map(|r| (r.label.clone(), r.color))
-            .unwrap_or((email, neutral().into()));
+            .unwrap_or((email, neutral()));
         Some(bold(&fg(color, &sanitize(&label))))
     }
 }

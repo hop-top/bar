@@ -33,7 +33,7 @@ With no existing config (or after the user agreed to replace it): `bar init --pr
 Each is a `set` line in `bar.conf`; the preset already sets some. Ask in turn, showing the current value, and offer "keep":
 
 - Skin: `plain`, `powerline`, `capsule`. Powerline and capsule need a Nerd Font or Powerline-patched font; otherwise add `set skin-glyphs ascii`.
-- Palette: `default`, `nord`, `gruvbox`, `dracula`, `solarized`, `mono`, `terminal` (`terminal` follows the terminal's own theme).
+- Palette: `default`, `nord`, `gruvbox`, `dracula`, `solarized`, `mono`, `tokyo-night`, `rose-pine`, `catppuccin`, `one-dark`, `everforest`, `kanagawa`, `terminal` (`terminal` follows the terminal's own theme), or the name of a palette file in `palettes/` beside `bar.conf` (docs/config.md, Palette files).
 - Icons: `none`, `nerdfont`, `emoji` (`nerdfont` needs a Nerd Font).
 
 Edit the existing `set skin|palette|icons` line, or append one if the preset has none. Never write two of the same. Then run `bar check` (exit 2 means a config error: show it and fix) and `bar preview` to show the result; loop back to any step the user wants to change.

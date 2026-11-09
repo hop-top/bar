@@ -259,6 +259,7 @@ fn prices_cmd(m: &ArgMatches) {
 }
 
 fn check(m: &ArgMatches) {
+    let _palettes = hop_bar::palette::use_dir(conf::palette_dir_default());
     let dirs = plugin::path_dirs(std::env::var_os("PATH").as_deref());
     let user = conf::find_path_default().map(|p| check::source(&p));
     let project = cwd().and_then(|d| conf::project::find(&d)).map(|p| {

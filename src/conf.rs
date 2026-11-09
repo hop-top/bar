@@ -10,7 +10,10 @@ use std::collections::BTreeMap;
 mod load;
 pub mod project;
 mod set;
-pub use load::{find_path, find_path_default, load, load_from, load_layered, search_paths};
+pub use load::{
+    find_path, find_path_default, load, load_from, load_layered, palette_dir, palette_dir_default,
+    search_paths,
+};
 pub use project::ProjectMode;
 use set::{apply_palette, apply_price, apply_set};
 
@@ -124,12 +127,13 @@ pub struct Config {
     pub colors: Colors,
     pub ramp: [Color; 11],
     /// Muted text colour, from the palette.
-    pub muted: u8,
+    pub muted: Color,
     pub skin: Skin,
     pub skin_glyphs: SkinGlyphs,
-    pub palette: &'static str,
+    /// `set palette`: a built-in palette or a user palette file.
+    pub palette: palette::Palette,
     /// Segment backgrounds skins cycle through, from the palette.
-    pub bgs: &'static [u8],
+    pub bgs: Vec<Color>,
     pub defaults: BTreeMap<String, Options>,
     pub accounts: Vec<AccountRule>,
     pub rules: Vec<Rule>,
@@ -185,12 +189,12 @@ impl Default for Config {
                 warn: Color::Idx(179),
                 bad: Color::Idx(203),
             },
-            ramp: palette::default().ramp.map(Color::Idx),
+            ramp: palette::default().ramp,
             muted: palette::default().muted,
             skin: Skin::Plain,
             skin_glyphs: SkinGlyphs::Nerd,
-            palette: palette::default().name,
-            bgs: palette::default().bgs,
+            palette: palette::default().clone(),
+            bgs: palette::default().bgs.to_vec(),
             defaults: BTreeMap::new(),
             accounts: Vec::new(),
             rules: Vec::new(),
@@ -470,7 +474,7 @@ fn apply_text(
 
 /// Whether the comment that ends `line` starts with `#rrggbb`: a hex colour
 /// left unquoted, so `#` cut the value off.
-fn hex_comment(line: &str) -> bool {
+pub(crate) fn hex_comment(line: &str) -> bool {
     let mut in_q = false;
     for (i, ch) in line.char_indices() {
         match ch {

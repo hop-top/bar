@@ -160,7 +160,7 @@ pub fn render_parts(
             }
             Part::Tokens => {
                 let (n, of) = (tokens?, scale?);
-                let c = color.unwrap_or(ctx.config.muted.into());
+                let c = color.unwrap_or(ctx.config.muted);
                 Some(format!(
                     "{}{}",
                     fg(c, &parts::num(n)),

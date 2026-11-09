@@ -110,11 +110,27 @@ section(
     ],
 )
 
-PALETTES = ["default", "nord", "gruvbox", "dracula", "solarized", "mono", "terminal"]
+PALETTES = [
+    "default",
+    "nord",
+    "gruvbox",
+    "dracula",
+    "solarized",
+    "mono",
+    "tokyo-night",
+    "rose-pine",
+    "catppuccin",
+    "one-dark",
+    "everforest",
+    "kanagawa",
+    "terminal",
+]
 section(
     "Palettes",
     "`set palette` swaps muted text, state colours, the usage ramp and the "
     "skin backgrounds; here on the powerline skin in the `burning` state. "
+    "The `#rrggbb` palettes are drawn at the default depth, as their "
+    "nearest 256-colour codes. "
     "`terminal` uses the terminal's own 16 colours, drawn here with the "
     "xterm defaults. See [Palettes](config.md#palettes).",
     [

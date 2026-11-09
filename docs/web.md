@@ -48,6 +48,8 @@ The `bar.conf` text is the state. Layout, preset and look controls rewrite only 
 
 Issues come from `bar check`, with the options of manifest plugins checked against their schema. A name that is neither a core placeholder nor in the manifest is a warning. While the text has errors the layout and look controls are locked, so nothing rewrites what you typed; **Revert to last valid** goes back to the last text without errors. Over the preview the page says what is wrong (`2 errors in bar.conf — line 1: unknown set key `palete` (did you mean `palette`?)`) and keeps drawing the last valid config, dimmed. Unknown set keys, directives, placeholders and options get a did-you-mean from the names bar knows; each issue's line number selects that line in the text.
 
+The palette control lists the built-in palettes. The page reads no files, so `set palette` with the name of one of your [palette files](config.md#palette-files) is an error here; it works with the CLI.
+
 **Undo** and **Redo** (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z) step through every change, from the controls or typed. The page keeps the config, its undo history and the last valid text in the browser's local storage, so a reload can still undo.
 
 ## Font

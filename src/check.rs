@@ -583,6 +583,17 @@ impl Checker<'_> {
                         }
                     }
                 }
+                Some("set") if t.len() == 3 && t[1] == "palette" => {
+                    let file = crate::palette::file::path_of(&t[2]).filter(|p| p.is_file());
+                    if let (Some(_), Some(file)) = (crate::palette::by_name(&t[2]), file) {
+                        let msg = format!(
+                            "`{}` is a built-in palette, so {} is not read; rename the file to use it",
+                            t[2],
+                            file.display()
+                        );
+                        self.add(Level::Warning, i + 1, msg);
+                    }
+                }
                 Some("set") if t.len() == 3 && t[1] == "subagent" => {
                     self.row = true;
                     self.layout(&t[2], i + 1);

@@ -1,3 +1,4 @@
+use hop_bar::color::Color;
 use hop_bar::conf::{parse, Config, LoadResult, Skin, SkinGlyphs};
 use hop_bar::palette;
 use hop_bar::skin::{paint, Paint, Seg, Side};
@@ -76,11 +77,11 @@ fn every_palette_parses() {
         assert_eq!(c.muted, p.muted, "{name}");
         assert_eq!(
             (c.colors.good, c.colors.warn, c.colors.bad),
-            (p.good.into(), p.warn.into(), p.bad.into()),
+            (p.good, p.warn, p.bad),
             "{name}"
         );
         assert_eq!(c.ramp, p.ramp, "{name}");
-        assert_eq!(c.bgs, p.bgs, "{name}");
+        assert_eq!(c.bgs, p.bgs.to_vec(), "{name}");
         assert!(!p.bgs.is_empty(), "{name}");
     }
     assert!(parse("set palette neon").is_err());
@@ -104,10 +105,7 @@ fn explicit_colours_beat_palette_in_any_order() {
     ] {
         let c = parse(&src).unwrap();
         assert_eq!(c.colors.good, 1);
-        assert_eq!(
-            (c.colors.warn, c.colors.bad),
-            (nord.warn.into(), nord.bad.into())
-        );
+        assert_eq!((c.colors.warn, c.colors.bad), (nord.warn, nord.bad));
         assert_eq!(c.ramp, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
         assert_eq!(c.muted, nord.muted);
     }
@@ -233,8 +231,8 @@ fn powerline_line_uses_palette_bgs_and_override() {
     let mono = palette::by_name("mono").unwrap();
     let conf = "set skin powerline\nset palette mono\nset left \"#{model} │ #{ctx[bg=200]} │ #{repo}\"\nset right \"#{account}\"\n";
     let out = preview(conf, 120);
-    let bg = |b: u8| format!("\x1b[48;5;{b}m");
-    let (a, b, c) = (bg(mono.bgs[0]), bg(200), bg(mono.bgs[2]));
+    let bg = |b: Color| format!("\x1b[48;5;{b}m");
+    let (a, b, c) = (bg(mono.bgs[0]), bg(Color::Idx(200)), bg(mono.bgs[2]));
     let (ia, ib, ic) = (
         out.find(&a).unwrap(),
         out.find(&b).unwrap(),
@@ -339,4 +337,19 @@ fn same_bg_neighbours_get_thin_separator() {
     assert_eq!(strip_codes(&a.text), " a | b > c >");
     let ar = paint(Paint::Powerline, SkinGlyphs::Ascii, &segs, Side::Right);
     assert_eq!(strip_codes(&ar.text), "< a | b < c ");
+}
+
+#[test]
+fn hex_palette_draws_rgb_at_truecolor_and_nearest_code_below() {
+    let p = palette::by_name("tokyo-night").unwrap();
+    let Color::Rgb([r, g, b]) = p.bgs[0] else {
+        panic!("{:?}", p.bgs[0])
+    };
+    let conf = "set skin powerline\nset palette tokyo-night\nset left \"#{model} │ #{ctx}\"\n";
+    let tc = preview(&format!("{conf}set color-depth truecolor\n"), 120);
+    assert!(tc.contains(&format!("\x1b[48;2;{r};{g};{b}m")), "{tc:?}");
+    let c256 = preview(conf, 120);
+    let code = hop_bar::color::nearest256([r, g, b]);
+    assert!(c256.contains(&format!("\x1b[48;5;{code}m")), "{c256:?}");
+    assert!(!c256.contains("48;2;"), "{c256:?}");
 }
