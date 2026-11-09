@@ -10,9 +10,11 @@ make build   # release build
 make check   # fmt-check + clippy -D warnings + tests + gallery-check + bench-badge-check
 make gallery # redraw docs/gallery.md and docs/gallery/*.svg
 make bench-badge # redraw docs/badges/bench.svg from bench/results/
+make bench       # benchmark in a pinned container (Docker or Podman); stages results, docs, badge
+make bench-check # fails when the recorded benchmark run is stale for HEAD
 ```
 
-`make check` needs `python3` for `gallery-check`, which fails when [docs/gallery.md](docs/gallery.md) no longer matches `bar` output; run `make gallery` after changing what a render looks like. `bench-badge-check` fails when [docs/badges/bench.svg](docs/badges/bench.svg) no longer matches the results in `bench/results/`; run `make bench-badge` after committing a new run. `make gallery` also needs fontTools and Hack Nerd Font Mono ([docs/dependencies.md](docs/dependencies.md#gallery-tooling-not-built-into-bar)).
+`make check` needs `python3` for `gallery-check`, which fails when [docs/gallery.md](docs/gallery.md) no longer matches `bar` output; run `make gallery` after changing what a render looks like. `bench-docs-check` and `bench-badge-check` fail when the generated benchmark sections of [bench/README.md](bench/README.md) and [README.md](README.md), or [docs/badges/bench.svg](docs/badges/bench.svg), no longer match the results in `bench/results/`; `make bench` writes all of them. `make gallery` also needs fontTools and Hack Nerd Font Mono ([docs/dependencies.md](docs/dependencies.md#gallery-tooling-not-built-into-bar)).
 
 `make check` must pass before a change goes up.
 
@@ -32,6 +34,8 @@ Pick the target branch by what the change is:
 | New feature (`feat:`) or breaking change (`feat!:`, `BREAKING CHANGE:`) | `next` |
 | Fix for the current stable release (`fix:`, `perf:`) | `main`, then forward-ported to `next` |
 | Fix for an older supported release | `release/<major>.<minor>` of the oldest line it affects, then forward-ported up |
+
+Release PRs (opened by release-please on `next`, `main` and `release/<major>.<minor>`) merge only with a fresh benchmark run: as the last step before merging one, run `make bench` on the release PR's base branch and commit its staged results to that branch (`chore(bench): …`), not to the release PR branch, which release-please recreates from its base. The required `bench-fresh` check and the tag build fail on a stale run. Details: [docs/technical.md](docs/technical.md#releasing).
 
 `next` cuts prereleases (`*-alpha.N`, `*-beta.N`, `*-rc.N`). `main` only takes stable releases and patches: a stable version is cut by merging `next` into `main` once the line is at an rc, and a `feat` or breaking change on `main` blocks its release. Nobody picks a version: no `Release-As` footers, no manifest edits. Details: [docs/technical.md](docs/technical.md#releasing).
 

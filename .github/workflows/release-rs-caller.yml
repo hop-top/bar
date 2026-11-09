@@ -22,6 +22,10 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
+      # A release ships only with a `make bench` run recorded for its inputs
+      # (docs/technical.md#releasing). Fails before any release or upload.
+      - name: Benchmarks match the release's inputs
+        run: make bench-check
       - name: Check tag matches Cargo.toml
         env:
           TAG: ${{ github.ref_name }}
