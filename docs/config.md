@@ -132,7 +132,7 @@ Fields of the session: model, effort, context, cost and the rest of the statusli
 - `compactions` counts `system` transcript entries with subtype `compact_boundary`; `skills` counts `Skill` tool calls in non-sidechain assistant entries (skills a user starts with a slash command are not counted). Both share the transcript scan of [`tokens`](#tokens-cache-cachettl), so they are empty without a readable `transcript_path`.
 - `name` reads `session_name`: the name set with `--name` or `/rename`, else the generated session title. Claude Code leaves it out when the session has neither, and bar does not look further, so older Claude Code versions show nothing.
 - `api` reads `cost.total_api_duration_ms`, time spent waiting for responses; `duration` is the session's wall time.
-- `msgs` counts main-conversation `user` transcript entries that are prompts: tool results, meta entries, compaction summaries and sidechains are left out. `show=total` also counts each main-conversation assistant message once. It shares the transcript scan of [`tokens`](#tokens-cache-cachettl), so it is empty without a readable `transcript_path`.
+- `msgs` counts main-conversation `user` transcript entries that are prompts ([as `ttft` defines them](#ttft-tps-misses)): tool results, meta entries, compaction summaries, interruption notes, slash-command records and sidechains are left out. `show=total` also counts each main-conversation assistant message once. It shares the transcript scan of [`tokens`](#tokens-cache-cachettl), so it is empty without a readable `transcript_path`.
 - `modes` reads Claude Code settings, since the statusline JSON carries none of these: `voice.enabled` (or the older `voiceEnabled`), `sandbox.enabled` and `remoteControlAtStartup`. Files are read in order, the later overriding the earlier: `<claude dir>/settings.json`, then `.claude/settings.json` and `.claude/settings.local.json` in the session's directory. `remote` means Remote Control is set to connect at startup; a session started with `--remote-control` or connected with `/remote-control` is not detected. Settings that managed policy or the command line change are not seen either.
 
 ### ctx
@@ -288,7 +288,7 @@ What the timestamps measure:
 `ttft`:
 
 - From the prompt's user entry to the first assistant entry after it. Since that entry is written when its first block is complete, the time includes generating that whole block (for example the full thinking block), not just the first token.
-- A prompt is a main-conversation `user` entry whose content is text or blocks with no `tool_result`, and that is not marked `isMeta` or `isCompactSummary`. `msgs` counts the same entries.
+- A prompt is a main-conversation `user` entry whose content is text or blocks with no `tool_result`, that is not marked `isMeta` or `isCompactSummary`, and whose text (or first text block) does not start with what Claude Code writes itself: `[Request interrupted`, `<command-` (a slash command) or `<local-command-` (its output). `msgs` counts the same entries.
 - `last` is the most recent answered prompt; a prompt still waiting for its first entry leaves the previous value shown. `avg` is the mean over every answered prompt in the transcript.
 
 `tps`:
