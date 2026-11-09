@@ -208,6 +208,45 @@ fn conflicts_fall_back_to_cached_status() {
     assert!(!log.exists(), "render spawned git");
 }
 
+#[test]
+fn sha_from_cached_status_when_refs_are_too_large() {
+    let t = Tmp::new();
+    let d = repo(&t, "proj");
+    let id = head(&d);
+    // HEAD's branch only in a packed-refs over the reader's cap
+    git(&d, &["pack-refs", "--all"]);
+    let packed = d.join(".git/packed-refs");
+    let mut body = std::fs::read_to_string(&packed).unwrap();
+    let filler: String = (0..20_000)
+        .map(|i| format!("{} refs/tags/zz{i:06}\n", "0".repeat(40)))
+        .collect();
+    body.push_str(&filler);
+    std::fs::write(&packed, body).unwrap();
+    assert!(std::fs::metadata(&packed).unwrap().len() > 1024 * 1024);
+    assert!(!d.join(".git/refs/heads/main").exists());
+    let (path, log) = no_git(&t);
+    let render = || {
+        run(&t)
+            .conf("set left \"[#{sha[link=no]}]\"")
+            .env("PATH", &path)
+            .cwd(&d)
+            .unset("GIT_CONFIG_NOSYSTEM")
+            .go()
+    };
+    // cold: nothing known, git only in the background refresh
+    assert_eq!(one(&render().plain), "");
+    Cache::new(&t.path().join("state"))
+        .store(
+            &cache_key(&d),
+            &format!("# branch.oid {id}\n# branch.head main\n"),
+        )
+        .unwrap();
+    assert_eq!(one(&render().plain), format!("[{}]", &id[..7]));
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let spawned = std::fs::read_to_string(&log).unwrap_or_default();
+    assert!(!spawned.contains("rev-parse"), "{spawned:?}");
+}
+
 fn one(s: &str) -> String {
     s.lines().next().unwrap_or("").trim().to_string()
 }
