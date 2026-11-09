@@ -1,6 +1,6 @@
 {
- "bar_commit": "5344476cb3bc88e859ed378ac80480c03a0e1f45",
- "inputs": "sha256:e155924d23984e6b05461449ed5625b82076d00858937989c733a887689c7010",
+ "bar_commit": "8f6e024e29ba3cbc4c93a996ca1fdfc77e7692a5",
+ "inputs": "sha256:51b23bfdf1a66f9c4fa96003ac2dfa7c2c414534673485d140d23ce2607a0577",
  "date": "2026-11-09",
  "runner": "native",
  "host": {
