@@ -1,6 +1,6 @@
-.PHONY: plugin-check build test lint format check setup gallery gallery-check bench bench-check bench-docs bench-docs-check bench-badge bench-badge-check
+.PHONY: plugin-check build test lint format check setup web web-check gallery gallery-check bench bench-check bench-docs bench-docs-check bench-badge bench-badge-check
 
-check: lint test plugin-check gallery-check bench-docs-check bench-badge-check
+check: lint test plugin-check web-check gallery-check bench-docs-check bench-badge-check
 
 build:
 	cargo build --release
@@ -25,6 +25,14 @@ plugin-check:
 	else \
 		python3 -c "import json;[json.load(open(f)) for f in ('.claude-plugin/marketplace.json','claude-plugin/.claude-plugin/plugin.json')]" && echo "claude CLI not found: JSON syntax checked only"; \
 	fi
+
+# web configurator: bar's renderer as wasm in web/pkg/ (docs/web.md)
+web:
+	scripts/web
+
+# builds and lints the wasm crate; skips when the toolchain has no wasm32 target
+web-check:
+	scripts/web --check
 
 # docs/gallery.md and docs/gallery/*.svg from real bar output
 gallery:

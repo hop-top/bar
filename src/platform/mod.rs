@@ -1,6 +1,7 @@
 //! Operating-system differences in one place: home directory, private
 //! files, file identity, executables, child processes, process liveness
-//! and the local zone offset. Unix and Windows provide the same functions.
+//! and the local zone offset. Unix and Windows provide the same functions;
+//! the wasm build (the web configurator's renderer) stubs them out.
 
 #[cfg(unix)]
 mod unix;
@@ -11,6 +12,43 @@ pub use unix::*;
 mod windows;
 #[cfg(windows)]
 pub use windows::*;
+
+#[cfg(target_family = "wasm")]
+mod wasm;
+#[cfg(target_family = "wasm")]
+pub use wasm::*;
+
+/// bar's config, state and data dirs (hop-top-kit's XDG resolution).
+#[cfg(not(target_family = "wasm"))]
+pub mod dirs {
+    use std::path::PathBuf;
+
+    pub fn config() -> PathBuf {
+        hop_top_kit::xdg::raw_config_dir("bar")
+    }
+    pub fn state() -> PathBuf {
+        hop_top_kit::xdg::raw_state_dir("bar")
+    }
+    pub fn data() -> PathBuf {
+        hop_top_kit::xdg::raw_data_dir("bar")
+    }
+}
+
+/// No file system in wasm: empty paths, which nothing there reads.
+#[cfg(target_family = "wasm")]
+pub mod dirs {
+    use std::path::PathBuf;
+
+    pub fn config() -> PathBuf {
+        PathBuf::new()
+    }
+    pub fn state() -> PathBuf {
+        PathBuf::new()
+    }
+    pub fn data() -> PathBuf {
+        PathBuf::new()
+    }
+}
 
 /// `PATHEXT` when it is unset or empty.
 pub const DEFAULT_PATHEXT: &str = ".COM;.EXE;.BAT;.CMD";

@@ -26,7 +26,7 @@ use std::path::PathBuf;
 pub fn config_path() -> Option<PathBuf> {
     let home = crate::platform::home().unwrap_or_default();
     let env = |k: &str| std::env::var(k).ok();
-    let kit = hop_top_kit::xdg::raw_config_dir("bar");
+    let kit = crate::platform::dirs::config();
     crate::conf::find_path(&env, &home, &kit).or_else(|| {
         crate::conf::search_paths(&env, &home, &kit)
             .into_iter()

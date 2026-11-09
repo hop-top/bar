@@ -1,0 +1,25 @@
+# bar's renderer for the web configurator, built to wasm by `make web`.
+# Its own workspace and lock file: the native `bar` build never sees it.
+[package]
+name = "bar-web"
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "Apache-2.0"
+description = "bar's renderer compiled to WebAssembly for the web configurator"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hop-bar = { path = "../..", default-features = false }
+wasm-bindgen = "=0.2.121"
+
+[workspace]
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true

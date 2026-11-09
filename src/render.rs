@@ -212,48 +212,61 @@ pub fn render_in(
     cache: Option<&Cache>,
     plugin_dirs: &[PathBuf],
 ) -> String {
-    render_impl(session, config, columns, runner, cache, plugin_dirs, None)
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64);
+    let src = Sources {
+        runner,
+        cache,
+        plugin_dirs,
+        sample: None,
+    };
+    render_impl(session, config, columns, now, &src)
 }
 
-/// Renders `config` with every placeholder answered by `sample`.
+/// Renders `config` at `now` (Unix seconds) with every placeholder
+/// answered by `sample`: no clock, cache, command or plugin.
 pub fn render_sample(
     session: &Session,
     config: &Config,
     columns: Option<usize>,
+    now: i64,
     sample: Sample,
 ) -> String {
-    render_impl(
-        session,
-        config,
-        columns,
-        &ColdRunner,
-        None,
-        &[],
-        Some(sample),
-    )
+    let src = Sources {
+        runner: &ColdRunner,
+        cache: None,
+        plugin_dirs: &[],
+        sample: Some(sample),
+    };
+    render_impl(session, config, columns, now, &src)
+}
+
+/// Where placeholder values come from.
+struct Sources<'a> {
+    runner: &'a dyn CommandRunner,
+    cache: Option<&'a Cache>,
+    plugin_dirs: &'a [PathBuf],
+    sample: Option<Sample<'a>>,
 }
 
 fn render_impl(
     session: &Session,
     config: &Config,
     columns: Option<usize>,
-    runner: &dyn CommandRunner,
-    cache: Option<&Cache>,
-    plugin_dirs: &[PathBuf],
-    sample: Option<Sample>,
+    now: i64,
+    from: &Sources,
 ) -> String {
-    let ex = Expander::new(runner);
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs() as i64);
+    let ex = Expander::new(from.runner);
+    let sample = from.sample;
     let ctx = Ctx {
         session,
         config,
         now,
-        runner,
-        cache,
+        runner: from.runner,
+        cache: from.cache,
         columns,
-        plugin_dirs,
+        plugin_dirs: from.plugin_dirs,
     };
     let _muted = style::use_muted(config.muted);
     let _ansi = style::use_ansi(palette::by_name(config.palette).is_some_and(|p| p.ansi));

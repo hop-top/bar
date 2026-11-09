@@ -121,7 +121,7 @@ fn target() -> Result<PathBuf, String> {
     let p = conf::search_paths(
         &|k| std::env::var(k).ok(),
         &home,
-        &hop_top_kit::xdg::raw_config_dir("bar"),
+        &hop_bar::platform::dirs::config(),
     )
     .remove(0);
     if p.is_absolute() {

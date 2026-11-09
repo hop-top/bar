@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>bar configurator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <h1><span class="mark">bar</span> configurator</h1>
+    <div class="actions">
+      <label class="btn">Load bar.conf<input id="load" type="file" accept=".conf,text/plain" hidden></label>
+      <button id="copy" class="btn">Copy</button>
+      <button id="download" class="btn primary">Download bar.conf</button>
+    </div>
+  </header>
+
+  <div id="missing" class="missing" hidden>
+    <p>The renderer is not built. Run <code>make web</code> in the bar repository, then reload this page.</p>
+  </div>
+
+  <main id="app" hidden>
+    <section class="preview card">
+      <div class="card-head">
+        <h2>Preview</h2>
+        <label class="inline">columns
+          <input id="columns" type="range" min="40" max="240" value="120">
+          <output id="columns-out">120</output>
+        </label>
+      </div>
+      <div class="term-wrap"><div id="term" class="term" role="img" aria-label="status line preview"></div></div>
+      <p class="note">Rendered by bar itself (compiled to WebAssembly). Session fields come from the JSON below; git, GitHub, transcript and account values are bar's preview samples; plugins draw nothing here.</p>
+      <details>
+        <summary>Session JSON (what Claude Code sends on stdin)</summary>
+        <textarea id="session" spellcheck="false" rows="14"></textarea>
+        <button id="session-reset" class="btn small">Reset sample</button>
+      </details>
+    </section>
+
+    <section class="compose card">
+      <div class="card-head">
+        <h2>Layout</h2>
+        <div id="line-tabs" class="tabs" role="tablist"></div>
+      </div>
+      <div id="groups" class="groups"></div>
+      <p id="compose-off" class="warn" hidden>Fix the errors in bar.conf to edit the layout here.</p>
+    </section>
+
+    <section class="look card">
+      <h2>Look</h2>
+      <div class="grid">
+        <label>preset
+          <span class="row"><select id="preset"></select><button id="preset-apply" class="btn small">Apply</button></span>
+        </label>
+        <div id="settings" class="settings"></div>
+        <label>separator <input id="separator" type="text" maxlength="4"></label>
+        <label>gap <input id="gap" type="number" min="0" max="20"></label>
+      </div>
+    </section>
+
+    <section class="source card">
+      <div class="card-head"><h2>bar.conf</h2><span id="status" class="status"></span></div>
+      <textarea id="conf" spellcheck="false" rows="14" aria-label="bar.conf"></textarea>
+      <ul id="issues" class="issues"></ul>
+    </section>
+  </main>
+
+  <script src="pkg/bar_web.js"></script>
+  <script src="pkg/bar_web_wasm.js"></script>
+  <script src="ansi.js"></script>
+  <script src="conf.js"></script>
+  <script src="compose.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,5 +1,5 @@
-#[cfg(not(any(unix, windows)))]
-compile_error!("bar supports Unix (macOS, Linux) and Windows only");
+#[cfg(not(any(unix, windows, target_family = "wasm")))]
+compile_error!("bar supports Unix (macOS, Linux) and Windows only (plus a wasm renderer)");
 
 pub mod cache;
 pub mod check;
@@ -40,3 +40,4 @@ pub mod style;
 pub mod transcript;
 pub mod tz;
 pub mod update;
+pub mod web;

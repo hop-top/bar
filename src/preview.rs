@@ -6,7 +6,7 @@ use crate::conf::{Config, LoadResult};
 use crate::options::Options;
 use crate::placeholders::ctx as ctxp;
 use crate::placeholders::{
-    dirs, gh, lookup, modes, niche, speed, spendhist, tokens, update, usage, Ctx,
+    dirs, gh, lookup, model, modes, niche, speed, spendhist, tokens, update, usage, Ctx,
 };
 use crate::render::{builtin_config, render_sample};
 use crate::session::{CtxUsage, Session, SpendLimit, Window};
@@ -16,6 +16,17 @@ use std::path::Path;
 
 pub const STATES: [&str; 3] = ["early", "burning", "final"];
 const DEFAULT_COLUMNS: usize = 120;
+
+/// State dir stand-in: no click handler, toggles or usage history.
+const NO_STATE: &str = "/nonexistent/bar-preview";
+
+/// Never probed: links need a click handler, and `NO_STATE` has none.
+fn no_term() -> Term {
+    Term {
+        macos: false,
+        tty: None,
+    }
+}
 
 /// Seconds to reset and percent used, per window.
 struct Pace {
@@ -155,7 +166,7 @@ fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Op
         }
         "agents" if label => Some(format!("{} 2", dim("agents"))),
         "agents" => Some("2".into()),
-        "usage" => usage::render_with(ctx, opts, Path::new("/nonexistent/bar-preview")),
+        "usage" => usage::render_with(ctx, opts, Path::new(NO_STATE)),
         "spendhist" => {
             let period = opts.get("period").unwrap_or("both");
             Some(spendhist::fmt(period, 3.12, false, 84.10, false))
@@ -179,23 +190,39 @@ fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Op
             fg(c.good, "v2")
         )),
         "cwd" | "root" => dirs::shown("~/src/bar", opts, ""),
-        // fields of the sample session
+        // fields of the session, read without state or settings
+        "model" => model::model_with(ctx, opts, Path::new(NO_STATE), no_term),
+        "effort" if ctx.session.effort.is_empty() => None,
+        "effort" => model::effort_with(ctx, opts, Path::new(NO_STATE), no_term),
         "ctx" => {
             let stats = || Some(tokens::sample_stats(ctx.now));
             let src = ctxp::Sources {
-                state: Path::new("/nonexistent/bar-preview"),
+                state: Path::new(NO_STATE),
                 stats: &stats,
                 env: &|_| None,
                 settings: &|| None,
             };
-            ctxp::render_parts(ctx, opts, &src, label, || Term::current().clone())
+            ctxp::render_parts(ctx, opts, &src, label, no_term)
         }
-        "model" | "effort" | "spend" | "cost" | "burn" | "duration" | "lines" | "version"
-        | "style" | "vim" | "agent" | "thinking" | "fast" | "name" | "api" => {
+        "spend" | "cost" | "burn" | "duration" | "lines" | "version" | "style" | "vim"
+        | "agent" | "thinking" | "fast" | "name" | "api" => {
             lookup(name)?.render_labeled(ctx, opts, label)
         }
         _ => None,
     }
+}
+
+/// `config` filled from `session` where it has the data and from the
+/// `early` samples elsewhere (git, gh, transcript, accounts), at `now`.
+/// Pure: no clock, files, processes or plugins.
+pub fn render_session(session: &Session, config: &Config, columns: usize, now: i64) -> String {
+    render_sample(
+        session,
+        config,
+        Some(columns),
+        now,
+        &|name, opts, ctx, label| sample("early", name, opts, ctx, label),
+    )
 }
 
 /// The preview line(s) for `state`; the user's layout when the config
@@ -221,6 +248,7 @@ pub fn render_config(
         &session(state, now),
         config,
         Some(columns.unwrap_or(DEFAULT_COLUMNS)),
+        now,
         &|name, opts, ctx, label| match lookup(name) {
             None if stubs => Some(dim(name)),
             _ => sample(state, name, opts, ctx, label),

@@ -12,6 +12,7 @@ use crate::placeholders::{gitst, modes, speed};
 use crate::plugin;
 use crate::render::builtin_config;
 use crate::skin;
+use serde_json::{json, Value};
 use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -100,6 +101,27 @@ pub fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
         ],
         _ => return None,
     })
+}
+
+/// A core placeholder's options as JSON: `[{"key", "kind", "values"}]`,
+/// `kind` one of `any`, `int`, `pos`, `one`, `list`; `icon` and `bg`
+/// apply to every placeholder and are not listed. Empty for plugins.
+pub fn option_schema(name: &str) -> Value {
+    let opts: Vec<Value> = core_options(name)
+        .unwrap_or(&[])
+        .iter()
+        .map(|(key, v)| {
+            let (kind, values): (&str, &[&str]) = match v {
+                Val::Any => ("any", &[]),
+                Val::Int => ("int", &[]),
+                Val::Pos => ("pos", &[]),
+                Val::OneOf(set) => ("one", set),
+                Val::List(set) => ("list", set),
+            };
+            json!({"key": key, "kind": kind, "values": values})
+        })
+        .collect();
+    Value::Array(opts)
 }
 
 fn val_ok(v: Val, raw: &str) -> bool {
