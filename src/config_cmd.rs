@@ -73,7 +73,7 @@ fn export(m: &ArgMatches) {
         }
     } else {
         let mut project = None;
-        let parsed = conf::parse_layers(user.as_ref().map(|(_, t)| t.as_str()), |_| {
+        let parsed = conf::layers(user.as_ref().map(|(_, t)| t.as_str()), |_| {
             let p = conf::project::find(&std::env::current_dir().ok()?)?;
             let text = read(&p);
             if let Ok(t) = &text {
@@ -81,9 +81,15 @@ fn export(m: &ArgMatches) {
             }
             Some(text)
         });
-        if parsed.is_err() {
+        if parsed.config.is_err() {
             fail("the config has errors; run bar check");
         }
+        // what render leaves out of the project config is left out here too
+        let skip: Vec<usize> = parsed.dropped.iter().map(|e| e.line).collect();
+        if skip.contains(&0) {
+            project = None;
+        }
+        let project = project.map(|(p, t)| (p, confio::without_lines(&t, &skip)));
         confio::effective(
             user.as_ref().map(|(p, t)| (p.as_path(), t.as_str())),
             project.as_ref().map(|(p, t)| (p.as_path(), t.as_str())),

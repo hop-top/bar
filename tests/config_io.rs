@@ -274,3 +274,24 @@ fn write_config_refuses_a_file_changed_since_read() {
     hop_bar::confio::write_config(&f, Some("set skin plain\n"), "x\n").unwrap();
     assert_eq!(std::fs::read_to_string(&f).unwrap(), "x\n");
 }
+
+#[test]
+fn export_leaves_out_dropped_project_lines() {
+    let t = Tmp::new();
+    t.write("xdg/bar/bar.conf", "set gap 4\n");
+    t.write(
+        "proj/.bar.conf",
+        "plugin ci ttl=1m\nset gap\nset left \"#{ctx}\"\n",
+    );
+    let dir = t.path().join("proj");
+    let (code, out, _) = bar(&t, &dir, &["export"], "");
+    assert_eq!(code, 0);
+    assert_eq!(
+        out,
+        format!(
+            "# bar config: {}\nset gap 4\n# project config: {}\nset left \"#{{ctx}}\"\n",
+            user_conf(&t).display(),
+            dir.join(".bar.conf").display()
+        )
+    );
+}

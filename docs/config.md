@@ -39,7 +39,7 @@ A repository can carry its own `.bar.conf`, applied over your config for session
 
 - Lookup, from the session's directory (`workspace.current_dir`, else `cwd`; `bar check` and `bar preview` use the shell's working directory): that directory's `.bar.conf`, else the nearest one in a parent directory up to the git root (the first directory holding a `.git` dir or file), the root included. Outside a git repository only the session's directory itself is looked at. The lookup only stats files and stops after 64 directories.
 - Same syntax as `bar.conf`. Its lines apply after yours: a `set` wins (a layout line replaces that group), a `default` merges over yours, a `plugin` line replaces yours, and a `rule` or `account` replaces yours with the same target or glob. Without a config file of yours it applies over the built-in layout.
-- A project file with an error, or a line its mode refuses, is a config error like one in your file (`bar render` prints `bar: config error, run bar check`); `bar check` names the file and line.
+- A project line with an error, or one its mode refuses, is left out and the rest of the project file applies, so a repository cannot break your status line; an unreadable project file is left out whole. `bar check` reports each one as a warning with its project line number. `bar config export` leaves them out too.
 - Nothing is cached: both files are read on every render.
 
 A project file comes with the repository, so what it may do is set in your config with `set project-config`:
@@ -47,10 +47,10 @@ A project file comes with the repository, so what it may do is set in your confi
 | Value | Project file |
 |---|---|
 | `off` | never looked for |
-| `safe` (default) | applied, except: no `%…%` values (commands or environment variables) in placeholder options or `default` lines, no `plugin` lines, no `set update-check`, and no plugin placeholder your config does not name (in a layout, a `default` line or a `plugin` line). Each such line is a config error |
+| `safe` (default) | applied, except: no `%…%` values (commands or environment variables) in placeholder options or `default` lines, no `plugin` lines, no `set update-check`, and no plugin placeholder your config does not name (in a layout, a `default` line or a `plugin` line). Each such line is left out |
 | `full` | applied like your own config, `%cmd%` values and any plugin included |
 
-`set project-config` is read from your config only; in a project file it is an error.
+`set project-config` is read from your config only; in a project file it is left out.
 
 ### Directives
 
@@ -694,7 +694,7 @@ A render prints at most 4 rows, all lines together. Rows past the fourth are dro
 - Warnings: `gh` not on `PATH` while `prs` or `issues` is used; a `default` line for a plugin that is not on `PATH` (a layout using it is an error); an expression that expands to more than 8 queries (only the first 8 run).
 - Options holding `%command%` or `%$VAR%` are skipped; they resolve at render time.
 
-- Lines a project file may not hold under `safe`, and `set project-config` in a project file.
+- Warnings for project lines that are left out: invalid ones, lines a project file may not hold under `safe`, and `set project-config` in a project file; and for an unreadable project file.
 - With a project file applied, each finding is labelled `config line N` or `project line N`; otherwise `line N`.
 
 - It also prints the models.dev snapshot state: its date and path, `not fetched`, or why the file was ignored.

@@ -428,23 +428,46 @@ pub fn parse(src: &str) -> Result<Config, Vec<ConfError>> {
     parse_layers(Some(src), |_| None).map_err(|e| e.into_iter().map(|e| e.error).collect())
 }
 
+/// [`parse_layers`] with what it left out of the project config.
+#[derive(Debug)]
+pub struct Layered {
+    /// The config, or the user config's errors.
+    pub config: Result<Config, Vec<LayerError>>,
+    /// Project config lines left out, each with why: invalid, or refused
+    /// by `project-config`. Line 0: the file could not be read.
+    pub dropped: Vec<ConfError>,
+}
+
+/// The user config (`None`: the built-in layout) with the project config
+/// over it; see [`layers`]. Dropped project lines are not errors.
+pub fn parse_layers(
+    user: Option<&str>,
+    project: impl FnOnce(ProjectMode) -> Option<Result<String, String>>,
+) -> Result<Config, Vec<LayerError>> {
+    layers(user, project).config
+}
+
 /// The user config (`None`: the built-in layout) with the project config
 /// over it. `project` is asked for the project file's text, or why it
 /// could not be read, once the user config's `project-config` is known;
 /// it is not called under `off`. Project lines apply after the user's: a
 /// `set` wins, a `default` merges over, a `plugin` line replaces, and a
 /// `rule` or `account` replaces the user's one with the same target or glob.
-pub fn parse_layers(
+/// A project line that is invalid or that the mode refuses is dropped
+/// and the rest applies, so a repository cannot break the status line;
+/// an unreadable project file is dropped whole.
+pub fn layers(
     user: Option<&str>,
     project: impl FnOnce(ProjectMode) -> Option<Result<String, String>>,
-) -> Result<Config, Vec<LayerError>> {
+) -> Layered {
     let mut c = match user {
         Some(_) => Config::default(),
         None => crate::render::builtin_config(),
     };
     let mut explicit = Vec::new();
     let tag = |layer| move |error| LayerError { layer, error };
-    let mut errs: Vec<LayerError> = match user {
+    let mut dropped = Vec::new();
+    let errs: Vec<LayerError> = match user {
         Some(text) => apply_text(&mut c, text, &mut explicit, &|_| Ok(()))
             .into_iter()
             .map(tag(Layer::User))
@@ -458,28 +481,18 @@ pub fn parse_layers(
     };
     match text {
         None => {}
-        Some(Err(message)) => errs.push(LayerError {
-            layer: Layer::Project,
-            error: ConfError { line: 0, message },
-        }),
+        Some(Err(message)) => dropped.push(ConfError { line: 0, message }),
         Some(Ok(text)) => {
             let used = project::user_plugins(&c);
             let (rules, accounts) = (c.rules.len(), c.accounts.len());
             let guard = |t: &[String]| project::guard(mode, t, &used);
-            errs.extend(
-                apply_text(&mut c, &text, &mut explicit, &guard)
-                    .into_iter()
-                    .map(tag(Layer::Project)),
-            );
+            dropped = apply_text(&mut c, &text, &mut explicit, &guard);
             project::replace_overridden(&mut c, rules, accounts);
             // the project file decides `project-config` only through the user's
             c.project_config = mode;
         }
     }
     apply_palette(&mut c, &explicit);
-    if errs.is_empty() {
-        Ok(c)
-    } else {
-        Err(errs)
-    }
+    let config = if errs.is_empty() { Ok(c) } else { Err(errs) };
+    Layered { config, dropped }
 }

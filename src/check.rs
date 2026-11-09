@@ -1,6 +1,6 @@
 //! `bar check`: lints the config file without rendering anything.
 
-use crate::conf::{layout_key, parse_layers, parse_options, project, tokenize, Layer};
+use crate::conf::{layers, layout_key, parse_options, project, tokenize, Layer};
 use crate::expr;
 use crate::format::{self, Token};
 use crate::icons;
@@ -448,20 +448,38 @@ pub fn check_layers(user: Option<Source>, project: Option<Source>, dirs: &[PathB
     };
     let mut applied = None;
     let mut mode = project::ProjectMode::Off;
-    let parsed = parse_layers(user_text.as_deref(), |m| {
+    let parsed = layers(user_text.as_deref(), |m| {
         mode = m;
         let text = project.as_ref()?.1.clone();
         applied = text.as_ref().ok().cloned();
         Some(text)
     });
-    if let Ok(cfg) = &parsed {
+    if let Ok(cfg) = &parsed.config {
         c.icon_width = cfg.icon_width;
         c.defaults = cfg.defaults.clone();
     }
-    for e in parsed.err().unwrap_or_default() {
+    for e in parsed.config.err().unwrap_or_default() {
         c.layer = e.layer;
         c.error(e.error.line, e.error.message);
     }
+    // dropped project lines do not apply: warnings, not linted further
+    c.layer = Layer::Project;
+    for e in &parsed.dropped {
+        let why = if e.line == 0 {
+            format!("{}; the project config is ignored", e.message)
+        } else {
+            format!("{}; the line is ignored", e.message)
+        };
+        c.add(Level::Warning, e.line, why);
+    }
+    let applied = applied.map(|text| {
+        let skip: Vec<usize> = parsed.dropped.iter().map(|e| e.line).collect();
+        text.lines()
+            .enumerate()
+            .map(|(i, l)| if skip.contains(&(i + 1)) { "" } else { l })
+            .collect::<Vec<_>>()
+            .join("\n")
+    });
     c.layer = Layer::User;
     match &user_text {
         Some(text) => c.lint(text),
