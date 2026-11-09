@@ -257,11 +257,7 @@ impl Cache {
     fn spawn(&self, req: &Request) -> std::io::Result<()> {
         let mut c = Command::new(&self.exe);
         if !matches!(req.job, Job::Command { .. }) {
-            c.current_dir(if self.state.is_dir() {
-                self.state.as_path()
-            } else {
-                Path::new("/")
-            });
+            c.current_dir(outside_project(&self.state));
         }
         c.arg("refresh")
             .arg(req.to_json())
@@ -292,6 +288,18 @@ impl Cache {
 
 fn age(t: SystemTime) -> Duration {
     SystemTime::now().duration_since(t).unwrap_or_default()
+}
+
+/// Working directory for what bar starts on its own (`bar refresh`, `gh`,
+/// `glab`): the state dir, `/` before it exists; never the render's
+/// directory, often a cloned repository, so nothing resolves against the
+/// project.
+pub(crate) fn outside_project(state: &Path) -> PathBuf {
+    if state.is_dir() {
+        state.to_path_buf()
+    } else {
+        PathBuf::from("/")
+    }
 }
 
 /// Shell command stdout (`sh -c` on Unix, `cmd /C` on Windows) when it

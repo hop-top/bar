@@ -289,16 +289,10 @@ impl Job {
     }
 }
 
-/// Working directory of `gh` and `glab`: bar's state dir (the temp dir
-/// before it exists), never the project, so no repository config there
-/// reaches host or auth resolution. Their queries name the repo.
+/// Working directory of `gh` and `glab`: as `bar refresh`'s, also when
+/// the job runs in another process. Their queries name the repo.
 pub(crate) fn outside_project() -> std::path::PathBuf {
-    let state = crate::click::state_dir();
-    if state.is_dir() {
-        state
-    } else {
-        std::env::temp_dir()
-    }
+    crate::cache::outside_project(&crate::click::state_dir())
 }
 
 /// String array `args` of a `gh` or `glab` job.
