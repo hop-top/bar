@@ -27,7 +27,8 @@ gallery-check:
 	scripts/gallery --check
 
 # benchmark in a pinned container (Docker or Podman): results, generated docs
-# and badge, staged for a chore(bench) commit; last step before any release
+# and badge, staged for a chore(bench) commit; last step before any release.
+# BENCH_RUNNER=native: same run in a prepared Linux environment (bench/README.md)
 bench:
 	scripts/bench
 

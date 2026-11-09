@@ -140,12 +140,15 @@ def s_readme(r):
 def s_tools(r):
     v, m = r.meta["versions"], r.meta
     arch = {"aarch64": "arm64", "x86_64": "x64"}.get(m["container"]["arch"], m["container"]["arch"])
+    native = m.get("runner") == "native"
+    pin = ", as found in the environment" if native else ", registry tarball checked against its sha512"
     rows = [
         ["bar", "Rust", f"commit `{m['bar_commit'][:7]}`", "`cargo build --release --locked` from this repository"],
-        [name("ccstatusline"), "TypeScript (Node)", v["ccstatusline"], "`npm install -g`, registry tarball checked against its sha512"],
-        [name("claude-powerline"), "TypeScript (Node)", v["claude-powerline"], "`npm install -g @owloops/claude-powerline`, registry tarball checked against its sha512"],
+        [name("ccstatusline"), "TypeScript (Node)", v["ccstatusline"], "`npm install -g`" + pin],
+        [name("claude-powerline"), "TypeScript (Node)", v["claude-powerline"], "`npm install -g @owloops/claude-powerline`" + pin],
         [f"[CCometixLine]({LINKS['ccline']}) (`ccline`)", "Rust", v["ccline"],
-         f"release binary `ccline-linux-{arch}.tar.gz` (sha256-pinned), placed at `~/.claude/ccline/ccline` as its README says"],
+         f"release binary `ccline-linux-{arch}.tar.gz` ({'as found in the environment' if native else 'sha256-pinned'}), "
+         "placed at `~/.claude/ccline/ccline` as its README says"],
     ]
     return table(["Tool", "Language", "Version", "Installed as"], rows)
 
@@ -253,14 +256,25 @@ def s_lines(r):
 def s_env(r):
     m, c, v, h = r.meta, r.meta["container"], r.meta["versions"], r.meta["host"]
     quota = "no CPU quota" if c["cpu_quota"] == "none" else f"CPU quota {c['cpu_quota']}"
-    return "\n".join([
-        f"- Host: {h['os']}, {h['cpu']}; {h['engine']}.",
-        f"- Container ([image/Dockerfile](image/Dockerfile)): {c['os']}, Linux {c['arch']}, kernel {c['kernel']}, "
-        f"{c['cpus']} CPUs visible, {quota}, {c['mem_gib']} GiB RAM, {c['libc']}. "
-        f"Base `{c['base_image'].split('@')[0]}` pinned by digest; Debian packages from snapshot.debian.org at {c['debian_snapshot']}.",
+    system = (f"{c['os']}, Linux {c['arch']}, kernel {c['kernel']}, "
+              f"{c['cpus']} CPUs visible, {quota}, {c['mem_gib']} GiB RAM, {c['libc']}.")
+    if m.get("runner") == "native":
+        where = [
+            f"- Native run (`BENCH_RUNNER=native`), no image: a prepared Linux environment, CPU {h['cpu']}.",
+            f"- Environment: {system}",
+        ]
+        ben_build = "as found in the environment"
+    else:
+        where = [
+            f"- Host: {h['os']}, {h['cpu']}; {h['engine']}.",
+            f"- Container ([image/Dockerfile](image/Dockerfile)): {system} "
+            f"Base `{c['base_image'].split('@')[0]}` pinned by digest; Debian packages from snapshot.debian.org at {c['debian_snapshot']}.",
+        ]
+        ben_build = "built `CGO_ENABLED=0` in the image"
+    return "\n".join(where + [
         f"- Node {v['node']}, npm {v['npm']}, Bun {v['bun']}, Rust {v['rust']}, git {v['git']}, Python {v['python']}, "
         f"hyperfine {v['hyperfine']}, GNU time {v['gnu_time']}.",
-        f"- ben: commit `{v['ben_commit'][:7]}` (reports itself as {r.suite['warm']['metadata'].get('ben_version', '?')}), built `CGO_ENABLED=0` in the image.",
+        f"- ben: commit `{v['ben_commit'][:7]}` (reports itself as {r.suite['warm']['metadata'].get('ben_version', '?')}), {ben_build}.",
         f"- Run on {m['date']}, `COLUMNS=200`, bar commit `{m['bar_commit'][:7]}`.",
     ])
 
