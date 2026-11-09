@@ -245,9 +245,10 @@ fn prices_cmd(m: &ArgMatches) {
 fn check(m: &ArgMatches) {
     let dirs = plugin::path_dirs(std::env::var_os("PATH").as_deref());
     let user = conf::find_path_default().map(|p| check::source(&p));
-    let project = cwd()
-        .and_then(|d| conf::project::find(&d))
-        .map(|p| check::source(&p));
+    let project = cwd().and_then(|d| conf::project::find(&d)).map(|p| {
+        let text = conf::project::read(&p);
+        (p, text)
+    });
     let report = check::check_layers(user, project, &dirs);
     let mut out = std::io::stdout();
     if m.get_one::<String>("format").map(String::as_str) == Some("table") {

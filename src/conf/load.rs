@@ -57,7 +57,7 @@ pub fn load_layered(
     let parsed = parse_layers(user.as_deref(), |_| {
         let path = project::find(cwd?)?;
         found = true;
-        Some(read(&path))
+        Some(project::read(&path))
     });
     match parsed {
         Err(e) => LoadResult::Invalid(e.into_iter().map(|e| e.error).collect()),

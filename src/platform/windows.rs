@@ -41,6 +41,16 @@ pub fn private_dir(dir: &Path) -> std::io::Result<()> {
     fs::create_dir_all(dir)
 }
 
+/// No numeric user ids: owners are not compared.
+pub fn current_uid() -> Option<u32> {
+    None
+}
+
+/// No numeric user ids.
+pub fn owner(_m: &std::fs::Metadata) -> Option<u32> {
+    None
+}
+
 /// Files inherit the directory's ACL; no mode to set.
 pub fn private_file(o: &mut OpenOptions) -> &mut OpenOptions {
     o

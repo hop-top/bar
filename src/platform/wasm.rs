@@ -20,6 +20,16 @@ pub fn private_dir(_dir: &Path) -> std::io::Result<()> {
     Err(unsupported())
 }
 
+/// No numeric user ids: owners are not compared.
+pub fn current_uid() -> Option<u32> {
+    None
+}
+
+/// No numeric user ids.
+pub fn owner(_m: &std::fs::Metadata) -> Option<u32> {
+    None
+}
+
 /// Unchanged: there are no files to open.
 pub fn private_file(o: &mut OpenOptions) -> &mut OpenOptions {
     o
