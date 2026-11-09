@@ -2,7 +2,7 @@
 name: bar
 description: Set up the bar status line (install check, preset, skin, palette, icons, bar install)
 argument-hint: "[preset]"
-allowed-tools: Bash(bar:*), Bash(command -v:*), Bash(test:*), Bash(mkdir:*), Read, Edit, Write, AskUserQuestion
+allowed-tools: Bash(bar *), Bash(command -v *), Bash(test *), Bash(mkdir *), Read, Edit, Write, AskUserQuestion
 ---
 
 Guide the user through setting up `bar`, a status line for Claude Code. Go step by step, one question at a time (use AskUserQuestion when available), and keep replies short. Never overwrite an existing config or `settings.json` without asking.
@@ -40,10 +40,10 @@ Edit the existing `set skin|palette|icons` line, or append one if the preset has
 
 ## 5. Wire the status line
 
-`bar install` writes the `statusLine` entry into Claude Code's settings; it prints a diff first and keeps every other key. Ask where it goes: user settings (default), this project (`--project`, `.claude/settings.json`) or this project, not committed (`--local`, `.claude/settings.local.json`); run the project ones from the project root.
+`bar install` writes the `statusLine` entry into Claude Code's settings; it prints a diff first and keeps every other key. Ask where it goes: user settings (default), this project (`--project`, `.claude/settings.json`) or this project, not committed (`--local`, `.claude/settings.local.json`); run the project ones from the project root. `--project` writes plain `bar render`, since that file is shared: everyone on the project needs `bar` on their `PATH`.
 
 1. Run `bar install --refresh 5` (plus `--project` or `--local`). Without a terminal it prints the diff, writes nothing and exits 2. Show the diff; if it replaces a different `statusLine`, point that out (bar keeps a copy, and `bar install --uninstall` puts it back).
-2. On a yes, run the same command with `--yes`. It backs the old file up and prints `backup <file>` and `wrote <file>`. Exit 1 means it did not write (the message says why; a file that is not a JSON object is left untouched).
+2. On a yes, run the same command with `--yes`. It backs the old file up (in bar's state directory, not beside it) and prints `backup <file>` and `wrote <file>`. Exit 1 means it did not write (the message says why; a file that is not a JSON object is left untouched, and a file changed since the diff is not overwritten: run it again).
 
 If `bar` answers that `install` is not a command (an older release), show the user this entry for `~/.claude/settings.json` and, on a yes, merge it in yourself, keeping every other key:
 
