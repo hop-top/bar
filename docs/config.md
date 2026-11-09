@@ -57,7 +57,7 @@ A project file comes with the repository, so what it may do is set in your confi
 | Directive | Form |
 |-----------|------|
 | `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-4) `separator gap wrap refresh icons icon-width skin skin-glyphs palette claude-dir project-config update-check color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
-| `default` | `default <placeholder> key=value ...` |
+| `default` | 250 | 114 | 179 | 203 | 238 18 236 54 235 |
 | `account` | `account "<glob>" <label> <color>` |
 | `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%`; see [Rules](#rules) |
 | `plugin` | `plugin <name> key=value ...`; see [plugins](plugins.md#render) |
@@ -518,14 +518,15 @@ Colours and width:
 | Palette | muted | good | warn | bad | backgrounds |
 |---|---|---|---|---|---|
 | `default` | 250 | 114 | 179 | 203 | 238 24 236 60 23 |
-| `nord` | 248 | 144 | 222 | 167 | 237 24 239 67 60 |
-| `gruvbox` | 246 | 142 | 214 | 167 | 237 239 66 241 95 |
-| `dracula` | 146 | 84 | 228 | 203 | 236 61 238 97 239 |
-| `solarized` | 245 | 106 | 136 | 160 | 23 235 24 30 66 |
-| `mono` | 245 | 252 | 248 | 255 | 236 238 240 242 |
+| `nord` | 249 | 144 | 222 | 210 | 237 24 239 23 240 |
+| `gruvbox` | 248 | 142 | 214 | 209 | 237 22 239 52 238 |
+| `dracula` | 146 | 84 | 228 | 203 | 236 54 238 55 237 |
+| `solarized` | 245 | 106 | 136 | 167 | 234 17 236 18 235 |
+| `mono` | 247 | 252 | 249 | 255 | 235 237 239 236 |
 | `terminal` | 8 | 2 | 3 | 1 | 0 4 |
 
 - `default` is the built-in colour set, ramp included (`196 … 46`).
+- Every palette keeps its text colours (muted, good, warn, bad, plain values, repo names) at a contrast of at least 3:1 on each of its backgrounds.
 - The other palettes use a three-step ramp from their own colours: bad for scores up to 20, warn up to 60, good above (the ramp is indexed by `(score + 9) / 10`).
 - An explicit `set color.good|warn|bad` or `set ramp` beats the palette wherever it appears in the file (see [Colours](#colours)).
 

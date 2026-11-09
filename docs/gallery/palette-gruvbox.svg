@@ -2,10 +2,10 @@
 <title>Powerline skin with the gruvbox palette.</title>
 <rect width="100%" height="100%" rx="6" fill="#1c1c1c"/>
 <rect x="10" y="10" width="180" height="17.4" fill="#3a3a3a"/>
-<rect x="190" y="10" width="72" height="17.4" fill="#4e4e4e"/>
-<rect x="262" y="10" width="135" height="17.4" fill="#5f8787"/>
-<rect x="469" y="10" width="126" height="17.4" fill="#626262"/>
-<rect x="595" y="10" width="117" height="17.4" fill="#875f5f"/>
+<rect x="190" y="10" width="72" height="17.4" fill="#005f00"/>
+<rect x="262" y="10" width="135" height="17.4" fill="#4e4e4e"/>
+<rect x="469" y="10" width="126" height="17.4" fill="#5f0000"/>
+<rect x="595" y="10" width="117" height="17.4" fill="#444444"/>
 <rect x="802" y="10" width="72" height="17.4" fill="#3a3a3a"/>
 <rect x="541" y="10" width="9" height="17.4" fill="#ffaf00"/>
 <rect x="658" y="10" width="18" height="17.4" fill="#ffaf00"/>
@@ -51,21 +51,21 @@
 <path id="g37" d="M616 -29Q457 -29 340 42Q224 114 161 246Q98 378 98 558Q98 738 162 870Q225 1003 342 1075Q460 1147 621 1147Q780 1147 895 1076Q1010 1006 1072 875Q1135 744 1135 564Q1135 381 1072 248Q1008 115 892 43Q776 -29 616 -29ZM617 209Q720 209 781 304Q842 398 842 559Q842 721 781 815Q720 909 617 909Q513 909 452 814Q391 720 391 559Q391 398 452 304Q513 209 617 209Z"/>
 <path id="g38" d="M174 1556H467V739L819 1120H1174L750 702L1198 0H874L567 524L467 428V0H174Z"/>
 </defs>
-<g fill="#949494"><use href="#g0" x="2603" y="-3271"/><use href="#g1" x="5069" y="-3271"/><use href="#g2" x="6302" y="-3271"/><use href="#g3" x="7535" y="-3271"/><use href="#g4" x="8768" y="-3271"/><use href="#g5" x="11234" y="-3271"/><use href="#g6" x="12467" y="-3271"/><use href="#g7" x="13700" y="-3271"/><use href="#g8" x="14933" y="-3271"/><use href="#g9" x="17399" y="-3271"/><use href="#g10" x="18632" y="-3271"/><use href="#g11" x="19865" y="-3271"/><use href="#g12" x="21098" y="-3271"/><use href="#g10" x="22331" y="-3271"/><use href="#g13" x="23564" y="-3271"/></g>
+<g fill="#a8a8a8"><use href="#g0" x="2603" y="-3271"/><use href="#g1" x="5069" y="-3271"/><use href="#g2" x="6302" y="-3271"/><use href="#g3" x="7535" y="-3271"/><use href="#g4" x="8768" y="-3271"/><use href="#g5" x="11234" y="-3271"/><use href="#g6" x="12467" y="-3271"/><use href="#g7" x="13700" y="-3271"/><use href="#g8" x="14933" y="-3271"/><use href="#g9" x="17399" y="-3271"/><use href="#g10" x="18632" y="-3271"/><use href="#g11" x="19865" y="-3271"/><use href="#g12" x="21098" y="-3271"/><use href="#g10" x="22331" y="-3271"/><use href="#g13" x="23564" y="-3271"/></g>
 <g fill="#3a3a3a"><use href="#g14" x="26030" y="-3271"/></g>
-<g fill="#949494"><use href="#g15" x="28496" y="-3271"/></g>
+<g fill="#a8a8a8"><use href="#g15" x="28496" y="-3271"/></g>
 <g fill="#ffaf00"><use href="#g16" x="30962" y="-3271"/><use href="#g17" x="32195" y="-3271"/><use href="#g18" x="33428" y="-3271"/></g>
-<g fill="#4e4e4e"><use href="#g14" x="35894" y="-3271"/></g>
-<g fill="#949494"><use href="#g19" x="38360" y="-3271"/></g>
+<g fill="#005f00"><use href="#g14" x="35894" y="-3271"/></g>
+<g fill="#a8a8a8"><use href="#g19" x="38360" y="-3271"/></g>
 <g fill="#5fafff"><use href="#g20" x="40826" y="-3271"/><use href="#g21" x="42059" y="-3271"/><use href="#g22" x="43292" y="-3271"/></g>
-<g fill="#949494"><use href="#g23" x="44525" y="-3271"/><use href="#g24" x="45758" y="-3271"/><use href="#g25" x="48224" y="-3271"/><use href="#g26" x="49457" y="-3271"/><use href="#g11" x="50690" y="-3271"/><use href="#g27" x="51923" y="-3271"/></g>
-<g fill="#5f8787"><use href="#g14" x="54389" y="-3271"/></g>
-<g fill="#949494"><use href="#g28" x="65486" y="-3271"/><use href="#g16" x="67952" y="-3271"/><use href="#g10" x="69185" y="-3271"/><use href="#g29" x="70418" y="-3271"/><use href="#g25" x="71651" y="-3271"/><use href="#g30" x="75350" y="-3271"/><use href="#g30" x="76583" y="-3271"/><use href="#g30" x="77816" y="-3271"/><use href="#g30" x="79049" y="-3271"/></g>
-<g fill="#626262"><use href="#g14" x="81515" y="-3271"/></g>
-<g fill="#949494"><use href="#g31" x="83981" y="-3271"/><use href="#g32" x="86447" y="-3271"/><use href="#g33" x="87680" y="-3271"/><use href="#g30" x="92612" y="-3271"/><use href="#g30" x="93845" y="-3271"/><use href="#g30" x="95078" y="-3271"/></g>
-<g fill="#875f5f"><use href="#g14" x="97544" y="-3271"/></g>
+<g fill="#a8a8a8"><use href="#g23" x="44525" y="-3271"/><use href="#g24" x="45758" y="-3271"/><use href="#g25" x="48224" y="-3271"/><use href="#g26" x="49457" y="-3271"/><use href="#g11" x="50690" y="-3271"/><use href="#g27" x="51923" y="-3271"/></g>
+<g fill="#4e4e4e"><use href="#g14" x="54389" y="-3271"/></g>
+<g fill="#a8a8a8"><use href="#g28" x="65486" y="-3271"/><use href="#g16" x="67952" y="-3271"/><use href="#g10" x="69185" y="-3271"/><use href="#g29" x="70418" y="-3271"/><use href="#g25" x="71651" y="-3271"/><use href="#g30" x="75350" y="-3271"/><use href="#g30" x="76583" y="-3271"/><use href="#g30" x="77816" y="-3271"/><use href="#g30" x="79049" y="-3271"/></g>
+<g fill="#5f0000"><use href="#g14" x="81515" y="-3271"/></g>
+<g fill="#a8a8a8"><use href="#g31" x="83981" y="-3271"/><use href="#g32" x="86447" y="-3271"/><use href="#g33" x="87680" y="-3271"/><use href="#g30" x="92612" y="-3271"/><use href="#g30" x="93845" y="-3271"/><use href="#g30" x="95078" y="-3271"/></g>
+<g fill="#444444"><use href="#g14" x="97544" y="-3271"/></g>
 <g fill="#3a3a3a"><use href="#g34" x="108641" y="-3271"/></g>
-<g fill="#949494"><use href="#g35" x="111107" y="-3271"/></g>
+<g fill="#a8a8a8"><use href="#g35" x="111107" y="-3271"/></g>
 <g fill="#5fafff"><use href="#g36" x="113573" y="-3271"/><use href="#g37" x="114806" y="-3271"/><use href="#g22" x="116039" y="-3271"/><use href="#g38" x="117272" y="-3271"/></g>
 </g>
 </svg>
