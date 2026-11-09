@@ -40,6 +40,10 @@ and load the file with **Load plugins.json**; its entries replace bundled ones o
 
 ## Editing
 
+**+ placeholder** opens a search over core placeholders and plugins, each with its description and a sample drawn with the preview data; a name that is in neither list is added as a plugin. Added to a group that ends in a placeholder, it comes after a separator, so values never run together. A chip opens its editor on click: each option with its default and a line of help, or the text of a text chip (spaces show as `␠`).
+
+Keyboard: each group's chips are one tab stop. Arrow keys move between chips, Alt+arrow keys reorder, Delete removes, Enter opens the editor and Escape closes it. The line tabs take arrow keys, Home and End. Focus stays on the chip or field you edited.
+
 The `bar.conf` text is the state. Layout, preset and look controls rewrite only the `set` lines they own (`set left`, `set center@2`, `set skin`, ...), so comments, `default`, `rule`, `account`, `plugin` and `set price` lines stay as written. Edit the text directly for anything the controls do not cover; the controls follow.
 
 Issues come from `bar check`, with the options of manifest plugins checked against their schema. A name that is neither a core placeholder nor in the manifest is a warning. While the text has errors the layout and look controls are locked, so nothing rewrites what you typed; **Revert to last valid** goes back to the last text without errors. A config with errors previews as the line `bar render` prints for one.
