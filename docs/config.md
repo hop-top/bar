@@ -529,7 +529,7 @@ Links point at the `origin` remote's web address: ssh and scp remotes become `ht
 | | `ttl` | `10` | Seconds before the cached `git status` is refreshed in the background (minimum 1) |
 | `ahead` | `ttl` | `10` | As `dirty`. Output `↑2 ↓1`; hidden at 0/0 or without an upstream |
 | `worktree` | none | | Directory name of a linked worktree; hidden in the main worktree |
-| `diff` | `scope` | `both` | Lines added and removed, `+12 -3`: `both` the working tree against HEAD, `staged` the index against HEAD, `unstaged` the working tree against the index; hidden at 0/0. A `+` suffix (`+90000+`) marks a lower bound when git's output passed 8 MiB |
+| `diff` | `scope` | `both` | Lines added and removed, `+12 -3`: `both` the working tree against HEAD, `staged` the index against HEAD, `unstaged` the working tree against the index; hidden at 0/0. Untracked files are not counted (`dirty` shows them, `?1`). A `+` suffix (`+90000+`) marks a lower bound when git's output passed 8 MiB |
 | | `show` | `added,removed` | Comma list of `added`, `removed` |
 | | `ttl` | `10` | Seconds before the cached `git diff-index` / `git diff-files` is refreshed in the background (minimum 1); see below |
 | `sha` | `len` | `7` | Characters of HEAD's commit id; `0` hides it. Links to `<repo>/commit/<id>`. Hidden on an unborn branch |
