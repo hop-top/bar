@@ -89,6 +89,11 @@ setup() {
      '.rate_limits.five_hour.resets_at=$f | .rate_limits.seven_day.resets_at=$s
       | .transcript_path=$t | .cwd=$d | .workspace.current_dir=$d | .workspace.project_dir=$d' \
      "$BENCH/fixtures/session.json" > "$WORK/session.json"
+  # subagentStatusLine JSON: three rows, started 95 s, 7 min and 20 min ago.
+  jq --argjson ms $(( now * 1000 )) --arg d "$WORK/repo" \
+     '.cwd=$d | .tasks |= [.[] | .cwd=$d] | .tasks[0].startTime=($ms - 95000)
+      | .tasks[1].startTime=($ms - 432000) | .tasks[2].startTime=($ms - 1200000)' \
+     "$BENCH/fixtures/subagent.json" > "$WORK/subagent.json"
   # Per-tool HOME with the config at its documented location.
   rm -rf "$PRISTINE" "$HOMES"
   mkdir -p "$PRISTINE"/{bar/.config/bar,bar-notokens/.config/bar,ccstatusline/.config/ccstatusline,claude-powerline/.claude,ccline/.claude/ccline}

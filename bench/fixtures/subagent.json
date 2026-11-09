@@ -1,0 +1,53 @@
+{
+  "session_id": "5b0c9a4e-2d1f-4c3a-9e8b-7f6a5d4c3b2a",
+  "transcript_path": "/opt/slbench/work/claude/projects/-opt-slbench-work-repo/5b0c9a4e-2d1f-4c3a-9e8b-7f6a5d4c3b2a.jsonl",
+  "cwd": "/opt/slbench/work/repo",
+  "hook_event_name": "SubagentStatusLine",
+  "columns": 160,
+  "tasks": [
+    {
+      "id": "a1f0c2d3e4b5a697",
+      "type": "local_agent",
+      "agentType": "Explore",
+      "status": "running",
+      "description": "Find the config loader",
+      "label": "Reading src/conf.rs",
+      "startTime": 0,
+      "model": "claude-sonnet-5",
+      "contextWindowSize": 200000,
+      "tokenCount": 41300,
+      "tokenSamples": [8200, 19000, 27400, 35900, 41300],
+      "cwd": "/opt/slbench/work/repo"
+    },
+    {
+      "id": "b2e1d3c4f5a6b798",
+      "name": "reviewer",
+      "type": "local_agent",
+      "agentType": "code-reviewer",
+      "status": "running",
+      "description": "Review the install diff",
+      "label": "Checking uninstall paths",
+      "startTime": 0,
+      "model": "claude-opus-5-5",
+      "effort": "high",
+      "contextWindowSize": 200000,
+      "tokenCount": 128000,
+      "tokenSamples": [60000, 88000, 104000, 121000, 128000],
+      "cwd": "/opt/slbench/work/repo"
+    },
+    {
+      "id": "c3f2e4d5a6b7c809",
+      "type": "local_agent",
+      "agentType": "general-purpose",
+      "status": "completed",
+      "description": "Run the test suite",
+      "label": "Run the test suite",
+      "startTime": 0,
+      "model": "claude-sonnet-5",
+      "contextWindowSize": 200000,
+      "tokenCount": 18700,
+      "tokenSamples": [18700],
+      "cwd": "/opt/slbench/work/repo"
+    }
+  ]
+}
