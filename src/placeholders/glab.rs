@@ -158,14 +158,8 @@ pub fn plan(kind: Kind, remote: &str, hosts: &[String], opts: &Options) -> Optio
 /// `glab` runs in bar's state dir, never the project, so nothing in the
 /// project's directory reaches it.
 fn glab(args: &[String], limit: Duration) -> Option<Value> {
-    let state = crate::click::state_dir();
-    let dir = if state.is_dir() {
-        state
-    } else {
-        std::env::temp_dir()
-    };
     let mut c = Command::new(crate::platform::program("glab"));
-    c.args(args).current_dir(dir);
+    c.args(args).current_dir(crate::job::outside_project());
     let out = run_child_capped(c, None, limit, MAX_OUTPUT)?;
     serde_json::from_str(&out).ok()
 }
