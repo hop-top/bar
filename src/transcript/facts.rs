@@ -34,7 +34,7 @@ pub(super) enum Rec {
     /// tool result.
     Prompt,
     /// A user entry Claude Code wrote: tool results, injected context,
-    /// compaction summaries.
+    /// compaction summaries, interruption notes, slash-command records.
     ToolResult,
     Assistant,
 }
@@ -109,7 +109,20 @@ struct Block<'a> {
     kind: Option<Cow<'a, str>>,
     #[serde(borrow)]
     name: Option<Cow<'a, str>>,
+    text: Option<Marker>,
 }
+
+/// Text Claude Code writes into a user entry itself: an interruption
+/// note, a slash command and its local output.
+fn injected(text: &str) -> bool {
+    let t = text.trim_start();
+    ["[Request interrupted", "<command-", "<local-command-"]
+        .iter()
+        .any(|m| t.starts_with(m))
+}
+
+/// A block's `text`: whether it starts like `injected` text.
+struct Marker(bool);
 
 /// `T` read from a JSON object only; serde would also fill a struct from
 /// an array, which the tree-based reading treats as no object at all.
@@ -132,14 +145,16 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for Obj<T> {
 }
 
 /// What `message.content` holds: `Skill` calls, whether any block is a
-/// tool result, and whether it is text or an array (what a prompt can
-/// be). Anything but an array has no blocks; array items that are not
-/// objects are passed over.
+/// tool result, whether it is text or an array (what a prompt can be),
+/// and whether the text (or the first text block) is `injected`.
+/// Anything but an array has no blocks; array items that are not objects
+/// are passed over.
 #[derive(Default)]
 struct Content {
     skills: u64,
     tool_result: bool,
     text: bool,
+    injected: bool,
 }
 
 /// Ignores whatever scalar comes but a string; `$ok` builds the result.
@@ -175,9 +190,10 @@ impl<'de> Deserialize<'de> for Content {
                 f.write_str("message content")
             }
             accept_scalars!(Content::default());
-            fn visit_str<E>(self, _: &str) -> Result<Content, E> {
+            fn visit_str<E>(self, v: &str) -> Result<Content, E> {
                 Ok(Content {
                     text: true,
+                    injected: injected(v),
                     ..Content::default()
                 })
             }
@@ -190,8 +206,13 @@ impl<'de> Deserialize<'de> for Content {
                     text: true,
                     ..Content::default()
                 };
+                let mut first_text = true;
                 while let Some(b) = s.next_element::<AnyBlock>()? {
                     let Some(b) = b.0 else { continue };
+                    if first_text && b.kind.as_deref() == Some("text") {
+                        first_text = false;
+                        c.injected = b.text.is_some_and(|m| m.0);
+                    }
                     match b.kind.as_deref() {
                         Some("tool_use") if b.name.as_deref() == Some("Skill") => c.skills += 1,
                         Some("tool_result") => c.tool_result = true,
@@ -238,6 +259,31 @@ fn synthetic(model: Option<&str>, u: &Usage) -> bool {
     model == Some("<synthetic>") || (u.input | u.cache_creation | u.cache_read | u.output) == 0
 }
 
+impl<'de> Deserialize<'de> for Marker {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = Marker;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("block text")
+            }
+            accept_scalars!(Marker(false));
+            fn visit_str<E>(self, v: &str) -> Result<Marker, E> {
+                Ok(Marker(injected(v)))
+            }
+            fn visit_seq<A: SeqAccess<'de>>(self, mut s: A) -> Result<Marker, A::Error> {
+                while s.next_element::<IgnoredAny>()?.is_some() {}
+                Ok(Marker(false))
+            }
+            fn visit_map<A: MapAccess<'de>>(self, mut m: A) -> Result<Marker, A::Error> {
+                while m.next_entry::<IgnoredAny, IgnoredAny>()?.is_some() {}
+                Ok(Marker(false))
+            }
+        }
+        d.deserialize_any(V)
+    }
+}
+
 fn one_hour(m5: u64, h1: u64) -> Option<bool> {
     // a mixed write expires with its 5-minute part
     (m5 > 0 || h1 > 0).then_some(h1 > 0 && m5 == 0)
@@ -249,12 +295,13 @@ struct UserBits {
     summary: bool,
     tool_result: bool,
     text: bool,
+    injected: bool,
 }
 
 fn rec(kind: Option<&str>, main: bool, has_msg: bool, u: UserBits) -> Rec {
     match kind {
         _ if !main || !has_msg => Rec::Other,
-        Some("user") if u.meta || u.summary || u.tool_result => Rec::ToolResult,
+        Some("user") if u.meta || u.summary || u.tool_result || u.injected => Rec::ToolResult,
         Some("user") if u.text => Rec::Prompt,
         Some("assistant") => Rec::Assistant,
         _ => Rec::Other,
@@ -266,7 +313,7 @@ fn rec(kind: Option<&str>, main: bool, has_msg: bool, u: UserBits) -> Rec {
 fn facts_typed<'a, C: Deserialize<'a>>(
     text: &'a str,
     boundary: bool,
-    blocks: impl Fn(&C) -> (u64, bool, bool),
+    blocks: impl Fn(&C) -> (u64, bool, bool, bool),
 ) -> Option<Facts<'a>> {
     let e: Obj<Entry<'a, C>> = serde_json::from_str(text).ok()?;
     let e = e.0;
@@ -276,10 +323,10 @@ fn facts_typed<'a, C: Deserialize<'a>>(
         && e.subtype.as_deref() == Some("compact_boundary")
         && main;
     let msg = e.message.map(|m| m.0);
-    let (skills, tool_result, text) = msg
+    let (skills, tool_result, text, injected) = msg
         .as_ref()
         .and_then(|m| m.content.as_ref())
-        .map_or((0, false, false), blocks);
+        .map_or((0, false, false, false), blocks);
     let skills = if e.kind.as_deref() == Some("assistant") && main {
         skills
     } else {
@@ -295,6 +342,7 @@ fn facts_typed<'a, C: Deserialize<'a>>(
             summary: e.summary == Some(true),
             tool_result,
             text,
+            injected,
         },
     );
     let usage = msg.and_then(|m| {
@@ -362,6 +410,13 @@ fn facts_tree(text: &str, boundary: bool, skill: bool) -> Option<Facts<'static>>
             summary: v["isCompactSummary"] == true,
             tool_result: count("tool_result", None) > 0,
             text: msg.is_some_and(|m| m["content"].is_string() || m["content"].is_array()),
+            injected: msg.is_some_and(|m| {
+                let c = &m["content"];
+                let first = blocks.and_then(|b| b.iter().find(|x| x["type"] == "text"));
+                c.as_str()
+                    .or_else(|| first.and_then(|x| x["text"].as_str()))
+                    .is_some_and(injected)
+            }),
         },
     );
     let usage = msg
@@ -418,9 +473,9 @@ pub(super) fn facts(
     let typed = match (surrogate, skill || user) {
         (true, _) => None,
         (false, true) => facts_typed(text, boundary, |c: &Content| {
-            (c.skills, c.tool_result, c.text)
+            (c.skills, c.tool_result, c.text, c.injected)
         }),
-        (false, false) => facts_typed(text, boundary, |_: &IgnoredAny| (0, false, false)),
+        (false, false) => facts_typed(text, boundary, |_: &IgnoredAny| (0, false, false, false)),
     };
     let mut f = typed.or_else(|| facts_tree(text, boundary, skill))?;
     // the byte checks gate what they stand for

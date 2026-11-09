@@ -318,3 +318,48 @@ fn synthetic_entries_are_not_requests() {
         );
     }
 }
+
+fn user_text(ms: i64, content: &str) -> String {
+    format!(
+        r#"{{"type":"user","timestamp":"{}","message":{{"role":"user","content":{content}}}}}"#,
+        at(ms)
+    )
+}
+
+#[test]
+fn interruptions_and_commands_are_not_prompts() {
+    let t = Tmp::new();
+    t.append(&[
+        prompt(0),
+        reply("a", 1_000, 5, 0, 0, false),
+        user_text(
+            MIN,
+            r#"[{"type":"text","text":"[Request interrupted by user]"}]"#,
+        ),
+        user_text(MIN + 100, r#""[Request interrupted by user for tool use]""#),
+        user_text(
+            MIN + 200,
+            r#""<command-name>/model</command-name>\n<command-message>model</command-message>""#,
+        ),
+        user_text(
+            MIN + 300,
+            r#""<local-command-stdout>Set model</local-command-stdout>""#,
+        ),
+        user_text(MIN + 400, r#""<command-message>review</command-message>""#),
+        // a surrogate escape sends the line through the tree reading
+        user_text(
+            MIN + 500,
+            r#"[{"type":"text","text":"<command-name>/x \ud83d\ude00"}]"#,
+        ),
+        reply("b", MIN + 2_000, 5, 0, 0, false),
+        // typed text that merely mentions a marker later on is a prompt
+        user_text(2 * MIN, r#""see <command-name> in the docs""#),
+        reply("c", 2 * MIN + 700, 5, 0, 0, false),
+    ]);
+    let st = transcript::update(&t.0.join("state"), &t.0.join("t.jsonl"), u64::MAX, None)
+        .unwrap()
+        .stats;
+    assert_eq!(st.user_msgs, 2);
+    assert_eq!(st.turns.ttft_last(), Some(700));
+    assert_eq!(st.turns.ttft_avg(), Some(850));
+}
