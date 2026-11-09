@@ -75,7 +75,7 @@ fn export(m: &ArgMatches) {
         let mut project = None;
         let parsed = conf::layers(user.as_ref().map(|(_, t)| t.as_str()), |_| {
             let p = conf::project::find(&std::env::current_dir().ok()?)?;
-            let text = read(&p);
+            let text = conf::project::read(&p);
             if let Ok(t) = &text {
                 project = Some((p, t.clone()));
             }

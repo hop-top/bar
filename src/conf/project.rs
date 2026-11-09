@@ -13,6 +13,9 @@ pub const FILE_NAME: &str = ".bar.conf";
 /// Most directories climbed looking for the git root.
 const MAX_DEPTH: usize = 64;
 
+/// Largest project config read.
+pub const MAX_BYTES: u64 = 64 * 1024;
+
 /// `set project-config`: whether a project config is read, and whether it
 /// may run commands and plugins.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -75,6 +78,60 @@ pub fn find(start: &Path) -> Option<PathBuf> {
     None
 }
 
+/// The repository root of a project config at `path`: the first directory
+/// up from it holding a `.git` entry, else its own directory.
+fn root_of(path: &Path) -> Option<&Path> {
+    let dir = path.parent()?;
+    let root = dir
+        .ancestors()
+        .take(MAX_DEPTH)
+        .find(|d| std::fs::symlink_metadata(d.join(".git")).is_ok());
+    Some(root.unwrap_or(dir))
+}
+
+/// Reads a project config found by [`find`] as the current user.
+pub fn read(path: &Path) -> Result<String, String> {
+    read_as(path, crate::platform::current_uid())
+}
+
+/// Reads a project config found by [`find`], refusing one that may not
+/// be the repository's: a symlink to a file outside the repository, a
+/// file owned by a user other than `uid` (`None`: not checked), or a
+/// file over [`MAX_BYTES`].
+pub fn read_as(path: &Path, uid: Option<u32>) -> Result<String, String> {
+    use std::io::Read;
+    let shown = path.display();
+    let link = std::fs::symlink_metadata(path).map_err(|e| format!("{shown}: {e}"))?;
+    if link.file_type().is_symlink() {
+        let real = std::fs::canonicalize(path).map_err(|e| format!("{shown}: {e}"))?;
+        let root = root_of(path).and_then(|r| std::fs::canonicalize(r).ok());
+        if !root.is_some_and(|r| real.starts_with(r)) {
+            return Err(format!(
+                "{shown}: a symlink to a file outside the repository"
+            ));
+        }
+    }
+    let f = std::fs::File::open(path).map_err(|e| format!("{shown}: {e}"))?;
+    let meta = f.metadata().map_err(|e| format!("{shown}: {e}"))?;
+    if let (Some(uid), Some(owner)) = (uid, crate::platform::owner(&meta)) {
+        if owner != uid {
+            return Err(format!("{shown}: owned by another user"));
+        }
+    }
+    let too_big = || format!("{shown}: larger than 64 KiB");
+    if meta.len() > MAX_BYTES {
+        return Err(too_big());
+    }
+    let mut buf = Vec::new();
+    f.take(MAX_BYTES + 1)
+        .read_to_end(&mut buf)
+        .map_err(|e| format!("{shown}: {e}"))?;
+    if buf.len() as u64 > MAX_BYTES {
+        return Err(too_big());
+    }
+    String::from_utf8(buf).map_err(|_| format!("{shown}: not UTF-8"))
+}
+
 /// Plugin placeholders the user config names: in a layout, a `default`
 /// line or a `plugin` line.
 pub fn user_plugins(c: &Config) -> BTreeSet<String> {
@@ -117,6 +174,10 @@ pub(super) fn guard(
         // network use is opted into by the user
         "set" if t.get(1).map(String::as_str) == Some("update-check") => {
             Err(format!("`set update-check` {NEEDS_FULL}"))
+        }
+        // which transcripts and accounts are read is the user's choice
+        "set" if t.get(1).map(String::as_str) == Some("claude-dir") => {
+            Err(format!("`set claude-dir` {NEEDS_FULL}"))
         }
         "default" if t.len() >= 2 => {
             let opts = parse_options(&t[2..]).unwrap_or_default();

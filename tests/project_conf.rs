@@ -365,3 +365,76 @@ fn check_warns_about_dropped_project_lines_and_passes() {
     assert!(out.contains("project line 2: warning: "), "{out}");
     assert!(out.contains("the line is ignored"), "{out}");
 }
+
+#[test]
+fn safe_refuses_setting_claude_dir() {
+    let (c, e) = dropping(None, "set claude-dir /tmp/elsewhere\n");
+    assert_eq!(c.claude_dir, None);
+    assert!(e[0].message.contains("set project-config full"), "{e:?}");
+    let c = layered(
+        Some("set project-config full\n"),
+        "set claude-dir /tmp/elsewhere\n",
+    )
+    .unwrap();
+    assert_eq!(c.claude_dir.as_deref(), Some("/tmp/elsewhere"));
+}
+
+#[test]
+fn read_refuses_oversized_project_files() {
+    let t = Tmp::new();
+    t.write(".bar.conf", &"# pad\n".repeat(12_000));
+    let e = project::read(&t.path().join(".bar.conf")).unwrap_err();
+    assert!(e.contains("64 KiB"), "{e}");
+    t.write(".bar.conf", "set gap 1\n");
+    assert_eq!(
+        project::read(&t.path().join(".bar.conf")).unwrap(),
+        "set gap 1\n"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn read_refuses_a_symlink_out_of_the_repository() {
+    let t = Tmp::new();
+    t.write("secret.conf", "set gap 1\n");
+    t.write("repo/.git/HEAD", "ref: refs/heads/main\n");
+    t.write("repo/shared.conf", "set gap 2\n");
+    let inside = t.path().join("repo/sub");
+    std::fs::create_dir_all(&inside).unwrap();
+    let link = inside.join(".bar.conf");
+    std::os::unix::fs::symlink(t.path().join("secret.conf"), &link).unwrap();
+    let e = project::read(&link).unwrap_err();
+    assert!(e.contains("outside the repository"), "{e}");
+    std::fs::remove_file(&link).unwrap();
+    std::os::unix::fs::symlink("../shared.conf", &link).unwrap();
+    assert_eq!(project::read(&link).unwrap(), "set gap 2\n");
+}
+
+#[test]
+fn render_ignores_an_oversized_project_file() {
+    let t = Tmp::new();
+    t.write(
+        "proj/.bar.conf",
+        &format!("set left \"P #{{model}}\"\n{}", "# pad\n".repeat(12_000)),
+    );
+    let json = serde_json::json!({
+        "workspace": {"current_dir": t.path().join("proj")},
+        "model": {"display_name": "Opus"},
+    })
+    .to_string();
+    let o = run(&t).conf("set left \"U #{model}\"\n").stdin(&json).go();
+    assert_eq!(o.plain.trim(), "U Opus");
+}
+
+#[cfg(unix)]
+#[test]
+fn read_refuses_a_file_someone_else_owns() {
+    use std::os::unix::fs::MetadataExt;
+    let t = Tmp::new();
+    t.write(".bar.conf", "set gap 1\n");
+    let f = t.path().join(".bar.conf");
+    let mine = std::fs::metadata(&f).unwrap().uid();
+    let e = project::read_as(&f, Some(mine + 1)).unwrap_err();
+    assert!(e.contains("owned by another user"), "{e}");
+    assert!(project::read_as(&f, Some(mine)).is_ok());
+}

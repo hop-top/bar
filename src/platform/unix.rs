@@ -27,6 +27,17 @@ pub fn private_file(o: &mut OpenOptions) -> &mut OpenOptions {
     o.mode(0o600)
 }
 
+/// The effective user id.
+pub fn current_uid() -> Option<u32> {
+    // SAFETY: geteuid has no preconditions and cannot fail
+    Some(unsafe { libc::geteuid() })
+}
+
+/// The user owning a file.
+pub fn owner(m: &Metadata) -> Option<u32> {
+    Some(m.uid())
+}
+
 /// Identity that changes when the file is replaced: the inode.
 pub fn file_id(m: &Metadata) -> u64 {
     m.ino()

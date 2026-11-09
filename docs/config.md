@@ -40,6 +40,7 @@ A repository can carry its own `.bar.conf`, applied over your config for session
 - Lookup, from the session's directory (`workspace.current_dir`, else `cwd`; `bar check` and `bar preview` use the shell's working directory): that directory's `.bar.conf`, else the nearest one in a parent directory up to the git root (the first directory holding a `.git` dir or file), the root included. Outside a git repository only the session's directory itself is looked at. The lookup only stats files and stops after 64 directories.
 - Same syntax as `bar.conf`. Its lines apply after yours: a `set` wins (a layout line replaces that group), a `default` merges over yours, a `plugin` line replaces yours, and a `rule` or `account` replaces yours with the same target or glob. Without a config file of yours it applies over the built-in layout.
 - A project line with an error, or one its mode refuses, is left out and the rest of the project file applies, so a repository cannot break your status line; an unreadable project file is left out whole. `bar check` reports each one as a warning with its project line number. `bar config export` leaves them out too.
+- A project file is not read (left out whole, with a `bar check` warning) when it is larger than 64 KiB, when it is a symlink to a file outside the repository (the git root, or the session's directory outside a repository), or, on Unix, when another user owns it, such as a `.bar.conf` beside a `.git` in a shared directory like `/tmp`.
 - Nothing is cached: both files are read on every render.
 
 A project file comes with the repository, so what it may do is set in your config with `set project-config`:
@@ -47,10 +48,12 @@ A project file comes with the repository, so what it may do is set in your confi
 | Value | Project file |
 |---|---|
 | `off` | never looked for |
-| `safe` (default) | applied, except: no `%…%` values (commands or environment variables) in placeholder options or `default` lines, no `plugin` lines, no `set update-check`, and no plugin placeholder your config does not name (in a layout, a `default` line or a `plugin` line). Each such line is left out |
+| `safe` (default) | applied, except: no `%…%` values (commands or environment variables) in placeholder options or `default` lines, no `plugin` lines, no `set update-check` or `set claude-dir`, and no plugin placeholder your config does not name (in a layout, a `default` line or a `plugin` line). Each such line is left out |
 | `full` | applied like your own config, `%cmd%` values and any plugin included |
 
 `set project-config` is read from your config only; in a project file it is left out.
+
+`safe` limits what a project file adds, not what your config already allows. Under `safe` a project file can still use every built-in placeholder, including the git placeholders, which may run `git` in the session's directory, and `prs` and `issues`, which run `gh` there, and it can pass options to the plugins your config names, which then run with those options. Use `off` for repositories you do not trust.
 
 ### Directives
 
