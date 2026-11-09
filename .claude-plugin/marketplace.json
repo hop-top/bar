@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "hop-top",
+  "description": "Claude Code extensions from hop-top",
+  "owner": { "name": "hop.top" },
+  "plugins": [
+    {
+      "name": "bar",
+      "description": "Guided setup for bar, the fast status line for Claude Code",
+      "source": "./claude-plugin",
+      "author": { "name": "hop.top" },
+      "homepage": "https://github.com/hop-top/bar",
+      "license": "Apache-2.0",
+      "category": "productivity"
+    }
+  ]
+}
