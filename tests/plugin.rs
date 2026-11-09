@@ -250,3 +250,18 @@ fn plugin_without_placeholder_capability_not_rendered() {
     let inf = cached_info(&cache, &found).unwrap();
     assert!(plugin::plan(&ctx(&s, &c, &cache, &dirs), &found, &inf, &opts(&[])).is_none());
 }
+
+#[test]
+fn row_placeholder_names_never_resolve_to_plugins() {
+    // a `bar-task.name` on PATH: `.` is not a plugin name character, so
+    // `#{task.name}` in the status line looks nothing up and draws nothing
+    let fx = Fx::new();
+    std::fs::copy(fx.bin.join("bar-echo"), fx.bin.join("bar-task.name")).unwrap();
+    for n in hop_bar::placeholders::task::names() {
+        assert!(find(&fx.dirs(), n).is_none(), "{n}");
+    }
+    let c = cfg("set left \"#{task.name}\"\n");
+    let (s, cache, dirs) = (session(), fx.cache(), fx.dirs());
+    let out = render_in(&s, &c, Some(120), &ColdRunner, Some(&cache), &dirs);
+    assert_eq!(out, "");
+}
