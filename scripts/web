@@ -61,7 +61,7 @@ fi
 # Its own state dir: the --ext-info cache stays out of the user's.
 state=$(mktemp -d)
 BAR_STATE_DIR="$state" "$CARGO" run --quiet --locked --manifest-path "$ROOT/Cargo.toml" -- \
-	web plugins --dir "$ROOT/plugins" -o "$PKG/plugins.json"
+	web plugins --force --dir "$ROOT/plugins" -o "$PKG/plugins.json"
 rm -rf "$state"
 python3 - "$PKG/plugins.json" "$PKG/plugins.js" <<'PY'
 import json, sys

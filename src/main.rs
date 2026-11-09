@@ -126,6 +126,9 @@ enum WebCmd {
         /// Look for plugins in this directory instead of PATH; repeatable.
         #[arg(long, value_name = "DIR")]
         dir: Vec<std::path::PathBuf>,
+        /// Overwrite the `-o` file when it exists.
+        #[arg(long)]
+        force: bool,
     },
 }
 
@@ -513,11 +516,21 @@ fn web_cmd(m: &ArgMatches) {
     );
     // the global `-o/--output` (hop-top-kit output flags); `-` is stdout
     let out = p.get_one::<String>("output").map_or("", String::as_str);
+    let force = p.get_flag("force");
     let written = match out {
         "" | "-" => std::io::stdout()
             .write_all(body.as_bytes())
             .map_err(|e| e.to_string()),
-        path => std::fs::write(path, body).map_err(|e| format!("{path}: {e}")),
+        path => {
+            let p = std::path::Path::new(path);
+            if p.exists() && !force {
+                eprintln!("bar web plugins: {path} exists; pass --force to overwrite");
+                std::process::exit(EXIT_USAGE);
+            }
+            hop_bar::rewrite::target(p).and_then(|t| {
+                hop_bar::rewrite::write(&t, &body).map_err(|e| format!("{path}: {e}"))
+            })
+        }
     };
     if let Err(e) = written {
         eprintln!("bar web plugins: {e}");
