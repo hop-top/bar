@@ -26,13 +26,18 @@ pub fn hook_command(bar: &Path) -> String {
     hook_command_for(&bar.display().to_string(), cfg!(windows))
 }
 
-/// As `hook_command`, for either platform. Claude Code on Windows runs
-/// status line commands through Git Bash, or PowerShell without it; hook
-/// commands are written for both: backslashes become forward slashes (Git
-/// Bash drops unquoted ones), and a path of plain characters stays
-/// unquoted, which both shells run as is. Other paths are single-quoted,
-/// which only Git Bash accepts.
+/// As `hook_command`, for either platform.
 pub fn hook_command_for(bar: &str, windows: bool) -> String {
+    command_for(bar, "click hook", windows)
+}
+
+/// `'<bar>' <args>` as a Claude Code command (hook or status line).
+/// Claude Code on Windows runs these through Git Bash, or PowerShell
+/// without it; commands are written for both: backslashes become forward
+/// slashes (Git Bash drops unquoted ones), and a path of plain characters
+/// stays unquoted, which both shells run as is. Other paths are
+/// single-quoted, which only Git Bash accepts.
+pub fn command_for(bar: &str, args: &str, windows: bool) -> String {
     let p = if windows {
         bar.replace('\\', "/")
     } else {
@@ -40,9 +45,9 @@ pub fn hook_command_for(bar: &str, windows: bool) -> String {
     };
     let plain = |c: char| c.is_ascii_alphanumeric() || "_-./:".contains(c);
     if windows && p.chars().all(plain) {
-        return format!("{p} click hook");
+        return format!("{p} {args}");
     }
-    format!("'{}' click hook", p.replace('\'', r"'\''"))
+    format!("'{}' {args}", p.replace('\'', r"'\''"))
 }
 
 pub struct SettingsPlan {
@@ -80,21 +85,41 @@ fn has_command(entries: &[Value], command: &str) -> bool {
     })
 }
 
-/// Reads `path` (missing counts as `{}`) and adds a hook entry for every
-/// event lacking one. Anything not shaped as Claude Code expects is an
-/// error, so a file we do not understand is never rewritten.
-pub fn plan_settings(path: &Path, bar: &Path) -> Result<SettingsPlan, String> {
-    let path = &write_target(path)?;
+/// A settings file as read: its write target, raw text (`None` when
+/// missing) and parsed root object.
+pub(crate) struct Loaded {
+    pub path: PathBuf,
+    pub text: Option<String>,
+    pub root: Value,
+}
+
+/// Reads `path` (missing counts as `{}`); a file that is not a JSON
+/// object is an error, so a file we do not understand is never rewritten.
+pub(crate) fn load(path: &Path) -> Result<Loaded, String> {
+    let path = write_target(path)?;
     let shown = path.display();
-    let (existed, mut root) = match std::fs::read_to_string(path) {
-        Ok(s) => (
-            true,
-            serde_json::from_str::<Value>(&s).map_err(|e| format!("{shown}: {e}"))?,
-        ),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (false, json!({})),
+    let (text, root) = match std::fs::read_to_string(&path) {
+        Ok(s) => {
+            let v = serde_json::from_str::<Value>(&s).map_err(|e| format!("{shown}: {e}"))?;
+            (Some(s), v)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (None, json!({})),
         Err(e) => return Err(format!("{shown}: {e}")),
     };
-    let command = hook_command(bar);
+    if !root.is_object() {
+        return Err(format!("{shown}: not a JSON object"));
+    }
+    Ok(Loaded { path, text, root })
+}
+
+/// Adds a `command` hook entry for every event lacking one; returns the
+/// events that gained one. Anything not shaped as Claude Code expects is
+/// an error.
+pub(crate) fn add_hooks(
+    root: &mut Value,
+    command: &str,
+    shown: &str,
+) -> Result<Vec<&'static str>, String> {
     let obj = root
         .as_object_mut()
         .ok_or_else(|| format!("{shown}: not a JSON object"))?;
@@ -110,14 +135,60 @@ pub fn plan_settings(path: &Path, bar: &Path) -> Result<SettingsPlan, String> {
             .or_insert_with(|| Value::Array(Vec::new()))
             .as_array_mut()
             .ok_or_else(|| format!("{shown}: `hooks.{ev}` is not an array"))?;
-        if !has_command(list, &command) {
+        if !has_command(list, command) {
             list.push(json!({"hooks": [{"type": "command", "command": command}]}));
             added.push(ev);
         }
     }
+    Ok(added)
+}
+
+/// Drops hook entries whose every hook runs `command`, then any event
+/// list and `hooks` object this leaves empty; returns the events changed.
+pub(crate) fn remove_hooks(root: &mut Value, command: &str) -> Vec<&'static str> {
+    let mut removed = Vec::new();
+    let Some(hooks) = root.get_mut("hooks").and_then(Value::as_object_mut) else {
+        return removed;
+    };
+    let ours = |e: &Value| {
+        e.get("hooks").and_then(Value::as_array).is_some_and(|hs| {
+            !hs.is_empty() && hs.iter().all(|h| h.get("command") == Some(&json!(command)))
+        })
+    };
+    for ev in HOOK_EVENTS {
+        let Some(list) = hooks.get_mut(ev).and_then(Value::as_array_mut) else {
+            continue;
+        };
+        let before = list.len();
+        list.retain(|e| !ours(e));
+        if list.len() != before {
+            removed.push(ev);
+            if list.is_empty() {
+                hooks.shift_remove(ev);
+            }
+        }
+    }
+    if hooks.is_empty() && !removed.is_empty() {
+        if let Some(o) = root.as_object_mut() {
+            o.shift_remove("hooks");
+        }
+    }
+    removed
+}
+
+/// Reads `path` (missing counts as `{}`) and adds a hook entry for every
+/// event lacking one.
+pub fn plan_settings(path: &Path, bar: &Path) -> Result<SettingsPlan, String> {
+    let Loaded {
+        path,
+        text,
+        mut root,
+    } = load(path)?;
+    let command = hook_command(bar);
+    let added = add_hooks(&mut root, &command, &path.display().to_string())?;
     Ok(SettingsPlan {
-        path: path.to_path_buf(),
-        existed,
+        path,
+        existed: text.is_some(),
         command,
         added,
         after: root,
@@ -139,29 +210,43 @@ pub(crate) fn apply_settings(plan: &SettingsPlan) -> std::io::Result<Option<Path
     if plan.added.is_empty() {
         return Ok(None);
     }
-    let backup = if plan.existed {
+    write_settings(&plan.path, plan.existed, &plan.after)
+}
+
+/// Copies an existing `path` to a unique `<name>.bak-<time>-<pid>`, then
+/// writes `after` atomically, keeping the file's mode; returns the backup.
+pub(crate) fn write_settings(
+    path: &Path,
+    existed: bool,
+    after: &Value,
+) -> std::io::Result<Option<PathBuf>> {
+    let backup = if existed {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default();
-        let name = plan.path.file_name().unwrap_or_default().to_string_lossy();
-        let b = plan.path.with_file_name(format!(
+        let name = path.file_name().unwrap_or_default().to_string_lossy();
+        let b = path.with_file_name(format!(
             "{name}.bak-{}-{:09}-{}",
             now.as_secs(),
             now.subsec_nanos(),
             std::process::id()
         ));
-        std::fs::copy(&plan.path, &b)?;
+        std::fs::copy(path, &b)?;
         Some(b)
     } else {
         None
     };
-    let mode = std::fs::metadata(&plan.path).map(|m| m.permissions()).ok();
-    let body = serde_json::to_string_pretty(&plan.after)? + "\n";
-    write_atomic(&plan.path, &body)?;
+    let mode = std::fs::metadata(path).map(|m| m.permissions()).ok();
+    write_atomic(path, &render(after))?;
     if let Some(m) = mode {
-        std::fs::set_permissions(&plan.path, m)?;
+        std::fs::set_permissions(path, m)?;
     }
     Ok(backup)
+}
+
+/// The text written for `v`: pretty JSON and a trailing newline.
+pub(crate) fn render(v: &Value) -> String {
+    serde_json::to_string_pretty(v).unwrap_or_default() + "\n"
 }
 
 #[cfg(test)]

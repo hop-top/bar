@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: bar.install.status-line
+title: Set bar as the Claude Code status line
+binary: bar
+intent: |
+  A user installed bar and wants Claude Code to use it without editing
+  JSON by hand. They run bar install, read the diff of their settings
+  file, and confirm. Later they undo it with bar install --uninstall,
+  which puts back the status line they had before.
+preconditions:
+  - bar binary is on PATH
+steps:
+  - id: install
+    intent: |
+      Show the change to the user settings file and write it after
+      confirmation, keeping a backup of the file.
+    invoke: ["bar", "install", "--yes"]
+    capture: [exit_code, stdout]
+  - id: uninstall
+    intent: |
+      Show the change that restores the previous status line and write it.
+    invoke: ["bar", "install", "--uninstall", "--yes"]
+    capture: [exit_code, stdout]

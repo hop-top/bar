@@ -40,6 +40,27 @@ enum SubCmd {
         #[arg(long, value_parser = hop_bar::presets::NAMES, default_value = hop_bar::presets::DEFAULT)]
         preset: String,
     },
+    /// Set bar as Claude Code's status line in its settings.json (shows the diff, asks first).
+    Install {
+        /// Edit .claude/settings.json in the current directory instead of your user settings.
+        #[arg(long, conflicts_with = "local")]
+        project: bool,
+        /// Edit .claude/settings.local.json in the current directory instead of your user settings.
+        #[arg(long)]
+        local: bool,
+        /// Put back the status line bar replaced, or remove bar's.
+        #[arg(long)]
+        uninstall: bool,
+        /// Also re-run the status line every SECS seconds (refreshInterval).
+        #[arg(long, value_name = "SECS", value_parser = clap::value_parser!(u64).range(1..), conflicts_with = "uninstall")]
+        refresh: Option<u64>,
+        /// Also add the `bar click hook` hooks (with --uninstall, remove them).
+        #[arg(long)]
+        hooks: bool,
+        /// Write without asking.
+        #[arg(short, long)]
+        yes: bool,
+    },
     /// Flip a usage view between bar and percentage, or a plugin between
     /// its text and alternate text.
     Toggle {
@@ -132,6 +153,7 @@ fn main() {
         Some(("check", m)) => check(m),
         Some(("preview", m)) => preview(m),
         Some(("init", m)) => init(m),
+        Some(("install", m)) => install(m),
         Some(("toggle", m)) => {
             let key = m.get_one::<String>("key").map_or("", String::as_str);
             match click::toggle(&click::state_dir(), key) {
@@ -257,6 +279,50 @@ fn init(m: &ArgMatches) {
             eprintln!("bar init: {e}");
             std::process::exit(EXIT_USAGE);
         }
+    }
+}
+
+fn install(m: &ArgMatches) {
+    use hop_bar::install::{self, Error, Scope};
+    let scope = if m.get_flag("project") {
+        Scope::Project
+    } else if m.get_flag("local") {
+        Scope::Local
+    } else {
+        Scope::User
+    };
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let settings = install::settings_path(scope, click::claude_dir(), &cwd).unwrap_or_else(|e| {
+        eprintln!("bar install: {e}");
+        std::process::exit(EXIT_USAGE);
+    });
+    let env = install::Env {
+        bar: std::env::current_exe().unwrap_or_else(|_| "bar".into()),
+        settings,
+        state_dir: click::state_dir(),
+        windows: cfg!(windows),
+    };
+    let opts = install::Opts {
+        uninstall: m.get_flag("uninstall"),
+        refresh: m.get_one::<u64>("refresh").copied(),
+        hooks: m.get_flag("hooks"),
+        yes: m.get_flag("yes"),
+    };
+    let tty = std::io::IsTerminal::is_terminal(&std::io::stdin());
+    let r = install::run(
+        &env,
+        &opts,
+        tty,
+        &mut std::io::stdin().lock(),
+        &mut std::io::stdout(),
+    );
+    if let Err(e) = r {
+        eprintln!("bar install: {e}");
+        std::process::exit(if e == Error::NeedsConfirm {
+            EXIT_USAGE
+        } else {
+            1
+        });
     }
 }
 

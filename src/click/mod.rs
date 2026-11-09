@@ -4,7 +4,7 @@
 mod check;
 pub mod hook;
 mod install;
-mod settings;
+pub(crate) mod settings;
 pub mod sys;
 pub mod tlc;
 mod url;
