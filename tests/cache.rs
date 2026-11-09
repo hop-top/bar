@@ -529,3 +529,45 @@ fn stored_value_read_capped() {
     let got = c.read_or_refresh("k", 3600, &cmd_job("true")).unwrap();
     assert_eq!(got.len(), 64 * 1024);
 }
+
+/// Waits up to 10 s for `p` to hold a line.
+fn wait_line(p: &Path) -> String {
+    let end = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < end {
+        if let Ok(s) = std::fs::read_to_string(p) {
+            if s.ends_with('\n') {
+                return s.trim().to_string();
+            }
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    panic!("no line in {}", p.display());
+}
+
+#[test]
+fn refresh_runs_outside_the_working_directory() {
+    let t = Tmp::new();
+    let exe = t.path().join("fake-bar");
+    std::fs::write(
+        &exe,
+        format!(
+            "#!/bin/sh\npwd -P > '{}/cwd.tmp' && mv '{0}/cwd.tmp' '{0}/cwd'\n",
+            t.path().display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let state = t.path().join("state");
+    let cache = Cache::with_exe(&state, exe);
+    cache.read_or_refresh("status:summary", 300, &Job::Status { strip: false });
+    let cwd = wait_line(&t.path().join("cwd"));
+    assert_eq!(Path::new(&cwd), state.canonicalize().unwrap());
+    // `%cmd%` keeps the directory it was rendered in
+    std::fs::remove_file(t.path().join("cwd")).unwrap();
+    cache.read_or_refresh("cmd:x", 300, &cmd_job("true"));
+    let cwd = wait_line(&t.path().join("cwd"));
+    assert_eq!(
+        Path::new(&cwd),
+        std::env::current_dir().unwrap().canonicalize().unwrap()
+    );
+}
