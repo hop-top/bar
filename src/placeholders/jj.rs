@@ -38,11 +38,13 @@ pub const TEMPLATE: &str = concat!(
 );
 
 /// Arguments of the refresh's `jj` call for the workspace at `dir`.
+/// Word wrap off: a wrapped line would shift the fields `parse` reads.
 pub fn args(dir: &str) -> Vec<String> {
     [
         "--ignore-working-copy",
         "--no-pager",
         "--color=never",
+        "--config=ui.log-word-wrap=false",
         "-R",
         dir,
         "log",
