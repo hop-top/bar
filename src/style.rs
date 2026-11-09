@@ -111,18 +111,51 @@ pub fn ramp(score: i32, ramp: &[u8; 11]) -> u8 {
     ramp[((score.clamp(0, 100) + 9) / 10) as usize]
 }
 
-/// Drops ESC, C0, DEL and C1 controls, line/paragraph separators and bidi
-/// overrides/isolates, so external text cannot inject codes, break the line
-/// or reorder what follows it. Tabs, line feeds and carriage returns read
-/// as spaces, so words on two lines stay apart.
+/// Drops ESC, C0, DEL and C1 controls, line/paragraph separators and
+/// format characters (Unicode `Cf`: bidi marks, overrides and isolates,
+/// zero-width spaces, soft hyphens, BOM, ...), so external text cannot
+/// inject codes, break the line, hide text or reorder what follows it.
+/// Kept: the joiners U+200C and U+200D and the tag characters
+/// U+E0020-U+E007F, which emoji sequences need. Tabs, line feeds and
+/// carriage returns read as spaces, so words on two lines stay apart.
 pub fn sanitize(text: &str) -> String {
     text.chars()
-        .map(|c| if matches!(c, '\n' | '\t' | '\r') { ' ' } else { c })
-        .filter(|c| {
-            !c.is_control()
-                && !matches!(c, '\u{2028}' | '\u{2029}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+        .map(|c| {
+            if matches!(c, '\n' | '\t' | '\r') {
+                ' '
+            } else {
+                c
+            }
         })
+        .filter(|&c| !c.is_control() && !matches!(c, '\u{2028}' | '\u{2029}') && !dropped_format(c))
         .collect()
+}
+
+/// A `Cf` (format) character other than the joiners and emoji tags
+/// (Unicode 16).
+fn dropped_format(c: char) -> bool {
+    matches!(c,
+        '\u{00AD}'
+        | '\u{0600}'..='\u{0605}'
+        | '\u{061C}'
+        | '\u{06DD}'
+        | '\u{070F}'
+        | '\u{0890}'..='\u{0891}'
+        | '\u{08E2}'
+        | '\u{180E}'
+        | '\u{200B}'
+        | '\u{200E}'..='\u{200F}'
+        | '\u{202A}'..='\u{202E}'
+        | '\u{2060}'..='\u{2064}'
+        | '\u{2066}'..='\u{206F}'
+        | '\u{FEFF}'
+        | '\u{FFF9}'..='\u{FFFB}'
+        | '\u{110BD}'
+        | '\u{110CD}'
+        | '\u{13430}'..='\u{1343F}'
+        | '\u{1BCA0}'..='\u{1BCA3}'
+        | '\u{1D173}'..='\u{1D17A}'
+        | '\u{E0001}')
 }
 
 /// Cells the text occupies once SGR and OSC 8 sequences are removed.
