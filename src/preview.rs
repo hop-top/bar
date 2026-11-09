@@ -243,6 +243,7 @@ fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Op
         "ahead" => Some(format!("{} {}", fg(c.good, "↑2"), fg(c.warn, "↓1"))),
         "diff" if state == "final" => None,
         "diff" => Some(format!("{} {}", fg(c.good, "+42"), fg(c.bad, "-7"))),
+        "age" => Some(dim("2h")),
         "prs" => list(
             sample_prs()
                 .iter()

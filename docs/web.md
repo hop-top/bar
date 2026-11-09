@@ -23,7 +23,7 @@ What feeds it:
 | Data | Source |
 |------|--------|
 | model, effort, context, usage windows, cost, duration, lines, version, style, vim, agent, thinking, fast mode | the session JSON under the preview (the statusLine JSON Claude Code sends on stdin); edit it to try other values |
-| cwd, root, repo, branch, origin, upstream, fork, dirty, ahead, diff, sha, tag, stash, gitop, conflicts, jj, PRs, issues, sessions, account, tokens, cache, spend history, budgets, extra usage, sid, tmux, worktree, compactions, skills, update, status | the samples `bar preview` uses |
+| cwd, root, repo, branch, origin, upstream, fork, dirty, ahead, diff, sha, age, tag, stash, gitop, conflicts, jj, PRs, issues, sessions, account, tokens, cache, spend history, budgets, extra usage, sid, tmux, worktree, compactions, skills, update, status | the samples `bar preview` uses |
 | plugins (`bar-<name>`) | the sample in the plugin's [`web` metadata](plugins.md#web-configurator-metadata), painted as a real output; a plugin without one shows its name |
 
 Times count down from the browser clock, in UTC. The preview width follows the columns slider, or the width of the page with **fit to width** (on by default on small screens, where the preview also stays at the top while you scroll).

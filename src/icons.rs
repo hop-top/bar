@@ -80,6 +80,7 @@ pub fn builtin(set: Icons, name: &str, opts: &Options) -> Option<&'static str> {
         "diff" => ("\u{f440}", "➕"),              // nf-oct-diff
         "sha" => ("\u{f417}", "📌"),               // nf-oct-git_commit
         "tag" => ("\u{f412}", "🏷️"),               // nf-oct-tag
+        "age" => ("\u{f43a}", "⌛"),               // nf-oct-clock
         "stash" => ("\u{f187}", "📦"),             // nf-fa-archive
         "gitop" => ("\u{f419}", "🔄"),             // nf-oct-git_merge
         "conflicts" => ("\u{f071}", "⚠️"),         // nf-fa-warning

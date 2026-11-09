@@ -45,6 +45,7 @@ pub fn describe(name: &str) -> &'static str {
         "diff" => "lines added and removed in the working tree",
         "sha" => "commit id of HEAD",
         "tag" => "tag pointing at HEAD",
+        "age" => "time since HEAD's commit",
         "stash" => "stash entries",
         "gitop" => "merge, rebase, cherry-pick, revert, bisect or am in progress",
         "conflicts" => "unmerged paths",
