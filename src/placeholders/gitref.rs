@@ -88,8 +88,16 @@ impl Placeholder for Tag {
         let Found::Repo(repo) = gitfs::discover(&dir) else {
             return None;
         };
-        let commit = repo.head_commit().ok()??;
-        let scan = repo.tags_at(&commit);
+        // refs the files cannot resolve: HEAD from the cached status,
+        // tags from the cached git list
+        let (commit, scan) = match repo.head_commit() {
+            Ok(c) => {
+                let c = c?;
+                let scan = repo.tags_at(&c);
+                (c, scan)
+            }
+            Err(e) => (gitst::status(ctx, opts)?.oid?, Err(e)),
+        };
         let from_files = scan.as_ref().ok().map(|s| s.at.clone()).unwrap_or_default();
         let tags = match scan {
             Ok(s) if !s.unknown => s.at,
@@ -120,11 +128,14 @@ impl Placeholder for Tag {
 }
 
 impl Placeholder for Stash {
-    fn render(&self, ctx: &Ctx, _opts: &Options) -> Option<String> {
+    fn render(&self, ctx: &Ctx, opts: &Options) -> Option<String> {
         let Found::Repo(repo) = gitfs::discover(&work_dir(ctx)) else {
             return None;
         };
-        let n = repo.stash_count().ok()?;
+        let n = match repo.stash_count() {
+            Ok(n) => n,
+            Err(_) => gitst::status(ctx, opts)?.stash?,
+        };
         (n > 0).then(|| dim(&format!("${n}")))
     }
 }

@@ -26,7 +26,8 @@ pub enum Job {
         repo: String,
         args: Vec<String>,
     },
-    /// `git status --porcelain=v2 --branch` in `dir` (absolute), no shell.
+    /// `git status --porcelain=v2 --branch --show-stash` in `dir`
+    /// (absolute), no shell.
     GitStatus { dir: String },
     /// `git for-each-ref --points-at=<commit> refs/tags` in `dir`
     /// (absolute), no shell; `commit` is a full object id. Output: the
@@ -202,7 +203,7 @@ impl Job {
             Job::GitStatus { dir } => {
                 let mut c = Command::new(crate::platform::program("git"));
                 c.args(["-c", "core.fsmonitor=false"])
-                    .args(["status", "--porcelain=v2", "--branch"])
+                    .args(["status", "--porcelain=v2", "--branch", "--show-stash"])
                     .current_dir(dir)
                     .env("GIT_OPTIONAL_LOCKS", "0");
                 run_child(c, None, limit)

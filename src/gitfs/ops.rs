@@ -45,6 +45,29 @@ impl Repo {
         Ok(n(at)?.zip(n(of)?))
     }
 
+    /// `sequencer/todo` as git-prompt.sh matches its first line, untrimmed:
+    /// `p[ \t]|pick[ \t]*` is a cherry-pick, `revert[ \t]*` a revert.
+    fn sequencer(&self) -> Result<Option<Op>, Unsupported> {
+        let Some(body) = read(&self.git_dir.join("sequencer/todo"))? else {
+            return Ok(None);
+        };
+        let line = body.split('\n').next().unwrap_or("");
+        let line = line.trim_end_matches('\r');
+        let blank_after = |verb: &str| {
+            line.strip_prefix(verb)
+                .is_some_and(|r| r.starts_with([' ', '\t']))
+        };
+        Ok(
+            if (line.len() == 2 && blank_after("p")) || blank_after("pick") {
+                Some(Op::CherryPick)
+            } else if blank_after("revert") {
+                Some(Op::Revert)
+            } else {
+                None
+            },
+        )
+    }
+
     /// Operation in progress and, for rebase and am, `(step, total)`.
     pub fn operation(&self) -> Result<Option<(Op, Step)>, Unsupported> {
         let g = &self.git_dir;
@@ -69,14 +92,7 @@ impl Repo {
             Op::CherryPick
         } else if g.join("REVERT_HEAD").is_file() {
             Op::Revert
-        } else if let Some(op) = self.first_line("sequencer/todo")?.and_then(|t| {
-            let verb = t.split([' ', '\t']).next().unwrap_or("");
-            match verb {
-                "p" | "pick" if t.len() > verb.len() => Some(Op::CherryPick),
-                "revert" if t.len() > verb.len() => Some(Op::Revert),
-                _ => None,
-            }
-        }) {
+        } else if let Some(op) = self.sequencer()? {
             op
         } else if g.join("BISECT_LOG").is_file() {
             Op::Bisect

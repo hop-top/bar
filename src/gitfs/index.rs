@@ -72,13 +72,16 @@ pub fn unmerged(d: &[u8], hash: usize) -> Option<usize> {
         }
     }
     // extensions: 4-byte signature, 4-byte size, then the trailing checksum
-    while pos + 8 <= d.len().checked_sub(hash)? {
+    let end = d.len().checked_sub(hash)?;
+    while pos.checked_add(8)? <= end {
         if d.get(pos..pos + 4)? == b"link" {
             return None;
         }
-        pos = pos.checked_add(8 + be32(d, pos + 4)? as usize)?;
+        let size = usize::try_from(be32(d, pos + 4)?).ok()?;
+        pos = pos.checked_add(8)?.checked_add(size)?;
     }
-    Some(count)
+    // an extension running into the checksum, or bytes left over
+    (pos == end).then_some(count)
 }
 
 impl Repo {

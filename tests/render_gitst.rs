@@ -200,7 +200,7 @@ fn stale_status_served_while_refresh_runs_git() {
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
     assert!(
-        calls.contains("-c core.fsmonitor=false status --porcelain=v2 --branch"),
+        calls.contains("-c core.fsmonitor=false status --porcelain=v2 --branch --show-stash"),
         "{calls:?}"
     );
 }
