@@ -360,7 +360,12 @@ fn install(m: &ArgMatches) {
         std::process::exit(EXIT_USAGE);
     });
     let env = install::Env {
-        bar: install::bar_for(scope, std::env::current_exe().ok()),
+        bar: install::bar_for(
+            scope,
+            std::env::current_exe()
+                .ok()
+                .map(|e| install::stable_exe(&e, std::env::var_os("PATH").as_deref())),
+        ),
         settings,
         state_dir: click::state_dir(),
         windows: cfg!(windows),

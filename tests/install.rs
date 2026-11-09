@@ -449,3 +449,31 @@ fn install_hooks_replaces_bar_hooks_of_another_path() {
         json!(format!("'{}' click hook", e.bar.display()))
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn stable_exe_survives_a_homebrew_upgrade() {
+    use install::stable_exe;
+    let t = Tmp::new();
+    t.write("brew/Cellar/bar/1.2.0/bin/bar", "bin");
+    let cellar = t.path().join("brew/Cellar/bar/1.2.0/bin/bar");
+    std::fs::create_dir_all(t.path().join("brew/bin")).unwrap();
+    let link = t.path().join("brew/bin/bar");
+    std::os::unix::fs::symlink("../Cellar/bar/1.2.0/bin/bar", &link).unwrap();
+    // the brew prefix's bin, without PATH
+    assert_eq!(stable_exe(&cellar, None), link);
+    // a `bar` on PATH that is this binary
+    t.write("other/bar", "other");
+    std::fs::create_dir_all(t.path().join("pathbin")).unwrap();
+    let on_path = t.path().join("pathbin/bar");
+    std::os::unix::fs::symlink(&cellar, &on_path).unwrap();
+    let path = std::env::join_paths([t.path().join("other"), t.path().join("pathbin")]).unwrap();
+    assert_eq!(stable_exe(&cellar, Some(&path)), on_path);
+    // nothing better: the binary itself
+    let lone = t.path().join("other/bar");
+    assert_eq!(stable_exe(&lone, None), lone);
+    // a prefix bin/bar that is another binary is not used
+    std::fs::remove_file(&link).unwrap();
+    t.write("brew/bin/bar", "different");
+    assert_eq!(stable_exe(&cellar, None), cellar);
+}
