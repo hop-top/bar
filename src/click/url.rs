@@ -66,9 +66,10 @@ pub fn link(cmd: &str, sid: &str, term: &Term) -> Option<String> {
     valid_sid(sid).then(|| format!("{PREFIX}{cmd}?tty={tty}&sid={sid}"))
 }
 
-/// Wraps `body` in the link for `cmd`, unless `click=none`, the handler is
-/// not installed, or there is no usable terminal. `term` runs only when the
-/// first two pass.
+/// Wraps `body` in the link for `cmd`, unless `click=none`, `sid` is not a
+/// session id (a `bar subagent` row has none), the handler is not
+/// installed, or there is no usable terminal. `term` runs only when the
+/// first three pass.
 pub fn with_cmd_link(
     body: String,
     cmd: &str,
@@ -77,7 +78,7 @@ pub fn with_cmd_link(
     state: &Path,
     term: impl FnOnce() -> Term,
 ) -> String {
-    if opts.get("click") == Some("none") || !cmd_handler_installed(state) {
+    if opts.get("click") == Some("none") || !valid_sid(sid) || !cmd_handler_installed(state) {
         return body;
     }
     match link(cmd, sid, &term()) {
