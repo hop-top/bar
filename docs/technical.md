@@ -57,6 +57,8 @@ The offset, inode, size and mtime logic (`linescan::Mark`) is shared with `trans
 
 `preview` goes through the normal layout code with a stand-in for every placeholder (`render::render_sample`). The stand-in reads nothing outside the process: `model`, `effort` and `ctx` run on a synthetic session, `usage` on synthetic windows with a state dir that does not exist, the rest are fixed strings.
 
+`bar edit` (`src/edit/`, cargo feature `edit`, on by default) edits the config as text: `doc` keeps the file's lines and rewrites one token span per change, `group` splits a layout value into segments the way `format::segments` does and rewrites single placeholders, `model` holds undo and redo as whole-text snapshots. The preview is `preview::render_config` on the parsed buffer, its ANSI output turned into ratatui spans. Option kinds come from the `check.rs` table and plugin `--ext-info` schemas (asked once per plugin, when its options are first opened). Only the `edit` subcommand reaches the module; `bar render` and `bar refresh` dispatch before clap and never touch it.
+
 ## Performance
 
 Target: a cached `bar render` under 50 ms in a release build.

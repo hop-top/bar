@@ -74,3 +74,20 @@ fn render_and_refresh_flags_still_reach_clap() {
         assert!(text.contains("Usage: bar"), "{args:?}: {text}");
     }
 }
+
+#[cfg(feature = "edit")]
+#[test]
+fn edit_refuses_without_a_terminal() {
+    let home = std::env::temp_dir().join(format!("bar-cli-edit-{}", std::process::id()));
+    let (iso, cwd) = common::isolation(&home);
+    bar()
+        .arg("edit")
+        .envs(iso)
+        .current_dir(cwd)
+        .write_stdin("")
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("bar edit: needs a terminal"));
+    assert!(!home.join("xdg/bar/bar.conf").exists());
+    let _ = std::fs::remove_dir_all(&home);
+}

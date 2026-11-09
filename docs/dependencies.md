@@ -27,6 +27,26 @@ Vetting record for third-party crates added to `hop-bar`.
 - `rsx analyze microsoft/windows-rs`: PASS, score 6.6/10, policy balanced.
 - Advisories: OSV query for crates.io `windows-sys` 0.61.2 returns none.
 
+## ratatui =0.30.2 (feature `edit`)
+
+- Use: drawing for `bar edit` (layout, blocks, lists, paragraphs) and `TestBackend` for its screen tests; `ratatui::try_init`/`restore` set up and restore the terminal, panic included. `default-features = false`, feature `crossterm` only (no macros, calendar, layout cache or underline colour). Optional, enabled by the default `edit` feature; the render path does not reach it.
+- Source: `ratatui/ratatui`; crates.io release 2026-06-19, over 14 days old. Pulls `ratatui-core`, `ratatui-widgets` and `ratatui-crossterm` 0.30.2's split crates, all released the same day.
+- Alternatives: raw `crossterm` drawing (hand-written layout, diffing and widgets); `cursive` (larger, own event loop and backends).
+- License: MIT.
+- `rsx analyze ratatui/ratatui`: PASS, score 7.8/10, policy balanced.
+- Advisories: OSV query for crates.io `ratatui` 0.30.2 returns none.
+- Transitive crates new to the lock are all over 14 days old; `log`, `rustix` and `smallvec` are held at 0.4.34, 1.1.5 and 1.16.4 because newer releases are under the age gate.
+
+## crossterm =0.29.0 (feature `edit`)
+
+- Use: raw mode, alternate screen and key events for `bar edit` on Unix and Windows consoles (key releases, which Windows reports, are ignored). The same version `ratatui-crossterm` uses, so the pin resolves to one copy. Optional, enabled by the default `edit` feature.
+- Source: `crossterm-rs/crossterm`; crates.io release 2025-04-05, over 14 days old.
+- License: MIT.
+- `rsx analyze crossterm-rs/crossterm`: PASS, score 6.3/10, policy balanced.
+- Advisories: OSV query for crates.io `crossterm` 0.29.0 returns none.
+
+Binary size: the release `bar` grows by about 390 KB (2.11 MB to 2.50 MB on macOS arm64, 1.80 MB to 2.13 MB stripped) with `edit`; without it the binary is unchanged. `bar render` start-up is unchanged within run-to-run noise (about 3.6 to 3.9 ms wall, 2.4 to 2.6 ms CPU, either way).
+
 ## Data: models.dev price snapshot
 
 - Use: prices for models outside the built-in Anthropic table. Not in the repo, the binary or release archives: fetched at run time into the user's data dir (`$XDG_DATA_HOME/bar/models.json`) by `bar prices update`, or in the background when `spendhist` meets a model no `set price` rule or built-in price covers (at most daily; see [config](config.md#spendhist)).

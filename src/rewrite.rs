@@ -30,22 +30,29 @@ pub fn backup(path: &Path) -> std::io::Result<PathBuf> {
     Ok(b)
 }
 
-/// Writes `body` to `path` (already a [`target`]): backs an existing file
-/// up first, creates missing parent directories, writes atomically and
-/// keeps the old file's permissions. Returns the backup, if any.
-pub fn replace(path: &Path, body: &str) -> std::io::Result<Option<PathBuf>> {
-    let old = std::fs::metadata(path).ok();
-    let bak = match &old {
-        Some(_) => Some(backup(path)?),
-        None => None,
-    };
+/// Writes `body` to `path` (already a [`target`]): creates missing parent
+/// directories, writes atomically and keeps an existing file's
+/// permissions.
+pub fn write(path: &Path, body: &str) -> std::io::Result<()> {
+    let mode = std::fs::metadata(path).ok().map(|m| m.permissions());
     if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
         std::fs::create_dir_all(dir)?;
     }
     crate::click::write_atomic(path, body)?;
-    if let Some(m) = old {
-        std::fs::set_permissions(path, m.permissions())?;
+    if let Some(m) = mode {
+        std::fs::set_permissions(path, m)?;
     }
+    Ok(())
+}
+
+/// [`write`], after backing an existing file up; returns the backup, if
+/// any.
+pub fn replace(path: &Path, body: &str) -> std::io::Result<Option<PathBuf>> {
+    let bak = match std::fs::metadata(path) {
+        Ok(_) => Some(backup(path)?),
+        Err(_) => None,
+    };
+    write(path, body)?;
     Ok(bak)
 }
 
