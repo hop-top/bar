@@ -59,7 +59,7 @@ A project file comes with the repository, so what it may do is set in your confi
 
 | Directive | Form |
 |-----------|------|
-| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-4) `separator gap wrap refresh icons icon-width skin skin-glyphs palette claude-dir project-config update-check color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
+| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-4) `separator gap wrap refresh icons icon-width skin skin-glyphs palette claude-dir compact-at project-config update-check color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
 | `default` | 250 | 114 | 179 | 203 | 238 18 236 54 235 |
 | `account` | `account "<glob>" <label> <color>` |
 | `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%`; see [Rules](#rules) |
