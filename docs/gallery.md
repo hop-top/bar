@@ -164,6 +164,67 @@ set center "#{usage[type=5h]} │ #{usage[type=7d]}"
 set right "#{account}"
 ```
 
+## Colours and gradients
+
+`fg=`, `bold` and `gradient=` style one placeholder; `set gradient` paints every line; `set color-depth` picks how colours are written. See [Colours](config.md#colours), [Colour depth](config.md#colour-depth) and [Gradients](config.md#gradients).
+
+![fg=accent and bold on the model, fg=#d08770 on the repository, truecolor, nord palette.](gallery/colour-fg.svg)
+
+`COLUMNS=100 bar preview --state early` with:
+
+```text
+set palette nord
+set color-depth truecolor
+set left "#{model[fg=accent,bold]}#{effort} │ #{ctx} │ #{repo[fg=#d08770]}:#{branch}"
+set right "#{usage[type=5h]} │ #{usage[type=7d]}"
+```
+
+![gradient=dusk on the model and gradient=lagoon on the repository, truecolor.](gallery/gradient-placeholder.svg)
+
+`COLUMNS=100 bar preview --state early` with:
+
+```text
+set color-depth truecolor
+set left "#{model[gradient=dusk,bold]}#{effort} │ #{ctx} │ #{repo[gradient=lagoon]}:#{branch}"
+set right "#{usage[type=5h]} │ #{usage[type=7d]}"
+```
+
+![set gradient ember across the whole line, truecolor.](gallery/gradient-line.svg)
+
+`COLUMNS=100 bar preview --state early` with:
+
+```text
+set color-depth truecolor
+set gradient ember
+set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch}"
+set center "#{usage[type=5h]} │ #{usage[type=7d]}"
+set right "#{account}"
+```
+
+![The same line gradient at the default depth, quantised to 256 colours.](gallery/gradient-line-256.svg)
+
+`COLUMNS=100 bar preview --state early` with:
+
+```text
+set gradient ember
+set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch}"
+set center "#{usage[type=5h]} │ #{usage[type=7d]}"
+set right "#{account}"
+```
+
+![Powerline skin at set color-depth 16: every colour as the nearest of the 16 ANSI colours.](gallery/depth-16.svg)
+
+`COLUMNS=100 bar preview --state early` with:
+
+```text
+set skin powerline
+set color-depth 16
+set icons nerdfont
+set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch}"
+set center "#{usage[type=5h]} │ #{usage[type=7d]}"
+set right "#{account}"
+```
+
 ## Bar glyphs
 
 `glyphs=` on `usage` picks the cells of the bar; 10 cells wide here, `burning` state (25% and 30% left), so `eighths` shows its partial last cell.
