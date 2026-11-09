@@ -102,7 +102,7 @@ impl Turns {
             self.turn_out = 0;
             self.turn_ms = 0;
         }
-        self.check_cache(r, start.unwrap_or(r.ts_ms), prev_end);
+        self.check_cache(r, start, prev_end);
         self.open_id = if r.id.len() <= MAX_ID {
             r.id.to_string()
         } else {
@@ -135,8 +135,10 @@ impl Turns {
     }
 
     /// A request that reads under half of the previous request's cached
-    /// prefix and writes more than it reads found the cache cold.
-    fn check_cache(&mut self, r: &Req, sent: i64, prev_end: Option<i64>) {
+    /// prefix and writes more than it reads found the cache cold. `sent`:
+    /// the user entry that sent it; without one the idle time is unknown
+    /// and the miss is not put down to the TTL.
+    fn check_cache(&mut self, r: &Req, sent: Option<i64>, prev_end: Option<i64>) {
         let prev = self.prefix;
         if std::mem::take(&mut self.compacted) {
             // a compacted conversation starts a new prompt
@@ -144,7 +146,7 @@ impl Turns {
             && r.cache_read.saturating_mul(2) < prev
             && r.cache_creation > r.cache_read
         {
-            let idle = prev_end.map(|e| sent - e);
+            let idle = sent.zip(prev_end).map(|(s, e)| s - e);
             if idle.is_some_and(|i| i > self.ttl() * 1000) {
                 self.misses_ttl += 1;
             } else {

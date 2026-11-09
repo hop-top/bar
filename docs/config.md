@@ -300,7 +300,7 @@ What the timestamps measure:
 `misses`:
 
 - A response is a miss when the previous response had at least 1024 cached prompt tokens (cache read plus cache write), and this one reads under half of that and writes more than it reads: the cached prefix had to be written again.
-- Cause `ttl`: the time from the previous response's last entry to the user entry that sent this request is longer than the cache lifetime ([detected](#tokens-cache-cachettl) like `cachettl`: 1 hour or 5 minutes). Cause `inv`: the cache was still in its lifetime, so the prefix changed (another model, edited instructions or tools, a cleared or rewound conversation).
+- Cause `ttl`: the time from the previous response's last entry to the user entry that sent this request is longer than the cache lifetime ([detected](#tokens-cache-cachettl) like `cachettl`: 1 hour or 5 minutes). Cause `inv`: the cache was still in its lifetime, so the prefix changed (another model, edited instructions or tools, a cleared or rewound conversation). A request with no user entry before it since the previous response has no known send time and counts as `inv`.
 - The first response after a compaction starts a new prompt and is never counted.
 - `cold`: the cached prefix of the last response, which the next request writes again if the cache has gone cold, and the dollars that adds over reading it: tokens times (cache write rate minus cache read rate) for the session's `model.id`, from the [price table](#spendhist) and `set price` rules. The 1-hour cache writes at twice the input rate. Without a price only the tokens show.
 - `count` and `cause` hide at 0 misses; `cold` hides before the first response and after a compaction until the next one; the placeholder hides when every item does.
