@@ -250,9 +250,19 @@ impl Cache {
         }
     }
 
-    /// Detached: own process group, no stdio, not waited on.
+    /// Detached: own process group, no stdio, not waited on. Runs in the
+    /// state dir, not the render's working directory (often a cloned
+    /// repository), so nothing it starts resolves against the project;
+    /// only `%cmd%` keeps the render's directory, as the user's command.
     fn spawn(&self, req: &Request) -> std::io::Result<()> {
         let mut c = Command::new(&self.exe);
+        if !matches!(req.job, Job::Command { .. }) {
+            c.current_dir(if self.state.is_dir() {
+                self.state.as_path()
+            } else {
+                Path::new("/")
+            });
+        }
         c.arg("refresh")
             .arg(req.to_json())
             .env("BAR_STATE_DIR", &self.state)
