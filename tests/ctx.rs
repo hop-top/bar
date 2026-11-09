@@ -240,12 +240,16 @@ fn icon_label_off_keeps_parts() {
 }
 
 fn thr(window: u64, vars: &[(&str, &str)], settings: Option<Value>) -> Option<u64> {
+    thr_m(window, "claude-opus-5-5", vars, settings)
+}
+
+fn thr_m(window: u64, model: &str, vars: &[(&str, &str)], settings: Option<Value>) -> Option<u64> {
     let env = |k: &str| {
         vars.iter()
             .find(|(n, _)| *n == k)
             .map(|(_, v)| v.to_string())
     };
-    threshold(window, "claude-x", None, &env, &|| settings.clone())
+    threshold(window, model, None, &env, &|| settings.clone())
 }
 
 #[test]
@@ -273,16 +277,47 @@ fn threshold_env_window_wins_and_is_clamped() {
 fn threshold_settings_per_model_then_global() {
     let s = json!({
         "autoCompactWindow": 300000,
-        "modelSettings": {"claude-x": {"autoCompactWindow": 400000}}
+        "modelSettings": {"claude-opus-5-5": {"autoCompactWindow": 400000}}
     });
     assert_eq!(thr(1_000_000, &[], Some(s)), Some(400_000));
     let s = json!({
         "autoCompactWindow": 300000,
-        "modelSettings": {"claude-x": {"autoCompactWindow": "auto"}}
+        "modelSettings": {"claude-opus-5-5": {"autoCompactWindow": "auto"}}
     });
     assert_eq!(thr(1_000_000, &[], Some(s)), Some(NATIVE_1M_DEFAULT));
     let s = json!({"autoCompactWindow": 300000, "modelSettings": {"other": {}}});
     assert_eq!(thr(1_000_000, &[], Some(s)), Some(300_000));
+}
+
+#[test]
+fn threshold_model_settings_match_the_canonical_name() {
+    let s = json!({
+        "autoCompactWindow": 300000,
+        "modelSettings": {
+            "claude-opus-4-6": {"autoCompactWindow": 400000},
+            "claude-sonnet-4-5": {"autoCompactWindow": 250000}
+        }
+    });
+    for id in [
+        "claude-opus-4-6",
+        "claude-opus-4-6[1m]",
+        "claude-opus-4-6[1M]",
+        "claude-opus-4-6-20260101",
+        "claude-opus-4-6@20260101",
+        "us.anthropic.claude-opus-4-6-v1:0",
+        "anthropic/claude-opus-4-6",
+    ] {
+        assert_eq!(
+            thr_m(1_000_000, id, &[], Some(s.clone())),
+            Some(400_000),
+            "{id}"
+        );
+    }
+    let id = "claude-sonnet-4-5-20250929[1m]";
+    assert_eq!(thr_m(1_000_000, id, &[], Some(s.clone())), Some(250_000));
+    // another model falls through to the top-level window
+    let id = "claude-opus-4-7";
+    assert_eq!(thr_m(1_000_000, id, &[], Some(s)), Some(300_000));
 }
 
 #[test]

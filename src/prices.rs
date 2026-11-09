@@ -2,7 +2,7 @@
 //! micro-dollars: `[input, output, cache write (5 min), cache read]`.
 
 pub mod models;
-mod norm;
+pub(crate) mod norm;
 pub mod update;
 
 pub type Rates = [u64; 4];

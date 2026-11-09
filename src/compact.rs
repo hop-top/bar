@@ -4,6 +4,7 @@
 //! `CLAUDE_CODE_AUTO_COMPACT_WINDOW` variable, then the user settings
 //! file, then the per-model default, capped at the context window.
 
+use crate::prices::norm::canonical;
 use serde_json::Value;
 
 /// Tokens a 1M-window model compacts at by default ("about 967K").
@@ -68,6 +69,21 @@ pub fn default_window(window: u64) -> u64 {
     }
 }
 
+/// `modelSettings` entry for `model_id`: Claude Code keys it by the
+/// canonical name and matches the alias, dated, `[1m]` and provider ids
+/// to it.
+fn model_entry<'a>(set: &'a Value, model_id: &str) -> Option<&'a Value> {
+    let map = set.as_object()?;
+    if let Some(v) = map.get(model_id) {
+        return Some(v);
+    }
+    let want = canonical(model_id);
+    (!want.is_empty()).then_some(())?;
+    map.iter()
+        .find(|(k, _)| canonical(k) == want)
+        .map(|(_, v)| v)
+}
+
 /// Tokens at which the session compacts; `None` when auto-compaction is
 /// off or the context window is unknown. `env` reads a variable,
 /// `settings` the parsed user settings file (called only when needed).
@@ -96,7 +112,7 @@ pub fn threshold(
         return None;
     }
     let per_model = || {
-        let m = get("modelSettings")?.get(model_id)?;
+        let m = model_entry(get("modelSettings")?, model_id)?;
         setting_window(m.get("autoCompactWindow"))
     };
     let chosen = env("CLAUDE_CODE_AUTO_COMPACT_WINDOW")
