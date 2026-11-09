@@ -75,14 +75,15 @@ fn draw(raw: &str, opts: &Options, color: u8) -> Option<String> {
     })
 }
 
-/// Two remote URLs naming the same repository: same web address (host
-/// case ignored), else the same URL.
+/// Two remote URLs naming the same repository: same web address (case
+/// ignored, owner and repository too, as hosting services treat them),
+/// else the same URL.
 fn same_repo(a: &str, b: &str) -> bool {
     match (web_url(a), web_url(b)) {
         (Some(x), Some(y)) => {
             let split = |u: &str| {
                 let (h, p) = u.strip_prefix("https://")?.split_once('/')?;
-                Some((h.to_ascii_lowercase(), p.to_string()))
+                Some((h.to_lowercase(), p.to_lowercase()))
             };
             split(&x) == split(&y)
         }
