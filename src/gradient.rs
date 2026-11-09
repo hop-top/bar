@@ -22,14 +22,14 @@ pub fn preset_names() -> impl Iterator<Item = &'static str> {
     PRESETS.iter().map(|(n, _)| *n)
 }
 
-/// Stops of a preset, or of `from:to` (`,` works too; 2 to 8 colours,
-/// each `0`-`255`, `#rrggbb` or an ANSI name); `None` when invalid.
+/// Stops of a preset, or of `from:to` (2 to 8 colours split by `:`, each
+/// `0`-`255`, `#rrggbb` or an ANSI name); `None` when invalid.
 pub fn parse_stops(s: &str) -> Option<Vec<Color>> {
     let s = s.trim();
     if let Some((_, stops)) = PRESETS.iter().find(|(n, _)| *n == s) {
         return Some(stops.iter().map(|&c| Color::Rgb(c)).collect());
     }
-    let stops: Option<Vec<Color>> = s.split([':', ',']).map(Color::parse).collect();
+    let stops: Option<Vec<Color>> = s.split(':').map(Color::parse).collect();
     stops.filter(|v| (2..=MAX_STOPS).contains(&v.len()))
 }
 

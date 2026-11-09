@@ -189,7 +189,7 @@ fn empty_values_stay_empty() {
 
 #[test]
 fn line_gradient_spans_all_segments() {
-    let conf = "set color-depth truecolor\nset gradient \"#ff0000,#0000ff\"\nset left \"#{x} │ #{a}\"\nset right \"#{d}\"";
+    let conf = "set color-depth truecolor\nset gradient \"#ff0000:#0000ff\"\nset left \"#{x} │ #{a}\"\nset right \"#{d}\"";
     let out = render(conf);
     let cells: Vec<_> = inks(&out)
         .into_iter()
@@ -199,7 +199,7 @@ fn line_gradient_spans_all_segments() {
     assert_eq!(cells.last().unwrap(), &('e', "38;2;0;0;255".to_string()));
     // the joiner keeps its muted colour
     assert_eq!(ink_of(&out, '│'), "38;5;250");
-    let plain = render(&conf.replace("set gradient \"#ff0000,#0000ff\"\n", ""));
+    let plain = render(&conf.replace("set gradient \"#ff0000:#0000ff\"\n", ""));
     assert_eq!(strip_codes(&out), strip_codes(&plain));
     assert_eq!(visible_width(&out), visible_width(&plain));
 }
@@ -230,8 +230,11 @@ fn line_gradient_values() {
     for bad in [
         "nope",
         "\"#ff0000\"",
-        "\"1,2,3,4,5,6,7,8,9\"",
-        "\"#ff0000,#zz0000\"",
+        "\"1:2:3:4:5:6:7:8:9\"",
+        "\"#ff0000:#zz0000\"",
+        // `:` is the only separator
+        "\"#ff0000,#0000ff\"",
+        "\"1:2,3\"",
     ] {
         let e = parse(&format!("set gradient {bad}")).unwrap_err();
         assert!(e[0].message.contains("invalid gradient"), "{bad}: {e:?}");
