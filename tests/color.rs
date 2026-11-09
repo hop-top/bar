@@ -201,4 +201,9 @@ fn no_color_strips_colours_only() {
     let link = "\x1b]8;;https://example.com\x1b\\t\x1b]8;;\x1b\\";
     assert_eq!(strip_colors(link), link);
     assert_eq!(strip_colors("\x1b[2Ka"), "\x1b[2Ka");
+    // colon-form colours (ITU T.416) go too
+    assert_eq!(strip_colors("\x1b[38:5:203ma"), "a");
+    assert_eq!(strip_colors("\x1b[1;38:2::255:0:0;48:5:24mb"), "\x1b[1mb");
+    assert_eq!(strip_colors("\x1b[58:2::1:2:3;4mc"), "\x1b[4mc");
+    assert_eq!(strip_colors("\x1b[4:3md"), "\x1b[4:3md");
 }
