@@ -386,3 +386,67 @@ fn miss_without_a_user_entry_is_not_labelled_ttl() {
     ]);
     assert_eq!(t.turns().misses(), (0, 1));
 }
+
+fn stats(t: &Tmp) -> transcript::Stats {
+    transcript::update(&t.0.join("state"), &t.0.join("t.jsonl"), u64::MAX, None)
+        .unwrap()
+        .stats
+}
+
+#[test]
+fn tool_result_between_blocks_of_one_message() {
+    let t = Tmp::new();
+    t.append(&[
+        prompt(0),
+        reply("a", 1_000, 100, 0, 40_000, false),
+        tool_result(1_500),
+        // a later block of the same message: still request a
+        reply("a", 2_000, 300, 0, 40_000, false),
+        reply("b", 3_000, 100, 40_000, 500, false),
+    ]);
+    let st = stats(&t);
+    assert_eq!((st.ctx_reqs, st.assistant_msgs), (2, 2));
+    assert_eq!(st.cache_creation, 40_500);
+    let s = st.turns;
+    assert_eq!(s.ttft_last(), Some(1_000));
+    assert_eq!(s.misses(), (0, 0));
+    // a: 300 over 2 s; b: 100 over 1.5 s since the tool result
+    assert_eq!(s.tps_last(), Some(400.0 / 3.5));
+}
+
+#[test]
+fn compact_boundary_line_restarts_the_context_series() {
+    let t = Tmp::new();
+    t.append(&[
+        prompt(0),
+        reply("a", 1_000, 5, 0, 40_000, false),
+        reply("b", 2_000, 5, 40_000, 9_000, false),
+        format!(
+            r#"{{"type":"system","subtype":"compact_boundary","content":"Conversation compacted","isSidechain":false,"timestamp":"{}","compactMetadata":{{"trigger":"auto","preTokens":49003}}}}"#,
+            at(3_000)
+        ),
+        prompt(4_000),
+        reply("c", 5_000, 5, 0, 12_000, false),
+    ]);
+    let st = stats(&t);
+    assert_eq!(st.compactions, 1);
+    assert_eq!(
+        (st.ctx_reqs, st.ctx_first, st.ctx_last),
+        (1, 12_003, 12_003)
+    );
+}
+
+#[test]
+fn mixed_5m_and_1h_write_expires_with_the_5m_part() {
+    let t = Tmp::new();
+    let mixed = format!(
+        r#"{{"type":"assistant","timestamp":"{}","message":{{"id":"b","usage":{{"input_tokens":3,"cache_creation_input_tokens":3000,"cache_read_input_tokens":0,"output_tokens":5,"cache_creation":{{"ephemeral_5m_input_tokens":1000,"ephemeral_1h_input_tokens":2000}}}}}}}}"#,
+        at(MIN)
+    );
+    t.append(&[prompt(0), reply("a", 1_000, 5, 0, 50_000, true)]);
+    assert_eq!(t.turns().ttl(), 3600);
+    t.append(&[mixed]);
+    let s = t.turns();
+    assert_eq!(s.ttl(), 300);
+    assert!(!s.one_hour());
+}
