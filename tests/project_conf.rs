@@ -7,17 +7,21 @@ mod render_fx;
 #[allow(unused_imports)]
 use render_fx::*;
 
-use hop_bar::conf::{parse_layers, project, Layer, LayerError, ProjectMode};
+use hop_bar::conf::{layers, parse_layers, project, ConfError, LayerError, ProjectMode};
 use std::cell::Cell;
 
 fn layered(user: Option<&str>, proj: &str) -> Result<hop_bar::conf::Config, Vec<LayerError>> {
     parse_layers(user, |_| Some(Ok(proj.to_string())))
 }
 
-fn messages(e: &[LayerError]) -> Vec<(Layer, usize, String)> {
-    e.iter()
-        .map(|e| (e.layer, e.error.line, e.error.message.clone()))
-        .collect()
+/// The config and the project lines it dropped.
+fn dropping(user: Option<&str>, proj: &str) -> (hop_bar::conf::Config, Vec<ConfError>) {
+    let l = layers(user, |_| Some(Ok(proj.to_string())));
+    (l.config.unwrap(), l.dropped)
+}
+
+fn messages(e: &[ConfError]) -> Vec<(usize, String)> {
+    e.iter().map(|e| (e.line, e.message.clone())).collect()
 }
 
 #[test]
@@ -123,25 +127,24 @@ fn off_never_asks_for_the_project_file() {
 
 #[test]
 fn project_config_key_is_user_only() {
-    let e = layered(
+    let (c, e) = dropping(
         Some("set project-config safe\n"),
         "set project-config full\n",
-    )
-    .unwrap_err();
+    );
+    assert_eq!(c.project_config, ProjectMode::Safe);
     assert_eq!(
         messages(&e),
         [(
-            Layer::Project,
             1,
             "`project-config` is read from the user config only".to_string()
         )]
     );
-    let e = layered(
+    let (c, e) = dropping(
         Some("set project-config full\n"),
         "set project-config off\n",
-    )
-    .unwrap_err();
-    assert_eq!(e[0].layer, Layer::Project);
+    );
+    assert_eq!(c.project_config, ProjectMode::Full);
+    assert_eq!(e[0].line, 1);
     assert!(hop_bar::conf::parse("set project-config maybe\n").is_err());
 }
 
@@ -152,26 +155,35 @@ fn safe_refuses_commands_env_plugin_lines_and_new_plugins() {
                 plugin ci ttl=1m\n\
                 set right \"#{ci}\"\n\
                 set center \"#{ctx[icon=50%]} 100%\"\n";
-    let e = layered(Some("set left \"#{model}\"\n"), proj).unwrap_err();
-    let lines: Vec<_> = e.iter().map(|e| (e.layer, e.error.line)).collect();
-    assert_eq!(
-        lines,
-        [
-            (Layer::Project, 1),
-            (Layer::Project, 2),
-            (Layer::Project, 3),
-            (Layer::Project, 4)
-        ]
+    let (c, e) = dropping(Some("set left \"#{model}\"\n"), proj);
+    let lines: Vec<_> = e.iter().map(|e| e.line).collect();
+    assert_eq!(lines, [1, 2, 3, 4]);
+    assert!(e[0].message.contains("set project-config full"));
+    assert!(e[3].message.contains("plugin `ci`"));
+    // the refused lines are dropped, the rest applies
+    assert_eq!(c.left, "#{model}");
+    assert_eq!(c.right, "");
+    assert!(c.plugins.is_empty() && c.defaults.is_empty());
+    assert_eq!(c.center, "#{ctx[icon=50%]} 100%");
+}
+
+#[test]
+fn invalid_project_lines_are_dropped() {
+    let (c, e) = dropping(
+        Some("set gap 4\n"),
+        "set gap\nset gap x\nset separator \"|\n\nset wrap on\n",
     );
-    assert!(e[0].error.message.contains("set project-config full"));
-    assert!(e[3].error.message.contains("plugin `ci`"));
+    assert_eq!(c.gap, 4);
+    assert_eq!(c.wrap, hop_bar::conf::Wrap::On);
+    let lines: Vec<_> = e.iter().map(|e| e.line).collect();
+    assert_eq!(lines, [1, 2, 3]);
 }
 
 #[test]
 fn safe_refuses_turning_on_the_update_check() {
-    let e = layered(None, "set update-check on\n").unwrap_err();
-    assert_eq!(messages(&e)[0].0, Layer::Project);
-    assert!(e[0].error.message.contains("set project-config full"));
+    let (c, e) = dropping(None, "set update-check on\n");
+    assert!(!c.update_check);
+    assert!(e[0].message.contains("set project-config full"));
     let c = layered(Some("set project-config full\n"), "set update-check on\n").unwrap();
     assert!(c.update_check);
 }
@@ -197,9 +209,19 @@ fn full_allows_everything_but_project_config() {
 }
 
 #[test]
-fn unreadable_project_file_is_an_error_without_line() {
-    let e = parse_layers(Some(""), |_| Some(Err("nope".into()))).unwrap_err();
-    assert_eq!(messages(&e), [(Layer::Project, 0, "nope".to_string())]);
+fn unreadable_project_file_is_dropped_without_line() {
+    let l = layers(Some("set gap 2\n"), |_| Some(Err("nope".into())));
+    assert_eq!(l.config.unwrap().gap, 2);
+    assert_eq!(messages(&l.dropped), [(0, "nope".to_string())]);
+}
+
+#[test]
+fn user_errors_stay_errors() {
+    let e: Vec<LayerError> = layers(Some("set gap x\n"), |_| Some(Ok("set gap\n".into())))
+        .config
+        .unwrap_err();
+    assert_eq!(e.len(), 1);
+    assert_eq!(e[0].layer, hop_bar::conf::Layer::User);
 }
 
 #[test]
@@ -240,7 +262,8 @@ fn render_refuses_a_project_command_under_safe() {
     })
     .to_string();
     let o = run(&t).conf("set left \"#{model}\"\n").stdin(&json).go();
-    assert_eq!(o.plain.trim(), hop_bar::render::CONFIG_ERROR);
+    // the refused line is dropped; the user's layout renders
+    assert_eq!(o.plain.trim(), "Opus");
     std::thread::sleep(std::time::Duration::from_millis(300));
     assert!(!marker.exists());
 }
@@ -289,7 +312,7 @@ fn check_names_the_file_of_each_issue() {
         "{out}"
     );
     assert!(
-        out.contains("project line 2: error: a `plugin` line in a project config"),
+        out.contains("project line 2: warning: a `plugin` line in a project config"),
         "{out}"
     );
 
@@ -329,4 +352,16 @@ fn check_without_project_file_keeps_plain_line_labels() {
     assert_eq!(code, 2);
     assert!(out.contains("\nline 1: error: invalid gap `x`"), "{out}");
     assert!(!out.contains("project"), "{out}");
+}
+
+#[test]
+fn check_warns_about_dropped_project_lines_and_passes() {
+    let t = Tmp::new();
+    t.write("xdg/bar/bar.conf", "set left \"#{model}\"\n");
+    t.write("proj/.bar.conf", "set gap\nplugin ci ttl=1m\nset gap 2\n");
+    let (code, out) = check_in(&t, &t.path().join("proj"), &["--format", "table"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("project line 1: warning: "), "{out}");
+    assert!(out.contains("project line 2: warning: "), "{out}");
+    assert!(out.contains("the line is ignored"), "{out}");
 }

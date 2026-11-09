@@ -44,6 +44,15 @@ pub fn merge(base: &str, over: &str) -> String {
     format!("{kept}{}", with_newline(over))
 }
 
+/// `text` without its lines numbered (1-based) in `skip`.
+pub fn without_lines(text: &str, skip: &[usize]) -> String {
+    text.lines()
+        .enumerate()
+        .filter(|(i, _)| !skip.contains(&(i + 1)))
+        .map(|(_, l)| format!("{l}\n"))
+        .collect()
+}
+
 /// The effective config as one file: the user config (`None`: the
 /// built-in layout) and, when given, the project config merged over it,
 /// each under a comment naming its source.
