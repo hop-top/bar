@@ -75,8 +75,10 @@ impl Turns {
         }
     }
 
+    /// The conversation was rewritten: the cached prefix no longer exists.
     pub(super) fn compaction(&mut self) {
         self.compacted = true;
+        self.prefix = 0;
     }
 
     /// An assistant entry: either another content block of the open

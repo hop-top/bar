@@ -363,3 +363,13 @@ fn interruptions_and_commands_are_not_prompts() {
     assert_eq!(st.turns.ttft_last(), Some(700));
     assert_eq!(st.turns.ttft_avg(), Some(850));
 }
+
+#[test]
+fn compaction_clears_the_cached_prefix() {
+    let t = Tmp::new();
+    t.append(&[prompt(0), reply("a", 1_000, 5, 0, 50_000, false)]);
+    assert_eq!(t.turns().prefix(), 50_000);
+    t.append(&[r#"{"type":"system","subtype":"compact_boundary"}"#.into()]);
+    // the old prefix is gone; nothing to re-cache until the next request
+    assert_eq!(t.turns().prefix(), 0);
+}
