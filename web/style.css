@@ -177,8 +177,9 @@ select, input[type="text"], input[type="number"] {
 
 .groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 @media (max-width: 900px) { .groups { grid-template-columns: minmax(0, 1fr); } }
-.group { border: 1px dashed var(--line); border-radius: 8px; padding: 10px; min-height: 90px; display: flex; flex-direction: column; gap: 8px; }
-.group h3 { margin: 0; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: capitalize; }
+.group { min-height: 90px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.groups { column-gap: 28px; row-gap: 20px; }
+.group h3 { margin: 0; padding-bottom: 6px; border-bottom: 1px solid var(--line); font-size: 13px; font-weight: 600; color: var(--ink); text-transform: capitalize; }
 .items { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; }
 .chip {
   display: inline-flex;
@@ -315,3 +316,33 @@ a { color: var(--link); }
 .issue-line { font: inherit; color: inherit; background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
 .plugins .say { text-align: left; margin-top: 8px; }
 .say.bad { color: var(--warning); }
+
+/* touch targets: 24px everywhere, 44px on coarse pointers */
+.btn { min-height: 32px; }
+.btn.small { min-height: 28px; }
+.tab { min-height: 28px; }
+.chip > button { min-width: 24px; min-height: 26px; }
+.tab:disabled { color: var(--muted); background: var(--bg); opacity: 1; cursor: not-allowed; }
+@media (pointer: coarse) {
+  .btn, .btn.small, .tab, select, input[type="text"], input[type="number"], .picker-item { min-height: 44px; }
+  .chip > button { min-width: 44px; min-height: 44px; }
+  .opts .list label, label.inline { min-height: 44px; }
+  input[type="checkbox"] { width: 22px; height: 22px; }
+}
+
+.probe { position: absolute; left: -9999px; top: 0; visibility: hidden; white-space: pre; }
+details.more { margin-top: 8px; }
+details.more label { margin: 6px 0; }
+
+/* small screens: the preview stays in view while editing below it */
+@media (max-width: 700px) {
+  .top { padding: 12px 16px; }
+  .actions { width: 100%; }
+  .say { text-align: left; }
+  .preview { position: sticky; top: 0; z-index: 5; box-shadow: 0 6px 16px #0003; }
+  .preview .card-head { margin-bottom: 6px; }
+  .preview input[type="range"] { width: 110px; }
+  /* presets scroll sideways instead of filling the screen */
+  .preset-list { grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: 78%; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 6px; }
+  .preset { scroll-snap-align: start; }
+}

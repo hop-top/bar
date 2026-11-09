@@ -76,7 +76,7 @@
     try {
       localStorage.setItem(
         STORE,
-        JSON.stringify({ text, lastValid, history: history.save(), columns: ui.columns.value, plugins: userPlugins }),
+        JSON.stringify({ text, lastValid, history: history.save(), columns: ui.columns.value, fit: $("fit").checked, plugins: userPlugins }),
       );
     } catch (_) {
       /* storage unavailable: nothing kept between visits */
@@ -424,6 +424,32 @@
     store();
   };
 
+  // Fit to width: columns follow the preview's width, in cells of the
+  // terminal font.
+  const probe = document.createElement("span");
+  probe.className = "term probe";
+  probe.textContent = "0".repeat(100);
+  probe.setAttribute("aria-hidden", "true");
+  document.body.append(probe);
+  function fitColumns() {
+    if (!$("fit").checked) return;
+    const cell = probe.getBoundingClientRect().width / 100 || 8;
+    const wrap = ui.term.parentElement;
+    const css = getComputedStyle(wrap);
+    const inner = wrap.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight);
+    const cols = Math.max(+ui.columns.min, Math.min(+ui.columns.max, Math.floor(inner / cell)));
+    if (String(cols) !== ui.columns.value) {
+      ui.columns.value = cols;
+      renderPreview();
+    }
+  }
+  $("fit").onchange = () => {
+    ui.columns.disabled = $("fit").checked;
+    fitColumns();
+    store();
+  };
+  new ResizeObserver(fitColumns).observe(ui.term.parentElement);
+
   // The user's plugins.json (`bar web plugins -o plugins.json`)
   $("load-plugins").onclick = () => $("load-plugins-file").click();
   const pluginsSay = (msg, bad = false) => {
@@ -513,6 +539,9 @@
   if (saved && saved.history) history = History.create(saved.history);
   if (saved && typeof saved.lastValid === "string") lastValid = saved.lastValid;
   if (saved && saved.columns) ui.columns.value = saved.columns;
+  // narrow screens start fitted to the width
+  $("fit").checked = saved && typeof saved.fit === "boolean" ? saved.fit : matchMedia("(max-width: 700px)").matches;
+  ui.columns.disabled = $("fit").checked;
   ui.session.value = JSON.stringify(sampleSession(), null, 2);
   $("app").hidden = false;
   drawPresetThumbs();
