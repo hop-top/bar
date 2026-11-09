@@ -1,6 +1,7 @@
 //! `spendhist`: estimated API-equivalent spend for today and this month,
 //! from the background-built aggregate of all transcripts.
 
+use super::money::dollars;
 use super::{Ctx, Placeholder};
 use crate::budget::{paint_if_set, Kind};
 use crate::cache::Job;
@@ -21,7 +22,7 @@ pub const PRICES_TTL: u64 = 86_400;
 pub struct SpendHist;
 
 fn amount(usd: f64, approx: bool) -> String {
-    format!("${usd:.2}{}", if approx { "~" } else { "" })
+    format!("{}{}", dollars(usd), if approx { "~" } else { "" })
 }
 
 /// `today $3.12 · mon $84.10`; one bare amount for a single period. `~`

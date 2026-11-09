@@ -6,11 +6,13 @@ pub mod budget;
 pub mod cost;
 pub mod ctx;
 pub mod dirs;
+pub mod extra;
 pub mod gh;
 pub mod gitst;
 pub mod misc;
 pub mod model;
 pub mod modes;
+pub mod money;
 pub mod niche;
 pub mod repo;
 pub mod sessions;
@@ -69,6 +71,7 @@ static REGISTRY: &[(&str, &(dyn Placeholder + Sync))] = &[
     ("usage", &usage::Usage),
     ("sessions", &sessions::Sessions),
     ("spend", &spend::Spend),
+    ("extra", &extra::Extra),
     ("spendhist", &spendhist::SpendHist),
     ("budget", &budget::Budget),
     ("tokens", &tokens::Tokens),

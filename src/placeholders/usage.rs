@@ -40,13 +40,10 @@ pub fn pct_left(used: f64) -> i64 {
     (100.0 - used).clamp(0.0, 100.0).round() as i64
 }
 
-fn rule_for(ctx: &Ctx, key: &str) -> Rule {
-    let target = format!("usage[type={key}]");
-    ctx.config
-        .rules
-        .iter()
-        .find(|r| r.target == target)
-        .cloned()
+fn rule_for(ctx: &Ctx, target: &str, key: &str) -> Rule {
+    let find = |t: &str| ctx.config.rules.iter().find(|r| r.target == t).cloned();
+    find(target)
+        .or_else(|| find(&format!("usage[type={key}]")))
         .unwrap_or_else(|| builtin_rule(key))
 }
 
@@ -59,16 +56,79 @@ fn pick<'a>(ctx: &'a Ctx, ty: &str) -> Option<(&'static str, &'a Window, i64)> {
     }
 }
 
+/// `model` as a file-name part: lowercase letters and digits, at most 16.
+pub fn model_key(model: &str) -> String {
+    model
+        .to_ascii_lowercase()
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .take(16)
+        .collect()
+}
+
+/// The weekly window of a model family, from the usage API.
+fn api_model(ctx: &Ctx, model: &str) -> Option<Window> {
+    if !ctx.config.usage_api {
+        return None;
+    }
+    crate::usageapi::load(ctx.cache?, ctx.now)?.model(model, ctx.now)
+}
+
 /// `state` holds the toggle files and the handler marker.
 pub fn render_with(ctx: &Ctx, opts: &Options, state: &Path) -> Option<String> {
+    render_models(ctx, opts, state, &|m| api_model(ctx, m))
+}
+
+/// As `render_with`; `models` gives the weekly window of a model family
+/// (option `model`).
+pub fn render_models(
+    ctx: &Ctx,
+    opts: &Options,
+    state: &Path,
+    models: &dyn Fn(&str) -> Option<Window>,
+) -> Option<String> {
+    if let Some(model) = opts.get("model").filter(|m| !m.trim().is_empty()) {
+        // per-model windows are weekly only
+        if !matches!(opts.get("type").unwrap_or("7d"), "7d" | "d") || model_key(model).is_empty() {
+            return None;
+        }
+        let win = models(model.trim())?;
+        let mk = model_key(model);
+        let rule = rule_for(ctx, &format!("usage[type=7d,model={mk}]"), "7d");
+        return render_window(
+            ctx,
+            opts,
+            state,
+            "7d",
+            &format!("7d-{mk}"),
+            &win,
+            7 * 86400,
+            &rule,
+        );
+    }
     let (key, win, period) = pick(ctx, opts.get("type").unwrap_or("5h"))?;
+    let rule = rule_for(ctx, &format!("usage[type={key}]"), key);
+    render_window(ctx, opts, state, key, key, win, period, &rule)
+}
+
+/// One window; `key` names its toggle and link, `hist` its spark history.
+#[allow(clippy::too_many_arguments)]
+fn render_window(
+    ctx: &Ctx,
+    opts: &Options,
+    state: &Path,
+    key: &str,
+    hist: &str,
+    win: &Window,
+    period: i64,
+    rule: &Rule,
+) -> Option<String> {
     let secs = win.resets_at.saturating_sub(ctx.now);
     if secs <= 0 {
         return None;
     }
     let left = pct_left(win.used_percentage);
-    let rule = rule_for(ctx, key);
-    let color = ramp(score(left, Some(secs), period, &rule), &ctx.config.ramp);
+    let color = ramp(score(left, Some(secs), period, rule), &ctx.config.ramp);
     let time = dim(&time_left(secs));
     let mut show = match opts.get("show") {
         Some(raw) if !parse_list(raw).is_empty() => parse_list(raw),
@@ -81,7 +141,7 @@ pub fn render_with(ctx: &Ctx, opts: &Options, state: &Path) -> Option<String> {
     // a view that can be toggled to must keep recording
     let mut series = Vec::new();
     if show.iter().chain(&alt).any(|p| *p == Part::Spark) {
-        series = history::sample(state, key, win.resets_at, ctx.now, win.used_percentage);
+        series = history::sample(state, hist, win.resets_at, ctx.now, win.used_percentage);
     }
     if click::is_toggled(state, key) {
         show = alt;
@@ -117,7 +177,7 @@ pub fn render_with(ctx: &Ctx, opts: &Options, state: &Path) -> Option<String> {
                     } else {
                         reach(left)
                     };
-                    ramp(score(at, Some(secs), period, &rule), &ctx.config.ramp)
+                    ramp(score(at, Some(secs), period, rule), &ctx.config.ramp)
                 })),
                 Part::Spark => {
                     if series.len() < 2 {
@@ -127,7 +187,7 @@ pub fn render_with(ctx: &Ctx, opts: &Options, state: &Path) -> Option<String> {
                     let tail = &series[series.len().saturating_sub(n)..];
                     // pure value ramp: no time-left or final-stretch input
                     spark(tail, gradient, color, |left| {
-                        ramp(score(left, None, period, &rule), &ctx.config.ramp)
+                        ramp(score(left, None, period, rule), &ctx.config.ramp)
                     })
                 }
                 Part::Gauge => wrap(fg(color, &level(value as f64).to_string())),
@@ -145,7 +205,7 @@ pub fn render_with(ctx: &Ctx, opts: &Options, state: &Path) -> Option<String> {
                         bad
                     } else {
                         // 1 keeps ramp red for projections over budget only
-                        let sc = score(100 - f.proj, None, period, &rule).max(1);
+                        let sc = score(100 - f.proj, None, period, rule).max(1);
                         ramp(sc, &ctx.config.ramp)
                     };
                     fg(c, &format!("p{}%", f.proj))

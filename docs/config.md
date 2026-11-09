@@ -3,7 +3,7 @@
 How to write `bar.conf`: where it lives, the directives, every placeholder and its options, styling, layout and the commands around the config. Pictures of skins, skin glyphs, segment backgrounds, palettes, bar glyphs, usage components, pace states, icons, lines and wrapping, and PR checks: [Gallery](gallery.md).
 
 - [Overview](#overview): [config file](#config-file), [project config](#project-config), [directives](#directives), [rules](#rules), [minimal example](#minimal-example)
-- [Placeholders](#placeholders): [session](#session), [ctx](#ctx), [usage](#usage), [tokens, cache, cachettl](#tokens-cache-cachettl), [ttft, tps, misses](#ttft-tps-misses), [spendhist](#spendhist), [budget](#budget), [git and directories](#git-and-directories), [prs and issues](#prs-and-issues), [account, agents, sessions, tmux](#account-agents-sessions-tmux), [update](#update), [status](#status), [every placeholder](#options-on-every-placeholder), [values](#values)
+- [Placeholders](#placeholders): [session](#session), [ctx](#ctx), [usage](#usage), [tokens, cache, cachettl](#tokens-cache-cachettl), [ttft, tps, misses](#ttft-tps-misses), [spendhist](#spendhist), [budget](#budget), [extra and the usage API](#extra-and-the-usage-api), [git and directories](#git-and-directories), [prs and issues](#prs-and-issues), [account, agents, sessions, tmux](#account-agents-sessions-tmux), [update](#update), [status](#status), [every placeholder](#options-on-every-placeholder), [values](#values)
 - [Styling](#styling): [skins](#skins), [palettes](#palettes), [icons](#icons), [glyphs](#glyphs), [colours](#colours), [colour depth](#colour-depth), [gradients](#gradients)
 - [Layout](#layout): [lines and wrapping](#lines-and-wrapping), [subagent rows](#subagent-rows)
 - [Commands](#commands): [bar install](#bar-install), [bar update](#update), [bar check](#bar-check), [bar config](#bar-config), [bar preview](#bar-preview), [bar edit](#bar-edit), [presets and bar init](#presets), [click handler](#click-handler-macos), [clickable commands](#clickable-commands), [hooks](#hooks)
@@ -48,7 +48,7 @@ A project file comes with the repository, so what it may do is set in your confi
 | Value | Project file |
 |---|---|
 | `off` | never looked for |
-| `safe` (default) | applied, except: no `%…%` values (commands or environment variables) in placeholder options or `default` lines, no `plugin` lines, no `set update-check`, `set service-status` or `set claude-dir`, and no plugin placeholder your config does not name (in a layout, a `default` line or a `plugin` line). Each such line is left out |
+| `safe` (default) | applied, except: no `%…%` values (commands or environment variables) in placeholder options or `default` lines, no `plugin` lines, no `set update-check`, `set service-status`, `set usage-api` or `set claude-dir`, and no plugin placeholder your config does not name (in a layout, a `default` line or a `plugin` line). Each such line is left out |
 | `full` | applied like your own config, `%cmd%` values and any plugin included |
 
 `set project-config` is read from your config only; in a project file it is left out.
@@ -59,7 +59,7 @@ A project file comes with the repository, so what it may do is set in your confi
 
 | Directive | Form |
 |-----------|------|
-| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-64) `subagent subagent-hide separator gap wrap max-rows refresh icons icon-width skin skin-glyphs palette color-depth gradient claude-dir compact-at project-config update-check service-status budget-session budget-today budget-month budget-block budget-warn color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
+| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-64) `subagent subagent-hide separator gap wrap max-rows refresh icons icon-width skin skin-glyphs palette color-depth gradient claude-dir compact-at project-config update-check service-status usage-api budget-session budget-today budget-month budget-block budget-warn color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
 | `default` | `default <placeholder> key=value ...` |
 | `account` | `account "<glob>" <label> <color>` |
 | `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%`; see [Rules](#rules) |
@@ -88,6 +88,7 @@ Quote values with spaces (double quotes; a value is one token). `#` outside quot
 | `compact-at` | Where Claude Code auto-compacts, for [ctx](#ctx): tokens (`200000`, `200k`, `1M`) or a percent of the context window (`1%`-`100%`). Unset, bar works it out; see [Auto-compaction point](#auto-compaction-point) |
 | `update-check` | `off` (default) or `on`: a daily check for a newer bar release, shown by [`update`](#update) |
 | `service-status` | `off` (default) or `on`: reads the Claude status page every 5 minutes in the background, shown by [`status`](#status) |
+| `usage-api` | `off` (default) or `on`: per-model weekly windows and extra usage from Anthropic's usage endpoint, with Claude Code's sign-in. See [extra and the usage API](#extra-and-the-usage-api) |
 | `project-config` | `off`, `safe` (default) or `full`: what a project `.bar.conf` may do. See [Project config](#project-config) |
 | `budget-session`, `budget-today`, `budget-month`, `budget-block` | Dollar budget for [budget](#budget): `$20`, `20` or `12.50` (more than zero, at most two decimals); `off` clears it. Unset by default |
 | `budget-warn` | Percent of a budget from which spend takes the warn colour, `1%`-`100%`, default `80%`. See [budget](#budget) |
@@ -102,7 +103,7 @@ Quote values with spaces (double quotes; a value is one token). `#` outside quot
 
 | Part | Meaning |
 |---|---|
-| `<target>` | `usage[type=5h]` or `usage[type=7d]` (spelled exactly so), or a plugin placeholder name that emits `metric` ([plugins](plugins.md#render)) |
+| `<target>` | `usage[type=5h]`, `usage[type=7d]` or `usage[type=7d,model=<name>]` (spelled exactly so), `extra`, `spend`, or a plugin placeholder name that emits `metric` ([plugins](plugins.md#render)) |
 | `early warn=X bad=Y` | Before the final stretch: score 0 at or below `bad` left, 50 at `warn`, 100 once what is left reaches the share of the window still to run. Both floors rise with the time left: `warn` to at least half and `bad` to at least a fifth of that share, so spending ahead of time turns amber, then red |
 | `early pace` | Same as `early warn=20% bad=5%` |
 | `final=<duration>` | Length of the final stretch before the reset or expiry: `s`, `m`, `h` or `d` |
@@ -148,7 +149,7 @@ Fields of the session: model, effort, context, cost and the rest of the statusli
 | `version`, `vim`, `agent` | none | | Claude Code version, vim mode, agent name; hidden when absent |
 | `style` | none | | Output style; hidden when `default` |
 | `thinking`, `fast` | none | | `think` / `fast` while enabled; hidden otherwise |
-| `spend` | none | | Time left on a monthly spend limit (`rate_limits.spend_limit` with `period` `monthly`), muted, e.g. `3d4h`; hidden otherwise |
+| `spend` | `show` | `time` | A monthly spend limit (`rate_limits.spend_limit` with `period` `monthly`): time left, muted, e.g. `3d4h`; with `show`, its money components (below); hidden otherwise |
 | `sid` | `len` | `8` | First `len` chars of the session id; hidden when absent or `len=0` |
 | `compactions` | none | | `compact 2`: context compactions in this session's transcript; hidden at 0 |
 | `skills` | none | | `skills 3`: Skill tool calls on the main conversation in the transcript; hidden at 0 |
@@ -160,6 +161,7 @@ Fields of the session: model, effort, context, cost and the rest of the statusli
 - `ctx`: context use, `ctx 38%` by default; options and components under [ctx](#ctx).
 - `cost`, `burn`, `duration`, `lines`, `version`, `style`, `vim`, `agent`, `thinking` and `fast` read the statusline JSON fields `cost.total_cost_usd`, `cost.total_duration_ms`, `cost.total_lines_added`, `cost.total_lines_removed`, `version`, `output_style.name`, `vim.mode`, `agent.name`, `thinking.enabled` and `fast_mode`. Missing, mistyped, negative or non-finite values hide the placeholder. None of these are in the default layout.
 - `cost` is the session's own cost; `spend` is the account spend-limit window.
+- `spend[show=...]` takes the components of [`extra`](#extra-and-the-usage-api) (`used`, `limit`, `left`, `daily`, `pct`, `bar`, `gauge`, `time`; `today` stays empty) and its `count`, `glyphs` and `width`, from `rate_limits.spend_limit.used_usd`, `limit_usd` and `used_percentage` (Claude Code v2.1.284 and later; each may be absent, and a component without its numbers is left out). The colour follows `rule spend`, else amber at 20% left and red at 5%, paced over 30 days.
 - `sid` reads `session_id`; a non-numeric `len` renders as 8 and `bar check` rejects it.
 - `compactions` counts `system` transcript entries with subtype `compact_boundary`; `skills` counts `Skill` tool calls in non-sidechain assistant entries (skills a user starts with a slash command are not counted). Both share the transcript scan of [`tokens`](#tokens-cache-cachettl), so they are empty without a readable `transcript_path`.
 - `name` reads `session_name`: the name set with `--name` or `/rename`, else the generated session title. Claude Code leaves it out when the session has neither, and bar does not look further, so older Claude Code versions show nothing.
@@ -226,11 +228,12 @@ The result is capped at the context window. When it lies below the window, `CLAU
 
 The 5-hour or weekly window: time to reset, a bar of what is left, percentages, projections and a sparkline, coloured by pace.
 
-`#{usage[type=5h|7d|h|d, show=time,bar, alt=time,pct, count=left|used, glyphs=blocks, color=solid|gradient, width=5, click=toggle|none]}`
+`#{usage[type=5h|7d|h|d, model=<name>, show=time,bar, alt=time,pct, count=left|used, glyphs=blocks, color=solid|gradient, width=5, click=toggle|none]}`
 
 | Option | Default | Meaning |
 |---|---|---|
-| `type` | `5h` | `5h`, `7d`; `h`, `d` shorthand |
+| `type` | `5h` | `5h`, `7d`; `h`, `d` shorthand. `7d` when `model` is set |
+| `model` | | A model family's own weekly window, e.g. `opus`, `sonnet`; needs `set usage-api on`. See [Per-model windows](#per-model-windows) |
 | `view` | `bar` | `bar`, `pct`, `time`; alias of `show` |
 | `show` | `time,bar` | list of `time`, `bar`, `pct`, `eta`, `proj`, `spark`, `gauge` |
 | `alt` | `show`, bar and pct swapped | list of `time`, `bar`, `pct`, `eta`, `proj`, `spark`, `gauge` |
@@ -249,6 +252,17 @@ Components (`show`):
 - `view` stays as an alias: `bar` is `time,bar`, `pct` is `time,pct`, `time` is `time`; `show` wins when both are set.
 - `count=used` makes the percentage and the bar fill show used instead of remaining; the colour still follows the pace score of what remains.
 - Expired or missing windows render nothing.
+
+#### Per-model windows
+
+`#{usage[model=opus]}` is the weekly window of one model family, with every component, colour and toggle of a `7d` window.
+
+- Needs `set usage-api on`; the numbers come from the [usage API](#the-usage-api), since the statusline JSON has the overall windows only. Off, or before the first fetch, it renders nothing.
+- `model` matches the endpoint's model name case-insensitively as a substring (`opus` matches `Opus`); the windows the endpoint reports depend on the plan. A family it does not report renders nothing.
+- Weekly only: `type=5h` with `model` renders nothing.
+- Colour: `rule usage[type=7d,model=<name>]` (the name in lowercase letters and digits), else `rule usage[type=7d]`, else the built-in weekly rule.
+- The click toggle is the `7d` one (`bar toggle 7d`), shared with the overall weekly window. Spark samples go to `hist-7d-<name>`.
+- Numbers older than an hour (no successful fetch since) are not shown.
 
 Spark and gauge:
 
@@ -395,7 +409,7 @@ Snapshot fetch:
 - Never fetched when `spendhist` is not in the layout or every model in it is priced by a rule or the built-in table. To avoid the fetch, add a `set price` rule for each such model.
 - `bar prices update` fetches the same file on request.
 - A file that is invalid or dated in the future is ignored (`bar check` says why) and fetched again.
-- The download is capped at 64 MiB. It runs `curl` (`-fsS`, https only; `--max-time 60` for `bar prices update`, the refresh time limit in the background) and, with the opt-in [update check](#update) and [service status](#status), is one of the three places core bar uses the network (plugins have their own).
+- The download is capped at 64 MiB. It runs `curl` (`-fsS`, https only; `--max-time 60` for `bar prices update`, the refresh time limit in the background) and, with the opt-in [update check](#update), [service status](#status) and [usage API](#extra-and-the-usage-api), is one of the four places core bar uses the network (plugins have their own).
 
 ### budget
 
@@ -443,6 +457,51 @@ Colour:
 - From `budget-warn`: `color.warn`. At the budget: `color.bad`. Past it (by at least a cent): `color.bad`, bold. The bar stays `color.bad`, not bold.
 - `#{cost}` takes the colour of the `session` budget, and the `spendhist` amounts those of `today` and `month`, when those budgets are set; otherwise they are unchanged.
 - `bar preview` draws each budget at 30% (`early`), 90% (`burning`) and 110% (`final`) of the configured budget, or of a sample one (`$10`; `$20` for `today`; `$200` for `month`) when it is unset.
+
+### extra and the usage API
+
+`#{extra}`: extra usage (usage past the plan's limits, billed per use) this month, e.g. `$12.34/$50.00`. Needs `set usage-api on`.
+
+`#{extra[show=used,limit, count=used|left, glyphs=blocks, width=5]}`
+
+| Option | Default | Meaning |
+|---|---|---|
+| `show` | `used,limit` | list of `used`, `limit`, `left`, `today`, `daily`, `pct`, `bar`, `gauge`, `time` |
+| `count` | `used` | `pct`, `bar` and `gauge` show what is used or what is left |
+| `glyphs` | `blocks` | glyph set of the bar; see [Glyphs](#glyphs) |
+| `width` | `5` | bar cells, clamped to 1..40 |
+
+Components, joined by a space; `limit` right after `used` joins it with `/`:
+
+- `used`: spent this month, `$12.34`. `limit`: the monthly limit, `$50.00`. `left`: limit minus spent, `$37.66 left`.
+- `today`: spent today, `$2.34 today`; see below for how it is counted.
+- `daily`: the daily budget, what is left divided by the days left in the month (today included), `$1.71/d`.
+- `pct`: utilization of the limit. `bar`, `gauge`: as for [usage](#usage), one colour.
+- `time`: time to the end of the month, muted.
+- Amounts are in the account's currency: `$` for USD, else `12.34 EUR`.
+- Colour (`used`, `left`, `pct`, `bar`, `gauge`): the pace score of what is left over the calendar month, by `rule extra`, else amber at 20% left and red at 5%, rising with the time left. No final stretch: money left at the end of the month is not lost.
+- Hidden when the endpoint reports no extra usage or no limit, and when the numbers are older than an hour.
+- The month is the local calendar month; `today` and `daily` use the local date.
+
+`today` is not reported by the endpoint. Each fetch stores the month's spent amount; the first fetch of a day takes the last amount fetched the day before as the day's start, and `today` is the difference. When the day before was not fetched (the first day, or after a day without Claude Code), `today` stays empty for that day. An amount lower than the day's start (a new month) starts the day at zero.
+
+#### The usage API
+
+With `set usage-api on`, a render of `extra` or `usage[model=...]` reads a cached result and, when it is older than 5 minutes, starts a background `bar refresh` that fetches a new one. A render never waits on it, so the first render after turning it on is empty. Off (the default), nothing reads the credentials or touches the network.
+
+What the background job does:
+
+1. Reads Claude Code's OAuth access token from where Claude Code keeps it. macOS: the login keychain item with service `Claude Code-credentials` (with `-<first 8 hex digits of the SHA-256 of the dir>` appended when `CLAUDE_CONFIG_DIR` is set, as Claude Code names it) and account `$USER`, else any account, via `security find-generic-password -s <service> [-a <account>] -w`; then, as on Linux and Windows, `<claude dir>/.credentials.json`. The JSON field is `claudeAiOauth.accessToken`. A token whose `claudeAiOauth.expiresAt` has passed is not used: bar never refreshes or writes credentials, and Claude Code renews the token when it next runs.
+2. Sends one request: `GET https://api.anthropic.com/api/oauth/usage` with `curl` (`-q` so no `.curlrc` applies, `-sS`, https only, the refresh time limit as `--max-time`, `--` before the URL) and the headers `Authorization: Bearer <token>`, `anthropic-beta: oauth-2025-04-20` and `Accept: application/json`. The `Authorization` header reaches curl as a config line on its stdin (`-K -`), never in its arguments or environment, so it does not show in `ps`.
+3. Keeps from the response only: per model family, the used percent and reset time of its weekly window (`limits` items of kind `weekly_scoped`, else `seven_day_opus`, `seven_day_sonnet`); and from `extra_usage`, `is_enabled`, `monthly_limit`, `used_credits`, `utilization` and `currency` (amounts in minor units). The raw response, the token and every identifier in it are discarded. The result goes to the cache (mode 0600, key `usage-api:<claude dir>`), with the fetch time and the day's starting amount for `today`.
+
+Limits and failures:
+
+- At most one fetch per 5 minutes, shared by every session with the same Claude Code config dir.
+- HTTP 429: the last numbers are kept and nothing is sent until the `Retry-After` time (seconds; 10 minutes without one, at most a day).
+- HTTP 401 or 403 (a revoked or expired token): the last numbers are kept and nothing is sent for 15 minutes.
+- No token, a network error or another status: the last result is kept and the next try waits 60 seconds; without a token nothing is sent.
+- The endpoint is the one Claude Code itself uses for `/usage`; it is not a documented public API and may change. When it does, `extra` and `usage[model=...]` render nothing.
 
 ### Git and directories
 
@@ -644,6 +703,7 @@ Colours and width:
 | `spend` | `nf-fa-dollar` U+F155 | 💰 |
 | `spendhist` | `nf-fa-money` U+F0D6 | 💵 |
 | `budget` | `nf-fa-pie_chart` U+F200 | 🎯 |
+| `extra` | `nf-fa-plus_circle` U+F055 | 💸 |
 | `tokens` | `nf-fa-exchange` U+F0EC | 🔢 |
 | `cache` | `nf-fa-database` U+F1C0 | 💾 |
 | `cachettl` | `nf-fa-hourglass_end` U+F253 | 🕐 |
@@ -1077,10 +1137,10 @@ In the state directory:
 
 | Path | Written by | Holds |
 |---|---|---|
-| `cache/` | render, `bar refresh` | cached `gh`, `git status`, `tmux`, `%cmd%`, plugin, update check and service status results, locks and failure markers |
+| `cache/` | render, `bar refresh` | cached `gh`, `git status`, `tmux`, `%cmd%`, plugin, update check, service status and usage API results, locks and failure markers |
 | `transcript/<hash>.json` | render, `bar refresh` | per-transcript offsets, token totals and recent context sizes ([tokens](#tokens-cache-cachettl), [ctx](#ctx)) |
 | `spendhist/<hash>.json` | `bar refresh` | spend history scan ([spendhist](#spendhist)) |
-| `hist-5h`, `hist-7d` | render | usage samples for `spark` |
+| `hist-5h`, `hist-7d`, `hist-7d-<model>` | render | usage samples for `spark` |
 | `pct-5h`, `pct-7d`, `toggle-<plugin>`, `toggle-<plugin>.<toggle>` | `bar toggle` | toggle state: present means on |
 | `click-installed`, `click-handler.applescript` | `bar click install` | handler marker, handler source |
 | `state-dir` (macOS default state dir only) | render | symlink to the state dir `bar render` uses, for the [click handler](#click-handler-macos) |
@@ -1100,7 +1160,8 @@ Environment variables bar reads:
 | `BAR_STATE_DIR` | State directory |
 | `BAR_APP_DIR` | Where `bar click install` puts `bar-click.app` (default `~/Applications`) |
 | `BAR_REFRESH_TIMEOUT` | Seconds a background `bar refresh` may run, default 20, clamped to 1-29 |
-| `CLAUDE_CONFIG_DIR` | Claude Code config dir: `settings.json`, `.claude.json`, `sessions/`, `projects/` |
+| `CLAUDE_CONFIG_DIR` | Claude Code config dir: `settings.json`, `.claude.json`, `sessions/`, `projects/`; with `set usage-api on`, `.credentials.json` and the keychain item name |
+| `USER` | Keychain account of Claude Code's credentials, with `set usage-api on` (macOS) |
 | `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`, `DISABLE_AUTO_COMPACT`, `DISABLE_COMPACT` | [Auto-compaction point](#auto-compaction-point) for `ctx` |
 | `ANTHROPIC_API_KEY` | Only tested for presence, by `account` |
 | `TMUX`, `TMUX_PANE` | `tmux` placeholder |

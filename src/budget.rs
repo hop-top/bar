@@ -109,15 +109,6 @@ pub fn standing(usd: f64, limit: u64, cfg: &Config) -> Standing {
     Standing { color, over }
 }
 
-/// `$20`, or `$12.50` when the limit has cents.
-pub fn limit_text(cents: u64) -> String {
-    if cents.is_multiple_of(100) {
-        format!("${}", cents / 100)
-    } else {
-        format!("${}.{:02}", cents / 100, cents % 100)
-    }
-}
-
 /// `amount` painted against the `kind` budget when one is set.
 pub fn paint_if_set(cfg: &Config, kind: Kind, usd: f64, amount: String) -> String {
     match cfg.budgets.get(kind) {

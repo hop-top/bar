@@ -45,6 +45,16 @@ pub enum Job {
     /// Claude service status from status.claude.com (`set service-status on`);
     /// `strip` also reads the incident history.
     Status { strip: bool },
+    /// Per-model weekly windows and extra usage from the OAuth usage
+    /// endpoint (`set usage-api on`). `dir` is Claude Code's config dir,
+    /// `hashed` whether `CLAUDE_CONFIG_DIR` names it (the keychain entry
+    /// name depends on it), `prev` the cache file of the last result.
+    /// The token is read by the job itself, never passed in.
+    UsageApi {
+        dir: String,
+        hashed: bool,
+        prev: String,
+    },
 }
 
 impl Job {
@@ -69,6 +79,9 @@ impl Job {
             Job::Prices => json!({"kind": "prices"}),
             Job::Update { prerelease } => json!({"kind": "update", "prerelease": prerelease}),
             Job::Status { strip } => json!({"kind": "status", "strip": strip}),
+            Job::UsageApi { dir, hashed, prev } => {
+                json!({"kind": "usage-api", "dir": dir, "hashed": hashed, "prev": prev})
+            }
         }
     }
 
@@ -121,6 +134,11 @@ impl Job {
             }),
             Some("status") => Ok(Job::Status {
                 strip: v["strip"].as_bool().unwrap_or(false),
+            }),
+            Some("usage-api") => Ok(Job::UsageApi {
+                dir: abs_path(v, "dir")?,
+                hashed: v["hashed"].as_bool().unwrap_or(false),
+                prev: abs_path(v, "prev")?,
             }),
             other => Err(format!("unknown job kind {other:?}")),
         }
@@ -187,6 +205,12 @@ impl Job {
                 .map(|(_, n)| n.to_string()),
             Job::Update { prerelease } => Some(crate::update::check(*prerelease, limit)),
             Job::Status { strip } => crate::status::fetch(*strip, limit),
+            Job::UsageApi { dir, hashed, prev } => {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| d.as_secs() as i64);
+                crate::usageapi::fetch(Path::new(dir), *hashed, Path::new(prev), now, limit)
+            }
         }
     }
 }

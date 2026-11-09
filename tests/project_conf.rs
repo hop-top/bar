@@ -189,6 +189,15 @@ fn safe_refuses_turning_on_the_update_check() {
 }
 
 #[test]
+fn safe_refuses_turning_on_the_usage_api() {
+    let (c, e) = dropping(None, "set usage-api on\n");
+    assert!(!c.usage_api);
+    assert!(e[0].message.contains("set project-config full"));
+    let c = layered(Some("set project-config full\n"), "set usage-api on\n").unwrap();
+    assert!(c.usage_api);
+}
+
+#[test]
 fn safe_allows_plugins_the_user_config_names() {
     for user in [
         "set right \"#{ci}\"\n",

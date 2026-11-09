@@ -10,6 +10,7 @@ use crate::options::Options;
 use crate::placeholders::budget::{DEFAULT_SHOW as BUDGET_SHOW, SHOW_ITEMS as BUDGET_ITEMS};
 use crate::placeholders::ctx::parts::SHOW_ITEMS as CTX_ITEMS;
 use crate::placeholders::gh::{self, Kind};
+use crate::placeholders::money::SHOW as MONEY_ITEMS;
 use crate::placeholders::usage::glyphs::{GLYPH_SETS, SHOW_ITEMS};
 use crate::placeholders::{gitst, modes, speed, task};
 use crate::plugin;
@@ -45,8 +46,8 @@ pub fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
         return Some(spec);
     }
     Some(match name {
-        "account" | "sessions" | "spend" | "burn" | "duration" | "api" | "lines" | "version"
-        | "style" | "vim" | "agent" | "thinking" | "fast" | "update" => &[],
+        "account" | "sessions" | "burn" | "duration" | "api" | "lines" | "version" | "style"
+        | "vim" | "agent" | "thinking" | "fast" | "update" => &[],
         "status" => &[
             ("show", List(&["state", "text", "strip"])),
             ("components", Any),
@@ -56,6 +57,12 @@ pub fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
             ("link", Any),
         ],
         "cost" => &[("fmt", OneOf(&["usd"]))],
+        "spend" | "extra" => &[
+            ("show", List(&MONEY_ITEMS)),
+            ("count", OneOf(&["used", "left"])),
+            ("glyphs", OneOf(&GLYPH_SETS)),
+            ("width", Int),
+        ],
         "cwd" | "root" => &[("base", OneOf(&["0", "1"]))],
         "spendhist" => &[
             ("period", OneOf(&["today", "month", "both"])),
@@ -96,6 +103,7 @@ pub fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
             ("color", OneOf(&["solid", "gradient"])),
             ("width", Int),
             ("click", OneOf(&["toggle", "none"])),
+            ("model", Any),
         ],
         "dirty" => &[("show", List(gitst::SHOW)), ("ttl", Pos)],
         "ahead" => &[("ttl", Pos)],
@@ -182,6 +190,12 @@ pub fn option_help(name: &str, key: &str) -> Option<(&'static str, &'static str)
         ("usage", "color") => ("solid", "one colour, or a gradient along the filled cells"),
         ("usage", "width") => ("5", "bar cells (1-40) and spark samples"),
         ("usage", "click") => ("toggle", "none turns the toggle link off"),
+        ("usage", "model") => ("", "a model's weekly window, e.g. opus (needs usage-api)"),
+        ("spend", "show") => ("time", "components, in order"),
+        ("extra", "show") => ("used,limit", "components, in order"),
+        ("spend" | "extra", "count") => ("used", "pct, bar and gauge show used or left"),
+        ("spend" | "extra", "glyphs") => ("blocks", "glyph set of the bar"),
+        ("spend" | "extra", "width") => ("5", "bar cells (1-40)"),
         ("dirty", "show") => ("", "parts to show; all when unset"),
         ("dirty" | "ahead", "ttl") => ("10", "seconds before git status is refreshed"),
         ("name", "max") => ("", "truncate to this many characters"),

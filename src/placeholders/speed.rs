@@ -2,7 +2,7 @@
 //! transcript scan; misses from the status line's `prompt_cache` when
 //! Claude Code sends it.
 
-use super::cost::usd;
+use super::money::usd;
 use super::tokens::{compact, stats};
 use super::{Ctx, Placeholder};
 use crate::options::Options;

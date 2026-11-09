@@ -147,6 +147,9 @@ pub struct Config {
     /// `set service-status on`: `#{status}` reads status.claude.com every 5
     /// minutes, in the background.
     pub service_status: bool,
+    /// `set usage-api on`: per-model weekly windows and extra usage from
+    /// the OAuth usage endpoint, fetched in the background.
+    pub usage_api: bool,
     /// What a project `.bar.conf` may do (`set project-config`).
     pub project_config: ProjectMode,
     /// `set color-depth`: colours the output uses.
@@ -194,6 +197,7 @@ impl Default for Config {
             compact_at: None,
             update_check: false,
             service_status: false,
+            usage_api: false,
             project_config: ProjectMode::default(),
             color_depth: ColorDepth::default(),
             gradient: String::new(),

@@ -2,6 +2,7 @@
 //! client dependency. Only background jobs and explicit commands call it,
 //! never the render path.
 
+use std::io::Write;
 use std::process::{Command, Stdio};
 
 /// curl's argv: `-q` first so no `.curlrc` changes it, and `--` before
@@ -62,9 +63,90 @@ pub(crate) fn get(
     Ok(body)
 }
 
+/// What `request` got back: the status, a `Retry-After` in seconds when
+/// the server sent one as a number, and the body.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Response {
+    pub status: u16,
+    pub retry_after: Option<u64>,
+    pub body: Vec<u8>,
+}
+
+/// After the body: a newline, the status and the `Retry-After` header.
+const TRAILER: &str = "\n%{http_code}\n%header{retry-after}";
+
+/// `args` without `-f`, so any status comes back, plus the trailer.
+fn request_args(url: &str, headers: &[&str], max_time: u64, cap: usize) -> Vec<String> {
+    let mut a = args(url, headers, max_time, cap);
+    a[1] = "-sS".into();
+    let at = a.len() - 2;
+    a.splice(
+        at..at,
+        ["-K".to_string(), "-".into(), "-w".into(), TRAILER.into()],
+    );
+    a
+}
+
+/// Splits curl's output into body and trailer.
+fn split_trailer(out: &[u8]) -> Option<Response> {
+    let text_end = out.len();
+    let nl2 = out.iter().rposition(|&b| b == b'\n')?;
+    let nl1 = out[..nl2].iter().rposition(|&b| b == b'\n')?;
+    let status = std::str::from_utf8(&out[nl1 + 1..nl2])
+        .ok()?
+        .trim()
+        .parse()
+        .ok()?;
+    let retry_after = std::str::from_utf8(&out[nl2 + 1..text_end])
+        .ok()
+        .and_then(|r| r.trim().parse().ok());
+    Some(Response {
+        status,
+        retry_after,
+        body: out[..nl1].to_vec(),
+    })
+}
+
+/// GET `url` like `get`, with `config` (curl config-file lines, e.g. a
+/// secret header) written to curl's stdin and read with `-K -`, so it
+/// never appears in argv or the environment. Any HTTP status is returned.
+pub(crate) fn request(
+    url: &str,
+    headers: &[&str],
+    config: &str,
+    max_time: u64,
+    cap: usize,
+) -> Result<Response, String> {
+    let mut c = Command::new(crate::platform::program("curl"));
+    crate::platform::hide_window(&mut c);
+    c.args(request_args(url, headers, max_time, cap));
+    let mut child = c
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("curl: {e}"))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        // curl reads all of its config before it connects; dropped = EOF
+        let _ = stdin.write_all(config.as_bytes());
+    }
+    let out = child.stdout.take().ok_or("curl: no output")?;
+    // body plus the short trailer
+    let body = crate::prices::update::read_capped(out, cap + 64);
+    if body.is_err() {
+        let _ = child.kill();
+    }
+    let st = child.wait().map_err(|e| format!("curl: {e}"))?;
+    let body = body?;
+    if !st.success() {
+        return Err(format!("curl failed ({st})"));
+    }
+    split_trailer(&body).ok_or_else(|| "curl: no status".into())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::args;
+    use super::{args, request_args, split_trailer};
 
     #[test]
     fn argv_ignores_curlrc_and_ends_options_before_the_url() {
@@ -74,5 +156,28 @@ mod tests {
         assert!(a.windows(2).any(|w| w == ["--max-time", "1"]));
         assert!(a.windows(2).any(|w| w == ["-H", "Accept: x"]));
         assert!(a.windows(2).any(|w| w == ["--proto", "=https"]));
+    }
+
+    #[test]
+    fn request_reads_its_config_from_stdin() {
+        let a = request_args("https://x", &["A: b"], 5, 10);
+        assert_eq!(a[0], "-q");
+        assert_eq!(a[1], "-sS");
+        assert!(!a.iter().any(|x| x == "-fsS"));
+        assert!(a.windows(2).any(|w| w == ["-K", "-"]));
+        assert_eq!(a[a.len() - 2..], ["--", "https://x"]);
+    }
+
+    #[test]
+    fn trailer_splits_off_status_and_retry_after() {
+        let r = split_trailer(b"{\"a\":1}\n429\n120").unwrap();
+        assert_eq!((r.status, r.retry_after), (429, Some(120)));
+        assert_eq!(r.body, b"{\"a\":1}");
+        let r = split_trailer(b"x\ny\n200\n").unwrap();
+        assert_eq!(
+            (r.status, r.retry_after, r.body.as_slice()),
+            (200, None, &b"x\ny"[..])
+        );
+        assert!(split_trailer(b"no trailer").is_none());
     }
 }

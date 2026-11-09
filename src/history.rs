@@ -8,9 +8,9 @@ use std::path::{Path, PathBuf};
 pub const CAP: usize = 64;
 
 /// Seconds between samples: window / 30, so a 30-cell spark spans the
-/// window. 5h is 10 minutes, 7d is 6 hours.
+/// window. 5h is 10 minutes, 7d (and a model's `7d-<model>`) 6 hours.
 pub fn step(key: &str) -> i64 {
-    if key == "7d" {
+    if key == "7d" || key.starts_with("7d-") {
         6 * 3600
     } else {
         600

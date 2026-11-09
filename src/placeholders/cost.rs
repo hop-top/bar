@@ -1,16 +1,8 @@
+use super::money::usd;
 use super::{Ctx, Placeholder};
 use crate::budget::{paint_if_set, Kind};
 use crate::options::Options;
 use crate::style::{dim, fg};
-
-/// `$1.23`; `<$0.01` for a positive amount under a cent.
-pub(crate) fn usd(amount: f64) -> String {
-    if amount > 0.0 && amount < 0.01 {
-        "<$0.01".into()
-    } else {
-        format!("${amount:.2}")
-    }
-}
 
 /// Session cost so far (`cost.total_cost_usd`).
 pub struct Cost;

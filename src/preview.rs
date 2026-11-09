@@ -7,9 +7,10 @@ use crate::conf::{Config, LoadResult};
 use crate::icons;
 use crate::options::Options;
 use crate::placeholders::ctx as ctxp;
+use crate::placeholders::money::Budget;
 use crate::placeholders::{
-    budget, dirs, gh, lookup, model, modes, niche, speed, spendhist, status, task, tokens, update,
-    usage, Ctx,
+    budget, dirs, extra, gh, lookup, model, modes, niche, speed, spendhist, status, task, tokens,
+    update, usage, Ctx,
 };
 use crate::plugin::{self, ExtInfo};
 use crate::render::{builtin_config, render_sample};
@@ -88,6 +89,9 @@ fn session(state: &str, now: i64) -> Session {
         spend_limit: Some(SpendLimit {
             period: "monthly".into(),
             resets_at: now + 3 * 86_400 + 4 * 3600,
+            used_percentage: Some(62.8),
+            used_usd: Some(314.12),
+            limit_usd: Some(500.0),
         }),
         cost_usd: Some(1.84),
         duration_ms: Some(27.0 * 60_000.0),
@@ -157,6 +161,42 @@ fn sample_prs() -> [Value; 3] {
     ]
 }
 
+/// A model family's weekly window: a share of the weekly window's use.
+fn sample_model(ctx: &Ctx, model: &str) -> Option<Window> {
+    let w = ctx.session.seven_day.as_ref()?;
+    let m = model.to_ascii_lowercase();
+    let share = if m.contains("opus") {
+        0.6
+    } else if m.contains("sonnet") {
+        0.25
+    } else {
+        0.4
+    };
+    Some(Window {
+        used_percentage: w.used_percentage * share,
+        resets_at: w.resets_at,
+    })
+}
+
+/// Extra usage of a $50 monthly limit, the calendar month in UTC.
+fn sample_extra(state: &str, now: i64) -> Budget {
+    let (start, end) = crate::tz::month_bounds(now, crate::tz::Tz::Utc);
+    let used = match state {
+        "burning" => 4_120,
+        "final" => 1_480,
+        _ => 1_234,
+    };
+    Budget {
+        used,
+        limit: 5_000,
+        util: used as f64 * 100.0 / 5_000.0,
+        currency: "USD".into(),
+        resets_at: end,
+        period: end - start,
+        today: Some(210),
+    }
+}
+
 fn limit(opts: &Options) -> usize {
     opts.get("limit")
         .and_then(|l| l.trim().parse().ok())
@@ -222,7 +262,8 @@ fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Op
         }
         "agents" if label => Some(format!("{} 2", dim("agents"))),
         "agents" => Some("2".into()),
-        "usage" => usage::render_with(ctx, opts, Path::new(NO_STATE)),
+        "usage" => usage::render_models(ctx, opts, Path::new(NO_STATE), &|m| sample_model(ctx, m)),
+        "extra" => extra::render_budget(ctx, opts, &sample_extra(state, ctx.now)),
         "spendhist" => {
             let period = opts.get("period").unwrap_or("both");
             Some(spendhist::fmt(period, 3.12, false, 84.10, false))
