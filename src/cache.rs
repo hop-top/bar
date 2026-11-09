@@ -310,9 +310,23 @@ pub(crate) fn run_child(cmd: Command, input: Option<Vec<u8>>, limit: Duration) -
     }
 }
 
+/// [`run_child`] reading up to `max` bytes of stdout instead of
+/// `MAX_VALUE`, for output that is reduced before it is stored.
+pub(crate) fn run_child_capped(
+    cmd: Command,
+    input: Option<Vec<u8>>,
+    limit: Duration,
+    max: usize,
+) -> Option<String> {
+    match run_child_raw_capped(cmd, input, limit, max) {
+        Child::Out(b) => Some(String::from_utf8_lossy(&b).into_owned()),
+        _ => None,
+    }
+}
+
 /// How a child run by `run_child_raw` ended.
 pub(crate) enum Child {
-    /// Exit 0: stdout, at most `MAX_VALUE` bytes.
+    /// Exit 0: stdout, at most `MAX_VALUE` bytes (or the cap asked for).
     Out(Vec<u8>),
     /// It could not start or exited non-zero.
     Failed,
@@ -321,7 +335,16 @@ pub(crate) enum Child {
 }
 
 /// As `run_child`, with the raw stdout and whether it timed out.
-pub(crate) fn run_child_raw(mut cmd: Command, input: Option<Vec<u8>>, limit: Duration) -> Child {
+pub(crate) fn run_child_raw(cmd: Command, input: Option<Vec<u8>>, limit: Duration) -> Child {
+    run_child_raw_capped(cmd, input, limit, MAX_VALUE)
+}
+
+fn run_child_raw_capped(
+    mut cmd: Command,
+    input: Option<Vec<u8>>,
+    limit: Duration,
+    max: usize,
+) -> Child {
     let deadline = Instant::now() + limit;
     let mut child = match crate::platform::own_group(&mut cmd)
         .stdin(if input.is_some() {
@@ -348,7 +371,7 @@ pub(crate) fn run_child_raw(mut cmd: Command, input: Option<Vec<u8>>, limit: Dur
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let mut buf = Vec::new();
-        let _ = (&mut stdout).take(MAX_VALUE as u64).read_to_end(&mut buf);
+        let _ = (&mut stdout).take(max as u64).read_to_end(&mut buf);
         // keep draining so a chatty command does not block on a full pipe
         let _ = std::io::copy(&mut stdout, &mut std::io::sink());
         let _ = tx.send(buf);

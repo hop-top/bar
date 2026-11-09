@@ -5,6 +5,7 @@ use hop_bar::cache::{Cache, Request};
 use hop_bar::conf::Config;
 use hop_bar::options::Options;
 use hop_bar::placeholders::gh::{plan, Issues, Kind, Prs};
+use hop_bar::placeholders::glab;
 use hop_bar::placeholders::{Ctx, Placeholder};
 use hop_bar::render::ColdRunner;
 use hop_bar::session::Session;
@@ -25,6 +26,24 @@ for a in "$@"; do [ "$prev" = "--search" ] && q=$a; prev=$a; done
 k=$(printf %s "$q" | tr -c 'A-Za-z0-9' _)
 f="$FAKE_GH_DIR/out-$k.json"
 [ -f "$f" ] || f="$FAKE_GH_DIR/out.json"
+cat "$f"
+"#;
+
+/// `glab mr view N` prints `glab-view-N.json` (fails without one); a list
+/// prints `glab-<mr|issue>-<filter flags>.json`, else `glab-<mr|issue>.json`.
+const FAKE_GLAB: &str = r#"#!/bin/sh
+printf '%s\n' "$*" >> "$FAKE_GLAB_LOG"
+if [ -n "$FAKE_GLAB_FAIL" ]; then echo "401 Unauthorized" >&2; exit 1; fi
+if [ "$2" = "view" ]; then
+  f="$FAKE_GH_DIR/glab-view-$3.json"
+  [ -f "$f" ] || exit 1
+  cat "$f"; exit 0
+fi
+k=""
+for a in "$@"; do case $a in --label=*|--not-label=*|--author=*|--not-author=*|--assignee=*|--not-assignee=*) k="$k$a";; esac; done
+k=$(printf %s "$k" | tr -c 'A-Za-z0-9' _)
+f="$FAKE_GH_DIR/glab-$1-$k.json"
+[ -n "$k" ] && [ -f "$f" ] || f="$FAKE_GH_DIR/glab-$1.json"
 cat "$f"
 "#;
 
@@ -68,6 +87,10 @@ impl Fx {
             0o755,
         );
         std::fs::set_permissions(&gh, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        let glab = bin.join("glab");
+        std::fs::write(&glab, FAKE_GLAB).unwrap();
+        std::fs::set_permissions(&glab, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
         git(&repo, &["init", "-q"]);
         if let Some(r) = remote {
             git(&repo, &["remote", "add", "origin", r]);
@@ -80,6 +103,8 @@ impl Fx {
         std::env::set_var("FAKE_GH_DIR", &data);
         std::env::set_var("FAKE_GH_LOG", root.join("gh.log"));
         std::env::remove_var("FAKE_GH_FAIL");
+        std::env::set_var("FAKE_GLAB_LOG", root.join("glab.log"));
+        std::env::remove_var("FAKE_GLAB_FAIL");
         Fx {
             root,
             state,
@@ -108,6 +133,30 @@ impl Fx {
             .lines()
             .map(String::from)
             .collect()
+    }
+
+    pub fn glab_calls(&self) -> Vec<String> {
+        std::fs::read_to_string(self.root.join("glab.log"))
+            .unwrap_or_default()
+            .lines()
+            .map(String::from)
+            .collect()
+    }
+
+    /// Runs every GitLab query's job now for `remote`.
+    pub fn prime_gitlab(&self, kind: Kind, remote: &str, hosts: &[String], o: &[(&str, &str)]) {
+        let cache = self.cache();
+        let p = glab::plan(kind, remote, hosts, &opts(o)).unwrap();
+        for (key, job) in p.jobs {
+            cache.refresh(
+                &Request {
+                    key,
+                    job,
+                    lock: String::new(),
+                },
+                Duration::from_secs(10),
+            );
+        }
     }
 
     pub fn cache(&self) -> Cache {

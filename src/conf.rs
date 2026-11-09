@@ -150,6 +150,9 @@ pub struct Config {
     /// `set usage-api on`: per-model weekly windows and extra usage from
     /// the OAuth usage endpoint, fetched in the background.
     pub usage_api: bool,
+    /// `set gitlab-hosts`: self-hosted GitLab hosts, lowercase, whose
+    /// remotes `prs` and `issues` read with `glab`; gitlab.com always is.
+    pub gitlab_hosts: Vec<String>,
     /// What a project `.bar.conf` may do (`set project-config`).
     pub project_config: ProjectMode,
     /// `set color-depth`: colours the output uses.
@@ -198,6 +201,7 @@ impl Default for Config {
             update_check: false,
             service_status: false,
             usage_api: false,
+            gitlab_hosts: Vec::new(),
             project_config: ProjectMode::default(),
             color_depth: ColorDepth::default(),
             gradient: String::new(),

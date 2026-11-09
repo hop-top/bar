@@ -11,6 +11,7 @@ pub mod gh;
 pub mod gitop;
 pub mod gitref;
 pub mod gitst;
+pub mod glab;
 pub mod jj;
 pub mod misc;
 pub mod model;

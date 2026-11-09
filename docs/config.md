@@ -48,18 +48,18 @@ A project file comes with the repository, so what it may do is set in your confi
 | Value | Project file |
 |---|---|
 | `off` | never looked for |
-| `safe` (default) | applied, except: no `%…%` values (commands or environment variables) in placeholder options or `default` lines, no `plugin` lines, no `set update-check`, `set service-status`, `set usage-api` or `set claude-dir`, and no plugin placeholder your config does not name (in a layout, a `default` line or a `plugin` line). Each such line is left out |
+| `safe` (default) | applied, except: no `%…%` values (commands or environment variables) in placeholder options or `default` lines, no `plugin` lines, no `set update-check`, `set service-status`, `set usage-api`, `set claude-dir` or `set gitlab-hosts`, and no plugin placeholder your config does not name (in a layout, a `default` line or a `plugin` line). Each such line is left out |
 | `full` | applied like your own config, `%cmd%` values and any plugin included |
 
 `set project-config` is read from your config only; in a project file it is left out.
 
-`safe` limits what a project file adds, not what your config already allows. Under `safe` a project file can still use every built-in placeholder, including the git placeholders, which may run `git` in the session's directory, and `prs` and `issues`, which run `gh` there, and it can pass options to the plugins your config names, which then run with those options. Use `off` for repositories you do not trust.
+`safe` limits what a project file adds, not what your config already allows. Under `safe` a project file can still use every built-in placeholder, including the git placeholders, which may run `git` in the session's directory, and `prs` and `issues`, which run `gh` or `glab` for the repository's remote, and it can pass options to the plugins your config names, which then run with those options. Use `off` for repositories you do not trust.
 
 ### Directives
 
 | Directive | Form |
 |-----------|------|
-| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-64) `subagent subagent-hide separator gap wrap max-rows refresh icons icon-width skin skin-glyphs palette color-depth gradient claude-dir compact-at project-config update-check service-status usage-api budget-session budget-today budget-month budget-block budget-warn color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
+| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-64) `subagent subagent-hide separator gap wrap max-rows refresh icons icon-width skin skin-glyphs palette color-depth gradient claude-dir compact-at project-config update-check service-status usage-api gitlab-hosts budget-session budget-today budget-month budget-block budget-warn color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
 | `default` | `default <placeholder> key=value ...` |
 | `account` | `account "<glob>" <label> <color>` |
 | `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%`; see [Rules](#rules) |
@@ -76,7 +76,7 @@ Quote values with spaces (double quotes; a value is one token). `#` outside quot
 | `gap` | Fewest spaces between the left and right groups (and around a centred group) on one row, default `3`; with less room the groups are joined by ` │ ` or the centre group moves to its own row. See [Lines and wrapping](#lines-and-wrapping) |
 | `max-rows` | Most rows a render prints, 1-64, default `4`; see [Lines and wrapping](#lines-and-wrapping) |
 | `wrap` | `off` (default) or `on`; see [Lines and wrapping](#lines-and-wrapping). `auto` is read as `off` |
-| `refresh` | Default ttl floor for plugins, default `5s`. A number with a unit: `s`, `m`, `h` or `d` (`30s`, `2m`). `gh` lists use 120 s and `%cmd%` values 1 h, whatever this says |
+| `refresh` | Default ttl floor for plugins, default `5s`. A number with a unit: `s`, `m`, `h` or `d` (`30s`, `2m`). `gh` and `glab` lists use 120 s and `%cmd%` values 1 h, whatever this says |
 | `icons` | `none` (default, output unchanged), `nerdfont` or `emoji`. See [Icons](#icons) |
 | `icon-width` | `1` (default) or `2`; cells a Nerd Font glyph (private-use codepoint) takes in your font. Layout uses it to pad; emoji widths come from Unicode |
 | `skin` | `plain` (default), `powerline` or `capsule`. See [Skins](#skins) |
@@ -92,6 +92,7 @@ Quote values with spaces (double quotes; a value is one token). `#` outside quot
 | `project-config` | `off`, `safe` (default) or `full`: what a project `.bar.conf` may do. See [Project config](#project-config) |
 | `budget-session`, `budget-today`, `budget-month`, `budget-block` | Dollar budget for [budget](#budget): `$20`, `20` or `12.50` (more than zero, at most two decimals); `off` clears it. Unset by default |
 | `budget-warn` | Percent of a budget from which spend takes the warn colour, `1%`-`100%`, default `80%`. See [budget](#budget) |
+| `gitlab-hosts` | Self-hosted GitLab hosts, comma-separated (`git.example.com,gitlab.corp.example`), whose remotes [prs and issues](#prs-and-issues) read with `glab`; gitlab.com always counts. `""` clears it. Default none |
 | `color.good`, `color.warn`, `color.bad`, `ramp` | State colours (one colour) and usage ramp (exactly 11 colours, quoted, worst score first). See [Colours](#colours) |
 | `price` | Model price override for [spendhist](#spendhist) |
 
@@ -565,7 +566,7 @@ Operation and conflicts:
 
 ### prs and issues
 
-Open pull requests and issues of the repository, from `gh` search, coloured by state.
+Open pull requests (merge requests on GitLab) and issues of the repository, coloured by state. The `origin` remote picks the tool: github.com uses `gh`, gitlab.com and the hosts in `set gitlab-hosts` use `glab` (see [GitLab](#gitlab)); other hosts show nothing.
 
 | Placeholder | Option | Default | Meaning |
 |---|---|---|---|
@@ -588,6 +589,17 @@ Open pull requests and issues of the repository, from `gh` search, coloured by s
 - Any check run concluding `FAILURE`, `TIMED_OUT`, `CANCELLED`, `ACTION_REQUIRED` or `STARTUP_FAILURE`, or status context `FAILURE` / `ERROR`, fails; else any unfinished run or `PENDING` / `EXPECTED` context is pending; else pass.
 - No checks, or a cached list without check data, gets no mark.
 - Glyphs follow `icons`: `none` uses `✗` `•` `✓`; `nerdfont` `nf-oct-x` U+F467, `nf-oct-dot_fill` U+F444, `nf-oct-check` U+F42E; `emoji` ❌ 🟡 ✅.
+
+#### GitLab
+
+On a GitLab remote, `prs` lists merge requests as `!N` and `issues` lists issues as `#N`, with the same options, colours, marks, links, 120 s TTL and failure backoff as on GitHub.
+
+- Hosts: gitlab.com, plus `set gitlab-hosts`. bar does not read `glab`'s own config to find hosts. The remote URL (https, ssh or scp form) is passed to `glab` as `-R https://<host>/<group>/.../<project>`, so `glab` picks the host and its own login for it; bar never sees a token.
+- One background job per query runs `glab mr list` (or `glab issue list`) with `--output json`, then for merge requests one `glab mr view <N> --output json` per listed MR for its pipeline, all in that job. The output is cut down to number, link, draft, merge status and pipeline before it is cached.
+- Pipeline: the MR's head pipeline. `failed` and `canceled` fail; `created`, `waiting_for_resource`, `preparing`, `pending`, `running`, `scheduled` and `manual` are pending; `success` and `skipped` pass. When `glab mr view` fails, `detailed_merge_status` `ci_must_pass` counts as failed and `ci_still_running` as pending; otherwise no mark.
+- Colour: red for a failed pipeline, `detailed_merge_status` `requested_changes`, or a conflict; amber for a pending pipeline, `not_approved`, or a draft; else green.
+- `status=closed` and `status=merged` become `--closed` and `--merged`.
+- Filters become `glab` flags, one query per OR branch (GitLab's label filter is AND-only, so `label=a|b` runs two queries): `label` gives `--label` / `--not-label`, `author` `--author`, `assignee` `--assignee`; for issues a single negated `author` or `assignee` gives `--not-author` / `--not-assignee`. A negated `author` on `prs` has no `glab mr list` flag, so the placeholder shows nothing; a branch naming two authors (or assignees) matches nothing and is skipped.
 
 #### Label logic
 

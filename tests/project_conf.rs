@@ -198,6 +198,23 @@ fn safe_refuses_turning_on_the_usage_api() {
 }
 
 #[test]
+fn safe_refuses_gitlab_hosts() {
+    let (c, e) = dropping(
+        Some("set gitlab-hosts a.example.com\n"),
+        "set gitlab-hosts evil.example\n",
+    );
+    assert_eq!(c.gitlab_hosts, ["a.example.com"]);
+    assert!(e[0].message.contains("gitlab-hosts"), "{e:?}");
+    assert!(e[0].message.contains("set project-config full"));
+    let c = layered(
+        Some("set project-config full\n"),
+        "set gitlab-hosts b.example\n",
+    )
+    .unwrap();
+    assert_eq!(c.gitlab_hosts, ["b.example"]);
+}
+
+#[test]
 fn safe_allows_plugins_the_user_config_names() {
     for user in [
         "set right \"#{ci}\"\n",

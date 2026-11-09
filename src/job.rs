@@ -18,6 +18,14 @@ pub enum Job {
     Command { cmd: String, timeout: u64 },
     /// `gh <args>` run directly, no shell; stdout on success.
     Gh { args: Vec<String> },
+    /// `glab <args>` run directly, no shell; its JSON reduced to the
+    /// fields `gh` gives. `kind` `mr` also runs `glab mr view` per listed
+    /// MR in `repo` (an `https://` URL) for its pipeline.
+    Glab {
+        kind: String,
+        repo: String,
+        args: Vec<String>,
+    },
     /// `git status --porcelain=v2 --branch` in `dir` (absolute), no shell.
     GitStatus { dir: String },
     /// `git for-each-ref --points-at=<commit> refs/tags` in `dir`
@@ -71,6 +79,9 @@ impl Job {
                 json!({"kind": "command", "cmd": cmd, "timeout": timeout})
             }
             Job::Gh { args } => json!({"kind": "gh", "args": args}),
+            Job::Glab { kind, repo, args } => {
+                json!({"kind": "glab", "glab": kind, "repo": repo, "args": args})
+            }
             Job::GitStatus { dir } => json!({"kind": "git-status", "dir": dir}),
             Job::GitTags { dir, commit } => {
                 json!({"kind": "git-tags", "dir": dir, "commit": commit})
@@ -103,12 +114,20 @@ impl Job {
                 timeout: v["timeout"].as_u64().unwrap_or(COMMAND_TIMEOUT),
             }),
             Some("gh") => Ok(Job::Gh {
-                args: v["args"]
-                    .as_array()
-                    .ok_or("gh job without args")?
-                    .iter()
-                    .map(|a| a.as_str().map(String::from).ok_or("gh arg not a string"))
-                    .collect::<Result<_, _>>()?,
+                args: str_args(v, "gh")?,
+            }),
+            Some("glab") => Ok(Job::Glab {
+                kind: v["glab"]
+                    .as_str()
+                    .filter(|k| matches!(*k, "mr" | "issue"))
+                    .ok_or("glab job without mr or issue")?
+                    .into(),
+                repo: v["repo"]
+                    .as_str()
+                    .filter(|r| r.starts_with("https://"))
+                    .ok_or("glab job without https repo")?
+                    .into(),
+                args: str_args(v, "glab")?,
             }),
             Some("git-status") => Ok(Job::GitStatus {
                 dir: abs_path(v, "dir")?,
@@ -176,6 +195,9 @@ impl Job {
                 let mut c = Command::new(crate::platform::program("gh"));
                 c.args(args);
                 run_child(c, None, limit)
+            }
+            Job::Glab { kind, repo, args } => {
+                crate::placeholders::glab::run(kind, repo, args, limit)
             }
             Job::GitStatus { dir } => {
                 let mut c = Command::new(crate::platform::program("git"));
@@ -250,6 +272,20 @@ impl Job {
             }
         }
     }
+}
+
+/// String array `args` of a `gh` or `glab` job.
+fn str_args(v: &Value, tool: &str) -> Result<Vec<String>, String> {
+    v["args"]
+        .as_array()
+        .ok_or_else(|| format!("{tool} job without args"))?
+        .iter()
+        .map(|a| {
+            a.as_str()
+                .map(String::from)
+                .ok_or_else(|| format!("{tool} arg not a string"))
+        })
+        .collect()
 }
 
 /// Plugins run by absolute path only, never looked up on PATH.
