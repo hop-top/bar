@@ -65,7 +65,7 @@ A project file comes with the repository, so what it may do is set in your confi
 | `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%`; see [Rules](#rules) |
 | `plugin` | `plugin <name> key=value ...`; see [plugins](plugins.md#render) |
 
-Quote values with spaces (double quotes; a value is one token). `#` outside quotes starts a comment, so quote hex colours: `set color.good "#a3be8c"`, `default repo fg="#88c0d0"`. A later `default` line for the same placeholder merges over an earlier one; a later `plugin` line for the same name replaces it; a later `set` wins.
+Quote values with spaces (double quotes; a value is one token). `#` outside quotes starts a comment, so quote hex colours: `set color.good "#a3be8c"`, `default repo fg="#88c0d0"`; a line that fails because an unquoted `#rrggbb` cut it short says so in its error. A later `default` line for the same placeholder merges over an earlier one; a later `plugin` line for the same name replaces it; a later `set` wins.
 
 | `set` key | Values |
 |---|---|

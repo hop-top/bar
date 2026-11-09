@@ -162,3 +162,24 @@ fn overflowing_duration_and_amount_report_line_number() {
     assert!(e[0].message.contains("invalid duration"));
     assert!(e[1].message.contains("invalid amount"));
 }
+
+#[test]
+fn unquoted_hex_colour_gets_a_hint() {
+    const HINT: &str = "quote hex colours: \"#rrggbb\"";
+    for line in [
+        "set color.good #a3be8c",
+        "set gradient #ff0000:#0000ff",
+        "account \"*@work.com\" work #88c0d0",
+        "set color.bad    #BF616A   ",
+    ] {
+        let e = conf::parse(line).unwrap_err();
+        assert!(e[0].message.contains(HINT), "{line}: {e:?}");
+        assert_eq!(e[0].line, 1);
+    }
+    // a comment that is no colour, or a quoted one, gets no hint
+    for line in ["set color.good # 114 here", "set color.good #a3be"] {
+        let e = conf::parse(line).unwrap_err();
+        assert!(!e[0].message.contains(HINT), "{line}: {e:?}");
+    }
+    assert!(conf::parse("set color.good \"#a3be8c\" # #ffffff").is_ok());
+}

@@ -440,7 +440,10 @@ fn apply_text(
             }
             Ok(())
         });
-        if let Err(message) = r {
+        if let Err(mut message) = r {
+            if hex_comment(raw) {
+                message.push_str("; quote hex colours: \"#rrggbb\"");
+            }
             errs.push(ConfError {
                 line: i + 1,
                 message,
@@ -448,6 +451,25 @@ fn apply_text(
         }
     }
     errs
+}
+
+/// Whether the comment that ends `line` starts with `#rrggbb`: a hex colour
+/// left unquoted, so `#` cut the value off.
+fn hex_comment(line: &str) -> bool {
+    let mut in_q = false;
+    for (i, ch) in line.char_indices() {
+        match ch {
+            '"' => in_q = !in_q,
+            '#' if !in_q => {
+                let hex = &line.as_bytes()[i + 1..];
+                return hex.len() >= 6
+                    && hex[..6].iter().all(u8::is_ascii_hexdigit)
+                    && hex.get(6).is_none_or(|b| !b.is_ascii_alphanumeric());
+            }
+            _ => {}
+        }
+    }
+    false
 }
 
 pub fn parse(src: &str) -> Result<Config, Vec<ConfError>> {
