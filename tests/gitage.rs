@@ -226,3 +226,15 @@ fn background_refresh_fills_the_age_in_a_linked_worktree() {
     }
     assert!(plain.starts_with("wt ") && plain.ends_with('y'), "{plain}");
 }
+
+#[test]
+fn preview_sample_follows_ramp() {
+    let draw = |opts: &str| {
+        let conf = format!("set left \"#{{age{opts}}}\"\n");
+        hop_bar::web::render(&conf, "{}", 120, 0, "")
+    };
+    let (plain, new, old) = (draw(""), draw("[ramp=48]"), draw("[ramp=1]"));
+    assert!(plain.contains("2h"), "{plain:?}");
+    assert_ne!(plain, new, "ramp=48 coloured on the ramp");
+    assert_ne!(new, old, "a 2h commit is past a 1h ramp");
+}
