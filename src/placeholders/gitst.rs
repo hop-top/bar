@@ -29,6 +29,8 @@ pub struct Status {
     pub unmerged: usize,
     /// `(ahead, behind)`; `None` without an upstream.
     pub ahead_behind: Option<(usize, usize)>,
+    /// HEAD's commit id; `None` on an unborn branch.
+    pub oid: Option<String>,
     /// Input hit the cache size cap: the counts are lower bounds.
     pub truncated: bool,
 }
@@ -46,7 +48,9 @@ pub fn parse(text: &str) -> Status {
         ..Status::default()
     };
     for line in text.lines() {
-        if let Some(ab) = line.strip_prefix("# branch.ab ") {
+        if let Some(oid) = line.strip_prefix("# branch.oid ") {
+            s.oid = gitfs::is_oid(oid).then(|| oid.to_ascii_lowercase());
+        } else if let Some(ab) = line.strip_prefix("# branch.ab ") {
             let n = |t: Option<&str>, sign| {
                 t.and_then(|t| t.strip_prefix(sign))
                     .and_then(|t| t.parse().ok())

@@ -17,17 +17,16 @@ pub struct Sha;
 pub struct Tag;
 pub struct Stash;
 
-/// HEAD's commit id; `git rev-parse` only when the files cannot tell.
+/// HEAD's commit id. A repository whose refs the files cannot resolve
+/// (a `packed-refs` over the reader's cap, reftable) reads it from the
+/// cached `git status`; `git rev-parse` only when the repository itself
+/// cannot be opened from the files.
 fn head(ctx: &Ctx, dir: &Path) -> Option<String> {
     let id = match gitfs::discover(dir) {
         Found::NotRepo => return None,
         Found::Repo(r) => match r.head_commit() {
             Ok(c) => c?,
-            Err(_) => git_if(
-                may_spawn(ctx),
-                dir,
-                &["rev-parse", "--verify", "-q", "HEAD"],
-            )?,
+            Err(_) => gitst::status(ctx, &Options::default())?.oid?,
         },
         Found::Unsupported => git_if(
             may_spawn(ctx),

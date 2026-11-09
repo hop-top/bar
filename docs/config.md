@@ -554,7 +554,7 @@ Repository, branch, commit, tag, stash, operation in progress, working-tree stat
 
 Commit, tags and stash:
 
-- `sha` follows HEAD through symbolic refs, loose refs and `packed-refs`; in a linked worktree HEAD is the worktree's own and branches come from the main repository. SHA-256 repositories show their longer ids.
+- `sha` follows HEAD through symbolic refs, loose refs and `packed-refs`; in a linked worktree HEAD is the worktree's own and branches come from the main repository. When the files cannot resolve it (a `packed-refs` over 1 MiB, reftable), the commit comes from the cached `git status` that `dirty` uses, refreshed in the background. SHA-256 repositories show their longer ids.
 - `tag` shows a tag pointing exactly at HEAD: lightweight tags whose target is HEAD and annotated tags whose peeled target is HEAD. With several, an annotated tag wins over a lightweight one, then the highest version (`v1.10` above `v1.9`). There is no "nearest tag plus distance" form; that needs the commit graph.
 - Annotated tags in `packed-refs` are recognised from the file. A loose tag ref that does not point at HEAD could still be an annotated tag of HEAD, which only the object database can tell; then `tag` shows the cached result of a background `git for-each-ref --points-at`, refreshed every `ttl` seconds, and the tags the files gave until the first result is in. Render never waits on it.
 - `stash` counts the entries of the stash reflog, as `git stash list` does.
