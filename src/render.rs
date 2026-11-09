@@ -378,7 +378,8 @@ fn segs(config: &Config, groups: [Vec<Rendered>; 3]) -> [Vec<Seg>; 3] {
 
 /// One `bar subagent` row: `layout` as a single left group, painted like
 /// the status line, its trailing segments dropped while it is wider than
-/// `columns` (the first is always kept). No plugins; one row.
+/// `columns`; a first segment still too wide is clipped with `…`. No
+/// plugins; one row.
 pub fn render_row(
     session: &Session,
     config: &Config,
@@ -444,7 +445,11 @@ fn row_impl(
         l.pop();
         row = draw(config, paint, &l, Side::Left);
     }
-    row.text.replace(['\n', '\r'], " ")
+    let text = match columns {
+        Some(c) if row.width > c => style::clip(&row.text, c, config.icon_width),
+        _ => row.text,
+    };
+    text.replace(['\n', '\r'], " ")
 }
 
 /// What `bar render` prints: the line(s), or the short config error.

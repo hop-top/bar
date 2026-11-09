@@ -166,7 +166,7 @@ fn trailing_segments_drop_to_fit_columns() {
     assert_eq!(r[0].1, "● Explore │ Reading src/conf.rs");
     p.columns = Some(3);
     let r = plain(&rows(&p, &cfg("")));
-    assert_eq!(r[0].1, "● Explore", "the first segment is always kept");
+    assert_eq!(r[0].1, "● …", "the first segment is clipped");
 }
 
 #[test]
@@ -287,4 +287,53 @@ fn cli_preview_subagent_draws_the_sample_rows() {
     );
     assert!(rows[2].starts_with("✓ general-purpose"), "{text}");
     let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_first_segment_wider_than_columns_is_clipped() {
+    let long = "a-very-long-custom-agent-type-name-that-goes-on";
+    let p = Payload {
+        columns: Some(12),
+        tasks: vec![Task {
+            id: "t".into(),
+            agent_type: long.into(),
+            ..Task::default()
+        }],
+        ..Payload::default()
+    };
+    for conf in [
+        "set subagent \"#{task.name}\"",
+        "set skin powerline\nset subagent \"#{task.name} │ #{task.status}\"",
+    ] {
+        let r = rows(&p, &cfg(conf));
+        let row = &r[0].1;
+        assert!(hop_bar::style::visible_width(row) <= 12, "{conf}: {row:?}");
+        assert!(strip_codes(row).ends_with('…'), "{conf}: {row:?}");
+        assert!(row.ends_with("\x1b[0m"), "open styles closed: {row:?}");
+        assert!(
+            strip_codes(row).trim_start().starts_with("a-very-lon"),
+            "{row:?}"
+        );
+    }
+    // the default layout caps the name
+    let mut p = p;
+    p.columns = None;
+    let r = plain(&rows(&p, &cfg("")));
+    assert_eq!(r[0].1, format!("● {}…", &long[..23]));
+}
+
+#[test]
+fn clip_keeps_escapes_and_closes_links() {
+    use hop_bar::style::{clip, link, visible_width};
+    let s = format!("\x1b[1mab{}\x1b[0m", link("https://x.test", "cdefgh"));
+    let c = clip(&s, 5, 1);
+    assert_eq!(strip_codes(&c), "abcd…");
+    assert_eq!(visible_width(&c), 5);
+    assert!(
+        c.starts_with("\x1b[1mab\x1b]8;;https://x.test\x1b\\cd"),
+        "{c:?}"
+    );
+    assert!(c.ends_with("…\x1b]8;;\x1b\\\x1b[0m"), "{c:?}");
+    assert_eq!(clip("abc", 5, 1), "abc");
+    assert_eq!(strip_codes(&clip("abc", 1, 1)), "…");
 }

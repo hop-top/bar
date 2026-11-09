@@ -1,6 +1,6 @@
 //! SGR colouring, OSC 8 links, text sanitising and visible-width measuring.
 
-use unicode_width::UnicodeWidthStr;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 pub fn fg(code: u8, text: &str) -> String {
     format!("{}{text}\x1b[39m", fg_code(code))
@@ -141,6 +141,75 @@ pub fn visible_width_with(text: &str, icon_width: usize) -> usize {
         .map(|run| run.width())
         .sum::<usize>()
         + plain.chars().filter(|&c| is_private_use(c)).count() * icon_width
+}
+
+/// `text` cut to at most `cells` visible cells, ending in `…`; as it is
+/// when it fits. CSI and OSC sequences are copied whole and never counted;
+/// an OSC 8 link left open is closed, and any SGR is reset at the end.
+/// Private-use glyphs count `icon_width` cells.
+pub fn clip(text: &str, cells: usize, icon_width: usize) -> String {
+    if visible_width_with(text, icon_width) <= cells {
+        return text.to_string();
+    }
+    let budget = cells.saturating_sub(1);
+    let (mut out, mut used, mut sgr, mut linked) = (String::new(), 0, false, false);
+    let mut it = text.chars().peekable();
+    while let Some(c) = it.next() {
+        if c == '\x1b' {
+            let mut seq = String::from(c);
+            match it.peek().copied() {
+                Some('[') => {
+                    seq.extend(it.next());
+                    for n in it.by_ref() {
+                        seq.push(n);
+                        if ('\x40'..='\x7e').contains(&n) {
+                            break;
+                        }
+                    }
+                    sgr = true;
+                }
+                Some(']') => {
+                    seq.extend(it.next());
+                    while let Some(n) = it.next() {
+                        seq.push(n);
+                        if n == '\x07' {
+                            break;
+                        }
+                        if n == '\x1b' {
+                            seq.extend(it.next());
+                            break;
+                        }
+                    }
+                    if let Some(body) = seq.strip_prefix("\x1b]8;") {
+                        let uri = body.split_once(';').map_or("", |(_, u)| u);
+                        let uri = uri.trim_end_matches('\x07').trim_end_matches("\x1b\\");
+                        linked = !uri.is_empty();
+                    }
+                }
+                _ => {}
+            }
+            out.push_str(&seq);
+            continue;
+        }
+        let w = if is_private_use(c) {
+            icon_width
+        } else {
+            c.width().unwrap_or(0)
+        };
+        if used + w > budget {
+            break;
+        }
+        used += w;
+        out.push(c);
+    }
+    out.push('…');
+    if linked {
+        out.push_str("\x1b]8;;\x1b\\");
+    }
+    if sgr {
+        out.push_str("\x1b[0m");
+    }
+    out
 }
 
 /// The text with CSI (SGR) and OSC sequences removed.
