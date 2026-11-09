@@ -20,11 +20,16 @@ use crate::transcript::parse_ts;
 pub use crate::tz::{day_of, day_string, Tz};
 
 mod summary;
-use summary::{add, days_from_json, days_to_json, model_key, summary_json, LONG_MARK, MAX_MODELS};
-pub use summary::{Spend, Summary, Tokens, OTHER};
+use summary::{
+    add, days_from_json, days_to_json, hours_from_json, hours_to_json, model_key, summary_json,
+    LONG_MARK, MAX_MODELS,
+};
+pub use summary::{Models, Spend, Summary, Tokens, BLOCK_HOURS, OTHER};
 
 /// Days of history kept, today included.
 pub const KEEP_DAYS: i64 = 62;
+/// Hours of history kept by UTC hour, the current one included.
+pub const KEEP_HOURS: i64 = 25;
 /// Days handed to a render: a month and some slack.
 const SUMMARY_DAYS: i64 = 35;
 /// Largest state file written.
@@ -33,7 +38,9 @@ const MAX_ID: usize = 256;
 #[derive(Default)]
 struct State {
     files: BTreeMap<String, Mark>,
-    days: BTreeMap<String, BTreeMap<String, Tokens>>,
+    days: BTreeMap<String, Models>,
+    /// Totals per UTC hour (unix seconds / 3600) for the last `KEEP_HOURS`.
+    hours: BTreeMap<i64, Models>,
     /// Hashes of counted messages, by the day they were counted on.
     seen: BTreeMap<String, Vec<u64>>,
 }
@@ -44,6 +51,10 @@ impl State {
         (v["v"] == 1).then_some(())?;
         let mut st = State {
             days: days_from_json(v.get("days")?)?,
+            hours: match v.get("hours") {
+                Some(h) => hours_from_json(h)?,
+                None => BTreeMap::new(),
+            },
             ..State::default()
         };
         for (path, m) in v.get("files")?.as_object()? {
@@ -97,7 +108,12 @@ impl State {
                 )
             })
             .collect();
-        let head = json!({"v": 1, "files": files, "days": days_to_json(&self.days, "")});
+        let head = json!({
+            "v": 1,
+            "files": files,
+            "days": days_to_json(&self.days, ""),
+            "hours": hours_to_json(&self.hours),
+        });
         let mut budget = max.saturating_sub(head.to_string().len() + 32);
         let mut seen = Map::new();
         for (day, ids) in self.seen.iter().rev() {
@@ -200,6 +216,7 @@ struct Fold<'a> {
     seen: HashSet<u64>,
     days: Days,
     min_date: String,
+    min_hour: i64,
     now: i64,
     dirty: bool,
 }
@@ -255,16 +272,23 @@ impl Fold<'_> {
         } else {
             model.to_string()
         };
-        let day = self.st.days.entry(date).or_default();
-        // one slot stays free for the overflow bucket
-        let key = if day.contains_key(&key) || day.len() < MAX_MODELS - 1 {
-            key
-        } else {
-            OTHER.to_string()
-        };
-        add(day.entry(key).or_default(), &t);
+        let hour = ts.div_euclid(3600);
+        if hour >= self.min_hour {
+            put(self.st.hours.entry(hour).or_default(), &key, &t);
+        }
+        put(self.st.days.entry(date).or_default(), &key, &t);
         self.dirty = true;
     }
+}
+
+/// Adds `t` to `key` in a bucket; one slot stays free for the overflow.
+fn put(bucket: &mut Models, key: &str, t: &Tokens) {
+    let key = if bucket.contains_key(key) || bucket.len() < MAX_MODELS - 1 {
+        key
+    } else {
+        OTHER
+    };
+    add(bucket.entry(key.to_string()).or_default(), t);
 }
 
 /// Transcripts under `<claude dir>/projects/*/`, newest first, skipping
@@ -315,6 +339,7 @@ pub fn update_with(
 ) -> Option<String> {
     let today = day_of(now, tz);
     let min_date = day_string(today - (KEEP_DAYS - 1));
+    let min_hour = now.div_euclid(3600) - (KEEP_HOURS - 1);
     let files = transcripts(claude_dir, now - (KEEP_DAYS + 1) * 86_400)?;
     let sfile = state_dir.join("spendhist").join(format!(
         "{}.json",
@@ -324,10 +349,11 @@ pub fn update_with(
     let before = st.files.len();
     st.files.retain(|p, _| files.iter().any(|(f, _)| f == p));
     let mut dirty = st.files.len() != before;
-    let had_days = st.days.len() + st.seen.len();
+    let had_days = st.days.len() + st.seen.len() + st.hours.len();
     st.days.retain(|d, _| *d >= min_date);
     st.seen.retain(|d, _| *d >= min_date);
-    dirty |= st.days.len() + st.seen.len() != had_days;
+    st.hours.retain(|h, _| *h >= min_hour);
+    dirty |= st.days.len() + st.seen.len() + st.hours.len() != had_days;
     let seen = st.seen.values().flatten().copied().collect();
     let mut fold = Fold {
         st: &mut st,
@@ -339,6 +365,7 @@ pub fn update_with(
             last: None,
         },
         min_date,
+        min_hour,
         now,
         dirty: false,
     };
@@ -371,5 +398,5 @@ pub fn update_with(
         save(&sfile, &body);
     }
     let from = day_string(today - (SUMMARY_DAYS - 1));
-    Some(summary_json(&st.days, &from))
+    Some(summary_json(&st.days, &st.hours, &from))
 }
