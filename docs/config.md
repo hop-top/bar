@@ -674,6 +674,7 @@ A value is a preset or 2 to 8 colours split by `:`: `gradient=ember`, `gradient=
 
 - Colours are interpolated in OKLab, so the middle of a gradient does not turn muddy or dark the way a plain RGB blend can, then quantised to the [colour depth](#colour-depth). At `256` neighbouring characters that land on one code share one SGR; at `truecolor` every character gets its own colour.
 - Only the foreground changes: links, backgrounds, bold, widths and layout stay as they are. Values are cut (`max=`) before they are painted. A character is a grapheme cluster, as the terminal draws it: a letter with its combining marks, an emoji sequence joined by ZWJ, a flag, an emoji with its variation selector each take one colour, and a wide one counts its two cells. Colours inside the value that `fg` or a gradient replace are left out.
+- Not the same as `color=gradient` on [usage](#usage) and [ctx](#ctx): that option colours bar cells by the value they stand for, along the usage ramp; `gradient=` colours whatever text the placeholder prints, by position. With both, `gradient=` wins, since it paints over the finished value.
 - On a placeholder a gradient beats `fg`. `set gradient` repaints all segment text, so it beats placeholder colours (state colours, ramps, `fg=`, `gradient=`); separators, joiners and skin glyphs keep theirs. `set gradient off` turns it off.
 - `bar check` rejects an unknown preset, a bad colour, or fewer than 2 or more than 8 stops.
 
