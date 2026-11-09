@@ -1,9 +1,9 @@
-//! Gradients interpolated in OKLab, and recolouring rendered text cell by
-//! cell without touching its escape sequences, links or width.
+//! Gradients interpolated in OKLab, and recolouring rendered text cluster
+//! by cluster without touching its escape sequences, links or width.
 
 use crate::color::{Color, Depth};
-use crate::style::{depth, push_fg};
-use unicode_width::UnicodeWidthChar;
+use crate::style::{depth, plain_width, push_fg};
+use unicode_segmentation::UnicodeSegmentation;
 
 /// Named gradients: name and stops.
 pub const PRESETS: [(&str, &[[u8; 3]]); 6] = [
@@ -105,40 +105,83 @@ impl Gradient {
 /// What text is recoloured with.
 pub enum Ink<'a> {
     Solid(Color),
-    /// A gradient across `span` cells, the text starting at cell `start`.
+    /// A gradient along `extent`, the text starting at cell `start` of it;
+    /// private-use glyphs are `icon_width` cells.
     Ramp {
         gradient: &'a Gradient,
         start: usize,
-        span: usize,
+        extent: Extent,
+        icon_width: usize,
     },
 }
 
-/// Cells of a character as the layout counts them (private-use glyphs one).
-fn cells(c: char) -> usize {
-    if matches!(c, '\u{E000}'..='\u{F8FF}' | '\u{F0000}'..='\u{FFFFD}') {
-        1
-    } else {
-        c.width().unwrap_or(0)
+/// Where a gradient runs: its cells, and the centres of its first and last
+/// visible clusters, which get the first and last stop.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Extent {
+    pub cells: usize,
+    first: f32,
+    last: f32,
+}
+
+impl Extent {
+    /// The extent of `texts` drawn one after the other.
+    pub fn of<'a>(texts: impl IntoIterator<Item = &'a str>, icon_width: usize) -> Extent {
+        let mut e = Extent::default();
+        let mut seen = false;
+        for text in texts {
+            for w in cluster_cells(text, icon_width) {
+                if w == 0 {
+                    continue;
+                }
+                let centre = e.cells as f32 + w as f32 / 2.0;
+                if !seen {
+                    e.first = centre;
+                    seen = true;
+                }
+                e.last = centre;
+                e.cells += w;
+            }
+        }
+        e
+    }
+
+    /// Where along the gradient (0 to 1) a cluster `w` cells wide at cell
+    /// `pos` falls.
+    fn t(&self, pos: usize, w: usize) -> f32 {
+        if self.last > self.first {
+            (pos as f32 + w as f32 / 2.0 - self.first) / (self.last - self.first)
+        } else {
+            0.0
+        }
     }
 }
 
-/// Visible cells of `text`, escape sequences skipped.
-pub fn span(text: &str) -> usize {
+/// Visible cells of `text`, escape sequences skipped, as the layout counts
+/// them (`style::visible_width_with`).
+pub fn span(text: &str, icon_width: usize) -> usize {
+    cluster_cells(text, icon_width).sum()
+}
+
+/// Cells of each grapheme cluster of `text`, escape sequences skipped.
+fn cluster_cells(text: &str, icon_width: usize) -> impl Iterator<Item = usize> + '_ {
     pieces(text)
-        .map(|p| match p {
-            Piece::Char(c) => cells(c),
-            Piece::Esc(_) => 0,
+        .filter_map(|p| match p {
+            Piece::Text(t) => Some(t),
+            Piece::Esc(_) => None,
         })
-        .sum()
+        .flat_map(|t| t.graphemes(true))
+        .map(move |g| plain_width(g, icon_width))
 }
 
 enum Piece<'a> {
-    /// A CSI or OSC sequence.
+    /// A CSI or OSC sequence, or ESC and the character after it.
     Esc(&'a str),
-    Char(char),
+    /// Text up to the next escape sequence.
+    Text(&'a str),
 }
 
-/// The text as escape sequences and characters, in order.
+/// The text as escape sequences and runs of text, in order.
 fn pieces(text: &str) -> impl Iterator<Item = Piece<'_>> {
     let b = text.as_bytes();
     let mut i = 0;
@@ -146,33 +189,63 @@ fn pieces(text: &str) -> impl Iterator<Item = Piece<'_>> {
         if i >= b.len() {
             return None;
         }
-        if b[i] == 0x1b && matches!(b.get(i + 1), Some(b'[' | b']')) {
-            let start = i;
-            i += 2;
-            if b[start + 1] == b'[' {
+        let start = i;
+        if b[i] != 0x1b {
+            i = memchr::memchr(0x1b, &b[i..]).map_or(b.len(), |n| i + n);
+            return Some(Piece::Text(&text[start..i]));
+        }
+        i += 1;
+        match b.get(i) {
+            Some(b'[') => {
+                i += 1;
                 while i < b.len() && !(0x40..=0x7e).contains(&b[i]) {
                     i += 1;
                 }
                 i = (i + 1).min(b.len());
-            } else {
+            }
+            Some(b']') => {
+                i += 1;
                 while i < b.len() && b[i] != 0x07 && !(b[i] == 0x1b && b.get(i + 1) == Some(&b'\\'))
                 {
                     i += 1;
                 }
                 i = (i + if b.get(i) == Some(&0x07) { 1 } else { 2 }).min(b.len());
             }
-            return Some(Piece::Esc(&text[start..i]));
+            Some(_) => i += text[i..].chars().next().map_or(1, char::len_utf8),
+            None => {}
         }
-        let c = text[i..].chars().next()?;
-        i += c.len_utf8();
-        Some(Piece::Char(c))
+        Some(Piece::Esc(&text[start..i]))
     })
 }
 
-/// `text` with every visible cell drawn in `ink`, if any, and bold when `bold`.
-/// Escape sequences stay where they are; the ink is drawn again after each
-/// CSI, so colours inside the text give way to it. Zero-width characters
-/// stay with the one before them.
+/// Whether `seq` is an SGR that only sets the foreground colour, so an ink
+/// drawn over it makes it redundant.
+fn fg_only(seq: &str) -> bool {
+    let Some(params) = seq.strip_prefix("\x1b[").and_then(|s| s.strip_suffix('m')) else {
+        return false;
+    };
+    let p: Vec<&str> = params.split(';').collect();
+    let mut i = 0;
+    while i < p.len() {
+        i += match p[i] {
+            "38" => match p.get(i + 1).copied() {
+                Some("5") => 3,
+                Some("2") => 5,
+                _ => return false,
+            },
+            "39" => 1,
+            x if matches!(x.parse::<u8>(), Ok(30..=37 | 90..=97)) => 1,
+            _ => return false,
+        };
+    }
+    i == p.len()
+}
+
+/// `text` with every visible cluster drawn in `ink`, if any, and bold when
+/// `bold`. Escape sequences stay where they are, except foreground colours
+/// the ink replaces; the ink is drawn again after each other CSI, so colours
+/// inside the text give way to it. A grapheme cluster (emoji sequence, flag,
+/// letter and combining marks) takes one colour.
 pub fn recolor(text: &str, ink: Option<&Ink>, bold: bool) -> String {
     let d = depth();
     let ink = ink.filter(|_| d != Depth::None);
@@ -185,45 +258,47 @@ pub fn recolor(text: &str, ink: Option<&Ink>, bold: bool) -> String {
     let mut last: Option<Color> = None;
     let mut drew = false;
     for piece in pieces(text) {
-        let c = match piece {
+        let run = match piece {
             Piece::Esc(seq) => {
+                if ink.is_some() && fg_only(seq) {
+                    continue;
+                }
                 out.push_str(seq);
                 fresh |= seq.starts_with("\x1b[");
                 continue;
             }
-            Piece::Char(c) => c,
+            Piece::Text(t) => t,
         };
-        let w = cells(c);
-        if w > 0 {
-            if fresh && bold {
-                out.push_str("\x1b[1m");
-            }
-            if let Some(ink) = ink {
-                let color = match ink {
-                    Ink::Solid(c) => c.at(d),
-                    Ink::Ramp {
-                        gradient,
-                        start,
-                        span,
-                    } => {
-                        let t = if *span > 1 {
-                            (start + pos) as f32 / (span - 1) as f32
-                        } else {
-                            0.0
-                        };
-                        gradient.at(t).at(d)
-                    }
-                };
-                if fresh || last != Some(color) {
-                    push_fg(&mut out, color);
-                    last = Some(color);
+        for g in run.graphemes(true) {
+            let w = match ink {
+                Some(Ink::Ramp { icon_width, .. }) => plain_width(g, *icon_width),
+                _ => plain_width(g, 1),
+            };
+            if w > 0 {
+                if fresh && bold {
+                    out.push_str("\x1b[1m");
                 }
+                if let Some(ink) = ink {
+                    let color = match ink {
+                        Ink::Solid(c) => c.at(d),
+                        Ink::Ramp {
+                            gradient,
+                            start,
+                            extent,
+                            ..
+                        } => gradient.at(extent.t(start + pos, w)).at(d),
+                    };
+                    if fresh || last != Some(color) {
+                        push_fg(&mut out, color);
+                        last = Some(color);
+                    }
+                }
+                fresh = false;
+                drew = true;
+                pos += w;
             }
-            fresh = false;
-            drew = true;
-            pos += w;
+            out.push_str(g);
         }
-        out.push(c);
     }
     if drew {
         if ink.is_some() {

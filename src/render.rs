@@ -5,7 +5,7 @@ use crate::color::{Color, Depth};
 use crate::conf::{Config, LoadResult, Wrap};
 use crate::expand::{CommandRunner, Expander};
 use crate::format::{parse, segments, Token};
-use crate::gradient::{self, Ink};
+use crate::gradient::{self, Extent, Ink};
 use crate::icons;
 use crate::layout::{flow, join, place_groups, plain_joiner, Group};
 use crate::look::{self, Look};
@@ -61,7 +61,13 @@ fn render_placeholder(
     sample: Option<Sample>,
 ) -> (String, Option<Color>) {
     let (look, opts) = Look::split(&expanded(name, inline, ctx, ex), ctx.config);
-    (look.paint(render_value(name, &opts, ctx, sample)), look.bg)
+    (
+        look.paint(
+            render_value(name, &opts, ctx, sample),
+            ctx.config.icon_width,
+        ),
+        look.bg,
+    )
 }
 
 fn render_value(name: &str, opts: &Options, ctx: &Ctx, sample: Option<Sample>) -> String {
@@ -386,14 +392,16 @@ fn segs(config: &Config, groups: [Vec<Rendered>; 3]) -> [Vec<Seg>; 3] {
             .collect::<Vec<Seg>>()
     });
     if let Some(g) = look::line_gradient(config) {
-        let total: usize = out.iter().flatten().map(|s| gradient::span(&s.text)).sum();
+        let iw = config.icon_width;
+        let extent = Extent::of(out.iter().flatten().map(|s| s.text.as_str()), iw);
         let mut start = 0;
         for s in out.iter_mut().flatten() {
-            let span = gradient::span(&s.text);
+            let span = gradient::span(&s.text, iw);
             let ink = Ink::Ramp {
                 gradient: &g,
                 start,
-                span: total,
+                extent,
+                icon_width: iw,
             };
             s.text = gradient::recolor(&s.text, Some(&ink), false);
             start += span;

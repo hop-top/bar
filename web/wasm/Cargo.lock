@@ -168,6 +168,7 @@ dependencies = [
  "memchr",
  "serde",
  "serde_json",
+ "unicode-segmentation",
  "unicode-width",
  "windows-sys",
 ]

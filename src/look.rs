@@ -3,7 +3,7 @@
 
 use crate::color::Color;
 use crate::conf::Config;
-use crate::gradient::{parse_stops, recolor, span, Gradient, Ink};
+use crate::gradient::{parse_stops, recolor, Extent, Gradient, Ink};
 use crate::options::Options;
 use crate::style::{accent, muted};
 
@@ -120,8 +120,8 @@ impl Look {
     }
 
     /// `text` in the foreground colour or gradient, and bold; a gradient
-    /// beats `fg`.
-    pub fn paint(&self, text: String) -> String {
+    /// beats `fg`. Private-use glyphs are `icon_width` cells.
+    pub fn paint(&self, text: String, icon_width: usize) -> String {
         if text.is_empty() {
             return text;
         }
@@ -131,7 +131,8 @@ impl Look {
                 let ink = Ink::Ramp {
                     gradient: &g,
                     start: 0,
-                    span: span(&text),
+                    extent: Extent::of([text.as_str()], icon_width),
+                    icon_width,
                 };
                 recolor(&text, Some(&ink), self.bold)
             }

@@ -12,6 +12,16 @@ Vetting record for third-party crates added to `hop-bar`.
 - Advisories: OSV query for crates.io `unicode-width` 0.2.2 returns none.
 - Shared with `hop-top-kit` through `comfy-table`; the pin resolves to one copy.
 
+## unicode-segmentation =1.13.3
+
+- Use: extended grapheme clusters (UAX #29) for `fg=` and gradients, so an emoji ZWJ sequence, a flag or an emoji with its variation selector takes one colour and is measured as one.
+- Source: `unicode-rs/unicode-segmentation`; crates.io release 2026-06-01, over 14 days old. Already in `Cargo.lock` (and `web/wasm/Cargo.lock`) at 1.13.3 through `hop-top-kit` (`comfy-table`), so the exact pin resolves to the existing copy and adds no crate to the build.
+- Alternatives: hand-written cluster rules (ZWJ, regional-indicator pairs, variation selectors, combining marks), which drift from the Unicode tables the crate tracks.
+- License: MIT OR Apache-2.0.
+- `rsx analyze unicode-rs/unicode-segmentation`: PASS, score 4.6/10, policy balanced (activity and release-hygiene scores low; the crate is small and stable).
+- Advisories: OSV query for crates.io `unicode-segmentation` 1.13.3 returns none.
+- Binary size: the release `bar` grows by about 15 KB on macOS arm64.
+
 ## libc =0.2.191 (Unix only)
 
 - Use: `localtime_r` and `tm` for local-date buckets in spend history, instead of a hand-written `struct tm`; `kill(pid, 0)` for session liveness. Declared under `[target.'cfg(unix)'.dependencies]`.
