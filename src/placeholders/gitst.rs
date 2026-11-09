@@ -1,5 +1,5 @@
 //! `dirty`, `ahead` and `worktree`. The first two read the output of
-//! `git status --porcelain=v2 --branch`, cached per repository root and
+//! `git status --porcelain=v2 --branch --show-stash`, cached per repository root and
 //! refreshed in the background; render never runs git. `worktree` comes
 //! from the repository files.
 
@@ -31,6 +31,8 @@ pub struct Status {
     pub ahead_behind: Option<(usize, usize)>,
     /// HEAD's commit id; `None` on an unborn branch.
     pub oid: Option<String>,
+    /// Stash entries; `None` when git reports none (or predates the line).
+    pub stash: Option<usize>,
     /// Input hit the cache size cap: the counts are lower bounds.
     pub truncated: bool,
 }
@@ -50,6 +52,8 @@ pub fn parse(text: &str) -> Status {
     for line in text.lines() {
         if let Some(oid) = line.strip_prefix("# branch.oid ") {
             s.oid = gitfs::is_oid(oid).then(|| oid.to_ascii_lowercase());
+        } else if let Some(n) = line.strip_prefix("# stash ") {
+            s.stash = n.trim().parse().ok();
         } else if let Some(ab) = line.strip_prefix("# branch.ab ") {
             let n = |t: Option<&str>, sign| {
                 t.and_then(|t| t.strip_prefix(sign))

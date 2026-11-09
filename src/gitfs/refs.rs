@@ -127,8 +127,25 @@ impl Repo {
             .transpose()
     }
 
+    /// Refs kept in a reftable (a `reftable/` directory, or
+    /// `extensions.refStorage = reftable`): not readable as files.
+    fn reftable(&self) -> Result<bool, Unsupported> {
+        if self.common_dir.join("reftable").is_dir() {
+            return Ok(true);
+        }
+        Ok(read(&self.common_dir.join("config"))?.is_some_and(|c| {
+            c.lines().any(|l| {
+                let l = l.trim().to_ascii_lowercase();
+                l.starts_with("refstorage") && l.contains("reftable")
+            })
+        }))
+    }
+
     /// Object id `name` points to; `None` when the ref does not exist.
     pub fn resolve(&self, name: &str) -> Result<Option<String>, Unsupported> {
+        if self.reftable()? {
+            return Err(Unsupported);
+        }
         let mut name = name.to_string();
         for _ in 0..MAX_DEPTH {
             // reftable repositories keep this placeholder in HEAD
@@ -166,6 +183,9 @@ impl Repo {
 
     /// Tags whose target, peeled, is `commit`.
     pub fn tags_at(&self, commit: &str) -> Result<TagScan, Unsupported> {
+        if self.reftable()? {
+            return Err(Unsupported);
+        }
         let mut scan = TagScan::default();
         let mut loose = Vec::new();
         walk(&self.common_dir.join("refs/tags"), "", &mut loose)?;

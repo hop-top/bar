@@ -226,3 +226,45 @@ fn v4_reconstructed_paths_drive_conflict_dedup() {
     bad[at] = 3;
     assert_eq!(unmerged(&bad, 20), None);
 }
+
+#[test]
+fn extension_overrunning_the_index_is_refused() {
+    let ext = |size: u32, body: usize| {
+        let mut d = b"DIRC\0\0\0\x02\0\0\0\0".to_vec();
+        d.extend(b"TREE");
+        d.extend(size.to_be_bytes());
+        d.extend(vec![0u8; body]);
+        d.extend([0u8; 20]);
+        d
+    };
+    assert_eq!(unmerged(&ext(4, 4), 20), Some(0));
+    // a size near u32::MAX must not wrap the offset, on any target
+    assert_eq!(unmerged(&ext(0xFFFF_FFF8, 4), 20), None);
+    assert_eq!(unmerged(&ext(u32::MAX, 4), 20), None);
+    // one byte past the end, into the checksum
+    assert_eq!(unmerged(&ext(5, 4), 20), None);
+}
+
+#[test]
+fn sequencer_todo_read_as_git_prompt_reads_it() {
+    let t = Tmp::new();
+    let d = repo(&t, "p");
+    let op = |todo: &str| {
+        std::fs::create_dir_all(d.join(".git/sequencer")).unwrap();
+        std::fs::write(d.join(".git/sequencer/todo"), todo).unwrap();
+        open(&d).operation().unwrap().map(|(op, _)| op)
+    };
+    assert_eq!(op("pick 0123abc subject\n"), Some(Op::CherryPick));
+    assert_eq!(op("pick\t0123abc\n"), Some(Op::CherryPick));
+    assert_eq!(op("revert 0123abc subject\n"), Some(Op::Revert));
+    assert_eq!(op("revert\t0123abc\n"), Some(Op::Revert));
+    // `p[ \t]` in git-prompt.sh: the bare verb and one blank only
+    assert_eq!(op("p \n"), Some(Op::CherryPick));
+    assert_eq!(op("p 0123abc subject\n"), None);
+    // no whitespace trimmed before the verb
+    assert_eq!(op(" pick 0123abc\n"), None);
+    assert_eq!(op("pick\n"), None);
+    assert_eq!(op("picked 0123abc\n"), None);
+    assert_eq!(op("reverted x\n"), None);
+    assert_eq!(op("pick x\r\n"), Some(Op::CherryPick));
+}

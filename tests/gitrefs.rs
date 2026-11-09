@@ -209,3 +209,49 @@ fn stash_count_from_reflog() {
     git(&d, &["stash", "clear"]);
     assert_eq!(open(&d).stash_count(), Ok(0));
 }
+
+#[test]
+fn reftable_refs_are_unsupported() {
+    let t = Tmp::new();
+    let d = repo(&t, "p");
+    let head = out(&d, &["rev-parse", "HEAD"]);
+    // a `reftable/` directory in the common dir
+    std::fs::create_dir(d.join(".git/reftable")).unwrap();
+    let r = open(&d);
+    assert_eq!(r.resolve("refs/stash"), Err(Unsupported));
+    assert_eq!(r.stash_count(), Err(Unsupported));
+    assert_eq!(r.tags_at(&head), Err(Unsupported));
+    std::fs::remove_dir(d.join(".git/reftable")).unwrap();
+    assert_eq!(open(&d).stash_count(), Ok(0));
+    // or the config extension alone
+    let cfg = d.join(".git/config");
+    let mut body = std::fs::read_to_string(&cfg).unwrap();
+    body.push_str("[extensions]\n\trefStorage = reftable\n");
+    std::fs::write(&cfg, body).unwrap();
+    let r = open(&d);
+    assert_eq!(r.stash_count(), Err(Unsupported));
+    assert_eq!(r.tags_at(&head), Err(Unsupported));
+}
+
+#[test]
+fn real_reftable_repository_is_unsupported() {
+    let t = Tmp::new();
+    let d = t.path().join("rt");
+    std::fs::create_dir_all(&d).unwrap();
+    if !cmd(&d, &["init", "-q", "--ref-format=reftable"])
+        .status()
+        .unwrap()
+        .success()
+    {
+        return; // git older than 2.45
+    }
+    git(&d, &["commit", "-q", "--allow-empty", "-m", "x"]);
+    git(&d, &["tag", "v1"]);
+    std::fs::write(d.join("f"), "x\n").unwrap();
+    git(&d, &["add", "f"]);
+    git(&d, &["stash", "-q"]);
+    let r = open(&d);
+    assert_eq!(r.head_commit(), Err(Unsupported));
+    assert_eq!(r.stash_count(), Err(Unsupported));
+    assert_eq!(r.tags_at(&"0".repeat(40)), Err(Unsupported));
+}

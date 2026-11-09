@@ -243,3 +243,10 @@ fn failing_jobs_back_off_at_least_a_minute() {
     }
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn parse_stash_header() {
+    assert_eq!(parse(CLEAN).stash, None);
+    assert_eq!(parse("# branch.head main\n# stash 3\n").stash, Some(3));
+    assert_eq!(parse("# stash x\n").stash, None);
+}

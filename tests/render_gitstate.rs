@@ -250,3 +250,43 @@ fn sha_from_cached_status_when_refs_are_too_large() {
 fn one(s: &str) -> String {
     s.lines().next().unwrap_or("").trim().to_string()
 }
+
+#[test]
+fn stash_and_tag_of_reftable_repo_from_cached_git() {
+    let t = Tmp::new();
+    let d = repo(&t, "proj");
+    std::fs::create_dir(d.join(".git/reftable")).unwrap();
+    let id = head(&d);
+    let (path, log) = no_git(&t);
+    let conf = "set left \"[#{stash}|#{tag}]\"";
+    let render = || {
+        run(&t)
+            .conf(conf)
+            .env("PATH", &path)
+            .cwd(&d)
+            .unset("GIT_CONFIG_NOSYSTEM")
+            .go()
+    };
+    // cold: the files cannot tell, so nothing (and never `$0`)
+    let cold = render().plain;
+    assert!(!cold.contains('$'), "{cold:?}");
+    let cache = Cache::new(&t.path().join("state"));
+    cache
+        .store(
+            &cache_key(&d),
+            &format!("# branch.oid {id}\n# branch.head main\n# stash 2\n"),
+        )
+        .unwrap();
+    cache
+        .store(&tags_key(&d), &format!("{id}\ncommit v9\n"))
+        .unwrap();
+    assert_eq!(one(&render().plain), "[$2|v9]");
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let spawned = std::fs::read_to_string(&log).unwrap_or_default();
+    assert!(
+        spawned
+            .lines()
+            .all(|l| l.contains("status") || l.starts_with("for-each-ref")),
+        "{spawned:?}"
+    );
+}

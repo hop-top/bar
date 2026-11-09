@@ -557,11 +557,11 @@ Commit, tags and stash:
 - `sha` follows HEAD through symbolic refs, loose refs and `packed-refs`; in a linked worktree HEAD is the worktree's own and branches come from the main repository. When the files cannot resolve it (a `packed-refs` over 1 MiB, reftable), the commit comes from the cached `git status` that `dirty` uses, refreshed in the background. SHA-256 repositories show their longer ids.
 - `tag` shows a tag pointing exactly at HEAD: lightweight tags whose target is HEAD and annotated tags whose peeled target is HEAD. With several, an annotated tag wins over a lightweight one, then the highest version (`v1.10` above `v1.9`). There is no "nearest tag plus distance" form; that needs the commit graph.
 - Annotated tags in `packed-refs` are recognised from the file. A loose tag ref that does not point at HEAD could still be an annotated tag of HEAD, which only the object database can tell; then `tag` shows the cached result of a background `git for-each-ref --points-at`, refreshed every `ttl` seconds, and the tags the files gave until the first result is in. Render never waits on it.
-- `stash` counts the entries of the stash reflog, as `git stash list` does.
+- `stash` counts the entries of the stash reflog, as `git stash list` does. In a reftable repository the count comes from the cached `git status` (`--show-stash`) instead, and `tag` asks the background `git for-each-ref` with HEAD from that status.
 
 Operation and conflicts:
 
-- `gitop` reads the same markers as git's own prompt script: `rebase-merge/` (step from `msgnum`/`end`), `rebase-apply/` (`next`/`last`; `rebasing` or `applying` tell rebase from am), `MERGE_HEAD`, `CHERRY_PICK_HEAD`, `REVERT_HEAD`, the first line of `sequencer/todo`, then `BISECT_LOG`, in that order.
+- `gitop` reads the same markers as git's own prompt script: `rebase-merge/` (step from `msgnum`/`end`), `rebase-apply/` (`next`/`last`; `rebasing` or `applying` tell rebase from am), `MERGE_HEAD`, `CHERRY_PICK_HEAD`, `REVERT_HEAD`, the first line of `sequencer/todo` (`pick` or `revert` and a blank, or `p` and one blank), then `BISECT_LOG`, in that order.
 - `conflicts` counts paths with a stage above 0 in the index (versions 2, 3 and 4), each path once, as `git status` does. An index over 2 MiB, a split index, or `GIT_INDEX_FILE` in the environment is counted from the cached `git status` that `dirty` uses instead, refreshed every `ttl` seconds in the background.
 
 ### prs and issues
