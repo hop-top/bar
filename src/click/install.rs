@@ -1,6 +1,7 @@
 //! `bar click install`: the macOS `bar://` URL handler app and the
 //! waiting-state hook in Claude Code's `settings.json`.
 
+use super::dirs::{follows_pointer, handler_env, shell_command, EnvVar, HandlerDirs};
 use super::settings::{apply_settings, plan_settings};
 use super::{claude_dir, state_dir, write_private, MARKER, MARKER_CMD};
 use std::io::Write;
@@ -14,6 +15,8 @@ pub struct InstallCfg {
     pub app: PathBuf,
     /// Claude Code `settings.json` that receives the hook.
     pub settings: PathBuf,
+    /// The dir variables baked into the handler (`HANDLER_ENV`).
+    pub env: Vec<EnvVar>,
 }
 
 impl InstallCfg {
@@ -40,11 +43,33 @@ impl InstallCfg {
             state_dir: state_dir(),
             app: apps.join("bar-click.app"),
             settings: claude.join("settings.json"),
+            env: handler_env(&|k| std::env::var(k).ok()),
         })
     }
 
     fn script_path(&self) -> PathBuf {
         self.state_dir.join("click-handler.applescript")
+    }
+
+    /// `handler_warnings` for this handler against this environment and
+    /// the renderer's pointer (macOS; none elsewhere).
+    pub fn warnings(&self) -> Vec<String> {
+        let pointer = cfg!(target_os = "macos")
+            .then(super::pointer::default_dir)
+            .flatten()
+            .and_then(|d| super::pointer::read(&d));
+        let claude = self.settings.parent();
+        super::dirs::handler_warnings(&self.app, &self.state_dir, claude, pointer.as_deref())
+    }
+
+    /// The dirs the handler resolves; the Claude dir is the parent of
+    /// `settings`.
+    pub fn handler_dirs(&self) -> HandlerDirs {
+        HandlerDirs {
+            state_dir: self.state_dir.clone(),
+            claude_dir: self.settings.parent().map(Path::to_path_buf),
+            follows_pointer: follows_pointer(&self.env),
+        }
     }
 }
 
@@ -54,16 +79,20 @@ pub struct InstallPlan {
 }
 
 fn as_literal(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\r', "\\r")
 }
 
 /// Handler for `bar://toggle/<key>` and `bar://cmd/...`; `bar` validates
-/// both. A refusal exits non-zero, so `try` keeps the applet quiet.
-pub fn applescript(bar: &Path) -> String {
+/// both. A refusal exits non-zero, so `try` keeps the applet quiet. Every
+/// call runs `bar` under `env` (see `shell_command`): LaunchServices
+/// starts the applet without the shell's environment.
+pub fn applescript(bar: &Path, env: &[EnvVar]) -> String {
     format!(
         "on open location theURL\n\
          \tset thePrefix to \"bar://toggle/\"\n\
-         \tset theBar to quoted form of \"{}\"\n\
+         \tset theBar to \"{}\"\n\
          \tif (count of theURL) > (count of thePrefix) and theURL starts with thePrefix then\n\
          \t\tset theKey to text ((count of thePrefix) + 1) thru -1 of theURL\n\
          \t\ttry\n\
@@ -75,7 +104,7 @@ pub fn applescript(bar: &Path) -> String {
          \t\tend try\n\
          \tend if\n\
          end open location\n",
-        as_literal(&bar.display().to_string())
+        as_literal(&shell_command(bar, env))
     )
 }
 
@@ -113,7 +142,7 @@ pub fn install_plan(cfg: &InstallCfg) -> InstallPlan {
     );
     commands.push(vec![LSREGISTER.into(), "-f".into(), app]);
     InstallPlan {
-        script: applescript(&cfg.bar),
+        script: applescript(&cfg.bar, &cfg.env),
         commands,
     }
 }
@@ -161,8 +190,18 @@ pub fn run_install(
     let plan = install_plan(cfg);
     if dry_run {
         writeln!(out, "{}", plan.script).map_err(io)?;
-        for c in &plan.commands {
+        for (i, c) in plan.commands.iter().enumerate() {
             writeln!(out, "{}", c.join(" ")).map_err(io)?;
+            if i == 0 {
+                let record = HandlerDirs::path(&cfg.app);
+                write!(
+                    out,
+                    "write {}: {}",
+                    record.display(),
+                    cfg.handler_dirs().to_json()
+                )
+                .map_err(io)?;
+            }
         }
         for l in settings.describe() {
             writeln!(out, "{l}").map_err(io)?;
@@ -176,8 +215,13 @@ pub fn run_install(
         std::fs::create_dir_all(parent).map_err(io)?;
     }
     write_private(&cfg.script_path(), &plan.script).map_err(io)?;
-    for c in &plan.commands {
+    for (i, c) in plan.commands.iter().enumerate() {
         run(c).map_err(|e| format!("{}: {e}", c[0]))?;
+        // into the bundle osacompile made, before codesign seals it
+        if i == 0 {
+            let record = HandlerDirs::path(&cfg.app);
+            write_private(&record, &cfg.handler_dirs().to_json()).map_err(io)?;
+        }
     }
     // Re-read right before writing: settings.json may have changed meanwhile.
     let fresh = plan_settings(&cfg.settings, &cfg.bar)?;
@@ -190,7 +234,12 @@ pub fn run_install(
         writeln!(out, "backup {}", backup.display()).map_err(io)?;
     }
     write_private(&cfg.state_dir.join(MARKER), MARKER_CMD).map_err(io)?;
-    writeln!(out, "installed {}", cfg.app.display()).map_err(|e| io(e).into())
+    writeln!(out, "installed {}", cfg.app.display()).map_err(io)?;
+    writeln!(out, "state dir {}", cfg.state_dir.display()).map_err(io)?;
+    for w in &cfg.warnings() {
+        writeln!(out, "warning: {w}").map_err(io)?;
+    }
+    Ok(())
 }
 
 /// `--hooks-only`: wires the `bar click hook` entries into `settings.json`

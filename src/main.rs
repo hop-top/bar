@@ -197,7 +197,7 @@ fn main() {
         }
         Some(("toggle", m)) => {
             let key = m.get_one::<String>("key").map_or("", String::as_str);
-            match click::toggle(&click::state_dir(), key) {
+            match click::toggle(&click::handler_state_dir(), key) {
                 Ok(on) => {
                     let view = match (click::is_usage_key(key), on) {
                         (true, true) => "pct",
@@ -252,7 +252,12 @@ fn check(m: &ArgMatches) {
         let text = conf::project::read(&p);
         (p, text)
     });
-    let report = check::check_layers(user, project, &dirs);
+    let mut report = check::check_layers(user, project, &dirs);
+    if cfg!(target_os = "macos") {
+        if let Ok(cfg) = click::InstallCfg::from_env() {
+            report.notes.extend(cfg.warnings());
+        }
+    }
     let mut out = std::io::stdout();
     if m.get_one::<String>("format").map(String::as_str) == Some("table") {
         let _ = out.write_all(report.to_text().as_bytes());
@@ -560,6 +565,12 @@ fn render() {
         let mut so = std::io::stdout().lock();
         let _ = writeln!(so, "{out}");
         let _ = so.flush();
+    }
+    // after the output: publish the state dir for the bar:// handler
+    if cfg!(target_os = "macos") {
+        if let Some(d) = click::pointer::default_dir() {
+            click::pointer::sync(cache.state_dir(), &d, std::time::SystemTime::now());
+        }
     }
 }
 

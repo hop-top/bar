@@ -35,6 +35,9 @@ pub struct Report {
     pub path: Option<PathBuf>,
     pub project: Option<ProjectInfo>,
     pub issues: Vec<Issue>,
+    /// Warnings about the setup rather than a config line (the click
+    /// handler's dirs).
+    pub notes: Vec<String>,
 }
 
 impl Report {
@@ -62,6 +65,11 @@ impl Report {
                     "message": i.message,
                 })
             })
+            .chain(
+                self.notes
+                    .iter()
+                    .map(|n| json!({"level": "warning", "file": null, "line": 0, "message": n})),
+            )
             .collect();
         let a = models::active();
         json!({
@@ -114,8 +122,14 @@ impl Report {
                 i.message
             ));
         }
+        for n in &self.notes {
+            out.push_str(&format!("warning: {n}\n"));
+        }
         let count = |l| self.issues.iter().filter(|i| i.level == l).count();
-        let (e, w) = (count(Level::Error), count(Level::Warning));
+        let (e, w) = (
+            count(Level::Error),
+            count(Level::Warning) + self.notes.len(),
+        );
         out.push_str(&if e + w == 0 {
             "ok\n".to_string()
         } else {

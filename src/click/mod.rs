@@ -2,14 +2,20 @@
 //! session, and the macOS `bar://` URL handler that opens them.
 
 mod check;
+mod dirs;
 pub mod hook;
 mod install;
+pub mod pointer;
 pub(crate) mod settings;
 pub mod sys;
 pub mod tlc;
 mod url;
 
 pub use check::{box_is_empty, check, run, Env, Pane, Refusal};
+pub use dirs::{
+    follows_pointer, handler_env, handler_warnings, sh_quote, shell_command, EnvVar, HandlerDirs,
+    HANDLER_ENV,
+};
 pub use install::{
     applescript, exec, info_plist_commands, install_plan, run_hooks_only, run_install, InstallCfg,
     InstallError, InstallPlan,
@@ -31,6 +37,20 @@ pub fn state_dir() -> PathBuf {
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(crate::platform::dirs::state)
+}
+
+/// The state dir of `bar toggle` and `bar click run`, which the `bar://`
+/// handler starts: `state_dir()`, except that on macOS the platform
+/// default follows the renderer's pointer (see `pointer`).
+pub fn handler_state_dir() -> PathBuf {
+    let base = state_dir();
+    if !cfg!(target_os = "macos") {
+        return base;
+    }
+    match pointer::default_dir() {
+        Some(d) => pointer::follow(base, &d),
+        None => base,
+    }
 }
 
 /// Claude Code's config dir: `CLAUDE_CONFIG_DIR`, else `~/.claude`.
