@@ -1,6 +1,6 @@
-.PHONY: build test lint format check setup gallery gallery-check bench bench-check bench-docs bench-docs-check bench-badge bench-badge-check
+.PHONY: plugin-check build test lint format check setup gallery gallery-check bench bench-check bench-docs bench-docs-check bench-badge bench-badge-check
 
-check: lint test gallery-check bench-docs-check bench-badge-check
+check: lint test plugin-check gallery-check bench-docs-check bench-badge-check
 
 build:
 	cargo build --release
@@ -17,6 +17,14 @@ format:
 
 setup:
 	cargo fetch
+
+# validates the Claude Code plugin and marketplace manifests; skipped without the claude CLI
+plugin-check:
+	@if command -v claude >/dev/null 2>&1; then \
+		claude plugin validate . && claude plugin validate claude-plugin; \
+	else \
+		python3 -c "import json;[json.load(open(f)) for f in ('.claude-plugin/marketplace.json','claude-plugin/.claude-plugin/plugin.json')]" && echo "claude CLI not found: JSON syntax checked only"; \
+	fi
 
 # docs/gallery.md and docs/gallery/*.svg from real bar output
 gallery:

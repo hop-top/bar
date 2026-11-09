@@ -52,6 +52,8 @@ cd bar
 cargo install --path . --locked
 ```
 
+Guided setup inside Claude Code: `/plugin marketplace add hop-top/bar`, then `/plugin install bar@hop-top` and `/bar:setup` ([docs](docs/claude-plugin.md)).
+
 Optional: `gh` for PRs and issues, `jq` for the reference plugins.
 
 ## Use
