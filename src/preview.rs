@@ -5,7 +5,9 @@ use crate::click::Term;
 use crate::conf::{Config, LoadResult};
 use crate::options::Options;
 use crate::placeholders::ctx as ctxp;
-use crate::placeholders::{dirs, gh, lookup, modes, niche, speed, spendhist, tokens, usage, Ctx};
+use crate::placeholders::{
+    dirs, gh, lookup, modes, niche, speed, spendhist, tokens, update, usage, Ctx,
+};
 use crate::render::{builtin_config, render_sample};
 use crate::session::{CtxUsage, Session, SpendLimit, Window};
 use crate::style::{accent, bold, dim, fg};
@@ -167,6 +169,7 @@ fn sample(state: &str, name: &str, opts: &Options, ctx: &Ctx, label: bool) -> Op
         "worktree" => Some(dim("bar-feat")),
         "sid" => Some(dim("a1b2c3d4")),
         "tmux" => Some(dim("work:1")),
+        "update" => Some(update::fmt(ctx, "0.2.0")),
         "compactions" | "skills" | "msgs" => niche::sample(name, opts, label),
         "modes" => Some(dim(&modes::sample(opts).join(" "))),
         "sessions" => Some(format!(

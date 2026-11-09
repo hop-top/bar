@@ -1,14 +1,12 @@
 //! `bar prices update`, and the background fetch `spendhist` requests:
 //! fetch models.dev, keep only what pricing needs, write the result
-//! atomically. The one place bar touches the network; it shells out to
-//! `curl` with a fixed argv rather than adding an HTTP client dependency.
+//! atomically. The transfer is `crate::net::get` (`curl`).
 
 use super::models::user_path;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 
 pub const URL: &str = "https://models.dev/api.json";
 /// Larger than the real feed by a wide margin; a runaway body stops here.
@@ -33,32 +31,7 @@ pub fn run_within(out: Option<&Path>, max_time: u64) -> Result<(PathBuf, usize),
 }
 
 fn fetch(max_time: u64) -> Result<Vec<u8>, String> {
-    let mut c = Command::new(crate::platform::program("curl"));
-    // no console window when run from a background refresh on Windows
-    crate::platform::hide_window(&mut c);
-    let mut child = c
-        .args(["-fsS", "--max-time"])
-        .arg(max_time.to_string())
-        .args(["--proto", "=https"])
-        .args(["--proto-redir", "=https", "--max-filesize"])
-        .arg(MAX_BYTES.to_string())
-        .arg(URL)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("curl: {e}"))?;
-    let out = child.stdout.take().ok_or("curl: no output")?;
-    let body = read_capped(out, MAX_BYTES);
-    if body.is_err() {
-        let _ = child.kill();
-    }
-    let o = child.wait_with_output().map_err(|e| format!("curl: {e}"))?;
-    let body = body?;
-    if !o.status.success() {
-        let err = String::from_utf8_lossy(&o.stderr);
-        return Err(format!("curl failed ({}): {}", o.status, err.trim()));
-    }
-    Ok(body)
+    crate::net::get(URL, &[], max_time, MAX_BYTES)
 }
 
 /// Reads at most `cap` bytes; a longer stream is an error, not a

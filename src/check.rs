@@ -130,7 +130,7 @@ fn core_options(name: &str) -> Option<&'static [(&'static str, Val)]> {
     use Val::*;
     Some(match name {
         "account" | "sessions" | "spend" | "burn" | "duration" | "api" | "lines" | "version"
-        | "style" | "vim" | "agent" | "thinking" | "fast" => &[],
+        | "style" | "vim" | "agent" | "thinking" | "fast" | "update" => &[],
         "cost" => &[("fmt", OneOf(&["usd"]))],
         "cwd" | "root" => &[("base", OneOf(&["0", "1"]))],
         "spendhist" => &[

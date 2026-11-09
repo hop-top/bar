@@ -3,10 +3,10 @@
 How to write `bar.conf`: where it lives, the directives, every placeholder and its options, styling, layout and the commands around the config. Pictures of skins, skin glyphs, segment backgrounds, palettes, bar glyphs, usage components, pace states, icons, lines and wrapping, and PR checks: [Gallery](gallery.md).
 
 - [Overview](#overview): [config file](#config-file), [directives](#directives), [rules](#rules), [minimal example](#minimal-example)
-- [Placeholders](#placeholders): [session](#session), [ctx](#ctx), [usage](#usage), [tokens, cache, cachettl](#tokens-cache-cachettl), [ttft, tps, misses](#ttft-tps-misses), [spendhist](#spendhist), [git and directories](#git-and-directories), [prs and issues](#prs-and-issues), [account, agents, sessions, tmux](#account-agents-sessions-tmux), [every placeholder](#options-on-every-placeholder), [values](#values)
+- [Placeholders](#placeholders): [session](#session), [ctx](#ctx), [usage](#usage), [tokens, cache, cachettl](#tokens-cache-cachettl), [ttft, tps, misses](#ttft-tps-misses), [spendhist](#spendhist), [git and directories](#git-and-directories), [prs and issues](#prs-and-issues), [account, agents, sessions, tmux](#account-agents-sessions-tmux), [update](#update), [every placeholder](#options-on-every-placeholder), [values](#values)
 - [Styling](#styling): [skins](#skins), [palettes](#palettes), [icons](#icons), [glyphs](#glyphs), [colours](#colours)
 - [Layout](#layout): [lines and wrapping](#lines-and-wrapping)
-- [Commands](#commands): [bar install](#bar-install), [bar check](#bar-check), [bar preview](#bar-preview), [presets and bar init](#presets), [click handler](#click-handler-macos), [clickable commands](#clickable-commands), [hooks](#hooks)
+- [Commands](#commands): [bar install](#bar-install), [bar update](#update), [bar check](#bar-check), [bar preview](#bar-preview), [presets and bar init](#presets), [click handler](#click-handler-macos), [clickable commands](#clickable-commands), [hooks](#hooks)
 - [Files and environment](#files-and-environment)
 
 ## Overview
@@ -37,7 +37,7 @@ A file with an error makes `bar render` print `bar: config error, run bar check`
 
 | Directive | Form |
 |-----------|------|
-| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-4) `separator gap wrap refresh icons icon-width skin skin-glyphs palette claude-dir color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
+| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-4) `separator gap wrap refresh icons icon-width skin skin-glyphs palette claude-dir update-check color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
 | `default` | `default <placeholder> key=value ...` |
 | `account` | `account "<glob>" <label> <color>` |
 | `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%`; see [Rules](#rules) |
@@ -59,6 +59,7 @@ Quote values with spaces (double quotes; a value is one token). `#` outside quot
 | `palette` | `default`, `nord`, `gruvbox`, `dracula`, `solarized`, `mono` or `terminal`. See [Palettes](#palettes) |
 | `claude-dir` | Claude Code config dir read by [spendhist](#spendhist) |
 | `compact-at` | Where Claude Code auto-compacts, for [ctx](#ctx): tokens (`200000`, `200k`, `1M`) or a percent of the context window (`1%`-`100%`). Unset, bar works it out; see [Auto-compaction point](#auto-compaction-point) |
+| `update-check` | `off` (default) or `on`: a daily check for a newer bar release, shown by [`update`](#update) |
 | `color.good`, `color.warn`, `color.bad`, `ramp` | State colours (one code `0`-`255`) and usage ramp (exactly 11 codes, quoted, worst score first). See [Colours](#colours) |
 | `price` | Model price override for [spendhist](#spendhist) |
 
@@ -363,7 +364,7 @@ Snapshot fetch:
 - Never fetched when `spendhist` is not in the layout or every model in it is priced by a rule or the built-in table. To avoid the fetch, add a `set price` rule for each such model.
 - `bar prices update` fetches the same file on request.
 - A file that is invalid or dated in the future is ignored (`bar check` says why) and fetched again.
-- The download is capped at 64 MiB. It runs `curl` (`-fsS`, https only; `--max-time 60` for `bar prices update`, the refresh time limit in the background) and is the only place core bar uses the network (plugins have their own).
+- The download is capped at 64 MiB. It runs `curl` (`-fsS`, https only; `--max-time 60` for `bar prices update`, the refresh time limit in the background) and, with the opt-in [update check](#update), is one of the two places core bar uses the network (plugins have their own).
 
 ### Git and directories
 
@@ -439,6 +440,15 @@ Who is signed in, running subagents, other open sessions and the tmux window.
 - `agents` renders `agents 2` (`2` alone when an icon replaces the label), with `names=1` `agents 2 Explore Plan`. It counts subagents tracked by the `bar click hook`; see [Hooks](#hooks).
 - `sessions` reads `<claude dir>/sessions/*.json` (Claude Code's own session files: process id, session id, `busy` status) and keeps those whose process is alive, the current session included. Waiting and finished come from the markers `bar click hook` writes ([Hooks](#hooks)); without the hooks only working sessions count.
 - `tmux` reads `$TMUX` and `$TMUX_PANE`; a background `tmux display-message` resolves the names (cached 30 s, 60 s backoff after a failure), so the first render in a pane is empty.
+
+### update
+
+`#{update}`: `↑ 0.2.0` in the warn colour when a newer bar release is out; hidden otherwise. No options.
+
+- Off unless the config says `set update-check on`. Off, it renders nothing and nothing touches the network.
+- On, a render starts a background job at most once a day (cache key `update:stable` or `update:prerelease`) that asks the GitHub API for the releases of `hop-top/bar` with `curl` (`-fsS`, https only, the refresh time limit as `--max-time`) and caches the newest tag. A render never waits on it, so the first render after enabling it is empty. A failed check stores an empty result and runs again the next day.
+- Channel: a stable build (`0.2.0`) looks at stable releases only; a prerelease build (`0.3.0-alpha.1`, `-beta.N`, `-rc.N`) also at prereleases, so it is told about both the next prerelease and the stable release of its line. Drafts are skipped. Versions compare by SemVer precedence.
+- bar never downloads or replaces itself. `bar update` prints the running version, what the last check found (and starts the daily check in the background when it is due and the check is on), and how to upgrade: `brew upgrade bar` for a Homebrew install, `cargo install --git … --tag <tag> --locked --force` for a binary under `~/.cargo/bin`, else the release page to download the archive from. With the check off it only prints the version and how to upgrade.
 
 ### Options on every placeholder
 
@@ -562,6 +572,7 @@ Colours and width:
 | `compactions` | `nf-fa-compress` U+F066 | 🧹 |
 | `skills` | `nf-fa-magic` U+F0D0 | ✨ |
 | `tmux` | `nf-fa-columns` U+F0DB | 🪟 |
+| `update` | `nf-fa-arrow_circle_up` U+F0AA | 🆙 |
 
 ### Glyphs
 
@@ -614,6 +625,7 @@ A render prints at most 4 rows, all lines together. Rows past the fourth are dro
 |---|---|---|
 | `bar render` | Reads the session JSON on stdin, prints the status line ([technical notes](technical.md#flow)) | always 0 |
 | `bar install [--project\|--local] [--refresh <secs>] [--hooks] [--uninstall] [--yes]` | Sets bar as Claude Code's status line ([bar install](#bar-install)) | 0, 2 without a terminal and `--yes` or with a bad home, 1 declined or on failure |
+| `bar update` | Version, newest release the [update check](#update) found, how to upgrade; never downloads | 0 |
 | `bar check` | Lints the config ([bar check](#bar-check)) | 0, 2 on a config error |
 | `bar preview [--state early\|burning\|final] [--preset [<name>]]` | Layout with sample data ([bar preview](#bar-preview)) | 0 |
 | `bar init [--preset <name>]` | Writes a preset as your config ([presets](#presets)) | 0, 2 when a config exists or the path is unusable |
@@ -816,7 +828,7 @@ In the state directory:
 
 | Path | Written by | Holds |
 |---|---|---|
-| `cache/` | render, `bar refresh` | cached `gh`, `git status`, `tmux`, `%cmd%` and plugin results, locks and failure markers |
+| `cache/` | render, `bar refresh` | cached `gh`, `git status`, `tmux`, `%cmd%`, plugin and update check results, locks and failure markers |
 | `transcript/<hash>.json` | render, `bar refresh` | per-transcript offsets, token totals and recent context sizes ([tokens](#tokens-cache-cachettl), [ctx](#ctx)) |
 | `spendhist/<hash>.json` | `bar refresh` | spend history scan ([spendhist](#spendhist)) |
 | `hist-5h`, `hist-7d` | render | usage samples for `spark` |

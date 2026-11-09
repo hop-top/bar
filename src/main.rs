@@ -61,6 +61,8 @@ enum SubCmd {
         #[arg(short, long)]
         yes: bool,
     },
+    /// Show the newest release found by the update check and how to upgrade (never downloads).
+    Update,
     /// Flip a usage view between bar and percentage, or a plugin between
     /// its text and alternate text.
     Toggle {
@@ -154,6 +156,7 @@ fn main() {
         Some(("preview", m)) => preview(m),
         Some(("init", m)) => init(m),
         Some(("install", m)) => install(m),
+        Some(("update", _)) => update(),
         Some(("toggle", m)) => {
             let key = m.get_one::<String>("key").map_or("", String::as_str);
             match click::toggle(&click::state_dir(), key) {
@@ -280,6 +283,29 @@ fn init(m: &ArgMatches) {
             std::process::exit(EXIT_USAGE);
         }
     }
+}
+
+fn update() {
+    use hop_bar::{cache::Job, update};
+    let on = matches!(conf::load(), conf::LoadResult::Ok(c) if c.update_check);
+    let cached = on.then(|| {
+        let pre = update::channel_is_prerelease(update::current());
+        // a stale result also starts the daily check in the background
+        Cache::new(&click::state_dir()).read_or_refresh(
+            update::cache_key(pre),
+            update::TTL,
+            &Job::Update { prerelease: pre },
+        )
+    });
+    let exe = std::env::current_exe().unwrap_or_else(|_| "bar".into());
+    print!(
+        "{}",
+        update::report(
+            update::current(),
+            cached.as_ref().map(|c| c.as_deref()),
+            &exe
+        )
+    );
 }
 
 fn install(m: &ArgMatches) {

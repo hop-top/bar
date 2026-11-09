@@ -112,6 +112,7 @@ pub fn builtin(set: Icons, name: &str, opts: &Options) -> Option<&'static str> {
         "skills" => ("\u{f0d0}", "✨"),            // nf-fa-magic
         "tmux" => ("\u{f0db}", "🪟"),              // nf-fa-columns
         "root" => ("\u{f015}", "🏠"),              // nf-fa-home
+        "update" => ("\u{f0aa}", "🆙"),            // nf-fa-arrow_circle_up
         _ => return None,
     };
     match set {
