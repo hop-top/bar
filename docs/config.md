@@ -184,7 +184,7 @@ The statusline JSON does not say when Claude Code will compact, so bar works it 
 3. The window: `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (`200000`, `200k`, `1M`; kept within 100k-1M, ignored when not a number), else the model's `modelSettings` entry's `autoCompactWindow` in the user settings file (`"auto"` selects the default; entries are keyed by the canonical model name, such as `claude-opus-4-6`, which the dated, `[1m]`, Bedrock, Vertex and `vendor/` spellings of `model.id` match), else its top-level `autoCompactWindow`.
 4. The default: about 967k tokens for a model that runs with a native 1M window (the Fable models, Sonnet 5 and later, Haiku 5.5 and later, Opus 4.7 and later, recognised by the canonical name in `model.id`), otherwise the whole window. The 1M `[1m]` variants of older models (Opus 4.6, Sonnet 4.6) and model ids bar does not recognise compact at the limit.
 
-The result is capped at the context window. When it lies below the window, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` (1-100) lowers it to that percent.
+The result is capped at the context window. When it lies below the window, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` (1-100) moves it to that percent of the auto-compact window (the window from step 3, else the context window), only ever earlier: a percent above the point already chosen is ignored.
 
 - The environment is bar's own, which Claude Code passes to the status line command.
 - The user settings file is `settings.json` in `CLAUDE_CONFIG_DIR`, else `~/.claude`, read only when `left` or `of=compact` is used. Project, local and managed settings files and the `--autocompact` flag are not read; set `compact-at` when one of those decides the window.

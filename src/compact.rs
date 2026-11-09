@@ -60,6 +60,11 @@ fn setting_window(v: Option<&Value>) -> Option<Option<u64>> {
     Some(Some((n as u64).clamp(MIN_WINDOW, MAX_WINDOW)))
 }
 
+/// `n * p / 100` without overflow.
+fn pct_of(n: u64, p: u64) -> u64 {
+    (u128::from(n) * u128::from(p) / 100) as u64
+}
+
 /// A model that runs with a 1M window without a `[1m]` variant: the
 /// Fable models, Sonnet 5 and later, Haiku 5.5 and later, Opus 4.7 and
 /// later. Anything else (the 4.6 `[1m]` variants, older or unknown ids)
@@ -126,7 +131,7 @@ pub fn threshold(
     if let Some(c) = configured {
         return Some(match c {
             CompactAt::Tokens(n) => n.min(window),
-            CompactAt::Pct(p) => (window * p / 100).max(1),
+            CompactAt::Pct(p) => pct_of(window, p).max(1),
         });
     }
     if truthy(env("DISABLE_AUTO_COMPACT")) || truthy(env("DISABLE_COMPACT")) {
@@ -147,16 +152,20 @@ pub fn threshold(
         .or_else(per_model)
         .or_else(|| setting_window(get("autoCompactWindow")))
         .flatten();
-    let mut at = chosen
-        .unwrap_or_else(|| default_window(window, model_id))
-        .min(window);
-    // the override applies only where compaction runs before the limit
+    // the auto-compact window, and where compaction runs by default
+    let base = chosen.unwrap_or(window).min(window);
+    let mut at = match chosen {
+        Some(_) => base,
+        None => default_window(window, model_id),
+    };
+    // the override is a percent of the window; it applies only where
+    // compaction runs before the limit, and never raises the point
     if at < window {
         let pct = env("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE")
             .and_then(|v| v.trim().parse::<u64>().ok())
             .filter(|p| (1..=100).contains(p));
         if let Some(p) = pct {
-            at = (at * p / 100).max(1);
+            at = at.min(pct_of(base, p).max(1));
         }
     }
     Some(at)
