@@ -96,6 +96,17 @@ impl Repo {
         Ok(if sha256 { 32 } else { 20 })
     }
 
+    /// Identity, mtime and size of the index file: equal stamps, same
+    /// contents. `None` without an index, or with `GIT_INDEX_FILE` set.
+    pub fn index_stamp(&self) -> Option<String> {
+        if std::env::var_os("GIT_INDEX_FILE").is_some() {
+            return None;
+        }
+        let m = std::fs::metadata(self.git_dir.join("index")).ok()?;
+        let p = crate::platform::file_id(&m);
+        Some(format!("{p}:{}:{}", crate::platform::mtime_ns(&m), m.len()))
+    }
+
     /// Unmerged paths in the index, as `git status` counts them.
     pub fn conflicts(&self) -> Result<usize, Unsupported> {
         if std::env::var_os("GIT_INDEX_FILE").is_some() {

@@ -290,3 +290,33 @@ fn stash_and_tag_of_reftable_repo_from_cached_git() {
         "{spawned:?}"
     );
 }
+
+#[test]
+fn conflicts_reuse_the_count_while_the_index_is_unchanged() {
+    let t = Tmp::new();
+    let d = merging(&t);
+    let conf = "set left \"[#{conflicts}]\"";
+    let render = || {
+        run(&t)
+            .conf(conf)
+            .cwd(&d)
+            .unset("GIT_CONFIG_NOSYSTEM")
+            .unset("GIT_INDEX_FILE")
+            .go()
+    };
+    assert_eq!(one(&render().plain), "[✗2]");
+    let cache = Cache::new(&t.path().join("state"));
+    let key = hop_bar::placeholders::gitop::conflicts_key(&d);
+    let stored = cache.read_fresh(&key, u64::MAX).expect("count stored");
+    let (stamp, n) = stored.rsplit_once(' ').unwrap();
+    assert_eq!(n, "2");
+    // a count stored for this very index is used as is
+    cache.store(&key, &format!("{stamp} 7")).unwrap();
+    assert_eq!(one(&render().plain), "[✗7]");
+    // a rewritten index is parsed again
+    let idx = d.join(".git/index");
+    let body = std::fs::read(&idx).unwrap();
+    std::fs::remove_file(&idx).unwrap();
+    std::fs::write(&idx, body).unwrap();
+    assert_eq!(one(&render().plain), "[✗2]");
+}
