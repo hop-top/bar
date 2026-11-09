@@ -53,7 +53,7 @@ A project file comes with the repository, so what it may do is set in your confi
 
 `set project-config` is read from your config only; in a project file it is left out.
 
-`safe` limits what a project file adds, not what your config already allows. Under `safe` a project file can still use every built-in placeholder, including the git placeholders, which may run `git` in the session's directory, and `prs` and `issues`, which run `gh` or `glab` for the repository's remote, and it can pass options to the plugins your config names, which then run with those options. Use `off` for repositories you do not trust.
+`safe` limits what a project file adds, not what your config already allows. Under `safe` a project file can still use every built-in placeholder, including the git placeholders, which may run `git` in the session's directory, and `prs` and `issues`, which run `gh` or `glab` for the repository's remote (in bar's state directory, naming the repository with `-R`, so nothing in the project's directory reaches them), and it can pass options to the plugins your config names, which then run with those options. Use `off` for repositories you do not trust.
 
 ### Directives
 
@@ -598,7 +598,7 @@ On a GitLab remote, `prs` lists merge requests as `!N` and `issues` lists issues
 
 - `bar check` warns when `glab` is not on `PATH` and `prs` or `issues` is in the layout while `set gitlab-hosts` is set or the current directory's `origin` is a GitLab host.
 - Hosts: gitlab.com, plus `set gitlab-hosts`. bar does not read `glab`'s own config to find hosts. The remote URL (https, ssh or scp form) is passed to `glab` as `-R https://<host>[:<port>]/<group>/.../<project>`, so `glab` picks the host and its own login for it; bar never sees a token.
-- One background job per query runs `glab mr list` (or `glab issue list`) with `--output json`, then for merge requests one `glab mr view <N> --output json` for each of the first 10 listed MRs for its pipeline, all in that job; MRs past the tenth show the list's merge status only. `glab` runs in bar's state directory, not the project's. The output is cut down to number, link, draft, merge status and pipeline before it is cached.
+- One background job per query runs `glab mr list` (or `glab issue list`) with `--output json`, then for merge requests one `glab mr view <N> --output json` for each of the first 10 listed MRs for its pipeline, all in that job; MRs past the tenth show the list's merge status only. The output is cut down to number, link, draft, merge status and pipeline before it is cached.
 - Pipeline: the MR's head pipeline. `failed`, `canceled` and `canceling` fail; `created`, `waiting_for_resource`, `preparing`, `pending`, `running`, `scheduled` and `manual` are pending; `success` and `skipped` pass. When `glab mr view` fails, `detailed_merge_status` `ci_must_pass` counts as failed and `ci_still_running` as pending; otherwise no mark.
 - Colour: red for a failed pipeline, `detailed_merge_status` `requested_changes`, or a conflict; amber for a pending pipeline, `not_approved`, or a draft; else green.
 - `status=closed` and `status=merged` become `--closed` and `--merged`.

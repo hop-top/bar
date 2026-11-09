@@ -261,3 +261,28 @@ fn query_cap_8_truncates_and_check_warns() {
     .unwrap();
     assert_eq!((p.jobs.len(), p.warning), (8, None));
 }
+
+#[test]
+fn gh_runs_outside_the_project() {
+    let f = Fx::github();
+    f.out("out.json", "[]");
+    let pwd = f.root.join("gh-pwd");
+    let bin = f.root.join("bin/gh");
+    let body = std::fs::read_to_string(&bin).unwrap();
+    let body = body.replacen(
+        "#!/bin/sh\n",
+        &format!("#!/bin/sh\npwd -P >> '{}'\n", pwd.display()),
+        1,
+    );
+    std::fs::write(&bin, body).unwrap();
+    std::env::set_var("BAR_STATE_DIR", &f.state);
+    f.prime(Kind::Pr, &[]);
+    f.prime(Kind::Issue, &[]);
+    std::env::remove_var("BAR_STATE_DIR");
+    let dirs = std::fs::read_to_string(&pwd).unwrap();
+    let state = f.state.canonicalize().unwrap();
+    assert!(dirs.lines().count() >= 2, "{dirs:?}");
+    for d in dirs.lines() {
+        assert_eq!(std::path::Path::new(d), state, "{dirs:?}");
+    }
+}
