@@ -5,9 +5,12 @@ use crate::options::Options;
 use crate::palette;
 use crate::prices::Price;
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
 
+mod load;
+pub mod project;
 mod set;
+pub use load::{find_path, find_path_default, load, load_from, load_layered, search_paths};
+pub use project::ProjectMode;
 use set::{apply_palette, apply_price, apply_set};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,6 +132,8 @@ pub struct Config {
     pub compact_at: Option<CompactAt>,
     /// `set update-check on`: `#{update}` checks GitHub daily, in the background.
     pub update_check: bool,
+    /// What a project `.bar.conf` may do (`set project-config`).
+    pub project_config: ProjectMode,
 }
 
 impl Default for Config {
@@ -163,6 +168,7 @@ impl Default for Config {
             prices: Vec::new(),
             compact_at: None,
             update_check: false,
+            project_config: ProjectMode::default(),
         }
     }
 }
@@ -372,16 +378,37 @@ fn apply_line(c: &mut Config, t: &[String]) -> Result<(), String> {
     }
 }
 
-pub fn parse(src: &str) -> Result<Config, Vec<ConfError>> {
-    let mut c = Config::default();
+/// Which file a config line came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Layer {
+    /// The user's `bar.conf` (or the built-in layout when there is none).
+    User,
+    /// A project `.bar.conf`, applied after the user config.
+    Project,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LayerError {
+    pub layer: Layer,
+    pub error: ConfError,
+}
+
+/// Applies every line of `text`; `guard` may refuse a line before it is
+/// applied. Errors carry 1-based line numbers.
+fn apply_text(
+    c: &mut Config,
+    text: &str,
+    explicit: &mut Vec<String>,
+    guard: &dyn Fn(&[String]) -> Result<(), String>,
+) -> Vec<ConfError> {
     let mut errs = Vec::new();
-    let mut explicit = Vec::new();
-    for (i, raw) in src.lines().enumerate() {
+    for (i, raw) in text.lines().enumerate() {
         let r = tokenize(raw).and_then(|t| {
             if t.is_empty() {
                 return Ok(());
             }
-            apply_line(&mut c, &t)?;
+            guard(&t)?;
+            apply_line(c, &t)?;
             if t[0] == "set" {
                 explicit.push(t[1].clone());
             }
@@ -394,73 +421,65 @@ pub fn parse(src: &str) -> Result<Config, Vec<ConfError>> {
             });
         }
     }
+    errs
+}
+
+pub fn parse(src: &str) -> Result<Config, Vec<ConfError>> {
+    parse_layers(Some(src), |_| None).map_err(|e| e.into_iter().map(|e| e.error).collect())
+}
+
+/// The user config (`None`: the built-in layout) with the project config
+/// over it. `project` is asked for the project file's text, or why it
+/// could not be read, once the user config's `project-config` is known;
+/// it is not called under `off`. Project lines apply after the user's: a
+/// `set` wins, a `default` merges over, a `plugin` line replaces, and a
+/// `rule` or `account` replaces the user's one with the same target or glob.
+pub fn parse_layers(
+    user: Option<&str>,
+    project: impl FnOnce(ProjectMode) -> Option<Result<String, String>>,
+) -> Result<Config, Vec<LayerError>> {
+    let mut c = match user {
+        Some(_) => Config::default(),
+        None => crate::render::builtin_config(),
+    };
+    let mut explicit = Vec::new();
+    let tag = |layer| move |error| LayerError { layer, error };
+    let mut errs: Vec<LayerError> = match user {
+        Some(text) => apply_text(&mut c, text, &mut explicit, &|_| Ok(()))
+            .into_iter()
+            .map(tag(Layer::User))
+            .collect(),
+        None => Vec::new(),
+    };
+    let mode = c.project_config;
+    let text = match mode {
+        ProjectMode::Off => None,
+        _ => project(mode),
+    };
+    match text {
+        None => {}
+        Some(Err(message)) => errs.push(LayerError {
+            layer: Layer::Project,
+            error: ConfError { line: 0, message },
+        }),
+        Some(Ok(text)) => {
+            let used = project::user_plugins(&c);
+            let (rules, accounts) = (c.rules.len(), c.accounts.len());
+            let guard = |t: &[String]| project::guard(mode, t, &used);
+            errs.extend(
+                apply_text(&mut c, &text, &mut explicit, &guard)
+                    .into_iter()
+                    .map(tag(Layer::Project)),
+            );
+            project::replace_overridden(&mut c, rules, accounts);
+            // the project file decides `project-config` only through the user's
+            c.project_config = mode;
+        }
+    }
     apply_palette(&mut c, &explicit);
     if errs.is_empty() {
         Ok(c)
     } else {
         Err(errs)
     }
-}
-
-/// Candidate paths, first existing wins.
-pub fn search_paths(
-    env: &dyn Fn(&str) -> Option<String>,
-    home: &Path,
-    kit_dir: &Path,
-) -> Vec<PathBuf> {
-    let mut v = Vec::new();
-    // the XDG spec says relative values are to be ignored
-    if let Some(x) = env("XDG_CONFIG_HOME").filter(|s| Path::new(s).is_absolute()) {
-        v.push(PathBuf::from(x).join("bar/bar.conf"));
-    }
-    v.push(home.join(".config/bar/bar.conf"));
-    v.push(kit_dir.join("bar.conf"));
-    v
-}
-
-/// First existing candidate, or `None`.
-pub fn find_path(
-    env: &dyn Fn(&str) -> Option<String>,
-    home: &Path,
-    kit_dir: &Path,
-) -> Option<PathBuf> {
-    search_paths(env, home, kit_dir)
-        .into_iter()
-        .find(|p| p.is_file())
-}
-
-/// Seam for tests: explicit env lookup, home, and kit config dir.
-pub fn load_from(env: &dyn Fn(&str) -> Option<String>, home: &Path, kit_dir: &Path) -> LoadResult {
-    let Some(path) = find_path(env, home, kit_dir) else {
-        return LoadResult::Missing;
-    };
-    match std::fs::read_to_string(&path) {
-        Err(e) => LoadResult::Invalid(vec![ConfError {
-            line: 0,
-            message: format!("{}: {e}", path.display()),
-        }]),
-        Ok(s) => match parse(&s) {
-            Ok(c) => LoadResult::Ok(c),
-            Err(e) => LoadResult::Invalid(e),
-        },
-    }
-}
-
-/// Process environment, the home dir and the kit config dir for `bar`.
-pub fn find_path_default() -> Option<PathBuf> {
-    let home = crate::platform::home().unwrap_or_default();
-    find_path(
-        &|k| std::env::var(k).ok(),
-        &home,
-        &hop_top_kit::xdg::raw_config_dir("bar"),
-    )
-}
-
-pub fn load() -> LoadResult {
-    let home = crate::platform::home().unwrap_or_default();
-    load_from(
-        &|k| std::env::var(k).ok(),
-        &home,
-        &hop_top_kit::xdg::raw_config_dir("bar"),
-    )
 }

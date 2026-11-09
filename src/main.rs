@@ -208,10 +208,11 @@ fn prices_cmd(m: &ArgMatches) {
 
 fn check(m: &ArgMatches) {
     let dirs = plugin::path_dirs(std::env::var_os("PATH").as_deref());
-    let report = match conf::find_path_default() {
-        Some(p) => check::check_file(&p, &dirs),
-        None => check::check_builtin(&dirs),
-    };
+    let user = conf::find_path_default().map(|p| check::source(&p));
+    let project = cwd()
+        .and_then(|d| conf::project::find(&d))
+        .map(|p| check::source(&p));
+    let report = check::check_layers(user, project, &dirs);
     let mut out = std::io::stdout();
     if m.get_one::<String>("format").map(String::as_str) == Some("table") {
         let _ = out.write_all(report.to_text().as_bytes());
@@ -259,7 +260,7 @@ fn preview(m: &ArgMatches) {
             let _ = writeln!(
                 so,
                 "{}",
-                hop_bar::preview::render(state, conf::load(), columns, now)
+                hop_bar::preview::render(state, conf::load(cwd().as_deref()), columns, now)
             );
         }
     }
@@ -287,7 +288,7 @@ fn init(m: &ArgMatches) {
 
 fn update() {
     use hop_bar::{cache::Job, update};
-    let on = matches!(conf::load(), conf::LoadResult::Ok(c) if c.update_check);
+    let on = matches!(conf::load(cwd().as_deref()), conf::LoadResult::Ok(c) if c.update_check);
     let cached = on.then(|| {
         let pre = update::channel_is_prerelease(update::current());
         // a stale result also starts the daily check in the background
@@ -454,11 +455,21 @@ fn render() {
         .and_then(|c| c.trim().parse().ok());
     let cache = Cache::new(&click::state_dir());
     let runner = CachedRunner::new(cache.clone());
-    let out = hop_bar::render::run(&s, conf::load(), columns, &runner, Some(&cache));
+    // the session's directory picks the project config; Claude Code runs
+    // the status line command there too
+    let dir = Some(std::path::PathBuf::from(&s.cwd))
+        .filter(|d| d.is_absolute())
+        .or_else(cwd);
+    let load = conf::load(dir.as_deref());
+    let out = hop_bar::render::run(&s, load, columns, &runner, Some(&cache));
     if !out.is_empty() {
         // a closed pipe must not panic; render always exits 0
         let mut so = std::io::stdout().lock();
         let _ = writeln!(so, "{out}");
         let _ = so.flush();
     }
+}
+
+fn cwd() -> Option<std::path::PathBuf> {
+    std::env::current_dir().ok()
 }

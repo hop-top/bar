@@ -76,6 +76,20 @@ impl<'a> Expander<'a> {
     }
 }
 
+/// Whether `value` holds a `%…%` that `expand` would replace (an
+/// environment variable or a command).
+pub fn has_expansion(value: &str) -> bool {
+    let mut rest = value;
+    while let Some(i) = rest.find('%') {
+        let after = &rest[i + 1..];
+        if after.find('%').is_some_and(|j| j > 0) {
+            return true;
+        }
+        rest = after;
+    }
+    false
+}
+
 pub fn expand(value: &str, runner: &dyn CommandRunner) -> String {
     Expander::new(runner).expand(value)
 }

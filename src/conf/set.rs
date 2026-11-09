@@ -1,7 +1,7 @@
 //! `set` directives: one key and value each, plus `set price` and the
 //! palette fill-in applied after the whole file is read.
 
-use super::{code, duration, layout_key, Config, Icons, Skin, SkinGlyphs, Wrap};
+use super::{code, duration, layout_key, Config, Icons, ProjectMode, Skin, SkinGlyphs, Wrap};
 use crate::compact::CompactAt;
 use crate::palette;
 use crate::prices::Price;
@@ -68,6 +68,14 @@ pub(super) fn apply_set(c: &mut Config, key: &str, val: &str) -> Result<(), Stri
                 "off" => false,
                 _ => return Err(format!("invalid update-check `{val}` (on|off)")),
             }
+        }
+        "project-config" => {
+            c.project_config = ProjectMode::parse(val).ok_or_else(|| {
+                format!(
+                    "invalid project-config `{val}` ({})",
+                    ProjectMode::NAMES.join("|")
+                )
+            })?
         }
         "color.good" => c.colors.good = code(val)?,
         "color.warn" => c.colors.warn = code(val)?,

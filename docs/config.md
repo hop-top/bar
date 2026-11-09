@@ -2,7 +2,7 @@
 
 How to write `bar.conf`: where it lives, the directives, every placeholder and its options, styling, layout and the commands around the config. Pictures of skins, skin glyphs, segment backgrounds, palettes, bar glyphs, usage components, pace states, icons, lines and wrapping, and PR checks: [Gallery](gallery.md).
 
-- [Overview](#overview): [config file](#config-file), [directives](#directives), [rules](#rules), [minimal example](#minimal-example)
+- [Overview](#overview): [config file](#config-file), [project config](#project-config), [directives](#directives), [rules](#rules), [minimal example](#minimal-example)
 - [Placeholders](#placeholders): [session](#session), [ctx](#ctx), [usage](#usage), [tokens, cache, cachettl](#tokens-cache-cachettl), [ttft, tps, misses](#ttft-tps-misses), [spendhist](#spendhist), [git and directories](#git-and-directories), [prs and issues](#prs-and-issues), [account, agents, sessions, tmux](#account-agents-sessions-tmux), [update](#update), [every placeholder](#options-on-every-placeholder), [values](#values)
 - [Styling](#styling): [skins](#skins), [palettes](#palettes), [icons](#icons), [glyphs](#glyphs), [colours](#colours)
 - [Layout](#layout): [lines and wrapping](#lines-and-wrapping)
@@ -33,11 +33,30 @@ A config file replaces it whole: every group starts empty, so a file that sets n
 
 A file with an error makes `bar render` print `bar: config error, run bar check`.
 
+### Project config
+
+A repository can carry its own `.bar.conf`, applied over your config for sessions inside it.
+
+- Lookup, from the session's directory (`workspace.current_dir`, else `cwd`; `bar check` and `bar preview` use the shell's working directory): that directory's `.bar.conf`, else the nearest one in a parent directory up to the git root (the first directory holding a `.git` dir or file), the root included. Outside a git repository only the session's directory itself is looked at. The lookup only stats files and stops after 64 directories.
+- Same syntax as `bar.conf`. Its lines apply after yours: a `set` wins (a layout line replaces that group), a `default` merges over yours, a `plugin` line replaces yours, and a `rule` or `account` replaces yours with the same target or glob. Without a config file of yours it applies over the built-in layout.
+- A project file with an error, or a line its mode refuses, is a config error like one in your file (`bar render` prints `bar: config error, run bar check`); `bar check` names the file and line.
+- Nothing is cached: both files are read on every render.
+
+A project file comes with the repository, so what it may do is set in your config with `set project-config`:
+
+| Value | Project file |
+|---|---|
+| `off` | never looked for |
+| `safe` (default) | applied, except: no `%…%` values (commands or environment variables) in placeholder options or `default` lines, no `plugin` lines, no `set update-check`, and no plugin placeholder your config does not name (in a layout, a `default` line or a `plugin` line). Each such line is a config error |
+| `full` | applied like your own config, `%cmd%` values and any plugin included |
+
+`set project-config` is read from your config only; in a project file it is an error.
+
 ### Directives
 
 | Directive | Form |
 |-----------|------|
-| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-4) `separator gap wrap refresh icons icon-width skin skin-glyphs palette claude-dir update-check color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
+| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-4) `separator gap wrap refresh icons icon-width skin skin-glyphs palette claude-dir project-config update-check color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
 | `default` | `default <placeholder> key=value ...` |
 | `account` | `account "<glob>" <label> <color>` |
 | `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%`; see [Rules](#rules) |
@@ -60,6 +79,7 @@ Quote values with spaces (double quotes; a value is one token). `#` outside quot
 | `claude-dir` | Claude Code config dir read by [spendhist](#spendhist) |
 | `compact-at` | Where Claude Code auto-compacts, for [ctx](#ctx): tokens (`200000`, `200k`, `1M`) or a percent of the context window (`1%`-`100%`). Unset, bar works it out; see [Auto-compaction point](#auto-compaction-point) |
 | `update-check` | `off` (default) or `on`: a daily check for a newer bar release, shown by [`update`](#update) |
+| `project-config` | `off`, `safe` (default) or `full`: what a project `.bar.conf` may do. See [Project config](#project-config) |
 | `color.good`, `color.warn`, `color.bad`, `ramp` | State colours (one code `0`-`255`) and usage ramp (exactly 11 codes, quoted, worst score first). See [Colours](#colours) |
 | `price` | Model price override for [spendhist](#spendhist) |
 
@@ -659,7 +679,7 @@ A render prints at most 4 rows, all lines together. Rows past the fourth are dro
 
 ### bar check
 
-`bar check` lints the config without rendering and prints the file it read (or says the built-in layout is in use).
+`bar check` lints the config without rendering and prints the file it read (or says the built-in layout is in use), and the [project config](#project-config) found from the working directory with its mode (`not applied` under `off`). Both files are checked together, as `bar render` applies them.
 
 - Parse errors with line numbers. An unreadable file is one error without a line.
 - Line numbers in `left@N`, `center@N`, `right@N` (1-4; anything else is an error).
@@ -668,9 +688,12 @@ A render prints at most 4 rows, all lines together. Rows past the fourth are dro
 - Warnings: `gh` not on `PATH` while `prs` or `issues` is used; a `default` line for a plugin that is not on `PATH` (a layout using it is an error); an expression that expands to more than 8 queries (only the first 8 run).
 - Options holding `%command%` or `%$VAR%` are skipped; they resolve at render time.
 
+- Lines a project file may not hold under `safe`, and `set project-config` in a project file.
+- With a project file applied, each finding is labelled `config line N` or `project line N`; otherwise `line N`.
+
 - It also prints the models.dev snapshot state: its date and path, `not fetched`, or why the file was ignored.
 
-Exit 0 when there are no errors (warnings allowed), 2 on a config error. `--format json` prints `{path, prices: {path, fetched, ignored}, ok, issues: [{level, line, message}]}`; `path` (top level) is `null` when no config file is in use, `prices.fetched` is the snapshot date or `null` when there is no usable file, and `line` is 0 when an issue has no line. `--format yaml`, `csv` and `text` give the same data in that format; the default, `table`, is the plain report.
+Exit 0 when there are no errors (warnings allowed), 2 on a config error. `--format json` prints `{path, project: {path, mode, applied}, prices: {path, fetched, ignored}, ok, issues: [{level, file, line, message}]}`; `path` (top level) is `null` when no config file is in use, `project` is `null` when no project file was found, an issue's `file` is the file it is in (`null` for the built-in layout), `prices.fetched` is the snapshot date or `null` when there is no usable file, and `line` is 0 when an issue has no line. `--format yaml`, `csv` and `text` give the same data in that format; the default, `table`, is the plain report.
 
 ### bar preview
 
@@ -818,6 +841,7 @@ Check clickable commands, in a Claude Code session inside tmux after `bar click 
 | Dir | Default | Override |
 |---|---|---|
 | Config | see [Config file](#config-file) | `XDG_CONFIG_HOME` (absolute) |
+| Project config | `.bar.conf` in the session's directory or a parent up to the git root; see [Project config](#project-config) | `set project-config` |
 | State and cache | macOS `~/Library/Application Support/bar`; Linux `~/.local/state/bar`; Windows `%LOCALAPPDATA%\bar` | `BAR_STATE_DIR`, else `XDG_STATE_HOME/bar` (absolute; a leading `~` expands) |
 | Data (models.dev snapshot, `models.json`) | macOS `~/Library/Application Support/bar`; Linux `~/.local/share/bar`; Windows `%LOCALAPPDATA%\bar` | `XDG_DATA_HOME/bar` (absolute; a leading `~` expands) |
 | Claude Code | `~/.claude` | `CLAUDE_CONFIG_DIR` (absolute); `set claude-dir` for `spendhist` only |
