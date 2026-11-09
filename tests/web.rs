@@ -192,3 +192,31 @@ fn check_takes_unknown_names_for_plugins() {
         .unwrap()
         .contains("`myplugin`"));
 }
+
+/// The picker text: a description for every core placeholder, the one
+/// `bar edit` shows, and help for every core option.
+#[test]
+fn schema_describes_placeholders_and_options() {
+    let s = web::schema();
+    for p in s["placeholders"].as_array().unwrap() {
+        let name = p["name"].as_str().unwrap();
+        let desc = p["description"].as_str().unwrap();
+        assert!(!desc.is_empty(), "{name}");
+        assert_eq!(desc, hop_bar::describe::describe(name));
+        for o in p["options"].as_array().unwrap() {
+            let key = o["key"].as_str().unwrap();
+            assert!(
+                o["help"].as_str().is_some_and(|h| !h.is_empty()),
+                "{name}.{key}"
+            );
+            let default = o["default"].as_str().unwrap();
+            // a default the page shows in a select is one of its values
+            if o["kind"] == "one" && !default.is_empty() {
+                assert!(
+                    o["values"].as_array().unwrap().contains(&json!(default)),
+                    "{name}.{key}"
+                );
+            }
+        }
+    }
+}
