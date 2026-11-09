@@ -87,7 +87,7 @@ fn session(state: &str, now: i64) -> Session {
         five_hour: Some(win(p.five)),
         seven_day: Some(win(p.seven)),
         spend_limit: Some(SpendLimit {
-            period: "monthly".into(),
+            period: Some("monthly".into()),
             resets_at: now + 3 * 86_400 + 4 * 3600,
             used_percentage: Some(62.8),
             used_usd: Some(314.12),

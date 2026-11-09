@@ -267,6 +267,84 @@ fn spend_components_from_the_statusline_json() {
 }
 
 #[test]
+fn spend_limits_of_every_period() {
+    let at = 1_000_000;
+    let render = |limit: &str, show: &str| {
+        let s = hop_bar::session::parse(&format!(r#"{{"rate_limits":{{"spend_limit":{limit}}}}}"#));
+        let cfg = Config::default();
+        let ctx = Ctx {
+            session: &s,
+            config: &cfg,
+            now: at,
+            runner: &ColdRunner,
+            cache: None,
+            columns: None,
+            plugin_dirs: &[],
+        };
+        lookup("spend")
+            .unwrap()
+            .render(&ctx, &opts(&[("show", show)]))
+            .map(|x| strip_codes(&x))
+    };
+    let lim = |period: &str, secs: i64| {
+        format!(
+            r#"{{"used_percentage":40,"resets_at":{},"used_usd":4,"limit_usd":10{period}}}"#,
+            at + secs
+        )
+    };
+    let daily = lim(r#","period":"daily""#, 5 * 3600);
+    assert_eq!(render(&daily, "").as_deref(), Some("5h0m"));
+    assert_eq!(
+        render(&daily, "used,limit").as_deref(),
+        Some("$4.00/$10.00")
+    );
+    let weekly = lim(r#","period":"weekly""#, 3 * 86_400);
+    assert_eq!(
+        render(&weekly, "left,daily").as_deref(),
+        Some("$6.00 left $2.00/d")
+    );
+    // the dollar fields and the period come later than the percentage
+    let bare = format!(r#"{{"used_percentage":40,"resets_at":{}}}"#, at + 3600);
+    assert_eq!(render(&bare, "").as_deref(), Some("1h0m"));
+    // money components wait for `limit_usd`
+    assert_eq!(render(&bare, "pct"), None);
+    assert_eq!(render(&lim(r#","period":"yearly""#, 3600), ""), None);
+}
+
+#[test]
+fn spend_pace_period_follows_the_limit() {
+    use hop_bar::placeholders::spend::period_secs;
+    use hop_bar::tz::days_from_civil;
+    let day = 86_400;
+    let mar1 = days_from_civil(2026, 3, 1) * day;
+    assert_eq!(
+        period_secs(Some("monthly"), mar1, mar1 - day),
+        Some(28 * day)
+    );
+    let may15 = days_from_civil(2026, 5, 15) * day + 3600;
+    assert_eq!(
+        period_secs(Some("monthly"), may15, may15 - day),
+        Some(30 * day)
+    );
+    // a reset on the 31st steps back to the end of a shorter month
+    let mar31 = days_from_civil(2026, 3, 31) * day;
+    assert_eq!(
+        period_secs(Some("monthly"), mar31, mar31 - day),
+        Some(31 * day)
+    );
+    assert_eq!(period_secs(Some("weekly"), 0, 0), Some(7 * day));
+    assert_eq!(period_secs(Some("daily"), 0, 0), Some(day));
+    // without a period: the shortest that fits the time left
+    assert_eq!(period_secs(None, 10 * 3600, 0), Some(day));
+    assert_eq!(period_secs(None, 3 * day, 0), Some(7 * day));
+    assert_eq!(
+        period_secs(None, 20 * day, 0),
+        period_secs(Some("monthly"), 20 * day, 0)
+    );
+    assert_eq!(period_secs(Some("yearly"), 0, 0), None);
+}
+
+#[test]
 fn parses_the_endpoint_json() {
     let (models, extra) = usageapi::parse(FIXTURE.as_bytes()).unwrap();
     let names: Vec<&str> = models.iter().map(|m| m.name.as_str()).collect();

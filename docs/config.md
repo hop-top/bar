@@ -149,7 +149,7 @@ Fields of the session: model, effort, context, cost and the rest of the statusli
 | `version`, `vim`, `agent` | none | | Claude Code version, vim mode, agent name; hidden when absent |
 | `style` | none | | Output style; hidden when `default` |
 | `thinking`, `fast` | none | | `think` / `fast` while enabled; hidden otherwise |
-| `spend` | `show` | `time` | A monthly spend limit (`rate_limits.spend_limit` with `period` `monthly`): time left, muted, e.g. `3d4h`; with `show`, its money components (below); hidden otherwise |
+| `spend` | `show` | `time` | A spend limit (`rate_limits.spend_limit`, behind a Claude apps gateway; `period` `daily`, `weekly` or `monthly`, or not sent yet): time left, muted, e.g. `3d4h`; with `show`, its money components (below); hidden for another period |
 | `sid` | `len` | `8` | First `len` chars of the session id; hidden when absent or `len=0` |
 | `compactions` | none | | `compact 2`: context compactions in this session's transcript; hidden at 0 |
 | `skills` | none | | `skills 3`: Skill tool calls on the main conversation in the transcript; hidden at 0 |
@@ -161,7 +161,7 @@ Fields of the session: model, effort, context, cost and the rest of the statusli
 - `ctx`: context use, `ctx 38%` by default; options and components under [ctx](#ctx).
 - `cost`, `burn`, `duration`, `lines`, `version`, `style`, `vim`, `agent`, `thinking` and `fast` read the statusline JSON fields `cost.total_cost_usd`, `cost.total_duration_ms`, `cost.total_lines_added`, `cost.total_lines_removed`, `version`, `output_style.name`, `vim.mode`, `agent.name`, `thinking.enabled` and `fast_mode`. Missing, mistyped, negative or non-finite values hide the placeholder. None of these are in the default layout.
 - `cost` is the session's own cost; `spend` is the account spend-limit window.
-- `spend[show=...]` takes the components of [`extra`](#extra-and-the-usage-api) (`used`, `limit`, `left`, `daily`, `pct`, `bar`, `gauge`, `time`; `today` stays empty) and its `count`, `glyphs` and `width`, from `rate_limits.spend_limit.used_usd`, `limit_usd` and `used_percentage` (Claude Code v2.1.284 and later; each may be absent, and a component without its numbers is left out). The colour follows `rule spend`, else amber at 20% left and red at 5%, paced over 30 days.
+- `spend[show=...]` takes the components of [`extra`](#extra-and-the-usage-api) (`used`, `limit`, `left`, `daily`, `pct`, `bar`, `gauge`, `time`; `today` stays empty) and its `count`, `glyphs` and `width`, from `rate_limits.spend_limit.used_usd`, `limit_usd` and `used_percentage` (Claude Code v2.1.284 and later; each may be absent: without `limit_usd` only `time` shows). The colour follows `rule spend`, else amber at 20% left and red at 5%, paced over the limit's period: a day, a week, or the calendar month before `resets_at` (UTC); while `period` is not sent yet, the shortest of those that holds the time left.
 - `sid` reads `session_id`; a non-numeric `len` renders as 8 and `bar check` rejects it.
 - `compactions` counts `system` transcript entries with subtype `compact_boundary`; `skills` counts `Skill` tool calls in non-sidechain assistant entries (skills a user starts with a slash command are not counted). Both share the transcript scan of [`tokens`](#tokens-cache-cachettl), so they are empty without a readable `transcript_path`.
 - `name` reads `session_name`: the name set with `--name` or `/rename`, else the generated session title. Claude Code leaves it out when the session has neither, and bar does not look further, so older Claude Code versions show nothing.
