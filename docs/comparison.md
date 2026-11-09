@@ -18,8 +18,8 @@ All four read Claude Code's status-line JSON and show the model, context-window 
 | | bar | ccstatusline | claude-powerline | ccline |
 |---|---|---|---|---|
 | Language, runtime | Rust, single binary | TypeScript on Node (`engines` ≥ 14) or Bun | TypeScript on Node 18+; no npm dependencies | Rust, single binary |
-| Install | release archive, or `cargo install` from a clone; `/bar` setup skill from the Claude Code plugin marketplace | `npx` / `bunx`; the setup flow offers a pinned global install (npm or Bun) | `npx` / `bunx --bun`, or Claude Code plugin marketplace | npm (`@cometix/ccline`; yarn, pnpm, npm mirror), release archive, or `cargo build` |
-| Platforms documented | macOS, Linux, Windows (click handler macOS only) | macOS, Linux, Windows (PowerShell, cmd, WSL) | not documented | Linux x64 and arm64 (glibc and static), macOS x64 and arm64, Windows x64 |
+| Install | npm (`@hop-top/bar`: `npm install -g`, `npx`, `bunx`; prebuilt binary, no install script), release archive, or `cargo install` from a clone; `/bar` setup skill from the Claude Code plugin marketplace | `npx` / `bunx`; the setup flow offers a pinned global install (npm or Bun) | `npx` / `bunx --bun`, or Claude Code plugin marketplace | npm (`@cometix/ccline`; yarn, pnpm, npm mirror), release archive, or `cargo build` |
+| Platforms documented | Linux x64 and arm64 (glibc 2.35+ and static musl), macOS x64 and arm64, Windows x64 and arm64 (click handler macOS only) | macOS, Linux, Windows (PowerShell, cmd, WSL) | not documented | Linux x64 and arm64 (glibc and static), macOS x64 and arm64, Windows x64 |
 | Outside tools | `gh` (GitHub) or `glab` (GitLab) for PRs, merge requests and issues; `git` only as a fallback for unusual repo setups; `jj` 0.32+ for Jujutsu; `curl` for the price snapshot and the opt-in network features; `tmux` for `tmux` | `git`, `gh` or `glab`, `jj` | Git 2.0+ | Git; Claude Code 2.1.153+ (some metrics need newer) |
 
 ## Configuration and editing
@@ -39,7 +39,7 @@ All four read Claude Code's status-line JSON and show the model, context-window 
 | | bar | ccstatusline | claude-powerline | ccline |
 |---|---|---|---|---|
 | Skins | plain, powerline, capsule | plain or Powerline mode (custom separators and caps, columns aligned across lines) | minimal, powerline, capsule, tui (bordered panel) | plain, bracket, pill, powerline |
-| Palettes | 7: default, nord, gruvbox, dracula, solarized, mono, terminal | colours chosen per widget; built-in Powerline themes | 6: dark, light, nord, tokyo-night, rose-pine, gruvbox; or custom | 13, including `terminal`; own palette files |
+| Palettes | 13: default, nord, gruvbox, dracula, solarized, mono, tokyo-night, rose-pine, catppuccin, one-dark, everforest, kanagawa, terminal; own palette files | colours chosen per widget; built-in Powerline themes | 6: dark, light, nord, tokyo-night, rose-pine, gruvbox; or custom | 13, including `terminal`; own palette files |
 | Colour per element | `fg`, `bg`, `bold` per placeholder (colour code, `#rrggbb`, ANSI name or palette role); palette and state colours | foreground, background, bold, dim per widget | `fg`, `bg`, `bold` per segment (custom theme) | `color`, `fg`, `icon_color` per item |
 | Colour depth | none, 16, 256 (default), truecolor or auto; `NO_COLOR`, `FORCE_COLOR`, `COLORTERM`; ANSI 16 under `terminal` | 16, 256, truecolor | auto, ANSI, 256, truecolor; `NO_COLOR`, `FORCE_COLOR` | truecolor down to none |
 | Thresholds, gradients | 11-step ramp; pace `rule`s; gradient fill on usage and context bars; OKLab gradients per placeholder or across every line (6 presets, or 2 to 8 colours) | gradients per widget or across the whole line (OKLab, 13 named presets); effort level colours | fixed tiers (budget warnings, cache timer) | per-item `levels`, coloured in `steps` or `gradient` |
@@ -83,10 +83,10 @@ All four read Claude Code's status-line JSON and show the model, context-window 
 
 | | bar | ccstatusline | claude-powerline | ccline |
 |---|---|---|---|---|
-| Git | `repo`, `branch` (links, truncation), `dirty` (staged, modified, untracked), `ahead` (ahead and behind), `sha`, `tag`, `stash`, `gitop` (operation in progress, with step), `conflicts`, `worktree`, `root`; read from files (`git` only as a fallback) | branch (links, fish-style), staged, unstaged, untracked, insertions, deletions, ahead and behind, conflicts, SHA, root, origin, upstream, fork, worktree | branch, SHA, tag, stash, operation, working-tree counts, ahead and behind, upstream, repo name, worktree, time since commit | `git`, `repo`, `worktree` (fields not documented) |
+| Git | `repo`, `branch` (links, truncation, fish-style), `dirty` (staged, modified, untracked), `ahead` (ahead and behind), `diff` (lines added and removed: working tree, staged or unstaged), `sha`, `age` (time since commit), `tag`, `stash`, `gitop` (operation in progress, with step), `conflicts`, `worktree`, `root`, `origin`, `upstream`, `fork`; read from files (`git` only as a fallback; `diff` and `age` from a background `git`) | branch (links, fish-style), staged, unstaged, untracked, insertions, deletions, ahead and behind, conflicts, SHA, root, origin, upstream, fork, worktree | branch, SHA, tag, stash, operation, working-tree counts, ahead and behind, upstream, repo name, worktree, time since commit | `git`, `repo`, `worktree` (fields not documented) |
 | PRs, issues, CI | open PRs coloured by checks and review, CI marks; issues; author, assignee and label queries (`gh`); GitLab merge requests and issues with pipeline marks (`glab`, self-hosted hosts too); latest workflow run via the `bar-ci` plugin | PR or MR with status and title (`gh`, `glab`); GitHub CI checks | — | `pr` |
 | Jujutsu | `jj`: change, commit, bookmarks, workspace, state (conflict, divergent, empty), description | revision, bookmarks, workspace, changes, root, description | — | — |
-| Directory | `cwd` (`~`, last component); `root` | home abbreviation, segment limit, fish-style, optional glyph | full, fish or basename; original repo path in `--worktree` sessions | `dir` with a `style` option |
+| Directory | `cwd` (`~`, last component, fish-style, depth limit); `root`; `open` links to file manager, VS Code, Cursor or Zed | home abbreviation, segment limit, fish-style, optional glyph | full, fish or basename; original repo path in `--worktree` sessions | `dir` with a `style` option |
 
 ## Agents and environment
 
@@ -116,7 +116,7 @@ Measured times and memory: [Benchmarks](../README.md#benchmarks) and [method and
 
 | | bar | ccstatusline | claude-powerline | ccline |
 |---|---|---|---|---|
-| Links | repo, branch, commit, tag, PRs and merge requests, issues, service status | branch, remotes, PR, directory to file manager, VS Code, Cursor or Zed; link widget; status page | — | not documented |
+| Links | repo, branch, origin, upstream, fork, commit, tag, PRs and merge requests, issues, service status; directory to file manager, VS Code, Cursor or Zed | branch, remotes, PR, directory to file manager, VS Code, Cursor or Zed; link widget; status page | — | not documented |
 | Clicks | toggles usage and plugin views; `model`, `effort`, `ctx` type `/model`, `/effort`, `/compact` (macOS, tmux) | — | — | — |
 
 ## Meta
@@ -128,14 +128,10 @@ Measured times and memory: [Benchmarks](../README.md#benchmarks) and [method and
 
 ## Not in bar
 
-- No npm or npx install.
 - No per-source context breakdown (system prompt, tools, memory files, messages); the status-line JSON and transcript do not carry it.
 - No auto and manual compaction split or tokens reclaimed; skills as a count only.
 - No running-tools display.
 - Remote Control only when set to connect at startup; a session connected later is not detected.
-- No git insertions and deletions, upstream or origin name, fork, or time since the last commit.
-- No fish-style or segment-limited directory.
-- No links to a file manager or editor.
 - No bordered-panel layout or columns aligned across lines.
 - No model registry for third-party model names and context windows.
 
