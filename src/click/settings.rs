@@ -93,6 +93,8 @@ pub struct SettingsPlan {
     /// Events that gain a hook entry; empty means nothing to write.
     pub added: Vec<&'static str>,
     pub after: Value,
+    /// The file's text as read; `None` when it was missing.
+    pub text: Option<String>,
 }
 
 impl SettingsPlan {
@@ -212,7 +214,11 @@ pub(crate) fn remove_hooks(root: &mut Value) -> Vec<&'static str> {
 /// Reads `path` (missing counts as `{}`) and adds a hook entry for every
 /// event lacking one.
 pub fn plan_settings(path: &Path, bar: &Path) -> Result<SettingsPlan, String> {
-    let Loaded { path, mut root, .. } = load(path)?;
+    let Loaded {
+        path,
+        mut root,
+        text,
+    } = load(path)?;
     let command = hook_command(bar);
     let added = add_hooks(&mut root, &command, &path.display().to_string())?;
     Ok(SettingsPlan {
@@ -220,6 +226,7 @@ pub fn plan_settings(path: &Path, bar: &Path) -> Result<SettingsPlan, String> {
         command,
         added,
         after: root,
+        text,
     })
 }
 
@@ -238,23 +245,56 @@ pub(crate) fn apply_settings(
     if plan.added.is_empty() {
         return Ok(None);
     }
-    write_settings(&plan.path, &plan.after, state_dir)
+    write_settings(&plan.path, plan.text.as_deref(), &plan.after, state_dir)
 }
 
 /// Writes `after` over `path` (backup in [`backup_dir`], atomic, mode
-/// kept); returns the backup when there was a file.
+/// kept), laid out like `original`, the file's text (see [`render_like`]);
+/// returns the backup when there was a file.
 pub(crate) fn write_settings(
     path: &Path,
+    original: Option<&str>,
     after: &Value,
     state_dir: &Path,
 ) -> std::io::Result<Option<PathBuf>> {
     let dir = backup_dir(state_dir);
-    crate::rewrite::replace(path, &render(after), crate::rewrite::Backups::In(&dir))
+    let body = render_like(after, original);
+    crate::rewrite::replace(path, &body, crate::rewrite::Backups::In(&dir))
 }
 
-/// The text written for `v`: pretty JSON and a trailing newline.
-pub(crate) fn render(v: &Value) -> String {
-    serde_json::to_string_pretty(v).unwrap_or_default() + "\n"
+/// The indent unit of a JSON text: the leading whitespace of its first
+/// indented line that starts a key, or `None` (one line, say).
+fn indent_of(text: &str) -> Option<&str> {
+    text.lines().find_map(|l| {
+        let rest = l.trim_start_matches([' ', '\t']);
+        (rest.len() < l.len() && rest.starts_with('"')).then(|| &l[..l.len() - rest.len()])
+    })
+}
+
+/// Pretty JSON indented with `indent`, and a trailing newline.
+fn render_with(v: &Value, indent: &str) -> String {
+    use serde::Serialize;
+    let mut buf = Vec::new();
+    let fmt = serde_json::ser::PrettyFormatter::with_indent(indent.as_bytes());
+    let mut ser = serde_json::Serializer::with_formatter(&mut buf, fmt);
+    if v.serialize(&mut ser).is_err() {
+        return String::new();
+    }
+    String::from_utf8(buf).unwrap_or_default() + "\n"
+}
+
+/// The text written for `v`: pretty JSON with the indent unit of
+/// `original` (the file's text; two spaces when it has none) and a
+/// trailing newline.
+pub(crate) fn render_like(v: &Value, original: Option<&str>) -> String {
+    render_with(v, original.and_then(indent_of).unwrap_or("  "))
+}
+
+/// Whether `original` is laid out as [`render_like`] writes it, so a
+/// line diff against it shows only what changed.
+pub(crate) fn same_layout(original: &str) -> bool {
+    serde_json::from_str::<Value>(original)
+        .is_ok_and(|v| render_like(&v, Some(original)) == original)
 }
 
 #[cfg(test)]

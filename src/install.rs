@@ -194,6 +194,16 @@ impl Plan {
         before != self.after
     }
 
+    /// Whether writing also changes the file's layout (one-line JSON,
+    /// arrays kept on one line, ...), which the diff then leaves out.
+    fn reformats(&self) -> bool {
+        self.text
+            .as_deref()
+            .is_some_and(|t| !settings::same_layout(t))
+    }
+
+    /// The diff of the file as written; for a file whose layout changes,
+    /// of its content in the written layout, so only real changes show.
     fn diff(&self) -> String {
         let shown = self.path.display().to_string();
         let old_name = if self.text.is_some() {
@@ -201,9 +211,17 @@ impl Plan {
         } else {
             "/dev/null"
         };
+        let orig = self.text.as_deref();
+        let before = match orig {
+            Some(t) if self.reformats() => serde_json::from_str::<Value>(t)
+                .map(|v| settings::render_like(&v, orig))
+                .unwrap_or_else(|_| t.to_string()),
+            Some(t) => t.to_string(),
+            None => String::new(),
+        };
         crate::diff::unified(
-            self.text.as_deref().unwrap_or(""),
-            &settings::render(&self.after),
+            &before,
+            &settings::render_like(&self.after, orig),
             old_name,
             &shown,
         )
@@ -317,6 +335,14 @@ pub fn run(
         return Ok(());
     }
     write!(out, "{}", plan.diff()).map_err(io)?;
+    if plan.reformats() {
+        writeln!(
+            out,
+            "{} is also reformatted (indent kept); the diff shows its content",
+            plan.path.display()
+        )
+        .map_err(io)?;
+    }
     if !o.yes {
         if !tty {
             return Err(Error::NeedsConfirm);
@@ -336,7 +362,13 @@ pub fn run(
         let body = json!({"settings": plan.path.display().to_string(), "statusLine": prev});
         crate::click::write_atomic(&rec, &(body.to_string() + "\n")).map_err(io)?;
     }
-    let backup = write_settings(&plan.path, &plan.after, &env.state_dir).map_err(io)?;
+    let backup = write_settings(
+        &plan.path,
+        plan.text.as_deref(),
+        &plan.after,
+        &env.state_dir,
+    )
+    .map_err(io)?;
     if let Record::Remove = plan.record {
         let _ = std::fs::remove_file(&rec);
     }
