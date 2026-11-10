@@ -181,6 +181,8 @@ Five POSIX shell scripts ship in `plugins/`. They need `sh` and the tool they wr
 
 Each declares a `web` object with preview samples and option hints, so the [web configurator](web.md) can show it.
 
+A compiled plugin ships beside `bar` in the release archives, Homebrew and npm: [`bar-cliproxyapi`](plugins/cliproxyapi.md) shows per-account quota of a CLIProxyAPI proxy as `#{cliproxyapi}`, one entry per account, and checks its own setup under `bar check`.
+
 ### `bar-tlc`
 
 `#{tlc}` shows `closed∕total` tasks of this session's track, else of the whole project; archived tasks included, and every status but `TODO` and `IN_PROGRESS` (so `DONE`, `SKIPPED`) counts as closed. Needs `tlc`; `ttl` 60 s. It runs `tlc` from the nearest ancestor of `session.cwd` holding `.tlc/config.yaml` (a stray empty `.tlc/` is skipped; a relative `cwd` falls back to the working directory) and never creates one. The search stops at the git work-tree root (the first directory holding `.git`), so a project enclosing the repository is never counted; a linked worktree also checks its repository root (the bare repo directory, else the main worktree); outside a repository only `cwd` itself is checked. With no project in scope, or a project with no tasks, it emits empty text and the segment hides. If any `tlc` call fails, it exits non-zero with no output, so the last good value stays. Emits `score` (closed share, 0..100), so none closed is red and all closed is green.
