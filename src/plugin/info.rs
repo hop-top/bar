@@ -29,6 +29,52 @@ pub struct OptSpec {
     pub default: Option<Value>,
 }
 
+/// An action a plugin declares: something a click can run.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ActionSpec {
+    pub description: String,
+    /// Token names the action takes, sorted; the plugin's output supplies
+    /// their values.
+    pub tokens: Vec<String>,
+    /// Asks for confirmation first. Declared and kept; bar's handler runs
+    /// without a prompt, so a plugin that needs one asks itself.
+    pub confirm: bool,
+}
+
+/// Most tokens an action can take.
+pub const MAX_TOKENS: usize = 8;
+
+fn actions_of(v: &Value) -> BTreeMap<String, ActionSpec> {
+    v.as_object()
+        .map(|o| {
+            o.iter()
+                .filter(|(k, _)| crate::click::valid_toggle_name(k))
+                .map(|(k, a)| {
+                    let mut tokens: Vec<String> = a["tokens"]
+                        .as_array()
+                        .map(|t| {
+                            t.iter()
+                                .filter_map(Value::as_str)
+                                .filter(|n| crate::click::action::valid_token_name(n))
+                                .map(String::from)
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    tokens.sort();
+                    tokens.dedup();
+                    tokens.truncate(MAX_TOKENS);
+                    let spec = ActionSpec {
+                        description: clean_str(&a["description"]).unwrap_or_default(),
+                        tokens,
+                        confirm: a["confirm"].as_bool().unwrap_or(false),
+                    };
+                    (k.clone(), spec)
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Most environment variables a plugin can declare.
 pub const MAX_ENV_INPUTS: usize = 8;
 /// Longest environment value passed on, in bytes; a longer one counts as unset.
@@ -135,6 +181,8 @@ pub struct ExtInfo {
     pub options: BTreeMap<String, OptSpec>,
     /// Seconds a render result stays fresh.
     pub ttl: u64,
+    /// Declared `actions`, by name.
+    pub actions: BTreeMap<String, ActionSpec>,
     /// Declared `inputs`: part of the cache key, sent in the render input.
     pub inputs: Inputs,
     /// Seconds a background render may run: `timeout` clamped to 1..=15,
@@ -178,6 +226,7 @@ impl ExtInfo {
             ttl: DEFAULT_TTL,
             timeout: RENDER_TIMEOUT.as_secs(),
             inputs: Inputs::default(),
+            actions: BTreeMap::new(),
             icon: None,
             declares_icon_option: false,
             declares_bg_option: false,
@@ -221,6 +270,17 @@ impl ExtInfo {
             "options": options,
             "ttl": self.ttl,
         });
+        if !self.actions.is_empty() {
+            let a: Map<String, Value> = self
+                .actions
+                .iter()
+                .map(|(k, s)| {
+                    let v = json!({"description": s.description, "tokens": s.tokens, "confirm": s.confirm});
+                    (k.clone(), v)
+                })
+                .collect();
+            out["actions"] = Value::Object(a);
+        }
         if let Some(i) = self.inputs.to_json() {
             out["inputs"] = i;
         }
@@ -356,6 +416,7 @@ pub fn parse_info(raw: &str) -> Option<ExtInfo> {
         ttl: ttl_of(&v["ttl"]),
         timeout: timeout_of(&v["timeout"]),
         inputs: Inputs::parse(&v["inputs"]),
+        actions: actions_of(&v["actions"]),
         icon: clean_str(&v["icon"]).filter(|i| !i.trim().is_empty()),
         declares_icon_option,
         declares_bg_option,

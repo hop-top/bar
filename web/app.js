@@ -144,7 +144,7 @@
     "budget-today", "budget-month", "budget-block", "budget-warn", "color.good", "color.warn", "color.bad", "skin",
     "skin-glyphs", "palette", "color-depth", "gradient", "ramp", "price",
   ].filter((k) => !JSON.stringify(JSON.parse(bar.inspect(`set ${k} x`))).includes("unknown set key"));
-  const DIRECTIVES = ["set", "default", "rule", "account", "plugin"];
+  const DIRECTIVES = ["set", "default", "rule", "account", "plugin", "action"];
   function suggest(message) {
     const names = () => schema.placeholders.map((p) => p.name).concat(pluginList.map((p) => p.name));
     const rules = [

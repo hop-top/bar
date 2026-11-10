@@ -84,8 +84,8 @@ fn as_literal(s: &str) -> String {
         .replace('\r', "\\r")
 }
 
-/// Handler for `bar://toggle/<key>` and `bar://cmd/...`; `bar` validates
-/// both. A refusal exits non-zero, so `try` keeps the applet quiet. Every
+/// Handler for `bar://toggle/<key>`, `bar://cmd/...` and
+/// `bar://action/...`; `bar` validates all three. A refusal exits non-zero, so `try` keeps the applet quiet. Every
 /// call runs `bar` under `env` (see `shell_command`): LaunchServices
 /// starts the applet without the shell's environment.
 pub fn applescript(bar: &Path, env: &[EnvVar]) -> String {
@@ -101,6 +101,10 @@ pub fn applescript(bar: &Path, env: &[EnvVar]) -> String {
          \telse if theURL starts with \"bar://cmd/\" then\n\
          \t\ttry\n\
          \t\t\tdo shell script theBar & \" click run \" & quoted form of theURL\n\
+         \t\tend try\n\
+         \telse if theURL starts with \"bar://action/\" then\n\
+         \t\ttry\n\
+         \t\t\tdo shell script theBar & \" click action \" & quoted form of theURL\n\
          \t\tend try\n\
          \tend if\n\
          end open location\n",
@@ -234,6 +238,8 @@ pub fn run_install(
         writeln!(out, "backup {}", backup.display()).map_err(io)?;
     }
     write_private(&cfg.state_dir.join(MARKER), MARKER_CMD).map_err(io)?;
+    // the secret that makes `bar://action/` links unforgeable by pages
+    super::action::ensure_nonce(&cfg.state_dir)?;
     writeln!(out, "installed {}", cfg.app.display()).map_err(io)?;
     writeln!(out, "state dir {}", cfg.state_dir.display()).map_err(io)?;
     for w in &cfg.warnings() {

@@ -1,6 +1,7 @@
 //! Clickable status line: usage toggles, slash commands typed into the
 //! session, and the macOS `bar://` URL handler that opens them.
 
+pub mod action;
 mod check;
 mod dirs;
 pub mod hook;

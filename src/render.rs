@@ -127,7 +127,14 @@ fn render_value(name: &str, opts: &Options, ctx: &Ctx, sample: Option<Sample>) -
         },
     };
     match (core, found) {
-        (Some(p), _) => with_icon(p.render_labeled(ctx, &opts, label)),
+        (Some(p), _) => {
+            let v = with_icon(p.render_labeled(ctx, &opts, label));
+            if name == "account" && !v.is_empty() {
+                plugin::link_account(ctx, v)
+            } else {
+                v
+            }
+        }
         (None, Some(f)) => plugin::render_found_with(ctx, &f, &opts, &pick).unwrap_or_default(),
         (None, None) => String::new(),
     }

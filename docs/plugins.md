@@ -38,6 +38,7 @@ Any executable named `bar-<name>` on `PATH` (on Windows `bar-<name>.exe`, `.cmd`
 | `description` | Optional string, shown by `bar plugin list`. |
 | `options` | Allowed options; keys, choices and string defaults are sanitised like `text`. Types: `int` (sent as a JSON integer), `string`, `bool` (written `true`/`yes`/`on`/`1` or `false`/`no`/`off`/`0`, sent as JSON `true`/`false`), `enum` (with `enum` choices, sent as the string). `default` fills a missing option when it fits the type. Options of unknown type are dropped. `icon`, `bg`, `fg`, `bold`, `gradient` and `click` are reserved: declared, they are dropped and `bar check` warns. |
 | `icon` | Optional default segment icon, used when `set icons` is not `none`. Sanitised; at most 2 cells. |
+| `actions` | Optional. Actions a click can run: `{"use": {"description": "Prefer this account", "tokens": ["account", "provider"], "confirm": false}}`. Names are letters, digits, `-` and `_`; tokens are up to 8 names of `[a-z0-9_-]`. See [Actions](#actions). `confirm` is kept for the plugin's own use: bar runs the action without asking |
 | `inputs` | Optional. What the output depends on besides options: `{"env": ["ANTHROPIC_BASE_URL"], "session": ["model_id"]}`. Each declared value is part of the cache key, and the declared environment variables are sent as `env` in the render input. `env`: up to 8 names of `[A-Z0-9_]`, at most 64 characters; a name containing `KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `CREDENTIAL` or `AUTH` is refused, since values go into the cache key and the refresh process's arguments (a plugin that needs a secret reads its own environment, which it inherits); values longer than 1 KiB count as unset. `session`: any of `cwd`, `model`, `model_id`, `effort`, `session_id`; the volatile fields (`context_used`, `five_hour`, `seven_day`) cannot be declared, they would split the cache on every render. |
 | `timeout` | Optional. Limit for the background render, a number of seconds or a duration (`8s`), clamped to 1 to 15 s. Default 3 s; zero or unparsable means the default. |
 | `ttl` | How long a render result stays fresh: seconds (`300`) or a duration (`90s`, `5m`, `1h`, `1d`). Default 60 s; zero or unparsable means the default. |
@@ -113,6 +114,7 @@ Stdout is one JSON object:
 ```
 
 - `items` (optional, an array of at most 16 objects) replaces the output's own `text`: each item is an output of its own (`label`, `icon`, `text`, `alt`, `style`, `score`, `metric`, `link`, `label_toggle`) drawn like one, items joined by one space. With `set wrap on`, a line too wide for `COLUMNS` may break between items, never inside one; the next row starts at the left like any wrapped row. Without wrapping the items stay on one row. An item without a string `text`, or with nothing visible, is left out; items do not nest. With `items`, the top-level `text` may be left out (it is not drawn).
+- `tokens` (optional, an object) are the values an [action](#actions) takes: strings of at most 64 characters from `A-Za-z0-9._@-`, names from `a-z0-9_-`, at most 8; anything else is dropped. Each item can carry its own; the top-level ones fill in what an item lacks.
 - `account` (optional) names an account for `#{account}`: see [Account](#account).
 - `usage` (optional) carries usage windows for `#{usage}`: see [Usage windows](#usage-windows).
 - `text` (required, a string, unless `items` is given) is stripped of escape and control characters (tabs and line breaks become spaces), line and paragraph separators (U+2028, U+2029) and Unicode format characters (bidi marks and overrides, zero-width spaces, soft hyphens, BOM; the joiners U+200C and U+200D and emoji tag characters are kept); wide characters (CJK, emoji) count as 2 cells. Nothing visible left omits the segment.
@@ -138,6 +140,16 @@ A plugin that knows a quota Claude Code does not report (a proxy's pool, say) ca
 ```
 
 `used_percentage` is a number, clamped to 0..100; `resets_at` is Unix seconds; each window is optional, and a window without both is ignored. With `set usage-source <plugin>` in the user's config, `#{usage}` shows these windows when Claude Code sends none: see [Plugin windows](config.md#plugin-windows). Only the result for the placeholder's `default` options counts, so a plugin should put `usage` in every output, whatever its options. `text` may be empty.
+
+### Actions
+
+A plugin declares actions in `--ext-info` (`actions`) and supplies the values they take in its output (`tokens`, top level or per item). The user binds one to a placeholder in their config with `action <placeholder> <plugin>.<action>` (see [Plugin actions](config.md#plugin-actions)); bar then draws the placeholder, or each item with all the tokens the action takes, as a link, and a click runs
+
+```
+bar-<plugin> --action <action>      # stdin: {"action": "<action>", "tokens": {"account": "a1b2", "provider": "claude"}}
+```
+
+directly, with a 10 s limit and nothing on stdout needed. Exit 0 is success; any other exit is a failure, shown in `action-status` in the state directory. bar has already checked that the user bound the action, that the plugin declares it, and that the token values are in the plugin's cached output, but a plugin should validate its tokens itself: it runs with the user's rights. The action runs in the background of a click, never on the render path, and the plugin's output refreshes at the next render.
 
 ### Account
 

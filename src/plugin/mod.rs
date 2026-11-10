@@ -2,6 +2,7 @@
 //! with `--ext-info` (kit ext-discover, extended) and rendered with JSON on
 //! stdin. Both runs go through the cache; render never waits on a plugin.
 
+pub mod check;
 mod discover;
 mod info;
 mod render;
@@ -11,12 +12,12 @@ use std::time::Duration;
 
 pub use discover::{discover, find, path_dirs, plugin_dirs, plugin_dirs_with, Found};
 pub use info::{
-    cached_info, env_secret, info, info_job, info_now, parse_info, validate, ExtInfo, Inputs,
-    OptSpec, OptType, MAX_ENV_INPUTS, MAX_ENV_VALUE, RESERVED, SESSION_INPUTS,
+    cached_info, env_secret, info, info_job, info_now, parse_info, validate, ActionSpec, ExtInfo,
+    Inputs, OptSpec, OptType, MAX_ENV_INPUTS, MAX_ENV_VALUE, MAX_TOKENS, RESERVED, SESSION_INPUTS,
 };
 pub use render::{
-    cached_output, default_output, paint, paint_with, parse_output, plan, render, render_found,
-    render_found_with, Account, Metric, Output, Plan, Usage, MAX_ITEMS,
+    cached_output, default_output, link_account, paint, paint_with, parse_output, plan, render,
+    render_found, render_found_with, Account, Metric, Output, Plan, Usage, MAX_ITEMS,
 };
 
 pub const PREFIX: &str = "bar-";
