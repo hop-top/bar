@@ -31,35 +31,65 @@ The plugin has two jobs, kept apart: a render only reads, and only an explicit a
 
 1. **Enable the proxy's management API** and keep its key in a separate owner-only file, exactly as for [`bar-cliproxyapi`](cliproxyapi.md#setup). If that plugin already reads the instance, there is nothing more to do for the key.
 
-2. **Add the provider and the aliases to the proxy.** `bar rl setup` prints the block; it never writes it. Paste it into the proxy's `config.yaml`:
+2. **Add the provider and the aliases to the proxy.** `bar rl setup` prints the block; it never writes it. Paste it into the proxy's `config.yaml`, merging each section into the file's existing one:
 
    ```
-   bar rl setup
+   bar rl setup [--layout v8|legacy]
    ```
+
+   `--layout` picks the file layout; the default is `v8`, the layout of the current CLIProxyAPI template (top-level `config-version: 8`). Use `legacy` for a flat file without it. Each layout prints a complete block with the field names that layout expects. The two differ in the section names and in the provider's key list (`keys` against `api-key-entries`); a block of one layout makes the proxy refuse to load a file of the other.
+
+   v8 layout:
 
    ```yaml
-   openai-compatibility:
-     - name: routellm
-       base-url: http://127.0.0.1:6060/v1
-       priority: 1000
-       disable-cooling: true
-       api-key-entries:
-         - api-key: <the key RouteLLM expects, if any>
-       models:
-         - {name: auto, alias: route-auto}
-         - {name: vision, alias: route-vision}
-         - {name: private, alias: route-private}
+   oauth:
+     model-alias:
+       claude:
+         - {name: claude-sonnet-5-5, alias: route-auto, fork: true}
+         - {name: claude-sonnet-5-5, alias: route-vision, fork: true}
+   api-keys:
+     openai-compatibility:
+       - name: routellm
+         disabled: true
+         base-url: http://127.0.0.1:6060/v1
+         priority: 1000
+         disable-cooling: true
+         keys:
+           - api-key: "unused"
+         models:
+           - {name: auto, alias: route-auto}
+           - {name: vision, alias: route-vision}
+           - {name: private, alias: route-private}
+   ```
+
+   Legacy layout:
+
+   ```yaml
    oauth-model-alias:
      claude:
        - {name: claude-sonnet-5-5, alias: route-auto, fork: true}
        - {name: claude-sonnet-5-5, alias: route-vision, fork: true}
+   openai-compatibility:
+     - name: routellm
+       disabled: true
+       base-url: http://127.0.0.1:6060/v1
+       priority: 1000
+       disable-cooling: true
+       api-key-entries:
+         - api-key: "unused"
+       models:
+         - {name: auto, alias: route-auto}
+         - {name: vision, alias: route-vision}
+         - {name: private, alias: route-private}
    ```
 
+   - `disabled: true` keeps the provider OFF: pasting the block never turns routing on. It stays OFF until `bar rl on`.
+   - `api-key` is a placeholder; put the key RouteLLM expects there if it checks one.
    - `priority` must be higher than every frontier account's, so that ON wins when both providers serve a `route-*` id.
    - `disable-cooling: true` keeps the provider from being skipped for about a minute after an upstream error once it answers again.
-   - The `oauth-model-alias` rows are the OFF side. `fork: true` is required: it keeps the original model id available, which RouteLLM's own frontier calls use.
+   - The `claude` alias rows are the OFF side. `fork: true` is required: it keeps the original model id available, which RouteLLM's own frontier calls use.
    - There is no row for `route-private`, on purpose.
-   - A proxy configuration in the v8 layout holds the same lists under `api-keys.openai-compatibility` and `oauth.model-alias`.
+   - A v8-layout file is rewritten by the proxy on the plugin's first toggle (comments are dropped, defaults are added). Keep a backup of the file. A legacy file keeps its comments.
 
 3. **Create `routellm.conf`** in bar's configuration directory, next to `cliproxyapi.conf` (`~/.config/bar/` on Linux, `~/Library/Application Support/bar/` on macOS; `$XDG_CONFIG_HOME/bar/` when set). It must be a regular file owned by you with no group or other permissions (`chmod 600`), at most 16 KiB.
 
@@ -145,13 +175,13 @@ bar rl status [--instance URL] [--probe] [--json]
 bar rl on  [--instance URL] [--dry-run] [--force]
 bar rl off [--instance URL] [--dry-run]
 bar rl tiers [--all] [--instance URL]
-bar rl setup [--instance URL]
+bar rl setup [--layout v8|legacy] [--instance URL]
 ```
 
 - `status` prints the state, the provider's priority, each alias with its tier and OFF model, whether RouteLLM answers, and the last change. It answers from the plugin's cache; `--probe` makes the calls (once, ban-safe). `--json` prints the cache.
 - `on` and `off` read the entry, change nothing when it already is in the target state (`already on`), then write the one flag and read it back, a few times if the proxy is slow to apply it. `on` first checks that RouteLLM answers and serves every aliased tier, and refuses otherwise; `--force` overrides the check. `off` is never gated: it works with RouteLLM down and never contacts it, so it is always the safe way out. `--dry-run` prints the change and sends nothing.
 - `tiers` lists the aliased tiers with their capabilities and marker; `--all` adds the tiers without a client alias.
-- `setup` prints the proxy configuration block; it never writes it.
+- `setup` prints the proxy configuration block for the chosen layout (default `v8`); it never writes it.
 - The instance is `--instance`, else the session's `ANTHROPIC_BASE_URL`, else the only configured instance.
 - Exit status: 0 done, 1 refused or failed (the reason on stderr), 2 bad usage.
 

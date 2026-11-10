@@ -182,7 +182,7 @@ fn usage(m: &str) -> i32 {
     eprintln!("       bar routellm on [--instance URL] [--dry-run] [--force]");
     eprintln!("       bar routellm off [--instance URL] [--dry-run]");
     eprintln!("       bar routellm tiers [--all] [--instance URL]");
-    eprintln!("       bar routellm setup [--instance URL]");
+    eprintln!("       bar routellm setup [--layout v8|legacy] [--instance URL]");
     2
 }
 
@@ -204,6 +204,7 @@ fn cli(args: &[String]) -> i32 {
     let cmd = args[0].as_str();
     let (mut instance, mut probe, mut json, mut dry, mut force, mut all) =
         (None, false, false, false, false, false);
+    let mut layout = None;
     let mut it = args.iter().skip(1);
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -212,12 +213,19 @@ fn cli(args: &[String]) -> i32 {
             "--dry-run" => dry = true,
             "--force" => force = true,
             "--all" => all = true,
+            "--layout" => match it.next().map(|v| render::Layout::parse(v)) {
+                Some(Some(l)) => layout = Some(l),
+                _ => return usage("--layout takes v8 or legacy"),
+            },
             "--instance" => match it.next() {
                 Some(v) => instance = Some(v.clone()),
                 None => return usage("--instance needs a value"),
             },
             s => return usage(&format!("unknown option `{s}`")),
         }
+    }
+    if layout.is_some() && cmd != "setup" {
+        return usage(&format!("{cmd} does not take that"));
     }
     let ok = match cmd {
         "status" => !(dry || force || all),
@@ -247,9 +255,13 @@ fn cli(args: &[String]) -> i32 {
     let path = cache::file(&state, &inst.origin.to_string());
     let t = now();
     if cmd == "setup" {
-        render::setup_snippet(inst, &cache::load(&path))
-            .iter()
-            .for_each(|l| println!("{l}"));
+        render::setup_snippet(
+            inst,
+            &cache::load(&path),
+            layout.unwrap_or(render::Layout::V8),
+        )
+        .iter()
+        .for_each(|l| println!("{l}"));
         return 0;
     }
     let key = match key_for(inst) {
