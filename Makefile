@@ -1,4 +1,4 @@
-.PHONY: plugin-check npm-check build test lint format check setup web web-check gallery gallery-check bench bench-check bench-docs bench-docs-check bench-badge bench-badge-check
+.PHONY: quality audit unused coverage dupes mutation plugin-check npm-check build test lint format check setup web web-check gallery gallery-check bench bench-check bench-docs bench-docs-check bench-badge bench-badge-check
 
 check: lint test plugin-check npm-check web-check gallery-check bench-docs-check bench-badge-check
 
@@ -17,6 +17,37 @@ format:
 
 setup:
 	cargo fetch
+
+# Line-coverage floor for `make coverage`, whole workspace. Raise it as
+# tests land; never lower it to get a change through.
+COVERAGE_MIN ?= 94
+
+# Engineering gates beyond check: advisories and licenses, unused
+# dependencies, a coverage floor and copy-paste. Tools are pinned in
+# mise.toml (`mise install`). Dead code needs no extra tool: clippy
+# -D warnings already fails on it. There is no `pkgcheck`: every crate is
+# `publish = false`, so `cargo package` has nothing to check; the release
+# archives and npm packages are checked by `npm-check` and the release
+# workflow.
+quality: audit unused coverage dupes
+
+audit:
+	cargo deny check
+
+unused:
+	cargo machete
+
+# needs the llvm-tools component of a rustup toolchain
+coverage:
+	cargo llvm-cov --locked --workspace --features hop-bar/test-tools,bar-cliproxyapi/test-tools --fail-under-lines $(COVERAGE_MIN)
+
+dupes:
+	jscpd .
+
+# checks that the tests catch changed behaviour, not only that they run
+# the code. Slow: CI runs it weekly, report-only.
+mutation:
+	cargo mutants --workspace --features hop-bar/test-tools,bar-cliproxyapi/test-tools --timeout 120 --jobs 2
 
 # validates the Claude Code plugin and marketplace manifests; skipped without the claude CLI
 plugin-check:

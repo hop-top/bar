@@ -1,0 +1,25 @@
+{
+  "threshold": 3,
+  "minTokens": 60,
+  "gitignore": true,
+  "reporters": ["console"],
+  "ignore": [
+    "**/node_modules/**",
+    "**/vendor/**",
+    "**/dist/**",
+    "**/target/**",
+    "**/.venv/**",
+    "**/coverage/**",
+    "**/*.lock",
+    "**/*.sum",
+    "**/*.md",
+    "**/*.svg",
+    "**/*.json",
+    "bench/results/**",
+    "bench/fixtures/**",
+    "tests/fixtures/**",
+    "web/pkg/**",
+    "web/fonts/**",
+    "docs/gallery/**"
+  ]
+}
