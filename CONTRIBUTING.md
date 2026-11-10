@@ -12,6 +12,8 @@ make gallery # redraw docs/gallery.md and docs/gallery/*.svg
 make bench-badge # redraw docs/badges/bench.svg from bench/results/
 make bench       # benchmark in a pinned container (Docker or Podman); stages results, docs, badge
 make bench-check # fails when the recorded benchmark run is stale for HEAD
+make quality     # audit + unused + coverage + dupes (tools: mise install)
+make mutation    # cargo-mutants over the workspace; slow, report-only
 make web         # web configurator: bar's renderer as wasm in web/pkg/ (docs/web.md)
 ```
 
@@ -22,6 +24,23 @@ make web         # web configurator: bar's renderer as wasm in web/pkg/ (docs/we
 `web-check` builds and lints the wasm crate `web/wasm` when the toolchain has the `wasm32-unknown-unknown` target, and skips otherwise.
 
 `make check` must pass before a change goes up.
+
+## Quality gates
+
+`make quality` runs the gates beyond `make check`; CI runs it on every pull request and weekly (`.github/workflows/quality.yml`).
+
+| Target | Tool | Fails on |
+|--------|------|----------|
+| `audit` | cargo-deny (`deny.toml`) | RustSec advisories, licenses outside the allow-list, wildcard versions, unknown registries or git sources |
+| `unused` | cargo-machete | dependencies a crate does not use |
+| `coverage` | cargo-llvm-cov | line coverage of the workspace below `COVERAGE_MIN` (Makefile) |
+| `dupes` | jscpd (`.jscpd.json`) | more than 3% duplicated code |
+
+`make mutation` (cargo-mutants) checks that the tests catch changed behaviour; a surviving mutant is a missing assertion. It takes hours, so CI runs it weekly and only reports.
+
+The tools are pinned in `mise.toml`: install them with `mise install` (`jscpd` needs Node). `make coverage` needs the `llvm-tools-preview` component of a rustup toolchain (`rustup component add llvm-tools-preview`); a distro or Homebrew Rust lacks it. Raise `COVERAGE_MIN` as tests land, never lower it to get a change through.
+
+Lints are shared by the whole workspace (`[workspace.lints]` in `Cargo.toml`): `unsafe_code` is denied, and only the modules that call libc or Win32 allow it, each with a reason; clippy's `cognitive_complexity` threshold is 15 (`clippy.toml`). Split a function over it rather than allowing it.
 
 ## Dev container
 
