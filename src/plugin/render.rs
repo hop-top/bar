@@ -1,5 +1,6 @@
 //! Render input, output parsing and colouring.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde_json::{json, Map, Value};
@@ -166,6 +167,11 @@ pub struct Account {
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Output {
+    /// `tokens`: values an action takes (`click::action`).
+    pub tokens: BTreeMap<String, String>,
+    /// The cache entry this output was read from (set by the readers, not
+    /// parsed); empty for a parsed string.
+    pub entry: String,
     /// `account`, for `set account-source`.
     pub account: Option<Account>,
     /// `usage` windows, for `set usage-source`.
@@ -214,6 +220,37 @@ fn usage(v: &Value) -> Option<Usage> {
         seven_day: window(&v["seven_day"]),
     };
     (u.five_hour.is_some() || u.seven_day.is_some()).then_some(u)
+}
+
+/// Valid tokens only: names `[a-z0-9_-]`, values `[A-Za-z0-9._@-]` of at
+/// most 64 characters, at most 8.
+fn tokens(v: &Value) -> BTreeMap<String, String> {
+    v.as_object()
+        .map(|o| {
+            o.iter()
+                .filter(|(k, _)| click::action::valid_token_name(k))
+                .filter_map(|(k, x)| Some((k.clone(), x.as_str()?.to_string())))
+                .filter(|(_, x)| click::action::valid_token_value(x))
+                .take(super::MAX_TOKENS)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+impl Output {
+    /// Whether `want` is among this output's token sets: the top-level
+    /// one, or an item's (which falls back to the top-level tokens for
+    /// those it lacks).
+    pub fn offers_tokens(&self, want: &BTreeMap<String, String>) -> bool {
+        let covers =
+            |have: &BTreeMap<String, String>| want.iter().all(|(k, v)| have.get(k) == Some(v));
+        covers(&self.tokens)
+            || self.items.iter().any(|i| {
+                let mut all = self.tokens.clone();
+                all.extend(i.tokens.clone());
+                covers(&all)
+            })
+    }
 }
 
 /// `None` unless `id` and `label` are strings and `label` shows something.
@@ -266,6 +303,8 @@ fn parse_one(v: &Value) -> Option<Output> {
         items: Vec::new(),
         usage: usage(&v["usage"]),
         account: account(&v["account"]),
+        tokens: tokens(&v["tokens"]),
+        entry: String::new(),
         alt: v["alt"]
             .as_str()
             .filter(|a| !sanitize(a).trim().is_empty())
@@ -393,6 +432,16 @@ pub fn render_found_with(ctx: &Ctx, found: &Found, opts: &Options, pick: &Pick) 
     let raw = cache.read_or_refresh(&plan.key, plan.ttl, &plan.job)?;
     let mut out = parse_output(&raw)?;
     let state = cache.state_dir();
+    if opts.get("click") != Some("none") {
+        link_actions(
+            &mut out,
+            ctx,
+            &found.name,
+            &info,
+            &hash_hex(&plan.key),
+            state,
+        );
+    }
     out.items = std::mem::take(&mut out.items)
         .into_iter()
         .map(|i| toggled(i, &found.name, opts, state))
@@ -406,6 +455,84 @@ pub fn render_found_with(ctx: &Ctx, found: &Found, opts: &Options, pick: &Pick) 
         pick,
         info.icon.as_deref(),
     )
+}
+
+/// The tokens `spec` takes, from `tokens` (an output's own over the
+/// top-level ones); `None` when one is missing.
+fn action_tokens(
+    spec: &super::ActionSpec,
+    top: &BTreeMap<String, String>,
+    own: &BTreeMap<String, String>,
+) -> Option<BTreeMap<String, String>> {
+    spec.tokens
+        .iter()
+        .map(|n| Some((n.clone(), own.get(n).or_else(|| top.get(n))?.clone())))
+        .collect()
+}
+
+/// Gives the output, or each of its items, the link of the action the
+/// user bound to the placeholder (`action <name> <name>.<action>`), when
+/// the handler routes actions and the output carries every token the
+/// action takes. An output with a `link` of its own keeps it.
+fn link_actions(
+    out: &mut Output,
+    ctx: &Ctx,
+    name: &str,
+    info: &ExtInfo,
+    entry: &str,
+    state: &Path,
+) {
+    let bound = ctx
+        .config
+        .actions
+        .iter()
+        .find(|b| b.placeholder == name && b.plugin == name);
+    let Some((b, spec)) = bound.and_then(|b| Some((b, info.actions.get(&b.action)?))) else {
+        return;
+    };
+    let top = out.tokens.clone();
+    let one = |o: &mut Output| {
+        if o.link.as_deref().is_some_and(|l| !l.is_empty()) {
+            return;
+        }
+        let Some(t) = action_tokens(spec, &top, &o.tokens) else {
+            return;
+        };
+        o.link = click::action::build(state, &b.plugin, &b.action, &t, entry);
+    };
+    if out.items.is_empty() {
+        one(out);
+    } else {
+        out.items.iter_mut().for_each(one);
+    }
+}
+
+/// `value` of `#{account}` inside the link of the action bound to it
+/// (`action account <plugin>.<action>`), when the plugin `set
+/// account-source` names supplied the account shown and its output carries
+/// the tokens the action takes.
+pub fn link_account(ctx: &Ctx, value: String) -> String {
+    let linked = || -> Option<String> {
+        let b = ctx
+            .config
+            .actions
+            .iter()
+            .find(|b| b.placeholder == "account")?;
+        let src = ctx
+            .config
+            .account_source
+            .as_deref()
+            .filter(|s| *s == b.plugin)?;
+        let cache = ctx.cache?;
+        let out = default_output(ctx, src)?;
+        out.account.as_ref()?;
+        let found = find(ctx.plugin_dirs, src)?;
+        let spec = cached_info(cache, &found)?.actions.get(&b.action)?.clone();
+        let t = action_tokens(&spec, &out.tokens, &out.tokens)?;
+        let url = click::action::build(cache.state_dir(), &b.plugin, &b.action, &t, &out.entry)?;
+        Some(link(&url, &value))
+    };
+    linked().unwrap_or(value)
 }
 
 /// An output with `alt` can be toggled (`bar toggle <name>`): while on,
@@ -459,7 +586,9 @@ pub fn cached_output(ctx: &Ctx, name: &str) -> Option<Output> {
         }
     }
     let plan = plan(ctx, &found, &info, &opts)?;
-    parse_output(&cache.read_or_refresh(&plan.key, plan.ttl, &plan.job)?)
+    let mut out = parse_output(&cache.read_or_refresh(&plan.key, plan.ttl, &plan.job)?)?;
+    out.entry = hash_hex(&plan.key);
+    Some(out)
 }
 
 /// `#{name}` for a plugin found in `ctx.plugin_dirs`.

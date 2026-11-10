@@ -94,6 +94,15 @@ pub struct AccountRule {
     pub color: Color,
 }
 
+/// `action <placeholder> <plugin>.<action>`: a click on the placeholder
+/// runs that plugin's declared action.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActionBinding {
+    pub placeholder: String,
+    pub plugin: String,
+    pub action: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Colors {
     pub good: Color,
@@ -138,6 +147,8 @@ pub struct Config {
     pub accounts: Vec<AccountRule>,
     pub rules: Vec<Rule>,
     pub plugins: BTreeMap<String, Options>,
+    /// `action` lines, at most one per placeholder (a later line replaces).
+    pub actions: Vec<ActionBinding>,
     /// Claude Code's data dir (`set claude-dir`); `None` follows the
     /// environment.
     pub claude_dir: Option<String>,
@@ -205,6 +216,7 @@ impl Default for Config {
             accounts: Vec::new(),
             rules: Vec::new(),
             plugins: BTreeMap::new(),
+            actions: Vec::new(),
             claude_dir: None,
             prices: Vec::new(),
             compact_at: None,
@@ -425,6 +437,27 @@ fn apply_line(c: &mut Config, t: &[String]) -> Result<(), String> {
         "plugin" => {
             need(2, "plugin <name> k=v ...")?;
             c.plugins.insert(t[1].clone(), parse_options(&t[2..])?);
+            Ok(())
+        }
+        "action" => {
+            let usage = "usage: action <placeholder> <plugin>.<action>";
+            if t.len() != 3 {
+                return Err(usage.into());
+            }
+            let ok = |n: &str| crate::click::valid_toggle_name(n);
+            let (plugin, action) = t[2].split_once('.').ok_or(usage)?;
+            if !ok(&t[1]) || !ok(plugin) || !ok(action) {
+                return Err(format!(
+                    "invalid action `{} {}`: names are letters, digits, `-` and `_`; {usage}",
+                    t[1], t[2]
+                ));
+            }
+            c.actions.retain(|b| b.placeholder != t[1]);
+            c.actions.push(ActionBinding {
+                placeholder: t[1].clone(),
+                plugin: plugin.into(),
+                action: action.into(),
+            });
             Ok(())
         }
         other => Err(format!("unknown directive `{other}`")),

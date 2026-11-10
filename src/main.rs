@@ -170,6 +170,11 @@ enum ClickCmd {
         /// bar://cmd/<command>?tty=<ttysN>&sid=<session id>
         url: String,
     },
+    /// Run a plugin's declared action (handler entry).
+    Action {
+        /// bar://action/<plugin>.<action>?<token>=<value>&k=<entry>&n=<nonce>
+        url: String,
+    },
     /// Claude Code hook (stdin JSON): waiting marker, subagents, plugin records.
     Hook,
 }
@@ -418,6 +423,25 @@ fn install(m: &ArgMatches) {
     }
 }
 
+/// `bar click action`: the user's config only (a project file never grants
+/// an action), plugins from `PATH`, the dir of `bar` and the usual install
+/// dirs, since the URL handler starts `bar` with a minimal `PATH`.
+fn click_action(url: &str) -> Result<(), String> {
+    let config = match conf::load(None) {
+        conf::LoadResult::Ok(c) => c,
+        conf::LoadResult::Missing => conf::Config::default(),
+        conf::LoadResult::Invalid(_) => return Err("config error, run bar check".into()),
+    };
+    let mut dirs = plugin::plugin_dirs(std::env::var_os("PATH").as_deref());
+    for d in ["/opt/homebrew/bin", "/usr/local/bin"] {
+        let d = std::path::PathBuf::from(d);
+        if !dirs.contains(&d) {
+            dirs.push(d);
+        }
+    }
+    click::action::run(&click::handler_state_dir(), url, &config, &dirs)
+}
+
 fn click_cmd(m: &ArgMatches) {
     match m.subcommand() {
         Some(("install", i)) => {
@@ -461,6 +485,13 @@ fn click_cmd(m: &ArgMatches) {
             let url = r.get_one::<String>("url").map_or("", String::as_str);
             if let Err(e) = click::run(&click::sys::System::from_env(), url) {
                 eprintln!("bar click run: refused: {e}");
+                std::process::exit(1);
+            }
+        }
+        Some(("action", a)) => {
+            let url = a.get_one::<String>("url").map_or("", String::as_str);
+            if let Err(e) = click_action(url) {
+                eprintln!("bar click action: refused: {e}");
                 std::process::exit(1);
             }
         }

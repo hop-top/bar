@@ -141,6 +141,29 @@ impl Cache {
         self.dir.join(hash_hex(key))
     }
 
+    /// The stored value of the entry named `entry` (a [`hash_hex`] of its
+    /// key, 32 lower-case hex digits), whatever its age.
+    pub fn read_entry(&self, entry: &str) -> Option<String> {
+        let ok = entry.len() == 32 && entry.bytes().all(|b| b.is_ascii_hexdigit());
+        ok.then(|| read_capped(&self.dir.join(entry))).flatten()
+    }
+
+    /// Makes entry `entry` stale and forgets its failures: the next read
+    /// returns the value and starts a refresh.
+    pub fn age_entry(&self, entry: &str) {
+        let ok = entry.len() == 32 && entry.bytes().all(|b| b.is_ascii_hexdigit());
+        if !ok {
+            return;
+        }
+        let _ = fs::remove_file(self.dir.join(format!("{entry}.fail")));
+        if let Ok(f) = fs::OpenOptions::new()
+            .write(true)
+            .open(self.dir.join(entry))
+        {
+            let _ = f.set_modified(SystemTime::UNIX_EPOCH);
+        }
+    }
+
     pub fn fail_path(&self, key: &str) -> PathBuf {
         self.dir.join(format!("{}.fail", hash_hex(key)))
     }

@@ -51,6 +51,57 @@ fn applescript_dispatches_toggle_urls_only() {
 }
 
 #[test]
+fn applescript_routes_action_urls_through_bar_click_action() {
+    let s = applescript(Path::new("/opt/bar"), &[]);
+    let lines: Vec<&str> = s.lines().map(str::trim).collect();
+    let at = lines
+        .iter()
+        .position(|l| l.contains("starts with \"bar://action/\""))
+        .expect("action branch");
+    assert_eq!(lines[at + 1], "try");
+    assert!(
+        lines[at + 2].starts_with("do shell script")
+            && lines[at + 2].contains("\" click action \"")
+    );
+    assert!(lines[at + 2].ends_with("quoted form of theURL"));
+    assert_eq!(lines[at + 3], "end try");
+}
+
+#[test]
+fn install_makes_a_private_action_nonce_and_keeps_it() {
+    use std::os::unix::fs::PermissionsExt;
+    let t = Tmp::new();
+    let c = cfg(&t);
+    let go = || {
+        run_install(&c, true, false, &mut |_| Ok(()), &mut Vec::new()).unwrap();
+        std::fs::read_to_string(c.state_dir.join("action-nonce")).unwrap()
+    };
+    let first = go();
+    assert_eq!(first.len(), 32);
+    assert!(first.bytes().all(|b| b.is_ascii_hexdigit()));
+    let mode = std::fs::metadata(c.state_dir.join("action-nonce"))
+        .unwrap()
+        .permissions()
+        .mode();
+    assert_eq!(mode & 0o777, 0o600);
+    assert_eq!(go(), first, "links drawn before a reinstall stay valid");
+}
+
+#[test]
+fn failed_install_makes_no_nonce() {
+    let t = Tmp::new();
+    let c = cfg(&t);
+    let _ = run_install(
+        &c,
+        true,
+        false,
+        &mut |_| Err("boom".into()),
+        &mut Vec::new(),
+    );
+    assert!(!c.state_dir.join("action-nonce").exists());
+}
+
+#[test]
 fn applescript_toggle_call_is_wrapped_in_try() {
     let s = applescript(Path::new("/opt/bar"), &[]);
     let lines: Vec<&str> = s.lines().map(str::trim).collect();

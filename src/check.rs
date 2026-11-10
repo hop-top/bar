@@ -315,6 +315,10 @@ struct Checker<'a> {
     budgets: budget::Budgets,
     /// `set usage-api on`.
     usage_api: bool,
+    /// `set account-source`.
+    account_source: Option<String>,
+    /// Plugins whose `--check` already ran.
+    checked: std::collections::BTreeSet<String>,
     /// `glab` is not on PATH while a GitLab remote is in play.
     glab_missing: bool,
     jj_missing: bool,
@@ -555,6 +559,23 @@ impl Checker<'_> {
             let msg = format!("plugin `{name}` declares the reserved option `{opt}`; ignored");
             self.add(Level::Warning, line, msg);
         }
+        for n in &info.inputs.refused {
+            let msg = format!(
+                "plugin `{name}` declares the input `{n}`, which looks like a credential; refused"
+            );
+            self.add(Level::Warning, line, msg);
+        }
+        if used
+            && info
+                .capabilities
+                .iter()
+                .any(|c| c == plugin::check::CHECK_CAPABILITY)
+            && self.checked.insert(name.to_string())
+        {
+            for w in plugin::check::run(&found) {
+                self.add(Level::Warning, line, format!("plugin `{name}`: {w}"));
+            }
+        }
         for issue in plugin::web::issues(&info) {
             self.add(
                 Level::Warning,
@@ -583,6 +604,34 @@ impl Checker<'_> {
 }
 
 impl Checker<'_> {
+    /// An `action <placeholder> <plugin>.<action>` line.
+    fn action(&mut self, placeholder: &str, target: &str, line: usize) {
+        let Some((plug, act)) = target.split_once('.') else {
+            return; // a parse error already
+        };
+        if crate::placeholders::lookup(placeholder).is_some() {
+            if placeholder != "account" {
+                let msg = format!("`action {placeholder}`: only `account` (core) and plugin placeholders take an action");
+                self.error(line, msg);
+            } else if self.account_source.as_deref() != Some(plug) {
+                let msg = format!("`action account {target}` needs `set account-source {plug}`: the account's tokens come from that plugin");
+                self.error(line, msg);
+            }
+        } else if placeholder != plug {
+            let msg = format!("`action {placeholder} {target}`: a plugin placeholder can bind only its own actions (`action {placeholder} {placeholder}.<action>`)");
+            self.error(line, msg);
+        }
+        let Some(found) = plugin::find(self.dirs, plug) else {
+            let msg = format!("plugin `{plug}` not on PATH: `action {placeholder}` does nothing");
+            self.add(Level::Warning, line, msg);
+            return;
+        };
+        if !plugin::info(&found).actions.contains_key(act) {
+            let msg = format!("plugin `{plug}` does not declare the action `{act}`");
+            self.error(line, msg);
+        }
+    }
+
     /// A layout for line `n` past `set max-rows`: it prints only when fewer
     /// rows come before it.
     fn past_max_rows(&mut self, key: &str, n: usize, src: &str, line: usize) {
@@ -647,6 +696,7 @@ impl Checker<'_> {
                         );
                     }
                 }
+                Some("action") if t.len() == 3 => self.action(&t[1], &t[2], i + 1),
                 Some("default") if t.len() >= 2 => {
                     if let Ok(o) = parse_options(&t[2..]) {
                         self.placeholder(&t[1], &o, i + 1, false);
@@ -683,6 +733,8 @@ pub fn check_layers(user: Option<Source>, project: Option<Source>, dirs: &[PathB
         gh_warned: Cell::new(false),
         budgets: Default::default(),
         usage_api: false,
+        account_source: None,
+        checked: Default::default(),
         glab_missing: false,
         jj_missing: !dirs
             .iter()
@@ -718,6 +770,7 @@ pub fn check_layers(user: Option<Source>, project: Option<Source>, dirs: &[PathB
         c.defaults = cfg.defaults.clone();
         c.budgets = cfg.budgets;
         c.usage_api = cfg.usage_api;
+        c.account_source = cfg.account_source.clone();
         let gitlab = !cfg.gitlab_hosts.is_empty() || cwd_on_gitlab(&cfg.gitlab_hosts);
         c.glab_missing = gitlab
             && !dirs

@@ -169,6 +169,9 @@ pub(super) fn guard(
     {
         return Err(format!("`{}` is read from the user config only", t[1]));
     }
+    if t[0] == "action" {
+        return Err("`action` is read from the user config only".into());
+    }
     if mode == ProjectMode::Full {
         return Ok(());
     }
