@@ -131,7 +131,6 @@ fn token_ok(s: &str, max: usize) -> bool {
 }
 
 /// Parses config text; `home` expands a leading `~/` in `key-file`.
-#[allow(clippy::cognitive_complexity)] // over the threshold; split when next touched
 pub fn parse(text: &str, home: Option<&Path>) -> Config {
     let mut cfg = Config::default();
     let mut cur: Option<Draft> = None;
@@ -178,61 +177,71 @@ pub fn parse(text: &str, home: Option<&Path>) -> Config {
                 .push(format!("line {}: `{key}` outside an instance", n + 1));
             continue;
         };
-        let mut err = |e: &str| cfg.errors.push(format!("line {}: {e}", n + 1));
-        let set_key = |k: KeyRef, d: &mut Draft, err: &mut dyn FnMut(&str)| {
-            if d.key.is_some() {
-                err("more than one key source");
-            } else {
-                d.key = Some(k);
-            }
-        };
-        match (key, args) {
-            ("routellm", [u]) => d.routellm = Some(u.clone()),
-            ("provider", [p]) if token_ok(p, 64) => d.provider = Some(p.clone()),
-            ("management", [u]) => d.management = Some(u.clone()),
-            ("key-from", [w]) if w == "cliproxyapi" => set_key(KeyRef::FromCpa, d, &mut err),
-            ("key-file", [p]) => match fsio::expand_home(p, home) {
-                Some(p) if p.is_absolute() => set_key(KeyRef::Own(KeySource::File(p)), d, &mut err),
-                _ => err("key-file must be an absolute path"),
-            },
-            ("key-keychain", [s]) => {
-                set_key(KeyRef::Own(KeySource::Keychain(s.clone())), d, &mut err)
-            }
-            ("key-command", argv) if !argv.is_empty() => {
-                if Path::new(&argv[0]).is_absolute() {
-                    set_key(KeyRef::Own(KeySource::Command(argv.to_vec())), d, &mut err)
-                } else {
-                    err("key-command must start with an absolute path");
-                }
-            }
-            ("local-tiers", [list]) => {
-                let v: Vec<String> = list
-                    .split(',')
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .collect();
-                if v.iter().all(|t| token_ok(t, 64)) {
-                    d.local = Some(v)
-                } else {
-                    err("local-tiers: tier names are letters, digits and ._-")
-                }
-            }
-            ("on-priority", [p]) => match p.parse::<i64>() {
-                Ok(v) if (-1_000_000..=1_000_000).contains(&v) => d.on_priority = Some(v),
-                _ => err("on-priority must be an integer"),
-            },
-            ("off-map", [kv]) => match kv.split_once('=') {
-                Some((a, m)) if token_ok(a, 64) && token_ok(m, 128) => {
-                    d.off_map.push((a.to_string(), m.to_string()))
-                }
-                _ => err("off-map takes alias=model"),
-            },
-            ("remote", [v]) => d.remote = matches!(v.as_str(), "yes" | "true" | "on" | "1"),
-            _ => err(&format!("unknown or malformed `{key}`")),
+        if let Err(e) = d.set(key, args, home) {
+            cfg.errors.push(format!("line {}: {e}", n + 1));
         }
     }
     finish(cur.take(), &mut cfg);
     cfg
+}
+
+impl Draft {
+    /// One directive inside an instance.
+    fn set(&mut self, key: &str, args: &[String], home: Option<&Path>) -> Result<(), String> {
+        match (key, args) {
+            ("routellm", [u]) => self.routellm = Some(u.clone()),
+            ("provider", [p]) if token_ok(p, 64) => self.provider = Some(p.clone()),
+            ("management", [u]) => self.management = Some(u.clone()),
+            ("key-from", [w]) if w == "cliproxyapi" => self.set_key(KeyRef::FromCpa)?,
+            ("key-file", [p]) => match fsio::expand_home(p, home) {
+                Some(p) if p.is_absolute() => self.set_key(KeyRef::Own(KeySource::File(p)))?,
+                _ => return Err("key-file must be an absolute path".into()),
+            },
+            ("key-keychain", [s]) => self.set_key(KeyRef::Own(KeySource::Keychain(s.clone())))?,
+            ("key-command", argv) if !argv.is_empty() => {
+                if !Path::new(&argv[0]).is_absolute() {
+                    return Err("key-command must start with an absolute path".into());
+                }
+                self.set_key(KeyRef::Own(KeySource::Command(argv.to_vec())))?;
+            }
+            ("local-tiers", [list]) => self.local = Some(local_tiers(list)?),
+            ("on-priority", [p]) => match p.parse::<i64>() {
+                Ok(v) if (-1_000_000..=1_000_000).contains(&v) => self.on_priority = Some(v),
+                _ => return Err("on-priority must be an integer".into()),
+            },
+            ("off-map", [kv]) => match kv.split_once('=') {
+                Some((a, m)) if token_ok(a, 64) && token_ok(m, 128) => {
+                    self.off_map.push((a.to_string(), m.to_string()));
+                }
+                _ => return Err("off-map takes alias=model".into()),
+            },
+            ("remote", [v]) => self.remote = matches!(v.as_str(), "yes" | "true" | "on" | "1"),
+            _ => return Err(format!("unknown or malformed `{key}`")),
+        }
+        Ok(())
+    }
+
+    fn set_key(&mut self, k: KeyRef) -> Result<(), String> {
+        if self.key.is_some() {
+            return Err("more than one key source".into());
+        }
+        self.key = Some(k);
+        Ok(())
+    }
+}
+
+/// `local-tiers a,b,c`: the names, trimmed, empty ones dropped.
+fn local_tiers(list: &str) -> Result<Vec<String>, String> {
+    let v: Vec<String> = list
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if v.iter().all(|t| token_ok(t, 64)) {
+        Ok(v)
+    } else {
+        Err("local-tiers: tier names are letters, digits and ._-".into())
+    }
 }
 
 /// Origin and path-tail checks shared by the URLs that may carry a key.
