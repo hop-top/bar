@@ -7,6 +7,10 @@ license = "Apache-2.0"
 description = "bar plugin: per-account quota of a CLIProxyAPI proxy"
 authors = ["Jad Bitar <jadb@users.noreply.github.com>"]
 
+[lib]
+name = "bar_cliproxyapi"
+path = "src/lib.rs"
+
 [[bin]]
 name = "bar-cliproxyapi"
 path = "src/main.rs"
