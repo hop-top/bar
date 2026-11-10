@@ -134,7 +134,7 @@ set right "#{usage[type=5h]}"
 - The `separator` (default `│`) splits a group into segments; a segment whose placeholders all render empty is dropped with its text.
 - Other text is drawn muted, and only beside a non-empty placeholder: `#{repo}:#{branch}` loses the colon when the branch is empty, and `#{branch} #{dirty} #{ahead}` on a clean tree reads `main ↑2` (one space kept between two values).
 - Double quotes protect `,`, `]` and `}` inside a value: `#{issues[label="a,b"]}`.
-- A bare word is an option with an empty value. After `show`, `alt` or `checks` it continues that comma list instead: `#{usage[show=time,pct,width=8]}` sets `show` to `time,pct`.
+- A bare word is an option with an empty value. After `show`, `alt` or `checks`, or an option a plugin declares as a [list](plugins.md#--ext-info) (unless it names another of the plugin's options), it continues that comma list instead: `#{usage[show=time,pct,width=8]}` sets `show` to `time,pct`.
 - An unknown core placeholder name is looked up as a plugin; `bar check` reports names that are neither.
 
 ### Session
