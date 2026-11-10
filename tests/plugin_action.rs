@@ -231,6 +231,52 @@ fn account_links_through_the_account_source() {
     std::env::remove_var("CLAUDE_CONFIG_DIR");
 }
 
+#[test]
+fn an_action_not_aimed_at_the_shown_account_links_without_the_sources_account() {
+    let fx = Fx::new();
+    fx.put(
+        "ext.json",
+        &echo_info(
+            json!({"actions": {"next": {"description": "d", "tokens": ["instance", "provider"]}}}),
+        ),
+    );
+    fx.put(
+        "out.json",
+        r#"{"text":"","tokens":{"instance":"0123456789abcdef","provider":"claude"}}"#,
+    );
+    std::fs::write(fx.state.join(NONCE_FILE), NONCE).unwrap();
+    std::fs::set_permissions(
+        fx.state.join(NONCE_FILE),
+        std::os::unix::fs::PermissionsExt::from_mode(0o600),
+    )
+    .unwrap();
+    let conf = "set account-source echo\naction account echo.next\n";
+    let c = cfg(conf);
+    fx.prime("echo", &c, &[]);
+    let claude = fx.root.join("claude");
+    std::fs::create_dir_all(&claude).unwrap();
+    std::fs::write(
+        claude.join(".claude.json"),
+        r#"{"oauthAccount":{"emailAddress":"local@example.test"}}"#,
+    )
+    .unwrap();
+    std::env::set_var("CLAUDE_CONFIG_DIR", &claude);
+    let (cache, dirs, s) = (fx.cache(), fx.dirs(), session());
+    let shown = hop_bar::render::render_in(
+        &s,
+        &cfg(&format!("{conf}set left \"#{{account}}\"\n")),
+        Some(120),
+        &hop_bar::render::ColdRunner,
+        Some(&cache),
+        &dirs,
+    );
+    let l = links(&shown);
+    assert_eq!(l.len(), 1, "{shown:?}");
+    assert_eq!(action::parse(&l[0]).unwrap().tokens["provider"], "claude");
+    assert_eq!(strip_codes(&shown), "local@example.test");
+    std::env::remove_var("CLAUDE_CONFIG_DIR");
+}
+
 // --- the handler ---
 
 /// Renders, takes the link, and returns what the handler needs.
