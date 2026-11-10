@@ -230,6 +230,32 @@ fn a_new_key_that_works_clears_the_stop() {
 }
 
 #[test]
+fn a_refusal_recorded_by_another_plugin_of_the_proxy_stops_calls() {
+    let s = Server::start(std_handler);
+    let e = Env::new(&s, "shared");
+    // another plugin's v0 base: same origin, same record
+    let other = bar_plugin::keyguard::Guard {
+        state_dir: &e.dir,
+        mgmt: &format!("{}/v0/management", s.origin()),
+    };
+    other.stop(401, &Secret::new(KEY.as_bytes().to_vec()), T0);
+    assert_eq!(e.run(KEY, T0 + 1, &[]).status, Status::AuthStopped(401));
+    assert_eq!(s.count(), 0);
+    // a changed key is tried; this plugin's own refusal is shared back
+    let s2 = Server::start(|_| status(403));
+    let e2 = Env::new(&s2, "shared2");
+    e2.run(KEY, T0, &[]);
+    let g2 = bar_plugin::keyguard::Guard {
+        state_dir: &e2.dir,
+        mgmt: &format!("{}/v0/management", s2.origin()),
+    };
+    assert_eq!(
+        g2.refusal(&Secret::new(KEY.as_bytes().to_vec()), T0 + 1),
+        Some(403)
+    );
+}
+
+#[test]
 fn an_empty_key_is_never_sent() {
     let s = Server::start(std_handler);
     let e = Env::new(&s, "empty");

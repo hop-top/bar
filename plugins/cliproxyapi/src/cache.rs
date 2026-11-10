@@ -7,6 +7,7 @@
 
 use crate::model::Acct;
 use bar_plugin::fsio;
+use bar_plugin::keyguard::{Guard, Held};
 use bar_plugin::keysource;
 use bar_plugin::secret::Secret;
 use bar_plugin::sha256;
@@ -117,15 +118,14 @@ pub fn lock_file(path: &Path) -> PathBuf {
 }
 
 /// How long a process waits for another's call to finish.
-pub const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(8);
+pub const LOCK_WAIT: std::time::Duration = bar_plugin::keyguard::LOCK_WAIT;
 
-/// Takes the instance lock (its directory is made first). `None` when
-/// it cannot be had: another process is mid-call, or the state directory
-/// is unwritable. Nothing may be sent to the proxy then, since a refusal
-/// could not be remembered.
-pub fn lock(path: &Path) -> Option<fsio::Lock> {
-    fsio::private_dir(path.parent()?).ok()?;
-    fsio::lock(&lock_file(path), LOCK_WAIT).ok().flatten()
+/// Takes the management origin's lock (shared with other plugins) and the
+/// instance lock. `None` when they cannot be had: another process is
+/// mid-call, or the state directory is unwritable. Nothing may be sent to
+/// the proxy then, since a refusal could not be remembered.
+pub fn lock(g: &Guard, path: &Path) -> Option<Held> {
+    g.lock(Some(&lock_file(path)))
 }
 
 /// Can the cache be written? (`bar check` asks.)
@@ -144,7 +144,7 @@ pub fn writable(path: &Path) -> bool {
 
 /// Backoff after `fails` consecutive failures: 60 s, doubling, 1 h at most.
 pub fn backoff(fails: u32) -> i64 {
-    (60i64 << fails.saturating_sub(1).min(6)).min(3600)
+    bar_plugin::keyguard::backoff(fails)
 }
 
 #[cfg(test)]

@@ -12,7 +12,7 @@ name = "bar"
 path = "src/main.rs"
 
 [workspace]
-members = [".", "crates/bar-plugin", "plugins/cliproxyapi"]
+members = [".", "crates/bar-plugin", "plugins/cliproxyapi", "plugins/routellm"]
 resolver = "2"
 
 [features]

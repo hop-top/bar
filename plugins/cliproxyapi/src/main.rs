@@ -133,17 +133,21 @@ fn check() -> CheckReport {
                 }
                 let cpath = bar_cliproxyapi::cache::file(&state, &i.origin.to_string());
                 let c = bar_cliproxyapi::cache::load(&cpath);
-                if !bar_cliproxyapi::cache::writable(&cpath) {
+                let guard = bar_plugin::keyguard::Guard {
+                    state_dir: &state,
+                    mgmt: &i.management,
+                };
+                if !bar_cliproxyapi::cache::writable(&cpath) || !guard.writable() {
                     w.push(format!(
                         "{}: the state directory is not writable; the proxy is not called without a place to remember a refused key",
                         i.origin
                     ));
                 }
                 let n = now();
-                let held = key
-                    .as_ref()
-                    .ok()
-                    .and_then(|k| c.refusal(k, collect::AUTH_HOLD, n));
+                let held = key.as_ref().ok().and_then(|k| {
+                    c.refusal(k, collect::AUTH_HOLD, n)
+                        .or_else(|| guard.refusal(k, n))
+                });
                 if let Some(st) = held {
                     w.push(format!(
                         "{}: management refused the key ({st}); no calls until the key changes",
