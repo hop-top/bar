@@ -78,7 +78,13 @@ fn run() -> Output {
         want_tiers: false,
         force: false,
     });
-    render::output(&snap, inst, t, input.opt_str("stale").unwrap_or("mark"))
+    render::output(
+        &snap,
+        inst,
+        t,
+        &render::Opts::from_input(&input),
+        &input.session.model_id,
+    )
 }
 
 fn check() -> CheckReport {

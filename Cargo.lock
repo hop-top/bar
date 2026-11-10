@@ -127,6 +127,7 @@ name = "bar-routellm"
 version = "0.0.0"
 dependencies = [
  "bar-plugin",
+ "hop-bar",
  "serde",
  "serde_json",
 ]

@@ -6,7 +6,7 @@
 use crate::cache::{Cache, Problem};
 use crate::collect::{armed, Snapshot, Status, STALE_AFTER};
 use crate::config::{instance_id, Instance};
-use bar_plugin::proto::{ActionSpec, ExtInfo, Inputs, OptSpec, Output};
+use bar_plugin::proto::{ActionSpec, ExtInfo, Inputs, OptSpec, Output, RenderInput};
 use std::collections::BTreeMap;
 
 pub const NAME: &str = "routellm";
@@ -16,7 +16,9 @@ pub fn actions() -> BTreeMap<String, ActionSpec> {
         description: d.into(),
         tokens: vec!["instance".into(), "to".into()],
         confirm: false,
-        timeout: 15,
+        // lock wait (8 s) + provider read, RouteLLM health and models,
+        // change and read-back (3 s each)
+        timeout: 30,
     };
     BTreeMap::from([
         ("toggle".to_string(), a("Switch routing on or off")),
@@ -39,6 +41,7 @@ pub fn ext_info() -> ExtInfo {
         OptSpec::choice(&["mark", "dim", "hide"], "mark"),
     );
     o.insert("link".into(), OptSpec::string());
+    o.insert("routed".into(), OptSpec::bool());
     o.insert("base-url".into(), OptSpec::string());
     ExtInfo {
         name: NAME.into(),
@@ -61,9 +64,14 @@ pub fn ext_info() -> ExtInfo {
         web: Some(serde_json::json!({
             "category": "usage",
             "samples": [
-                { "output": { "text": "RL on", "style": "good" } },
-                { "output": { "text": "RL off", "style": "dim" } },
-                { "output": { "text": "RL on \u{2717}", "style": "bad" } }
+                // OFF, the alias served by a frontier model
+                { "when": { "compact": "true" },
+                  "output": { "text": "RL off auto \u{2192} sonnet-5-5", "style": "dim" } },
+                // OFF, a private alias with no frontier row
+                { "when": { "label": "none" },
+                  "output": { "text": "RL off private \u{2717}", "style": "bad" } },
+                // ON, RouteLLM up
+                { "output": { "text": "RL on route-auto auto \u{2601}", "style": "good" } }
             ]
         })),
     }
@@ -89,9 +97,152 @@ pub fn state_word(s: &Snapshot) -> &'static str {
     }
 }
 
-/// The segment: hidden when the instance is not drivable.
-pub fn output(s: &Snapshot, inst: &Instance, now: i64, stale_opt: &str) -> Output {
+/// The placeholder's options.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Opts {
+    pub state: bool,
+    pub alias: bool,
+    pub tier: bool,
+    pub caps: bool,
+    /// Draw the alias item (`label=alias`, and not `compact`).
+    pub label: bool,
+    pub compact: bool,
+    pub stale: Stale,
+    pub link: Option<String>,
+    /// Hide unless the session's model is a `route-*` alias.
+    pub routed: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stale {
+    Mark,
+    Dim,
+    Hide,
+}
+
+impl Default for Opts {
+    fn default() -> Opts {
+        Opts {
+            state: true,
+            alias: true,
+            tier: true,
+            caps: false,
+            label: true,
+            compact: false,
+            stale: Stale::Mark,
+            link: None,
+            routed: false,
+        }
+    }
+}
+
+impl Opts {
+    pub fn from_input(i: &RenderInput) -> Opts {
+        let mut o = Opts::default();
+        if let Some(list) = i.opt_str("show") {
+            let has = |k: &str| list.split(',').any(|p| p.trim().eq_ignore_ascii_case(k));
+            // a list naming none of the parts keeps the default
+            if ["state", "alias", "tier", "caps"].iter().any(|k| has(k)) {
+                (o.state, o.alias, o.tier, o.caps) =
+                    (has("state"), has("alias"), has("tier"), has("caps"));
+            }
+        }
+        o.label = i.opt_str("label") != Some("none");
+        o.compact = i.opt_bool("compact").unwrap_or(false);
+        o.stale = match i.opt_str("stale") {
+            Some("dim") => Stale::Dim,
+            Some("hide") => Stale::Hide,
+            _ => Stale::Mark,
+        };
+        o.link = i
+            .opt_str("link")
+            .filter(|l| !l.is_empty())
+            .map(String::from);
+        o.routed = i.opt_bool("routed").unwrap_or(false);
+        o
+    }
+}
+
+/// `route-auto` for `route-auto` or `team/route-auto`: the alias a session
+/// model id names, as the proxy knows it.
+pub fn alias_of_model(model_id: &str) -> Option<String> {
+    let m = model_id.rsplit('/').next().unwrap_or(model_id);
+    (m.len() > 6 && m.get(..6).is_some_and(|p| p.eq_ignore_ascii_case("route-")))
+        .then(|| m.to_ascii_lowercase())
+}
+
+/// The model an OFF alias serves, without the vendor prefix:
+/// `claude-sonnet-5-5` is drawn `sonnet-5-5`.
+fn short_model(m: &str) -> &str {
+    m.strip_prefix("claude-").unwrap_or(m)
+}
+
+/// Where a request of an alias goes in the current state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Dest {
+    /// RouteLLM, to this tier.
+    Router(String),
+    /// A frontier model, through the proxy's own alias row.
+    Frontier(String),
+    /// Nowhere: the alias has no row and RouteLLM is not serving it.
+    Blocked,
+}
+
+/// The destination of `alias` (the proxy's alias of the session's model),
+/// from the cached provider entry; `None` when the alias is not one the
+/// provider exposes or the state is not known.
+pub fn destination(s: &Snapshot, alias: &str) -> Option<Dest> {
+    let w = state_word(s);
+    if !matches!(w, "on" | "off" | "down") {
+        return None;
+    }
+    let a = s
+        .cache
+        .entry
+        .as_ref()?
+        .aliases
+        .iter()
+        .find(|a| a.alias.eq_ignore_ascii_case(alias))?;
+    let row = s
+        .cache
+        .rows
+        .iter()
+        .find(|r| r.alias.eq_ignore_ascii_case(alias));
+    Some(match (w, row) {
+        ("on", _) => Dest::Router(a.tier.clone()),
+        (_, Some(r)) => Dest::Frontier(r.model.clone()),
+        _ => Dest::Blocked,
+    })
+}
+
+fn escape(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                (b as char).to_string()
+            }
+            b => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
+fn expand(tpl: &str, inst: &Instance, alias: &str, tier: &str) -> String {
+    tpl.replace("{instance}", &escape(&instance_id(&inst.origin)))
+        .replace("{alias}", &escape(alias))
+        .replace("{tier}", &escape(tier))
+}
+
+/// The segment: the state item, then, for a session on a `route-*` alias
+/// the provider exposes, the alias, the tier (or where the alias goes while
+/// routing is off) and the tier's capabilities. Hidden when the instance is
+/// not drivable. Items and the top level carry the toggle's tokens, so a
+/// bound `toggle` links every item; an item with a `link` keeps it.
+pub fn output(s: &Snapshot, inst: &Instance, now: i64, o: &Opts, model_id: &str) -> Output {
     if s.cache.problem.is_some() || (s.status == Status::Off) {
+        return Output::hidden();
+    }
+    let session_alias = alias_of_model(model_id);
+    if o.routed && session_alias.is_none() {
         return Output::hidden();
     }
     let w = state_word(s);
@@ -103,22 +254,90 @@ pub fn output(s: &Snapshot, inst: &Instance, now: i64, stale_opt: &str) -> Outpu
         _ => ("RL ?", "dim"),
     };
     let old = stale(&s.cache, now) && matches!(w, "on" | "off" | "down");
-    if old && stale_opt == "hide" {
+    if old && o.stale == Stale::Hide {
         return Output::hidden();
     }
-    let mark = if old && stale_opt == "mark" { " ~" } else { "" };
-    let style = if old && stale_opt == "dim" {
-        "dim"
+    let dim = old && o.stale == Stale::Dim;
+    let mark = if old && o.stale == Stale::Mark {
+        " ~"
     } else {
-        style
+        ""
     };
-    let mut o = Output::styled(&format!("{text}{mark}"), style);
-    o.tokens
-        .insert("instance".into(), instance_id(&inst.origin));
-    // what a click would do: the opposite of the current state
-    o.tokens
-        .insert("to".into(), if w == "off" { "on" } else { "off" }.into());
-    o
+    let state_style = if dim { "dim" } else { style };
+    let tokens: BTreeMap<String, String> = BTreeMap::from([
+        ("instance".into(), instance_id(&inst.origin)),
+        // what a click would do: the opposite of the current state
+        ("to".into(), if w == "off" { "on" } else { "off" }.into()),
+    ]);
+    let mut items = Vec::new();
+    if o.state {
+        let mut it = Output::styled(&format!("{text}{mark}"), state_style);
+        it.tokens = tokens.clone();
+        items.push(it);
+    }
+    let known = session_alias
+        .as_deref()
+        .and_then(|a| destination(s, a).map(|d| (a, d)));
+    if let Some((alias, dest)) = known {
+        let tier = s
+            .cache
+            .entry
+            .as_ref()
+            .and_then(|e| {
+                e.aliases
+                    .iter()
+                    .find(|a| a.alias.eq_ignore_ascii_case(alias))
+            })
+            .map(|a| a.tier.clone())
+            .unwrap_or_default();
+        let link = |mut it: Output| {
+            it.link = o.link.as_deref().map(|t| expand(t, inst, alias, &tier));
+            if dim {
+                it.style = Some("dim".into());
+            }
+            it
+        };
+        if o.alias && o.label && !o.compact {
+            items.push(link(Output::text(alias)));
+        }
+        if o.tier {
+            let mut it = match &dest {
+                Dest::Router(t) => {
+                    let marker = if inst.local_tiers.iter().any(|l| l == t) {
+                        "\u{2302}"
+                    } else {
+                        "\u{2601}"
+                    };
+                    Output::text(&format!("{t} {marker}"))
+                }
+                Dest::Frontier(m) => Output::text(&format!("{tier} \u{2192} {}", short_model(m))),
+                Dest::Blocked => Output::styled(&format!("{tier} \u{2717}"), "bad"),
+            };
+            if it.style.is_none() && dim {
+                it.style = Some("dim".into());
+            }
+            it.link = o.link.as_deref().map(|t| expand(t, inst, alias, &tier));
+            items.push(it);
+        }
+        if o.caps {
+            let t = s.cache.tiers.iter().find(|t| t.id == tier);
+            if let Some(c) = t.map(caps_text).filter(|c| !c.is_empty()) {
+                let mut it = link(Output::styled(&c, "dim"));
+                it.style = Some("dim".into());
+                items.push(it);
+            }
+        }
+    }
+    let mut out = Output {
+        items,
+        tokens,
+        ..Default::default()
+    };
+    if out.items.is_empty() {
+        // nothing selected to draw
+        out = Output::hidden();
+    }
+    out
 }
 
 fn caps_text(t: &crate::cache::Tier) -> String {
@@ -332,48 +551,210 @@ mod tests {
         }
     }
 
+    fn opts(s: &str) -> Opts {
+        let o: serde_json::Map<String, serde_json::Value> = serde_json::from_str(s).unwrap();
+        Opts::from_input(&RenderInput {
+            options: o,
+            ..Default::default()
+        })
+    }
+
+    fn texts(o: &Output) -> Vec<(String, Option<String>)> {
+        o.items
+            .iter()
+            .map(|i| (i.text.clone().unwrap(), i.style.clone()))
+            .collect()
+    }
+
+    fn t(text: &str, style: Option<&str>) -> (String, Option<String>) {
+        (text.to_string(), style.map(String::from))
+    }
+
     #[test]
     fn the_state_item_says_what_a_click_does() {
         let i = inst();
-        let on = output(&snap(false, Some(true), 100), &i, 110, "mark");
-        assert_eq!(
-            (on.text.as_deref(), on.style.as_deref()),
-            (Some("RL on"), Some("good"))
-        );
-        assert_eq!(on.tokens["to"], "off");
-        let off = output(&snap(true, None, 100), &i, 110, "mark");
-        assert_eq!(off.text.as_deref(), Some("RL off"));
-        assert_eq!(off.tokens["to"], "on");
-        let down = output(&snap(false, Some(false), 100), &i, 110, "mark");
-        assert_eq!(
-            (down.text.as_deref(), down.style.as_deref()),
-            (Some("RL on \u{2717}"), Some("bad"))
-        );
-        let old = output(
+        let go = |s: &Snapshot, now: i64, o: &Opts| output(s, &i, now, o, "claude-opus-4");
+        let o = Opts::default();
+        let on = go(&snap(false, Some(true), 100), 110, &o);
+        assert_eq!(texts(&on), vec![t("RL on", Some("good"))]);
+        assert_eq!(on.items[0].tokens["to"], "off");
+        assert_eq!(on.items[0].tokens["instance"], instance_id(&i.origin));
+        assert_eq!(on.tokens, on.items[0].tokens);
+        let off = go(&snap(true, None, 100), 110, &o);
+        assert_eq!(texts(&off), vec![t("RL off", Some("dim"))]);
+        assert_eq!(off.items[0].tokens["to"], "on");
+        let down = go(&snap(false, Some(false), 100), 110, &o);
+        assert_eq!(texts(&down), vec![t("RL on \u{2717}", Some("bad"))]);
+        let old = go(&snap(false, Some(true), 100), 100 + STALE_AFTER + 1, &o);
+        assert_eq!(texts(&old), vec![t("RL on ~", Some("good"))]);
+        let dim = go(
             &snap(false, Some(true), 100),
-            &i,
             100 + STALE_AFTER + 1,
-            "mark",
+            &opts(r#"{"stale":"dim"}"#),
         );
-        assert_eq!(old.text.as_deref(), Some("RL on ~"));
-        let hidden = output(&snap(false, Some(true), 100), &i, 1000, "hide");
+        assert_eq!(texts(&dim), vec![t("RL on", Some("dim"))]);
+        let hidden = go(
+            &snap(false, Some(true), 100),
+            1000,
+            &opts(r#"{"stale":"hide"}"#),
+        );
         assert_eq!(hidden.text.as_deref(), Some(""));
-        assert_eq!(on.tokens["instance"], instance_id(&i.origin));
+    }
+
+    #[test]
+    fn a_session_model_names_its_alias() {
+        assert_eq!(alias_of_model("route-auto").as_deref(), Some("route-auto"));
+        assert_eq!(
+            alias_of_model("team/Route-Vision").as_deref(),
+            Some("route-vision")
+        );
+        for m in [
+            "",
+            "route-",
+            "router-random-0.5",
+            "claude-opus-4",
+            "myroute-auto",
+        ] {
+            assert_eq!(alias_of_model(m), None, "{m}");
+        }
+    }
+
+    #[test]
+    fn the_alias_maps_to_its_tier_and_marker() {
+        let i = inst();
+        let on = snap(false, Some(true), 100);
+        let go = |s: &Snapshot, model: &str, o: &str| output(s, &i, 110, &opts(o), model);
+        // a cloud tier, and a tier declared local (private is by default)
+        assert_eq!(
+            texts(&go(&on, "route-auto", "{}")),
+            vec![
+                t("RL on", Some("good")),
+                t("route-auto", None),
+                t("auto \u{2601}", None)
+            ]
+        );
+        assert_eq!(
+            texts(&go(&on, "route-private", "{}"))[2],
+            t("private \u{2302}", None)
+        );
+        // compact and `label=none` leave the alias item out
+        for o in [r#"{"compact":true}"#, r#"{"label":"none"}"#] {
+            assert_eq!(
+                texts(&go(&on, "route-auto", o)),
+                vec![t("RL on", Some("good")), t("auto \u{2601}", None)],
+                "{o}"
+            );
+        }
+        // an alias the provider does not expose, or a plain model: state only
+        for m in ["route-hard", "claude-opus-4", ""] {
+            assert_eq!(
+                texts(&go(&on, m, "{}")),
+                vec![t("RL on", Some("good"))],
+                "{m}"
+            );
+        }
+        // `routed` hides a session that is not on an alias
+        assert_eq!(
+            go(&on, "claude-opus-4", r#"{"routed":true}"#)
+                .text
+                .as_deref(),
+            Some("")
+        );
+        assert_eq!(go(&on, "route-auto", r#"{"routed":true}"#).items.len(), 3);
+    }
+
+    #[test]
+    fn off_and_down_show_where_the_alias_goes() {
+        let i = inst();
+        let go = |s: &Snapshot, model: &str, o: &str| texts(&output(s, &i, 110, &opts(o), model));
+        let off = snap(true, None, 100);
+        assert_eq!(
+            go(&off, "route-auto", "{}"),
+            vec![
+                t("RL off", Some("dim")),
+                t("route-auto", None),
+                t("auto \u{2192} sonnet-5-5", None)
+            ]
+        );
+        assert_eq!(
+            go(&off, "route-auto", r#"{"show":"tier"}"#),
+            vec![t("auto \u{2192} sonnet-5-5", None)]
+        );
+        // no row: the proxy refuses, and the item says so
+        assert_eq!(
+            go(&off, "route-private", "{}")[2],
+            t("private \u{2717}", Some("bad"))
+        );
+        // routing on but RouteLLM down: an alias with a row falls through
+        let down = snap(false, Some(false), 100);
+        assert_eq!(
+            go(&down, "route-auto", "{}")[2],
+            t("auto \u{2192} sonnet-5-5", None)
+        );
+        assert_eq!(
+            go(&down, "route-private", "{}")[2],
+            t("private \u{2717}", Some("bad"))
+        );
+    }
+
+    #[test]
+    fn caps_and_links_are_opt_in() {
+        let i = inst();
+        let mut s = snap(false, Some(true), 100);
+        s.cache.tiers = vec![crate::cache::Tier {
+            id: "auto".into(),
+            kind: "tier".into(),
+            vision: Some(true),
+            tools: Some(true),
+            context: Some(200_000),
+        }];
+        let o = output(&s, &i, 110, &opts(r#"{"show":"state,caps"}"#), "route-auto");
+        assert_eq!(
+            texts(&o),
+            vec![t("RL on", Some("good")), t("vis tools 200k", Some("dim"))]
+        );
+        let o = output(
+            &s,
+            &i,
+            110,
+            &opts(r#"{"link":"x://{instance}/{alias}/{tier}?q={tier}%"}"#),
+            "route-auto",
+        );
+        // the state item stays clickable for the toggle; the others link
+        assert_eq!(o.items[0].link, None);
+        assert_eq!(
+            o.items[1].link.as_deref(),
+            Some(format!("x://{}/route-auto/auto?q=auto%", instance_id(&i.origin)).as_str())
+        );
+        assert!(o.items[2].link.is_some());
+        let none = output(&s, &i, 110, &opts("{}"), "route-auto");
+        assert!(none.items.iter().all(|i| i.link.is_none()));
+    }
+
+    #[test]
+    fn the_action_timeout_covers_the_lock_wait_and_every_call() {
+        // lock wait + provider read + health + models + change + read-back
+        let need = bar_plugin::keyguard::LOCK_WAIT.as_secs() + 5 * 3;
+        for (n, a) in actions() {
+            assert!(a.timeout >= need && a.timeout <= 120, "{n}: {}", a.timeout);
+        }
     }
 
     #[test]
     fn an_undrivable_instance_is_hidden() {
         let mut s = snap(false, Some(true), 100);
         s.cache.problem = Some(Problem::Mismatch);
-        assert_eq!(output(&s, &inst(), 101, "mark").text.as_deref(), Some(""));
+        let o = Opts::default();
+        assert_eq!(
+            output(&s, &inst(), 101, &o, "route-auto").text.as_deref(),
+            Some("")
+        );
         let s = Snapshot {
             status: Status::AuthStopped(401),
             cache: Cache::default(),
         };
-        assert_eq!(
-            output(&s, &inst(), 101, "mark").text.as_deref(),
-            Some("RL key?")
-        );
+        let k = output(&s, &inst(), 101, &o, "route-auto");
+        assert_eq!(texts(&k), vec![t("RL key?", Some("bad"))]);
     }
 
     #[test]
