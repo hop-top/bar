@@ -671,55 +671,11 @@ impl Checker<'_> {
     }
 
     /// Lints every line of `text`, a config file's contents.
-    #[allow(clippy::cognitive_complexity)] // over the threshold; split when next touched
     fn lint(&mut self, text: &str) {
         for (i, raw) in text.lines().enumerate() {
             let Ok(t) = tokenize(raw) else { continue };
             match t.first().map(String::as_str) {
-                // a bad line number is already a parse error
-                Some("set") if t.len() == 3 && matches!(layout_key(&t[1]), Some(Ok(_))) => {
-                    self.layout(&t[2], i + 1);
-                    if let Some(Ok((_, n))) = layout_key(&t[1]) {
-                        self.past_max_rows(&t[1], n, &t[2], i + 1);
-                    }
-                }
-                Some("set") if t.len() == 3 && t[1] == "subagent-hide" => {
-                    for s in t[2].split(',').map(|s| s.trim().to_ascii_lowercase()) {
-                        if !s.is_empty() && !crate::subagent::STATUSES.contains(&s.as_str()) {
-                            let msg = format!(
-                                "subagent-hide: `{s}` is not a status Claude Code documents ({})",
-                                crate::subagent::STATUSES.join(", ")
-                            );
-                            self.add(Level::Warning, i + 1, msg);
-                        }
-                    }
-                }
-                Some("set") if t.len() == 3 && t[1] == "palette" => {
-                    let file = crate::palette::file::path_of(&t[2]).filter(|p| p.is_file());
-                    if let (Some(_), Some(file)) = (crate::palette::by_name(&t[2]), file) {
-                        let msg = format!(
-                            "`{}` is a built-in palette, so {} is not read; rename the file to use it",
-                            t[2],
-                            file.display()
-                        );
-                        self.add(Level::Warning, i + 1, msg);
-                    }
-                }
-                Some("set") if t.len() == 3 && t[1] == "subagent" => {
-                    self.row = true;
-                    self.layout(&t[2], i + 1);
-                    self.row = false;
-                }
-                Some("set") if t.len() == 3 && t[1] == "claude-dir" => {
-                    if !Path::new(&t[2]).is_absolute() && !t[2].starts_with("~/") {
-                        self.add(
-                            Level::Warning,
-                            i + 1,
-                            "claude-dir must be an absolute path (or start with ~/); it is ignored"
-                                .into(),
-                        );
-                    }
-                }
+                Some("set") if t.len() == 3 => self.set(&t[1], &t[2], i + 1),
                 Some("action") if t.len() == 3 => self.action(&t[1], &t[2], i + 1),
                 Some("default") if t.len() >= 2 => {
                     if let Ok(o) = parse_options(&t[2..]) {
@@ -727,6 +683,55 @@ impl Checker<'_> {
                     }
                 }
                 _ => {}
+            }
+        }
+    }
+
+    /// `set <key> <value>` on line `line`.
+    fn set(&mut self, key: &str, value: &str, line: usize) {
+        // a bad line number is already a parse error
+        if let Some(Ok((_, n))) = layout_key(key) {
+            self.layout(value, line);
+            self.past_max_rows(key, n, value, line);
+            return;
+        }
+        match key {
+            "subagent-hide" => self.subagent_hide(value, line),
+            "palette" => {
+                let file = crate::palette::file::path_of(value).filter(|p| p.is_file());
+                if let (Some(_), Some(file)) = (crate::palette::by_name(value), file) {
+                    let msg = format!(
+                        "`{value}` is a built-in palette, so {} is not read; rename the file to use it",
+                        file.display()
+                    );
+                    self.add(Level::Warning, line, msg);
+                }
+            }
+            "subagent" => {
+                self.row = true;
+                self.layout(value, line);
+                self.row = false;
+            }
+            "claude-dir" if !Path::new(value).is_absolute() && !value.starts_with("~/") => {
+                self.add(
+                    Level::Warning,
+                    line,
+                    "claude-dir must be an absolute path (or start with ~/); it is ignored".into(),
+                );
+            }
+            _ => {}
+        }
+    }
+
+    /// `set subagent-hide a,b`: each status is one Claude Code documents.
+    fn subagent_hide(&mut self, value: &str, line: usize) {
+        for s in value.split(',').map(|s| s.trim().to_ascii_lowercase()) {
+            if !s.is_empty() && !crate::subagent::STATUSES.contains(&s.as_str()) {
+                let msg = format!(
+                    "subagent-hide: `{s}` is not a status Claude Code documents ({})",
+                    crate::subagent::STATUSES.join(", ")
+                );
+                self.add(Level::Warning, line, msg);
             }
         }
     }
