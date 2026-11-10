@@ -47,8 +47,9 @@ jobs:
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --generate-notes $flags
 
   # Prebuilt binaries, one native runner per target. Asset:
-  # bar-<version>-<target>.tar.gz holding `bar`, plus a .sha256 file;
-  # .zip holding `bar.exe` for Windows (arm64 cross-built on the x64 runner with MSVC).
+  # bar-<version>-<target>.tar.gz holding `bar` and `bar-cliproxyapi`, plus a
+  # .sha256 file covering the whole archive; .zip holding `bar.exe` and
+  # `bar-cliproxyapi.exe` for Windows (arm64 cross-built on the x64 runner with MSVC).
   # Linux gnu builds on ubuntu-22.04 (glibc 2.35) so they run on glibc >= 2.35;
   # the musl builds are static and run on any Linux of that architecture.
   # The arm Linux runner needs a plan/repo that provides it.
@@ -82,18 +83,20 @@ jobs:
       - name: Toolchain
         run: rustup toolchain install stable --profile minimal --target "$TARGET" && rustup default stable
       - name: Build
-        run: cargo build --release --locked --target "$TARGET"
+        run: cargo build --release --locked --target "$TARGET" -p hop-bar -p bar-cliproxyapi
       # musl: no program interpreter and no shared libraries, or the build fails.
       - name: Static binary
         if: endsWith(matrix.target, '-musl')
         run: |
           set -euo pipefail
-          bin="target/${TARGET}/release/bar"
-          file "$bin"
-          if readelf -lW "$bin" | grep -q 'INTERP' || readelf -dW "$bin" | grep -q '(NEEDED)'; then
-            echo "$bin is not statically linked" >&2
-            exit 1
-          fi
+          for name in bar bar-cliproxyapi; do
+            bin="target/${TARGET}/release/${name}"
+            file "$bin"
+            if readelf -lW "$bin" | grep -q 'INTERP' || readelf -dW "$bin" | grep -q '(NEEDED)'; then
+              echo "$bin is not statically linked" >&2
+              exit 1
+            fi
+          done
       - name: Package
         run: |
           set -euo pipefail
@@ -101,11 +104,11 @@ jobs:
           case "$TARGET" in
             *-windows-*)
               asset="${name}.zip"
-              7z a -tzip "$asset" "./target/${TARGET}/release/bar.exe"
+              7z a -tzip "$asset" "./target/${TARGET}/release/bar.exe" "./target/${TARGET}/release/bar-cliproxyapi.exe"
               ;;
             *)
               asset="${name}.tar.gz"
-              tar -czf "$asset" -C "target/${TARGET}/release" bar
+              tar -czf "$asset" -C "target/${TARGET}/release" bar bar-cliproxyapi
               ;;
           esac
           if command -v sha256sum >/dev/null; then
@@ -120,7 +123,7 @@ jobs:
         run: gh release upload "$TAG" "$ASSET" "${ASSET}.sha256" --clobber
 
   # npm: @hop-top/bar (a Node launcher) plus one package per platform holding
-  # its binary, selected by npm through os/cpu on optionalDependencies; no
+  # its binaries (`bar` and `bar-cliproxyapi`), selected by npm through os/cpu on optionalDependencies; no
   # install scripts, no downloads. Built from this release's archives
   # (scripts/npm-stage checks the .sha256 files and that every package.json
   # carries the tag's version). Runs when every binary job succeeded and

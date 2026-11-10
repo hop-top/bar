@@ -3,7 +3,7 @@
 check: lint test plugin-check npm-check web-check gallery-check bench-docs-check bench-badge-check
 
 build:
-	cargo build --release
+	cargo build --release --workspace
 
 test:
 	cargo test --locked --workspace --features hop-bar/test-tools
