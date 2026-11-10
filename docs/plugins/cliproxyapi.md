@@ -248,6 +248,28 @@ Links need the click handler installed with action support: run `bar click insta
 
 Management failures behave as for rendering: a 401 or 403, on the listing or on the change, stops every call until the key changes.
 
+## Recipe: a session on a Codex account
+
+The proxy translates between Claude Code's Anthropic format and Codex, tool calls and streaming included, so a Claude Code session can run on a Codex model. Pin every model slot to a Codex model id the proxy lists (`/v1/models`):
+
+```sh
+ANTHROPIC_BASE_URL=http://127.0.0.1:8317 \
+ANTHROPIC_MODEL=gpt-6.1-terra \
+ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-6.1-terra \
+ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-6.1-terra \
+ANTHROPIC_DEFAULT_HAIKU_MODEL=gpt-6.1-terra \
+CLAUDE_CODE_SUBAGENT_MODEL=gpt-6.1-terra \
+claude
+```
+
+The placeholder takes the provider from the model id, so the segment and `#{usage}` show the Codex accounts:
+
+```
+5d2h █████ │ work 7d 100% ↻1d10h wk 100%
+```
+
+Choose which Codex account serves the session with `bar cpa use <account> --provider codex`, `bar cpa pick --provider codex`, or a click on the account with `action cliproxyapi cliproxyapi.use`. Claude Code warns that it does not recognise the model id, and runs anyway.
+
 ## Privacy
 
 - The plugin reads accounts and quota. The only change it ever makes is an account's routing priority, when you ask (`use`, `--reset` or a bound click); it never disables or enables an account.
