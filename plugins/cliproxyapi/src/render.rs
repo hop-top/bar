@@ -47,6 +47,10 @@ pub fn ext_info() -> ExtInfo {
         "pool".into(),
         OptSpec::choice(&["mean", "active", "max"], "mean"),
     );
+    o.insert(
+        "route-provider".into(),
+        OptSpec::choice(&["claude", "codex", "none"], "claude"),
+    );
     o.insert("base-url".into(), OptSpec::string());
     ExtInfo {
         name: NAME.into(),

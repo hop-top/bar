@@ -107,6 +107,7 @@ The key is held in memory that is overwritten when released, and passed to `curl
 | Option | Default | Meaning |
 |---|---|---|
 | `provider` | `auto` | `auto` follows the model; `claude` or `codex` forces one. |
+| `route-provider` | `claude` | Provider for a router alias (a model id starting with `route-`, as a router behind the proxy exposes): `claude`, `codex` or `none` (hide in routed sessions). Such an id names no provider itself. |
 | `windows` | `5h,7d,wk` | Windows to show, in this order; a window an account lacks is omitted. `7d` is a window of exactly seven days, `wk` any other length of about a week. |
 | `show` | `label,pct,reset` | Parts per account: `label`, `pct`, `reset`, `plan`. |
 | `count` | `left` | `left` or `used`: which share `pct` draws. |

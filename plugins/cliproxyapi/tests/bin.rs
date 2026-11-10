@@ -416,3 +416,45 @@ fn a_session_without_a_proxy_gets_the_tokens_of_a_lone_instance() {
     // no request went out for any of this
     assert_eq!(s.count() + other.count(), 0);
 }
+
+#[test]
+fn a_routed_session_shows_the_route_provider() {
+    let listing = json!({"files":[
+        {"auth_index":"ix1","type":"claude","email":"a@corp.test","priority":1,
+         "quota":{"signals":{"Anthropic-Ratelimit-Unified-7d-Utilization":"0.5",
+                             "Anthropic-Ratelimit-Unified-7d-Reset":"4102444800"}}}]});
+    let s = Server::start(move |_| ok(listing.to_string()));
+    let h = Home::new("route");
+    let key = h.file("key", "bin-test-key\n", 0o600);
+    let conf = h.file(
+        "c.conf",
+        &format!("instance {}\n key-file {}\n", s.origin(), key.display()),
+        0o600,
+    );
+    let go = |model: &str, opts: Value| {
+        render(
+            h.cmd(&conf),
+            json!({"options":opts,"session":{"model_id":model},"env":{"ANTHROPIC_BASE_URL":s.origin()}}),
+        )
+    };
+    // default: the claude pool, for every route-* alias
+    for m in ["route-auto", "route-private"] {
+        let o = go(m, json!({}));
+        assert_eq!(o["items"][0]["tokens"]["provider"], "claude", "{m}");
+        assert_eq!(o["usage"]["seven_day"]["used_percentage"], 50.0, "{m}");
+    }
+    // `none` hides the segment in a routed session, a real model is unaffected
+    assert_eq!(
+        go("route-auto", json!({"route-provider":"none"}))["text"],
+        ""
+    );
+    assert_eq!(
+        go("claude-opus-4", json!({"route-provider":"none"}))["items"][0]["tokens"]["provider"],
+        "claude"
+    );
+    // codex is not in this proxy's pool: nothing to show
+    assert_eq!(
+        go("route-auto", json!({"route-provider":"codex"}))["text"],
+        ""
+    );
+}
