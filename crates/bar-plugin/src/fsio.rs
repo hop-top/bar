@@ -9,11 +9,15 @@ use std::path::{Path, PathBuf};
 /// Reads at most `cap` bytes; a longer stream is an error, not a
 /// truncated body, whatever the server declared up front.
 pub fn read_capped(r: impl Read, cap: usize) -> Result<Vec<u8>, String> {
-    let mut buf = Vec::new();
-    r.take(cap as u64 + 1)
-        .read_to_end(&mut buf)
-        .map_err(|e| format!("read: {e}"))?;
+    // reserved up front: a growing buffer would leave unwiped copies of a
+    // body that may hold a credential
+    let mut buf = Vec::with_capacity((cap + 1).min(1 << 20));
+    if let Err(e) = r.take(cap as u64 + 1).read_to_end(&mut buf) {
+        crate::secret::wipe(&mut buf);
+        return Err(format!("read: {e}"));
+    }
     if buf.len() > cap {
+        crate::secret::wipe(&mut buf);
         return Err(format!("response over {cap} bytes"));
     }
     Ok(buf)
