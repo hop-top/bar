@@ -12,17 +12,20 @@ Claude Code must reach the proxy through `ANTHROPIC_BASE_URL`; the segment is hi
 
 ## What it shows
 
-Per account of the provider that matches the current model (`claude`, `opus`, `sonnet`, `haiku` for Claude; `gpt`, `codex`, `o3`-style names for Codex):
+Per account of the provider that matches the current model (`claude`, `opus`, `sonnet`, `haiku` for Claude; `gpt`, `codex`, `o3`-style names for Codex), one entry, most used first:
 
 ```
-work 5h 41% ↻2h 7d 12% ↻3d │ home 7d 80% ↻5d
+work 5h 59% ↻2h10m 7d 88% ↻3d4h │ home 7d 20% ↻5d
 ```
 
-- `5h 41%` is a window and the share used; `↻2h` is the time to its reset.
-- A window the provider does not report is left out, never shown as 0%. Claude often reports only the weekly window; a Codex Pro plan has a weekly window only.
-- `~` after a name marks data older than a few minutes; data older than an hour is dropped.
-- The text turns `warn` from 70% and `bad` from 90% used.
+- `work` is the account's label. `5h 59%` is a window and the share **left**; `↻2h10m` is the time to its reset (`3d4h`, `2h10m`, `41m`, `<1m`). `count=used` draws the share used instead.
+- A window the provider does not report is left out, never shown as 0%. Claude often reports only the weekly window; a Codex Pro plan has a weekly window only. An account never read yet shows `?`.
+- The entry turns `bad` at 10% left or less in any shown window. Otherwise it follows the colour ramp of the lowest share left.
+- `~` before the windows marks data older than a few minutes; data older than an hour is dropped.
 - `key?` in the `bad` colour means the proxy refused the management key (see [Failures](#failures)).
+- An account whose own token the provider refused shows in `bad`.
+- The entries are items of one placeholder: with `set wrap on` a long line breaks between accounts, never inside one.
+- Nothing is shown when the session does not use a configured instance, the model's provider is not one the instance reads, or no account has data.
 
 Claude windows come from the rate-limit headers the proxy records from real traffic through each account. They are held in the proxy's memory: an account that has served no request since the proxy started shows no windows yet, and a restart clears them. Codex windows are read from Codex's usage endpoint through the proxy, using each account's own token, only while a Codex model is active.
 
@@ -82,10 +85,58 @@ The key is held in memory that is overwritten when released, and passed to `curl
 | Option | Default | Meaning |
 |---|---|---|
 | `provider` | `auto` | `auto` follows the model; `claude` or `codex` forces one. |
-| `label` | `name` | `index` draws `#1`, `#2`. |
+| `windows` | `5h,7d,wk` | Windows to show, in this order; a window an account lacks is omitted. `7d` is a window of exactly seven days, `wk` any other length of about a week. |
+| `show` | `label,pct,reset` | Parts per account: `label`, `pct`, `reset`, `plan`. |
+| `count` | `left` | `left` or `used`: which share `pct` draws. |
+| `label` | `alias` | `alias` (the `alias` line, else the part of the email before `@`), `local` (always the part before `@`), `index` (`#1`, `#2`, for screen sharing) or `none`. Labels are cut at 12 characters. |
+| `sort` | `used` | `used` (most used window first), `reset` (soonest reset first) or `name`. |
+| `accounts` | all | Accounts to show: labels or local parts (`*` and `?` match), or positions in the proxy's list (`2` or `#2`). |
+| `compact` | off | `59%·2h10m` per window, without the window name. |
+| `stale` | `mark` | Old data: `mark` (`~`), `dim` or `hide`. |
+| `link` | none | A link template for each account; `{account}`, `{label}`, `{provider}` and `{instance}` are URL-escaped. |
+| `pool` | `mean` | How `usage` pools the accounts, below. |
 | `base-url` | none | Base URL to use when `ANTHROPIC_BASE_URL` is not in the environment bar passes. |
 
+A layout's own commas split options, so write a list with `+`: `#{cliproxyapi[windows=5h+7d,count=used]}`. `show` takes commas, as everywhere.
+
+```
+set left "#{cliproxyapi[windows=5h+7d,compact,sort=reset]}"
+default cliproxyapi stale=dim label=index
+```
+
 The plugin's `ttl` is 60 s and its time limit 15 s.
+
+## Usage and account sources
+
+Behind a proxy Claude Code reports no `rate_limits`, so `#{usage}` has nothing to show. The plugin supplies the pool's windows instead:
+
+```
+default cliproxyapi pool=mean
+set usage-source cliproxyapi
+set center "#{usage[type=5h]} │ #{usage[type=7d]}"
+```
+
+`usage` covers the provider of the current model. With `set usage-source`, `#{usage}` shows it when Claude Code sends none, with the usual pace, projection and rules. Only the result for the placeholder's `default` options counts, so put `pool` on the `default` line.
+
+| `pool` | `usage` is |
+|---|---|
+| `mean` | The mean share used over the accounts that have data, with the latest reset: the strictest pace. |
+| `active` | The one account in the top priority tier, when there is exactly one; otherwise `mean`. |
+| `max` | The most-used account, per window. |
+
+A window is pooled only when every account with data reports it and has not yet reset, so a pool that holds a Codex Pro account has no 5h window. Accounts the proxy has disabled or cooled down, or whose token was refused, do not count (except for `active`, which follows the proxy's own routing).
+
+The plugin also names the account the proxy prefers, for `#{account}`:
+
+```
+set account-source cliproxyapi
+set right "#{cliproxyapi[windows=5h]} │ #{account}"
+account "work" good
+```
+
+The `account` is emitted only when it is certain: the only account in the highest priority tier of the current provider that the proxy can route to. A round-robin pool of equals has no current account, and then `#{account}` shows what it showed before. A session bound to an account by the proxy's session affinity is not visible to the plugin. The account shown is the one the proxy **prefers**, not a guarantee about any request. With `label=index` the account's label is `#1`, `#2` too.
+
+To open your own handler for an account instead, give each entry a link: `#{cliproxyapi[link=myproxy://use?account={account}]}`.
 
 ## Failures
 
@@ -101,7 +152,8 @@ Responses are size-capped (256 KiB for the account list, 128 KiB for an upstream
 
 ## Privacy
 
-- The plugin reads accounts and quota only. It never changes the proxy.
-- Its cache (`plugins/cliproxyapi/<hash>.json` in bar's state directory, mode 0600 in a 0700 directory) holds the label shown, the proxy's opaque account index, plan name, usage windows and failure timers. It holds no emails (a label derived from one is the part before the `@`, or your alias), no file paths, no tokens, no account ids and no keys.
+- The placeholder reads accounts and quota only.
+- Its output carries labels, the proxy's opaque account index and the provider name; bar's own cache of it (mode 0600) holds the same. `label=index` keeps even the local part of an email off the screen and out of that output.
+- Its cache (`plugins/cliproxyapi/<hash>.json` in bar's state directory, mode 0600 in a 0700 directory) holds the label shown, the local part of the account's email (for `label=local`), the proxy's opaque account index and routing priority, plan name, usage windows and failure timers. It holds no emails (a label derived from one is the part before the `@`, or your alias), no file paths, no tokens, no account ids and no keys.
 - Upstream addresses are compiled into the plugin. The proxy's `api-call` endpoint forwards an account's token to any URL it is given, so no configuration can choose where it goes.
 - Querying a provider's usage endpoint with your own credentials, through your own proxy, is subject to that provider's terms; check them before enabling it.

@@ -39,7 +39,11 @@ fn run(path: impl AsRef<std::path::Path>, arg: Option<&str>, stdin: &str) -> Str
 fn core_parses_what_the_plugin_prints_and_renders_it() {
     let listing = json!({"files":[
         {"auth_index":"ix1","type":"claude","email":"a@corp.test",
+         "priority":1,
          "quota":{"signals":{"Anthropic-Ratelimit-Unified-7d-Utilization":"0.5",
+                             "Anthropic-Ratelimit-Unified-7d-Reset":"4102444800"}}},
+        {"auth_index":"ix2","type":"claude","email":"b@corp.test",
+         "quota":{"signals":{"Anthropic-Ratelimit-Unified-7d-Utilization":"0.95",
                              "Anthropic-Ratelimit-Unified-7d-Reset":"4102444800"}}}]});
     let server = Server::start(move |_| ok(listing.to_string()));
 
@@ -58,7 +62,7 @@ fn core_parses_what_the_plugin_prints_and_renders_it() {
     std::fs::write(
         &conf,
         format!(
-            "instance {}\n key-file {}\n alias \"*\" me\n",
+            "instance {}\n key-file {}\n alias \"a@*\" me\n",
             server.origin(),
             key.display()
         ),
@@ -87,6 +91,15 @@ fn core_parses_what_the_plugin_prints_and_renders_it() {
         .capabilities
         .iter()
         .any(|c| c == plugin::check::CHECK_CAPABILITY));
+
+    // the declared options and web samples pass the core's validation
+    assert_eq!(plugin::web::issues(&info), Vec::<String>::new());
+    for o in [
+        "provider", "windows", "show", "count", "label", "sort", "accounts", "compact", "stale",
+        "link", "pool",
+    ] {
+        assert!(info.options.contains_key(o), "{o}");
+    }
 
     // --check: the core reads what the plugin prints
     let warns = plugin::check::parse_warnings(&run(&found.path, Some("--check"), ""));
@@ -127,12 +140,47 @@ fn core_parses_what_the_plugin_prints_and_renders_it() {
     assert!(input.contains(&server.origin()), "{input}");
     let text = run(path, None, input);
     let out = plugin::parse_output(&text).expect("render output");
-    assert!(out.text.starts_with("me 7d 50%"), "{text}");
+    // one item per account, most used first, with the tokens an action takes
+    assert_eq!(out.items.len(), 2, "{text}");
+    assert_eq!(out.items[0].label.as_deref(), Some("b"));
+    assert!(out.items[0].text.starts_with("7d 5%"), "{text}");
+    assert_eq!(out.items[0].style.as_deref(), Some("bad"));
+    assert_eq!(out.items[1].label.as_deref(), Some("me"));
+    assert_eq!(out.items[1].score, Some(50.0));
+    assert_eq!(out.items[1].tokens["account"], "ix1");
+    assert_eq!(out.items[1].tokens["provider"], "claude");
+    // the pool's usage (mean of 50 and 95, latest reset) and the account
+    // in the higher priority tier
+    let w = out
+        .usage
+        .as_ref()
+        .and_then(|u| u.seven_day.as_ref())
+        .expect("usage");
+    assert_eq!((w.used_percentage, w.resets_at), (72.5, 4_102_444_800));
+    assert!(out.usage.as_ref().unwrap().five_hour.is_none());
+    let a = out.account.as_ref().expect("account");
+    assert_eq!((a.id.as_str(), a.label.as_str()), ("ix1", "me"));
     cache.store(&plan.key, &text).unwrap();
     let shown = plugin::render(&ctx, "cliproxyapi", &Options::default()).unwrap_or_default();
     assert!(
         hop_bar::style::strip_codes(&shown).contains("me 7d 50%"),
         "{shown:?}"
     );
+    // options typed by the core's schema reach the plugin and shape the output
+    let mut opts = Options::default();
+    for (k, v) in [
+        ("windows", "7d+5h"),
+        ("compact", "true"),
+        ("count", "used"),
+        ("pool", "max"),
+    ] {
+        opts.set(k, v);
+    }
+    let plan = plugin::plan(&ctx, &found, &inf, &opts).expect("plan with options");
+    let Job::PluginRender { path, input, .. } = &plan.job else {
+        panic!("render job")
+    };
+    let out = plugin::parse_output(&run(path, None, input)).expect("render output");
+    assert_eq!(out.items[1].text.split('\u{B7}').next(), Some("50%"));
     let _ = std::fs::remove_dir_all(&root);
 }

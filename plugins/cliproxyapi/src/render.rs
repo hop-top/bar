@@ -1,22 +1,53 @@
 //! Turning a collection into render output, and the plugin's declaration
-//! (`--ext-info`). `items` builds one output per account: the shape the
-//! richer options and the account actions extend.
+//! (`--ext-info`). One item per account, each with its windows and the
+//! time they reset, plus the pool's `usage` and the preferred `account`.
 
 use crate::collect::{Snapshot, Status, STALE_AFTER};
-use crate::model::Acct;
-use bar_plugin::proto::{ExtInfo, Inputs, OptSpec, Output};
+use crate::model::{glob, Acct, Win};
+use crate::pool::{self, Pool};
+use bar_plugin::proto::{ExtInfo, Inputs, OptSpec, Output, RenderInput};
+use serde_json::Value;
 
 pub const NAME: &str = "cliproxyapi";
+/// Cells a label may take.
+const LABEL_MAX: usize = 12;
+/// Percent left at or under which an account is drawn `bad`.
+const BAD_LEFT: f64 = 10.0;
 
 /// The `--ext-info` document.
 pub fn ext_info() -> ExtInfo {
-    let mut options = std::collections::BTreeMap::new();
-    options.insert(
+    let mut o = std::collections::BTreeMap::new();
+    o.insert(
         "provider".into(),
         OptSpec::choice(&["auto", "claude", "codex"], "auto"),
     );
-    options.insert("base-url".into(), OptSpec::string());
-    options.insert("label".into(), OptSpec::choice(&["name", "index"], "name"));
+    let text = |default: &str| OptSpec {
+        default: Some(default.into()),
+        ..OptSpec::string()
+    };
+    o.insert("windows".into(), text("5h,7d,wk"));
+    o.insert("show".into(), text("label,pct,reset"));
+    o.insert("count".into(), OptSpec::choice(&["left", "used"], "left"));
+    o.insert(
+        "label".into(),
+        OptSpec::choice(&["alias", "local", "index", "none"], "alias"),
+    );
+    o.insert(
+        "sort".into(),
+        OptSpec::choice(&["name", "used", "reset"], "used"),
+    );
+    o.insert("accounts".into(), OptSpec::string());
+    o.insert("compact".into(), OptSpec::bool());
+    o.insert(
+        "stale".into(),
+        OptSpec::choice(&["mark", "dim", "hide"], "mark"),
+    );
+    o.insert("link".into(), OptSpec::string());
+    o.insert(
+        "pool".into(),
+        OptSpec::choice(&["mean", "active", "max"], "mean"),
+    );
+    o.insert("base-url".into(), OptSpec::string());
     ExtInfo {
         name: NAME.into(),
         version: option_env!("BAR_RELEASE_VERSION")
@@ -24,7 +55,7 @@ pub fn ext_info() -> ExtInfo {
             .into(),
         description: "Per-account quota of a CLIProxyAPI proxy".into(),
         capabilities: vec!["discover".into(), "placeholder".into(), "check".into()],
-        options,
+        options: o,
         ttl: "60s".into(),
         icon: None,
         cache: None,
@@ -36,120 +67,383 @@ pub fn ext_info() -> ExtInfo {
         actions: Default::default(),
         web: Some(serde_json::json!({
             "category": "usage",
-            "samples": [{ "output": { "label": "cpa", "text": "work 5h 41% \u{21BB}2h 7d 12% \u{21BB}3d" } }]
+            "samples": [
+                { "output": { "label": "alice", "text": "5h 59% \u{21BB}2h10m 7d 88% \u{21BB}3d4h", "score": 59 } },
+                { "when": { "count": "used" },
+                  "output": { "label": "alice", "text": "5h 41% \u{21BB}2h10m 7d 12% \u{21BB}3d4h", "score": 59 } },
+                { "when": { "compact": "true" },
+                  "output": { "label": "alice", "text": "59%\u{B7}2h10m 88%\u{B7}3d4h", "score": 59 } },
+                { "when": { "label": "index" },
+                  "output": { "label": "#1", "text": "5h 59% \u{21BB}2h10m 7d 88% \u{21BB}3d4h", "score": 59 } },
+                { "when": { "show": "pct" },
+                  "output": { "text": "5h 59% 7d 88%", "score": 59 } },
+                { "when": { "provider": "codex" },
+                  "output": { "label": "bob", "text": "7d 6% \u{21BB}1d3h", "style": "bad", "score": 6 } }
+            ]
         })),
     }
 }
 
-/// `2d`, `3h`, `12m`, `<1m` for a number of seconds.
+/// `<1m`, `41m`, `2h10m`, `3d4h`: a number of seconds.
 pub fn countdown(secs: i64) -> String {
-    match secs {
-        s if s < 60 => "<1m".into(),
-        s if s < 3600 => format!("{}m", s / 60),
-        s if s < 86_400 => format!("{}h", s / 3600),
-        s => format!("{}d", s / 86_400),
+    let (big, small, bu, su) = match secs {
+        s if s < 60 => return "<1m".into(),
+        s if s < 3600 => return format!("{}m", s / 60),
+        s if s < 86_400 => (secs / 3600, secs % 3600 / 60, 'h', 'm'),
+        s => (s / 86_400, s % 86_400 / 3600, 'd', 'h'),
+    };
+    if small == 0 {
+        format!("{big}{bu}")
+    } else {
+        format!("{big}{bu}{small}{su}")
     }
 }
 
-/// Style for the highest percent used among `a`'s windows.
-fn style_of(a: &Acct) -> Option<&'static str> {
-    let max = a.windows.iter().map(|w| w.used).fold(f64::NAN, f64::max);
-    match max {
-        m if m >= 90.0 => Some("bad"),
-        m if m >= 70.0 => Some("warn"),
-        _ => None,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LabelMode {
+    Alias,
+    Local,
+    Index,
+    Nothing,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sort {
+    Name,
+    Used,
+    Reset,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stale {
+    Mark,
+    Dim,
+    Hide,
+}
+
+/// The placeholder's options.
+#[derive(Debug, Clone)]
+pub struct Opts {
+    pub windows: Vec<String>,
+    pub label_part: bool,
+    pub pct: bool,
+    pub reset: bool,
+    pub plan: bool,
+    pub used: bool,
+    pub label: LabelMode,
+    pub sort: Sort,
+    pub accounts: Vec<String>,
+    pub compact: bool,
+    pub stale: Stale,
+    pub link: Option<String>,
+    pub pool: Pool,
+}
+
+impl Default for Opts {
+    fn default() -> Opts {
+        Opts {
+            windows: vec!["5h".into(), "7d".into(), "wk".into()],
+            label_part: true,
+            pct: true,
+            reset: true,
+            plan: false,
+            used: false,
+            label: LabelMode::Alias,
+            sort: Sort::Used,
+            accounts: vec![],
+            compact: false,
+            stale: Stale::Mark,
+            link: None,
+            pool: Pool::Mean,
+        }
     }
 }
 
-/// One output per account of `provider` (disabled accounts left out).
-/// `index_labels` draws `#1`, `#2` instead of names.
-pub fn items(s: &Snapshot, provider: &str, index_labels: bool, now: i64) -> Vec<Output> {
-    s.accounts
-        .iter()
-        .filter(|a| a.provider == provider && !a.disabled)
-        .enumerate()
-        .map(|(i, a)| {
-            let stale = a.at > 0 && now - a.at > STALE_AFTER;
-            let label = if index_labels {
-                format!("#{}", i + 1)
-            } else {
-                a.label.clone()
-            };
-            let mut parts: Vec<String> = a
-                .windows
-                .iter()
-                .map(|w| {
-                    let mut t = format!("{} {:.0}%", w.id, w.used);
-                    if w.resets_at > now {
-                        t += &format!(" \u{21BB}{}", countdown(w.resets_at - now));
-                    }
-                    t
-                })
-                .collect();
-            if parts.is_empty() {
-                parts.push("?".into());
+/// A list option: a comma list as a string, or a JSON array of strings.
+/// `+`, `/`, `|` and spaces separate too, since a layout's own commas split
+/// placeholder options (`windows=5h+7d`).
+fn list(v: Option<&Value>) -> Option<Vec<String>> {
+    let parts: Vec<String> = match v? {
+        Value::String(s) => s
+            .split(|c: char| c == ',' || c == '+' || c == '/' || c == '|' || c.is_whitespace())
+            .map(String::from)
+            .collect(),
+        Value::Array(a) => a
+            .iter()
+            .filter_map(|x| x.as_str().map(String::from))
+            .collect(),
+        _ => return None,
+    };
+    Some(parts.into_iter().filter(|p| !p.is_empty()).collect())
+}
+
+fn flag(v: Option<&Value>) -> bool {
+    match v {
+        Some(Value::Bool(b)) => *b,
+        Some(Value::String(s)) => matches!(s.as_str(), "true" | "yes" | "on" | "1" | ""),
+        _ => false,
+    }
+}
+
+impl Opts {
+    pub fn from_input(i: &RenderInput) -> Opts {
+        let mut o = Opts::default();
+        let get = |k: &str| i.options.get(k);
+        if let Some(w) = list(get("windows")).filter(|w| !w.is_empty()) {
+            o.windows = w;
+        }
+        if let Some(s) = list(get("show")).filter(|s| !s.is_empty()) {
+            let has = |p: &str| s.iter().any(|x| x == p);
+            (o.label_part, o.pct, o.reset, o.plan) =
+                (has("label"), has("pct"), has("reset"), has("plan"));
+        }
+        o.used = i.opt_str("count") == Some("used");
+        o.label = match i.opt_str("label") {
+            Some("local") => LabelMode::Local,
+            Some("index") => LabelMode::Index,
+            Some("none") => LabelMode::Nothing,
+            _ => LabelMode::Alias,
+        };
+        o.sort = match i.opt_str("sort") {
+            Some("name") => Sort::Name,
+            Some("reset") => Sort::Reset,
+            _ => Sort::Used,
+        };
+        o.accounts = list(get("accounts")).unwrap_or_default();
+        o.compact = flag(get("compact"));
+        o.stale = match i.opt_str("stale") {
+            Some("dim") => Stale::Dim,
+            Some("hide") => Stale::Hide,
+            _ => Stale::Mark,
+        };
+        o.link = i
+            .opt_str("link")
+            .filter(|l| !l.is_empty())
+            .map(String::from);
+        o.pool = Pool::parse(i.opt_str("pool").unwrap_or(""));
+        o
+    }
+}
+
+fn cut(s: &str) -> String {
+    s.chars().take(LABEL_MAX).collect()
+}
+
+/// The label of the account at 1-based position `idx`, as `mode` draws it.
+fn label_of(a: &Acct, idx: usize, mode: LabelMode) -> Option<String> {
+    match mode {
+        LabelMode::Alias => Some(cut(&a.label)),
+        LabelMode::Local => Some(cut(if a.local.is_empty() {
+            &a.label
+        } else {
+            &a.local
+        })),
+        LabelMode::Index => Some(format!("#{idx}")),
+        LabelMode::Nothing => None,
+    }
+}
+
+/// Does `a`, at position `idx`, match one entry of the `accounts` option:
+/// a position (`2` or `#2`), a label or local part (globs), or the index.
+fn wanted(a: &Acct, idx: usize, entry: &str) -> bool {
+    let n = entry.strip_prefix('#').unwrap_or(entry);
+    n.parse::<usize>().ok() == Some(idx)
+        || glob(entry, &a.label)
+        || (!a.local.is_empty() && glob(entry, &a.local))
+        || entry == a.key
+}
+
+fn percent(w: &Win, used: bool) -> String {
+    let p = if used { w.used } else { 100.0 - w.used };
+    format!("{:.0}%", p.clamp(0.0, 100.0).max(0.0))
+}
+
+/// URL-escaped, so a label or index cannot add to the link's structure.
+fn escape(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                (b as char).to_string()
             }
-            let mut o = Output::text(&format!(
-                "{label}{} {}",
-                if stale { "~" } else { "" },
-                parts.join(" ")
-            ));
-            o.style = if a.upstream_auth {
-                Some("bad".into())
-            } else if stale {
-                Some("dim".into())
-            } else {
-                style_of(a).map(String::from)
-            };
-            o.tokens.insert("account".into(), a.key.clone());
-            o.tokens.insert("provider".into(), a.provider.clone());
-            o
+            b => format!("%{b:02X}"),
         })
         .collect()
 }
 
-/// The output for one placeholder: the accounts joined as text.
-pub fn output(s: &Snapshot, provider: &str, index_labels: bool, now: i64) -> Output {
+fn expand(tpl: &str, a: &Acct, label: &str, instance: &str) -> String {
+    tpl.replace("{account}", &escape(&a.key))
+        .replace("{label}", &escape(label))
+        .replace("{provider}", &escape(&a.provider))
+        .replace("{instance}", &escape(instance))
+}
+
+/// The accounts of `provider` the proxy can use, with their position.
+fn enabled<'a>(s: &'a Snapshot, provider: &str) -> Vec<(usize, &'a Acct)> {
+    s.accounts
+        .iter()
+        .filter(|a| a.provider == provider && !a.disabled)
+        .enumerate()
+        .map(|(i, a)| (i + 1, a))
+        .collect()
+}
+
+fn item(a: &Acct, idx: usize, o: &Opts, instance: &str, now: i64) -> Option<Output> {
+    let stale = a.at > 0 && now - a.at > STALE_AFTER;
+    if stale && o.stale == Stale::Hide {
+        return None;
+    }
+    // the windows asked for, in the order asked for
+    let wins: Vec<&Win> = o
+        .windows
+        .iter()
+        .filter_map(|id| a.windows.iter().find(|w| &w.id == id))
+        .collect();
+    if wins.is_empty() && !a.windows.is_empty() {
+        return None;
+    }
+    let mut parts: Vec<String> = wins
+        .iter()
+        .map(|w| {
+            let cd = (o.reset && w.resets_at > now).then(|| countdown(w.resets_at - now));
+            let pct = o.pct.then(|| percent(w, o.used));
+            match (o.compact, pct, cd) {
+                (true, Some(p), Some(c)) => format!("{p}\u{B7}{c}"),
+                (true, p, c) => p.or(c).unwrap_or_default(),
+                (false, p, c) => {
+                    let mut t = w.id.clone();
+                    if let Some(p) = p {
+                        t += &format!(" {p}");
+                    }
+                    if let Some(c) = c {
+                        t += &format!(" \u{21BB}{c}");
+                    }
+                    t
+                }
+            }
+        })
+        .filter(|p| !p.is_empty())
+        .collect();
+    if a.windows.is_empty() {
+        parts.push("?".into());
+    }
+    let mut text = parts.join(" ");
+    if o.plan {
+        if let Some(p) = &a.plan {
+            text = format!("{p} {text}");
+        }
+    }
+    if stale && o.stale == Stale::Mark {
+        text = format!("~{text}");
+    }
+    let label = o.label_part.then(|| label_of(a, idx, o.label)).flatten();
+    let mut out = Output::text(&text);
+    out.label = label.clone();
+    let left = wins.iter().map(|w| 100.0 - w.used).fold(f64::NAN, f64::min);
+    if left.is_finite() {
+        out.score = Some(left.clamp(0.0, 100.0));
+    }
+    out.style = if a.upstream_auth || left <= BAD_LEFT {
+        Some("bad".into())
+    } else if stale && o.stale == Stale::Dim {
+        Some("dim".into())
+    } else {
+        None
+    };
+    if let Some(t) = &o.link {
+        let shown = label_of(a, idx, o.label).unwrap_or_else(|| a.label.clone());
+        out.link = Some(expand(t, a, &shown, instance));
+    }
+    out.tokens.insert("account".into(), a.key.clone());
+    out.tokens.insert("provider".into(), a.provider.clone());
+    Some(out)
+}
+
+/// One item per account, sorted as asked.
+pub fn items(s: &Snapshot, provider: &str, o: &Opts, instance: &str, now: i64) -> Vec<Output> {
+    let mut rows: Vec<(usize, &Acct)> = enabled(s, provider)
+        .into_iter()
+        .filter(|(i, a)| o.accounts.is_empty() || o.accounts.iter().any(|e| wanted(a, *i, e)))
+        .collect();
+    let most_used = |a: &Acct| a.windows.iter().map(|w| w.used).fold(-1.0, f64::max);
+    let soonest = |a: &Acct| {
+        a.windows
+            .iter()
+            .filter(|w| w.resets_at > now)
+            .map(|w| w.resets_at)
+            .min()
+            .unwrap_or(i64::MAX)
+    };
+    match o.sort {
+        Sort::Name => rows.sort_by_key(|(_, a)| a.label.to_ascii_lowercase()),
+        Sort::Used => rows.sort_by(|(_, a), (_, b)| most_used(b).total_cmp(&most_used(a))),
+        Sort::Reset => rows.sort_by_key(|(_, a)| soonest(a)),
+    }
+    rows.into_iter()
+        .filter_map(|(i, a)| item(a, i, o, instance, now))
+        .collect()
+}
+
+/// The render output: one item per account, the pool's `usage` and, when
+/// the proxy's preference is certain, `account`. Nothing is drawn when the
+/// proxy is off or no account has data, but `usage` and `account` still
+/// go out whatever the display options filter.
+pub fn output(s: &Snapshot, provider: &str, o: &Opts, instance: &str, now: i64) -> Output {
     match s.status {
         Status::AuthStopped(_) | Status::NoKey => return Output::styled("key?", "bad"),
         Status::Off => return Output::hidden(),
         Status::Ok | Status::Backoff => {}
     }
-    let its = items(s, provider, index_labels, now);
-    if its.is_empty() {
-        return Output::hidden();
+    let rows = enabled(s, provider);
+    let accts: Vec<&Acct> = rows.iter().map(|(_, a)| *a).collect();
+    let mut out = if rows.iter().any(|(_, a)| !a.windows.is_empty()) {
+        Output {
+            items: items(s, provider, o, instance, now),
+            ..Output::default()
+        }
+    } else {
+        Output::hidden()
+    };
+    out.usage = pool::usage(&accts, o.pool, now);
+    out.account = pool::account(&accts, |a| {
+        let idx = rows
+            .iter()
+            .find(|(_, r)| r.key == a.key)
+            .map_or(0, |(i, _)| *i);
+        match o.label {
+            LabelMode::Index => format!("#{idx}"),
+            _ => cut(&a.label),
+        }
+    });
+    if out.items.is_empty() {
+        out.text = Some(String::new());
     }
-    let text = its
-        .iter()
-        .map(|i| i.text.clone().unwrap_or_default())
-        .collect::<Vec<_>>()
-        .join(" \u{2502} ");
-    let mut o = Output::text(&text);
-    // one style for the whole text: the worst account's
-    o.style = ["bad", "warn", "dim"]
-        .iter()
-        .find(|st| its.iter().any(|i| i.style.as_deref() == Some(**st)))
-        .map(|s| s.to_string());
-    o.finish()
+    out.finish()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::Win;
 
-    fn acct(label: &str, used: f64, at: i64) -> Acct {
+    const NOW: i64 = 1000;
+
+    fn win(id: &str, used: f64, reset: i64) -> Win {
+        Win {
+            id: id.into(),
+            used,
+            resets_at: reset,
+            period_s: 0,
+        }
+    }
+
+    fn acct(key: &str, label: &str, wins: Vec<Win>, at: i64) -> Acct {
         Acct {
-            key: "idx1".into(),
+            key: key.into(),
             provider: "claude".into(),
             label: label.into(),
-            plan: None,
-            windows: vec![Win {
-                id: "7d".into(),
-                used,
-                resets_at: 1000 + 90_000,
-                period_s: 604_800,
-            }],
+            local: format!("{label}-local"),
+            priority: 0,
+            plan: Some("max".into()),
+            windows: wins,
             at,
             disabled: false,
             unavailable: false,
@@ -158,71 +452,346 @@ mod tests {
         }
     }
 
+    fn snap(accounts: Vec<Acct>) -> Snapshot {
+        Snapshot {
+            status: Status::Ok,
+            accounts,
+        }
+    }
+
+    fn two() -> Snapshot {
+        snap(vec![
+            acct("k1", "alice", vec![win("7d", 12.0, NOW + 90_000)], NOW),
+            acct(
+                "k2",
+                "bob",
+                vec![win("5h", 95.0, NOW + 7800), win("7d", 40.0, NOW + 400_000)],
+                NOW,
+            ),
+        ])
+    }
+
+    fn run(s: &Snapshot, o: &Opts) -> Output {
+        output(s, "claude", o, "http://127.0.0.1:1", NOW)
+    }
+
+    fn texts(o: &Output) -> Vec<(String, String)> {
+        o.items
+            .iter()
+            .map(|i| {
+                (
+                    i.label.clone().unwrap_or_default(),
+                    i.text.clone().unwrap_or_default(),
+                )
+            })
+            .collect()
+    }
+
     #[test]
     fn countdowns() {
         assert_eq!(countdown(30), "<1m");
         assert_eq!(countdown(150), "2m");
         assert_eq!(countdown(7200), "2h");
-        assert_eq!(countdown(200_000), "2d");
+        assert_eq!(countdown(7800), "2h10m");
+        assert_eq!(countdown(200_000), "2d7h");
+        assert_eq!(countdown(3 * 86_400), "3d");
     }
 
     #[test]
-    fn text_marks_stale_and_picks_a_style() {
-        let s = Snapshot {
-            status: Status::Ok,
-            accounts: vec![acct("work", 95.4, 1000), acct("home", 10.0, 1)],
-        };
-        let o = output(&s, "claude", false, 1000);
+    fn one_item_per_account_most_used_first_showing_what_is_left() {
+        let o = run(&two(), &Opts::default());
         assert_eq!(
-            o.text.as_deref(),
-            Some("work 7d 95% \u{21BB}1d \u{2502} home~ 7d 10% \u{21BB}1d")
+            texts(&o),
+            vec![
+                (
+                    "bob".to_string(),
+                    "5h 5% \u{21BB}2h10m 7d 60% \u{21BB}4d15h".to_string()
+                ),
+                ("alice".to_string(), "7d 88% \u{21BB}1d1h".to_string()),
+            ]
         );
-        assert_eq!(o.style.as_deref(), Some("bad"));
-        let o = output(&s, "claude", true, 1000);
-        assert!(o.text.unwrap().starts_with("#1 "));
-        assert!(output(&s, "codex", false, 1000).text.as_deref() == Some(""));
-        // never read (no signals yet): unknown, not stale
-        let mut idle = acct("idle", 0.0, 0);
-        idle.windows.clear();
-        let s = Snapshot {
-            status: Status::Ok,
-            accounts: vec![idle],
+        assert_eq!(o.text, None, "items replace the text");
+        let bob = &o.items[0];
+        assert_eq!(bob.style.as_deref(), Some("bad"), "5h has 5% left");
+        assert_eq!(bob.score, Some(5.0));
+        assert_eq!(bob.tokens["account"], "k2");
+        assert_eq!(bob.tokens["provider"], "claude");
+        assert_eq!(o.items[1].style, None);
+        assert_eq!(o.items[1].score, Some(88.0));
+    }
+
+    #[test]
+    fn count_used_and_compact_and_show() {
+        let o = Opts {
+            used: true,
+            compact: true,
+            ..Opts::default()
         };
         assert_eq!(
-            output(&s, "claude", false, 1000).text.as_deref(),
-            Some("idle ?")
+            texts(&run(&two(), &o))[0].1,
+            "95%\u{B7}2h10m 40%\u{B7}4d15h"
         );
+        let o = Opts {
+            label_part: false,
+            reset: false,
+            plan: true,
+            ..Opts::default()
+        };
+        let r = run(&two(), &o);
+        assert_eq!(texts(&r)[1], ("".to_string(), "max 7d 88%".to_string()));
+    }
+
+    #[test]
+    fn windows_order_and_missing_are_honoured() {
+        let o = Opts {
+            windows: vec!["7d".into(), "5h".into()],
+            ..Opts::default()
+        };
+        assert_eq!(
+            texts(&run(&two(), &o))[0].1,
+            "7d 60% \u{21BB}4d15h 5h 5% \u{21BB}2h10m"
+        );
+        // only 5h: alice has none of it, so she is left out, not shown as 0
+        let o = Opts {
+            windows: vec!["5h".into()],
+            ..Opts::default()
+        };
+        let r = run(&two(), &o);
+        assert_eq!(r.items.len(), 1);
+        assert_eq!(texts(&r)[0].0, "bob");
+    }
+
+    #[test]
+    fn label_modes() {
+        let local = |m| Opts {
+            label: m,
+            sort: Sort::Name,
+            ..Opts::default()
+        };
+        let l = |m| {
+            texts(&run(&two(), &local(m)))
+                .into_iter()
+                .map(|t| t.0)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(l(LabelMode::Alias), ["alice", "bob"]);
+        assert_eq!(l(LabelMode::Local), ["alice-local", "bob-local"]);
+        assert_eq!(l(LabelMode::Index), ["#1", "#2"]);
+        assert_eq!(l(LabelMode::Nothing), ["", ""]);
+        let long = snap(vec![acct(
+            "k",
+            "averyveryverylongname",
+            vec![win("7d", 1.0, NOW + 5)],
+            NOW,
+        )]);
+        assert_eq!(
+            texts(&run(&long, &Opts::default()))[0].0.chars().count(),
+            LABEL_MAX
+        );
+    }
+
+    #[test]
+    fn sorting() {
+        let by = |s| {
+            texts(&run(
+                &two(),
+                &Opts {
+                    sort: s,
+                    ..Opts::default()
+                },
+            ))
+            .into_iter()
+            .map(|t| t.0)
+            .collect::<Vec<_>>()
+        };
+        assert_eq!(by(Sort::Name), ["alice", "bob"]);
+        assert_eq!(by(Sort::Used), ["bob", "alice"]);
+        assert_eq!(by(Sort::Reset), ["bob", "alice"], "bob's 5h resets first");
+    }
+
+    #[test]
+    fn the_accounts_option_picks_by_label_local_or_position() {
+        let pick = |e: &str| {
+            texts(&run(
+                &two(),
+                &Opts {
+                    accounts: vec![e.into()],
+                    ..Opts::default()
+                },
+            ))
+            .into_iter()
+            .map(|t| t.0)
+            .collect::<Vec<_>>()
+        };
+        assert_eq!(pick("alice"), ["alice"]);
+        assert_eq!(pick("b*"), ["bob"]);
+        assert_eq!(pick("bob-local"), ["bob"]);
+        assert_eq!(pick("2"), ["bob"]);
+        assert_eq!(pick("#1"), ["alice"]);
+        assert!(pick("nobody").is_empty());
+        // a filter that shows nothing still reports the pool
+        let r = run(
+            &two(),
+            &Opts {
+                accounts: vec!["nobody".into()],
+                ..Opts::default()
+            },
+        );
+        assert!(r.usage.is_some() && r.items.is_empty());
+    }
+
+    #[test]
+    fn stale_data_is_marked_dimmed_or_hidden() {
+        let s = snap(vec![acct(
+            "k",
+            "old",
+            vec![win("7d", 10.0, NOW + 90_000)],
+            NOW - STALE_AFTER - 1,
+        )]);
+        let o = run(&s, &Opts::default());
+        assert!(o.items[0].text.as_deref().unwrap().starts_with("~7d"));
+        assert_eq!(o.items[0].style, None);
+        let o = run(
+            &s,
+            &Opts {
+                stale: Stale::Dim,
+                ..Opts::default()
+            },
+        );
+        assert!(o.items[0].text.as_deref().unwrap().starts_with("7d"));
+        assert_eq!(o.items[0].style.as_deref(), Some("dim"));
+        assert!(run(
+            &s,
+            &Opts {
+                stale: Stale::Hide,
+                ..Opts::default()
+            }
+        )
+        .items
+        .is_empty());
+    }
+
+    #[test]
+    fn an_account_never_read_shows_a_question_mark_and_no_data_hides() {
+        let s = snap(vec![
+            acct("a", "idle", vec![], 0),
+            acct("b", "busy", vec![win("7d", 1.0, NOW + 5000)], NOW),
+        ]);
+        let o = run(
+            &s,
+            &Opts {
+                sort: Sort::Name,
+                ..Opts::default()
+            },
+        );
+        assert_eq!(texts(&o)[1], ("idle".to_string(), "?".to_string()));
+        assert_eq!(o.items[1].score, None);
+        // nothing known for anyone: nothing drawn
+        let s = snap(vec![acct("a", "idle", vec![], 0)]);
+        let o = run(&s, &Opts::default());
+        assert!(o.items.is_empty());
+        assert_eq!(o.text.as_deref(), Some(""));
+        // another provider's accounts do not count
+        assert!(output(&two(), "codex", &Opts::default(), "", NOW)
+            .items
+            .is_empty());
     }
 
     #[test]
     fn failures_render_as_the_contract_says() {
-        let s = Snapshot {
-            status: Status::AuthStopped(401),
-            accounts: vec![],
-        };
-        let o = output(&s, "claude", false, 0);
+        let mut s = snap(vec![]);
+        s.status = Status::AuthStopped(401);
+        let o = run(&s, &Opts::default());
         assert_eq!(
             (o.text.as_deref(), o.style.as_deref()),
             (Some("key?"), Some("bad"))
         );
-        let s = Snapshot {
-            status: Status::Off,
-            accounts: vec![acct("x", 1.0, 0)],
-        };
-        assert_eq!(output(&s, "claude", false, 0).text.as_deref(), Some(""));
+        let mut s = two();
+        s.status = Status::Off;
+        assert_eq!(run(&s, &Opts::default()).text.as_deref(), Some(""));
+        let mut s = two();
+        s.accounts[0].upstream_auth = true;
+        let o = run(&s, &Opts::default());
+        assert!(o
+            .items
+            .iter()
+            .any(|i| i.label.as_deref() == Some("alice") && i.style.as_deref() == Some("bad")));
     }
 
     #[test]
-    fn items_carry_tokens_and_skip_disabled() {
-        let mut off = acct("off", 1.0, 0);
-        off.disabled = true;
-        let s = Snapshot {
-            status: Status::Ok,
-            accounts: vec![acct("a", 1.0, 5), off],
-        };
-        let it = items(&s, "claude", false, 5);
-        assert_eq!(it.len(), 1);
-        assert_eq!(it[0].tokens["account"], "idx1");
-        assert_eq!(it[0].tokens["provider"], "claude");
+    fn disabled_accounts_are_left_out() {
+        let mut s = two();
+        s.accounts[0].disabled = true;
+        let o = run(&s, &Opts::default());
+        assert_eq!(o.items.len(), 1);
+        assert_eq!(o.items[0].tokens["account"], "k2");
+    }
+
+    #[test]
+    fn link_template_is_escaped() {
+        let s = snap(vec![acct(
+            "k 1",
+            "a&b",
+            vec![win("7d", 1.0, NOW + 5000)],
+            NOW,
+        )]);
+        let o = run(
+            &s,
+            &Opts {
+                link: Some("x://use?a={account}&l={label}&p={provider}&i={instance}".into()),
+                ..Opts::default()
+            },
+        );
+        assert_eq!(
+            o.items[0].link.as_deref(),
+            Some("x://use?a=k%201&l=a%26b&p=claude&i=http%3A%2F%2F127.0.0.1%3A1")
+        );
+    }
+
+    #[test]
+    fn usage_and_account_ride_on_the_output() {
+        let o = run(&two(), &Opts::default());
+        let u = o.usage.unwrap();
+        assert_eq!(u.seven_day.unwrap().used_percentage, 26.0);
+        assert!(u.five_hour.is_none(), "alice reports no 5h");
+        // two accounts, same priority: not certain which one is preferred
+        assert!(o.account.is_none());
+        let mut s = two();
+        s.accounts[1].priority = 4;
+        let o = run(
+            &s,
+            &Opts {
+                label: LabelMode::Index,
+                ..Opts::default()
+            },
+        );
+        let a = o.account.unwrap();
+        assert_eq!((a.id.as_str(), a.label.as_str()), ("k2", "#2"));
+        let o = run(&s, &Opts::default());
+        assert_eq!(o.account.unwrap().label, "bob");
+    }
+
+    #[test]
+    fn options_parse_from_the_render_input() {
+        let i: RenderInput = serde_json::from_str(
+            r#"{"options":{"windows":"7d+5h","show":"label,pct","count":"used","label":"index",
+                "sort":"name","accounts":"a,2","compact":true,"stale":"hide","link":"x://{account}","pool":"max"}}"#,
+        )
+        .unwrap();
+        let o = Opts::from_input(&i);
+        assert_eq!(o.windows, ["7d", "5h"]);
+        assert!(o.label_part && o.pct && !o.reset && !o.plan);
+        assert!(o.used && o.compact);
+        assert_eq!(
+            (o.label, o.sort, o.stale, o.pool),
+            (LabelMode::Index, Sort::Name, Stale::Hide, Pool::Max)
+        );
+        assert_eq!(o.accounts, ["a", "2"]);
+        assert_eq!(o.link.as_deref(), Some("x://{account}"));
+        let i: RenderInput = serde_json::from_str(r#"{"options":{"compact":"true"}}"#).unwrap();
+        assert!(Opts::from_input(&i).compact);
+        let d = Opts::from_input(&RenderInput::default());
+        assert_eq!(d.windows, ["5h", "7d", "wk"]);
+        assert!(!d.used && d.reset && d.pct && d.label_part);
     }
 }

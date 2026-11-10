@@ -93,13 +93,18 @@ fn renders_only_for_the_configured_instance() {
         ),
         0o600,
     );
-    let input = |url: &str, model: &str| json!({"options":{"label":"name"},"session":{"model_id":model},"env":{"ANTHROPIC_BASE_URL":url}});
+    let input = |url: &str, model: &str| json!({"options":{"label":"alias"},"session":{"model_id":model},"env":{"ANTHROPIC_BASE_URL":url}});
     let o = render(
         h.cmd(&conf),
         input(&format!("{}/", s.origin()), "claude-opus-4"),
     );
-    let text = o["text"].as_str().unwrap();
-    assert!(text.starts_with("me 7d 50% "), "{text}");
+    let it = &o["items"][0];
+    assert_eq!(it["label"], "me");
+    assert!(it["text"].as_str().unwrap().starts_with("7d 50% "), "{it}");
+    assert_eq!(it["tokens"], json!({"account":"ix1","provider":"claude"}));
+    // a pool of one: usage and the preferred account ride along
+    assert_eq!(o["usage"]["seven_day"]["used_percentage"], 50.0);
+    assert_eq!(o["account"], json!({"id":"ix1","label":"me"}));
     // another base URL, or a non-matching model: hidden, no request
     let n = s.count();
     assert_eq!(
@@ -114,6 +119,60 @@ fn renders_only_for_the_configured_instance() {
     // the cache file lands in bar's state dir, owner-only
     let cache_dir = h.0.join("state/plugins/cliproxyapi");
     assert_eq!(std::fs::read_dir(cache_dir).unwrap().count(), 1);
+}
+
+#[test]
+fn options_shape_the_items_and_the_pool() {
+    let listing = json!({"files":[
+        {"auth_index":"ix1","type":"claude","email":"a@corp.test","priority":2,
+         "quota":{"signals":{"Anthropic-Ratelimit-Unified-5h-Utilization":"0.2",
+                             "Anthropic-Ratelimit-Unified-5h-Reset":"4102444800",
+                             "Anthropic-Ratelimit-Unified-7d-Utilization":"0.5",
+                             "Anthropic-Ratelimit-Unified-7d-Reset":"4102444800"}}},
+        {"auth_index":"ix2","type":"claude","email":"b@corp.test",
+         "quota":{"signals":{"Anthropic-Ratelimit-Unified-5h-Utilization":"0.6",
+                             "Anthropic-Ratelimit-Unified-5h-Reset":"4102444800",
+                             "Anthropic-Ratelimit-Unified-7d-Utilization":"0.1",
+                             "Anthropic-Ratelimit-Unified-7d-Reset":"4102444800"}}}]});
+    let s = Server::start(move |_| ok(listing.to_string()));
+    let h = Home::new("opts");
+    let key = h.file("key", "bin-test-key\n", 0o600);
+    let conf = h.file(
+        "c.conf",
+        &format!("instance {}\n key-file {}\n", s.origin(), key.display()),
+        0o600,
+    );
+    let go = |opts: Value| {
+        render(
+            h.cmd(&conf),
+            json!({"options":opts,"session":{"model_id":"claude-opus-4"},"env":{"ANTHROPIC_BASE_URL":s.origin()}}),
+        )
+    };
+    let o = go(json!({"windows":"5h","count":"used","sort":"name","pool":"mean"}));
+    let items = o["items"].as_array().unwrap();
+    assert_eq!(items.len(), 2);
+    assert_eq!(
+        (items[0]["label"].as_str(), items[1]["label"].as_str()),
+        (Some("a"), Some("b"))
+    );
+    assert!(items[0]["text"].as_str().unwrap().starts_with("5h 20% "));
+    assert_eq!(o["usage"]["five_hour"]["used_percentage"], 40.0);
+    assert_eq!(o["usage"]["seven_day"]["used_percentage"], 30.0);
+    // the pool option changes the usage, not the items
+    assert_eq!(
+        go(json!({"pool":"max"}))["usage"]["five_hour"]["used_percentage"],
+        60.0
+    );
+    assert_eq!(
+        go(json!({"pool":"active"}))["usage"]["five_hour"]["used_percentage"],
+        20.0
+    );
+    // ix1's priority tier is its own: it is the preferred account
+    assert_eq!(o["account"]["id"], "ix1");
+    // a link template, and the account filter
+    let o = go(json!({"accounts":"b","link":"x://use?a={account}"}));
+    assert_eq!(o["items"].as_array().unwrap().len(), 1);
+    assert_eq!(o["items"][0]["link"], "x://use?a=ix2");
 }
 
 #[test]
