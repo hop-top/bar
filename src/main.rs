@@ -2,6 +2,8 @@ use std::io::Write;
 
 mod config_cmd;
 
+use std::ffi::OsString;
+
 use clap::{ArgMatches, Command, CommandFactory, Parser, Subcommand};
 use hop_bar::cache::{refresh_timeout, Cache, CachedRunner, Request};
 use hop_bar::{check, click, conf, plugin, session};
@@ -14,7 +16,9 @@ use serde_json::{json, Value};
 #[command(
     name = "bar",
     version,
-    about = "Fast, configurable and extensible status line for Claude Code"
+    about = "Fast, configurable and extensible status line for Claude Code",
+    after_help = "Plugins: `bar <name> <args>` runs the `bar-<name>` plugin found on PATH, \
+                  e.g. `bar cliproxyapi use`."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -95,7 +99,7 @@ enum SubCmd {
         #[command(subcommand)]
         cmd: ClickCmd,
     },
-    /// Discovered `bar-<name>` plugins.
+    /// Discovered `bar-<name>` plugins (`bar <name> <args>` runs one).
     Plugin {
         #[command(subcommand)]
         cmd: PluginCmd,
@@ -116,6 +120,10 @@ enum SubCmd {
         /// Refresh request as JSON.
         request: String,
     },
+    /// Any other name runs the `bar-<name>` plugin with the remaining arguments.
+    #[command(external_subcommand)]
+    #[allow(dead_code)] // read through the matches
+    External(Vec<OsString>),
 }
 
 #[derive(Subcommand)]
@@ -238,7 +246,43 @@ fn main() {
         Some(("refresh", m)) => {
             refresh(m.get_one::<String>("request").map_or("", String::as_str));
         }
+        Some((name, m)) => {
+            let args: Vec<OsString> = m
+                .get_many::<OsString>("")
+                .map(|v| v.cloned().collect())
+                .unwrap_or_default();
+            external(name, &args);
+        }
         _ => {}
+    }
+}
+
+/// `bar <name> <args>`: runs the plugin `bar-<name>` (found as a render
+/// finds one) with `args`, stdio inherited, and exits with its status. A
+/// name that is no plugin is a usage error, as any unknown command.
+fn external(name: &str, args: &[OsString]) -> ! {
+    let dirs = plugin::plugin_dirs(std::env::var_os("PATH").as_deref());
+    let Some(found) = plugin::find(&dirs, name) else {
+        eprintln!("bar: unrecognized command `{name}`");
+        eprintln!("see `bar --help`; `bar plugin list` shows the plugins found");
+        std::process::exit(EXIT_USAGE);
+    };
+    let mut c = std::process::Command::new(&found.path);
+    c.args(args);
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        let e = c.exec();
+        eprintln!("bar {name}: {}: {e}", found.path.display());
+        std::process::exit(126);
+    }
+    #[cfg(not(unix))]
+    match c.status() {
+        Ok(st) => std::process::exit(st.code().unwrap_or(1)),
+        Err(e) => {
+            eprintln!("bar {name}: {}: {e}", found.path.display());
+            std::process::exit(126);
+        }
     }
 }
 
