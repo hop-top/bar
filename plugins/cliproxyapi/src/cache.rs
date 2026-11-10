@@ -166,6 +166,7 @@ mod tests {
             key: format!("ix-{i}"),
             provider: "claude".into(),
             label: "x".repeat(24),
+            color: None,
             priority: 0,
             plan: None,
             windows: vec![],

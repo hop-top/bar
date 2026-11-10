@@ -791,3 +791,139 @@ fn labels_are_sanitized_and_never_reach_the_script() {
     // the script is fixed text: it names argv and holds no placeholder
     assert!(chooser::SCRIPT.contains("on run argv"));
 }
+
+// --- window ids in the pick text ---
+
+/// A claude account with a 5h and a 7d window.
+fn two_windows(name: &str, left5: u32, left7: u32) -> Value {
+    let mut v = quota(name, left7, 500_000, None);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let sig = v["quota"]["signals"].as_object_mut().unwrap();
+    sig.insert(
+        "Anthropic-Ratelimit-Unified-5h-Utilization".into(),
+        format!("{}", (100 - left5) as f64 / 100.0).into(),
+    );
+    sig.insert(
+        "Anthropic-Ratelimit-Unified-5h-Reset".into(),
+        (now + 7200).to_string().into(),
+    );
+    v
+}
+
+#[test]
+fn pick_text_drops_the_window_id_only_when_every_row_shows_the_same_single_window() {
+    let one = |fleet: Value| {
+        let (s, _) = pool(fleet, KEY);
+        let h = Home::new("pickprefix");
+        let conf = h.conf(&[s.origin()]);
+        let listed = text(&h.run(&conf, &["pick", "--provider", "claude"], ""));
+        let (_, argv) = pick(&h, &conf, &s, "cancel");
+        (listed, argv[3..].to_vec())
+    };
+    // every account 7d only: no ids, in the list and the chooser alike
+    let (listed, items) = one(json!([
+        quota("a", 20, 100_000, None),
+        quota("b", 90, 500_000, None)
+    ]));
+    assert!(listed.lines().all(|l| !l.contains("7d")), "{listed}");
+    assert!(listed.contains("90% left"), "{listed}");
+    assert!(
+        items[0].starts_with("1. b \u{2014} 90% left \u{21BB}"),
+        "{items:?}"
+    );
+    assert!(items.iter().all(|i| !i.contains("7d")), "{items:?}");
+    // one account with two windows: every id stays
+    let (listed, items) = one(json!([
+        two_windows("a", 50, 20),
+        quota("b", 90, 500_000, None)
+    ]));
+    assert!(listed.lines().all(|l| l.contains("7d")), "{listed}");
+    assert!(listed.contains("5h 50% left"), "{listed}");
+    assert!(items.iter().all(|i| i.contains("7d")), "{items:?}");
+}
+
+// --- the user's account lines ---
+
+const RULES: &str = r##"[{"glob":"bob@*","label":"team","color":"33"},
+    {"glob":"*@corp.test","label":"corp","color":"#112233"}]"##;
+
+fn with_rules(h: &Home, conf: &std::path::Path, args: &[&str]) -> Output {
+    h.run_env(conf, args, "", &[("BAR_ACCOUNTS", RULES.to_string())])
+}
+
+#[test]
+fn names_come_from_the_users_account_lines_the_plugin_s_aliases_first() {
+    let (s, st) = pool(fleet(), KEY);
+    let h = Home::new("rulesnames");
+    // an alias for alice only
+    let key = h.file("key", &format!("{KEY}\n"));
+    let conf = h.file(
+        "c.conf",
+        &format!(
+            "instance {}\n key-file {}\n alias \"alice@*\" mine\n",
+            s.origin(),
+            key.display()
+        ),
+    );
+    let o = with_rules(&h, &conf, &["list", "--provider", "claude"]);
+    assert!(o.status.success(), "{}", err(&o));
+    let t = text(&o);
+    let labels: Vec<&str> = t
+        .lines()
+        .map(|l| l.split_whitespace().next().unwrap())
+        .collect();
+    // alice: the plugin's alias beats the lines; bob: the first line;
+    // cy: the second; no line, no alias: the local part
+    assert_eq!(labels, ["mine", "team", "corp"], "{t}");
+    assert!(!t.contains("corp.test") && !t.contains("33"), "{t}");
+    // the names work for `use`
+    let o = with_rules(&h, &conf, &["use", "team", "--provider", "claude"]);
+    assert!(o.status.success(), "{}", err(&o));
+    assert_eq!(prio(&st.lock().unwrap(), "b"), 3);
+    let o = with_rules(&h, &conf, &["use", "alice", "--provider", "claude"]);
+    assert_eq!(
+        o.status.code(),
+        Some(1),
+        "the local part is no longer her name"
+    );
+    // without the lines (a plugin started directly): the local parts
+    let o = h.run(&conf, &["list", "--provider", "claude"], "");
+    assert!(text(&o).starts_with("mine"), "{}", text(&o));
+    assert!(text(&o).contains("bob"), "{}", text(&o));
+}
+
+#[test]
+fn the_chooser_shows_the_users_labels_and_never_an_email_or_a_glob() {
+    let (s, _) = pool(
+        json!([quota("a", 20, 100_000, None), quota("b", 90, 500_000, None)]),
+        KEY,
+    );
+    let h = Home::new("ruleschoose");
+    let conf = h.conf(&[s.origin()]);
+    let (prog, log, logp) = chooser(&h);
+    let id = bar_cliproxyapi::switch::instance_id(&s.origin());
+    // the rules arrive in the action's stdin, as a click delivers them
+    let a = json!({"action":"pick","tokens":{"provider":"claude","instance":id},
+        "accounts":[{"glob":"b@*","label":"team","color":"33"}]});
+    let o = h.run_env(
+        &conf,
+        &["--action", "pick"],
+        &a.to_string(),
+        &[
+            ("BAR_CLIPROXYAPI_CHOOSER", prog),
+            ("FAKE_LOG", log),
+            ("FAKE_REPLY", "cancel".into()),
+        ],
+    );
+    assert!(o.status.success(), "{}", err(&o));
+    let argv = std::fs::read_to_string(logp).unwrap();
+    assert!(argv.contains("1. team \u{2014}"), "{argv}");
+    assert!(argv.contains("2. a \u{2014}"), "{argv}");
+    assert!(
+        !argv.contains("corp.test") && !argv.contains("b@*"),
+        "{argv}"
+    );
+}

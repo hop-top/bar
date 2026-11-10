@@ -100,7 +100,7 @@ fn renders_only_for_the_configured_instance() {
     );
     let it = &o["items"][0];
     assert_eq!(it["label"], "me");
-    assert!(it["text"].as_str().unwrap().starts_with("7d 50% "), "{it}");
+    assert!(it["text"].as_str().unwrap().starts_with("50% "), "{it}");
     assert_eq!(it["tokens"], json!({"account":"ix1","provider":"claude"}));
     // a pool of one: usage and the preferred account ride along
     assert_eq!(o["usage"]["seven_day"]["used_percentage"], 50.0);
@@ -166,7 +166,7 @@ fn options_shape_the_items_and_the_pool() {
         (items[0]["label"].as_str(), items[1]["label"].as_str()),
         (Some("a"), Some("b"))
     );
-    assert!(items[0]["text"].as_str().unwrap().starts_with("5h 20% "));
+    assert!(items[0]["text"].as_str().unwrap().starts_with("20% "));
     assert_eq!(o["usage"]["five_hour"]["used_percentage"], 40.0);
     assert_eq!(o["usage"]["seven_day"]["used_percentage"], 30.0);
     // the pool option changes the usage, not the items
@@ -253,4 +253,166 @@ fn concurrent_processes_cost_one_failed_attempt_per_key() {
         assert_eq!(t.join().unwrap()["text"], "key?");
     }
     assert_eq!(s.count(), 1, "one failed attempt across all processes");
+}
+
+fn two_account_listing() -> Value {
+    json!({"files":[
+        {"auth_index":"ix1","type":"claude","email":"alice.synthetic@corp.test","priority":2,
+         "quota":{"signals":{"Anthropic-Ratelimit-Unified-7d-Utilization":"0.5",
+                             "Anthropic-Ratelimit-Unified-7d-Reset":"4102444800"}}},
+        {"auth_index":"ix2","type":"claude","email":"bob.synthetic@other.test",
+         "quota":{"signals":{"Anthropic-Ratelimit-Unified-7d-Utilization":"0.1",
+                             "Anthropic-Ratelimit-Unified-7d-Reset":"4102444800"}}}]})
+}
+
+fn files_under(dir: &std::path::Path) -> Vec<String> {
+    let mut out = Vec::new();
+    for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            out.extend(files_under(&p));
+        } else {
+            out.push(std::fs::read_to_string(&p).unwrap_or_default());
+        }
+    }
+    out
+}
+
+/// One render of the two-account listing with `extra` config lines and the
+/// user's `rules`; each call has its own state, so earlier labels are not
+/// served from a cache. Returns the output and the text of every file the
+/// plugin left in its state directory.
+fn labelled(tag: &str, extra: &str, rules: Value) -> (Value, Vec<String>) {
+    let listing = two_account_listing();
+    let s = Server::start(move |_| ok(listing.to_string()));
+    let h = Home::new(tag);
+    let key = h.file("key", "bin-test-key\n", 0o600);
+    let conf = h.file(
+        "c.conf",
+        &format!(
+            "instance {}\n key-file {}\n{extra}",
+            s.origin(),
+            key.display()
+        ),
+        0o600,
+    );
+    let o = render(
+        h.cmd(&conf),
+        json!({"options":{},"session":{"model_id":"claude-opus-4"},
+               "env":{"ANTHROPIC_BASE_URL":s.origin()},"accounts":rules}),
+    );
+    let kept = files_under(&h.0.join("state"));
+    (o, kept)
+}
+
+fn item(o: &Value, label: &str) -> Value {
+    o["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["label"] == label)
+        .cloned()
+        .unwrap_or_else(|| panic!("no {label} in {o}"))
+}
+
+#[test]
+fn the_users_account_lines_label_and_colour_items_and_the_account() {
+    let rules = json!([
+        {"glob": "alice.synthetic@*", "label": "work", "color": "33"},
+        {"glob": "*", "label": "everyone", "color": "#112233"}
+    ]);
+    let (o, kept) = labelled("rules1", "", rules);
+    // first match wins, per account
+    assert_eq!(item(&o, "work")["label_color"], "33");
+    assert_eq!(item(&o, "everyone")["label_color"], "#112233");
+    assert_eq!(
+        o["account"]["label"], "work",
+        "alice has the higher priority"
+    );
+    assert_eq!(o["account"]["color"], "33");
+    // nothing from the lines is kept but the label and colour: no email, no glob
+    assert!(kept.iter().any(|f| f.contains("work")), "{kept:?}");
+    for f in &kept {
+        for secret in [
+            "corp.test",
+            "other.test",
+            "synthetic@",
+            "@*",
+            "alice.synthetic",
+        ] {
+            assert!(!f.contains(secret), "{secret} in {f}");
+        }
+    }
+}
+
+#[test]
+fn no_matching_line_means_the_local_part_and_no_colour() {
+    let (o, _) = labelled(
+        "rules2",
+        "",
+        json!([{"glob": "nobody@*", "label": "x", "color": "33"}]),
+    );
+    assert_eq!(item(&o, "alice.synthe").get("label_color"), None);
+    assert_eq!(o["account"]["label"], "alice.synthe");
+    assert!(o["account"].get("color").is_none(), "{o}");
+}
+
+#[test]
+fn the_plugin_s_own_alias_beats_the_lines_but_the_colour_still_comes_from_the_line() {
+    let rules = json!([{"glob": "alice.synthetic@*", "label": "work", "color": "33"}]);
+    let (o, _) = labelled("rules3", " alias \"alice.synthetic@*\" mine\n", rules);
+    assert_eq!(item(&o, "mine")["label_color"], "33");
+    assert_eq!(o["account"]["label"], "mine");
+    assert!(o["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|i| i["label"] != "work"));
+}
+
+#[test]
+fn a_session_without_a_proxy_gets_the_tokens_of_a_lone_instance() {
+    let s = Server::start(|_| ok("{}"));
+    let other = Server::start(|_| ok("{}"));
+    let h = Home::new("plain");
+    let key = h.file("key", "bin-test-key\n", 0o600);
+    let one = h.file(
+        "one.conf",
+        &format!("instance {}\n key-file {}\n", s.origin(), key.display()),
+        0o600,
+    );
+    let two = h.file(
+        "two.conf",
+        &format!(
+            "instance {}\n key-file {}\ninstance {}\n key-file {}\n",
+            s.origin(),
+            key.display(),
+            other.origin(),
+            key.display()
+        ),
+        0o600,
+    );
+    // ANTHROPIC_BASE_URL is unset: the input has no `env` entry for it
+    let input = json!({"options":{},"session":{"model_id":"claude-opus-4"},"env":{}});
+    let o = render(h.cmd(&one), input.clone());
+    assert_eq!(o["text"], "");
+    assert!(
+        o.get("account").is_none() && o.get("items").is_none(),
+        "{o}"
+    );
+    assert_eq!(
+        o["tokens"],
+        json!({"provider":"claude","instance":bar_cliproxyapi::switch::instance_id(&s.origin())})
+    );
+    // several instances: which one would it be
+    assert!(render(h.cmd(&two), input.clone()).get("tokens").is_none());
+    // a session on some other URL is not a plain one
+    let o = render(
+        h.cmd(&one),
+        json!({"options":{},"session":{"model_id":"claude-opus-4"},
+               "env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:1"}}),
+    );
+    assert!(o.get("tokens").is_none(), "{o}");
+    // no request went out for any of this
+    assert_eq!(s.count() + other.count(), 0);
 }

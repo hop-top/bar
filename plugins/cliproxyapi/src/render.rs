@@ -60,6 +60,7 @@ pub fn ext_info() -> ExtInfo {
         inputs: Some(Inputs {
             env: vec!["ANTHROPIC_BASE_URL".into()],
             session: vec!["model_id".into(), "model".into()],
+            accounts: true,
         }),
         timeout: Some("15s".into()),
         actions: crate::switch::actions(),
@@ -271,20 +272,42 @@ fn enabled<'a>(s: &'a Snapshot, provider: &str) -> Vec<(usize, &'a Acct)> {
         .collect()
 }
 
-fn item(a: &Acct, idx: usize, o: &Opts, instance: &str, now: i64) -> Option<Output> {
+/// The windows an account shows, in the order asked for; `None` when the
+/// account is not shown at all (hidden stale, or none of its windows asked
+/// for).
+fn shown_windows<'a>(a: &'a Acct, o: &Opts, now: i64) -> Option<Vec<&'a Win>> {
     let stale = a.at > 0 && now - a.at > STALE_AFTER;
     if stale && o.stale == Stale::Hide {
         return None;
     }
-    // the windows asked for, in the order asked for
     let wins: Vec<&Win> = o
         .windows
         .iter()
         .filter_map(|id| a.windows.iter().find(|w| &w.id == id))
         .collect();
-    if wins.is_empty() && !a.windows.is_empty() {
-        return None;
+    (!wins.is_empty() || a.windows.is_empty()).then_some(wins)
+}
+
+/// Whether the window id can be left out of every shown account's text:
+/// each shows exactly one window, and it is the same one for all. Any mix
+/// keeps every prefix, so a short line never leaves the reader guessing
+/// which window a number belongs to.
+pub fn single_window<'a>(sets: impl IntoIterator<Item = &'a [&'a Win]>) -> bool {
+    let mut id: Option<&str> = None;
+    let mut any = false;
+    for w in sets {
+        any = true;
+        match w {
+            [one] if id.is_none_or(|i| i == one.id) => id = Some(&one.id),
+            _ => return false,
+        }
     }
+    any
+}
+
+fn item(a: &Acct, idx: usize, o: &Opts, instance: &str, now: i64, bare: bool) -> Option<Output> {
+    let stale = a.at > 0 && now - a.at > STALE_AFTER;
+    let wins = shown_windows(a, o, now)?;
     let mut parts: Vec<String> = wins
         .iter()
         .map(|w| {
@@ -294,12 +317,12 @@ fn item(a: &Acct, idx: usize, o: &Opts, instance: &str, now: i64) -> Option<Outp
                 (true, Some(p), Some(c)) => format!("{p}\u{B7}{c}"),
                 (true, p, c) => p.or(c).unwrap_or_default(),
                 (false, p, c) => {
-                    let mut t = w.id.clone();
-                    if let Some(p) = p {
-                        t += &format!(" {p}");
-                    }
-                    if let Some(c) = c {
-                        t += &format!(" \u{21BB}{c}");
+                    let mut t = if bare { String::new() } else { w.id.clone() };
+                    for part in [p, c.map(|c| format!("\u{21BB}{c}"))].into_iter().flatten() {
+                        if !t.is_empty() {
+                            t.push(' ');
+                        }
+                        t += &part;
                     }
                     t
                 }
@@ -321,6 +344,10 @@ fn item(a: &Acct, idx: usize, o: &Opts, instance: &str, now: i64) -> Option<Outp
     }
     let label = o.label_part.then(|| label_of(a, idx, o.label)).flatten();
     let mut out = Output::text(&text);
+    // a user `account` line that matched colours the label
+    if label.is_some() && o.label == LabelMode::Alias {
+        out.label_color = a.color.clone();
+    }
     out.label = label.clone();
     let left = wins.iter().map(|w| 100.0 - w.used).fold(f64::NAN, f64::min);
     if left.is_finite() {
@@ -362,9 +389,34 @@ pub fn items(s: &Snapshot, provider: &str, o: &Opts, instance: &str, now: i64) -
         Sort::Used => rows.sort_by(|(_, a), (_, b)| most_used(b).total_cmp(&most_used(a))),
         Sort::Reset => rows.sort_by_key(|(_, a)| soonest(a)),
     }
+    let bare = single_window(
+        rows.iter()
+            .filter_map(|(_, a)| shown_windows(a, o, now))
+            .collect::<Vec<_>>()
+            .iter()
+            .map(Vec::as_slice),
+    );
     rows.into_iter()
-        .filter_map(|(i, a)| item(a, i, o, instance, now))
+        .filter_map(|(i, a)| item(a, i, o, instance, now, bare))
         .collect()
+}
+
+/// The output for a session that does not use a proxy: nothing drawn, but
+/// with exactly one configured instance (that reads Claude) the tokens its
+/// `pick` and `next` actions take, so `#{account}` can link them. No
+/// `account`: `#{account}` keeps showing the signed-in account.
+pub fn plain(cfg: &crate::config::Config) -> Output {
+    let mut out = Output::hidden();
+    if let [inst] = cfg.instances.as_slice() {
+        if inst.providers.iter().any(|p| p == "claude") {
+            out.tokens.insert("provider".into(), "claude".into());
+            out.tokens.insert(
+                "instance".into(),
+                crate::switch::instance_id(&inst.origin.to_string()),
+            );
+        }
+    }
+    out.finish()
 }
 
 /// The render output: one item per account, the pool's `usage` and, when
@@ -398,6 +450,14 @@ pub fn output(s: &Snapshot, provider: &str, o: &Opts, instance: &str, now: i64) 
             _ => cut(&a.label),
         }
     });
+    // the colour of a user `account` line that matched: bar draws the
+    // label as is
+    if let (Some(acc), LabelMode::Alias) = (out.account.as_mut(), o.label) {
+        acc.color = accts
+            .iter()
+            .find(|a| a.key == acc.id)
+            .and_then(|a| a.color.clone());
+    }
     // what the `next` actions take, so a link can be drawn for `#{account}`
     // even when the proxy has no single preferred account
     out.tokens.insert("provider".into(), provider.into());
@@ -429,6 +489,7 @@ mod tests {
             key: key.into(),
             provider: "claude".into(),
             label: label.into(),
+            color: None,
             priority: 0,
             plan: Some("max".into()),
             windows: wins,
@@ -636,7 +697,7 @@ mod tests {
             NOW - STALE_AFTER - 1,
         )]);
         let o = run(&s, &Opts::default());
-        assert!(o.items[0].text.as_deref().unwrap().starts_with("~7d"));
+        assert!(o.items[0].text.as_deref().unwrap().starts_with("~90%"));
         assert_eq!(o.items[0].style, None);
         let o = run(
             &s,
@@ -645,7 +706,7 @@ mod tests {
                 ..Opts::default()
             },
         );
-        assert!(o.items[0].text.as_deref().unwrap().starts_with("7d"));
+        assert!(o.items[0].text.as_deref().unwrap().starts_with("90%"));
         assert_eq!(o.items[0].style.as_deref(), Some("dim"));
         assert!(run(
             &s,
@@ -780,5 +841,207 @@ mod tests {
         let d = Opts::from_input(&RenderInput::default());
         assert_eq!(d.windows, ["5h", "7d", "wk"]);
         assert!(!d.used && d.reset && d.pct && d.label_part);
+    }
+
+    fn plain_texts(s: &Snapshot, o: &Opts) -> Vec<String> {
+        run(s, o)
+            .items
+            .iter()
+            .map(|i| i.text.clone().unwrap_or_default())
+            .collect()
+    }
+
+    #[test]
+    fn the_window_prefix_goes_only_when_every_account_shows_the_same_single_window() {
+        // all 7d only: no prefix
+        let s = snap(vec![
+            acct(
+                "k1",
+                "innoprofits",
+                vec![win("7d", 34.0, NOW + 5 * 86_400)],
+                NOW,
+            ),
+            acct(
+                "k2",
+                "personal",
+                vec![win("7d", 0.0, NOW + 5 * 86_400 + 16 * 3600)],
+                NOW,
+            ),
+        ]);
+        assert_eq!(
+            plain_texts(&s, &Opts::default()),
+            vec!["66% \u{21BB}5d", "100% \u{21BB}5d16h"]
+        );
+        // one account with two windows: every prefix stays
+        let s = snap(vec![
+            acct(
+                "k1",
+                "work",
+                vec![
+                    win("5h", 60.0, NOW + 7200),
+                    win("7d", 34.0, NOW + 5 * 86_400),
+                ],
+                NOW,
+            ),
+            acct(
+                "k2",
+                "innoprofits",
+                vec![win("7d", 34.0, NOW + 5 * 86_400)],
+                NOW,
+            ),
+        ]);
+        assert_eq!(
+            plain_texts(&s, &Opts::default()),
+            vec!["5h 40% \u{21BB}2h 7d 66% \u{21BB}5d", "7d 66% \u{21BB}5d"]
+        );
+        // single windows of different kinds: prefixes stay
+        let s = snap(vec![
+            acct("k1", "a", vec![win("5h", 60.0, NOW + 7200)], NOW),
+            acct("k2", "b", vec![win("7d", 34.0, NOW + 5 * 86_400)], NOW),
+        ]);
+        assert_eq!(
+            plain_texts(&s, &Opts::default()),
+            vec!["5h 40% \u{21BB}2h", "7d 66% \u{21BB}5d"]
+        );
+        // one account: its only window needs no prefix, two keep theirs
+        let one = snap(vec![acct(
+            "k1",
+            "a",
+            vec![win("5h", 60.0, NOW + 7200)],
+            NOW,
+        )]);
+        assert_eq!(plain_texts(&one, &Opts::default()), vec!["40% \u{21BB}2h"]);
+        let two = snap(vec![acct(
+            "k1",
+            "a",
+            vec![
+                win("5h", 60.0, NOW + 7200),
+                win("7d", 34.0, NOW + 5 * 86_400),
+            ],
+            NOW,
+        )]);
+        assert!(plain_texts(&two, &Opts::default())[0].starts_with("5h 40%"));
+    }
+
+    #[test]
+    fn only_the_accounts_shown_count_for_the_prefix() {
+        let s = snap(vec![
+            acct(
+                "k1",
+                "work",
+                vec![
+                    win("5h", 60.0, NOW + 7200),
+                    win("7d", 34.0, NOW + 5 * 86_400),
+                ],
+                NOW,
+            ),
+            acct("k2", "other", vec![win("7d", 34.0, NOW + 5 * 86_400)], NOW),
+        ]);
+        // the windows option leaves one window each: bare
+        let o = Opts {
+            windows: vec!["7d".into()],
+            ..Opts::default()
+        };
+        assert_eq!(
+            plain_texts(&s, &o),
+            vec!["66% \u{21BB}5d", "66% \u{21BB}5d"]
+        );
+        // the accounts option leaves one account with two windows: kept
+        let o = Opts {
+            accounts: vec!["work".into()],
+            ..Opts::default()
+        };
+        assert!(plain_texts(&s, &o)[0].starts_with("5h 40%"));
+        // a hidden stale account does not count
+        let s = snap(vec![
+            acct(
+                "k1",
+                "work",
+                vec![
+                    win("5h", 60.0, NOW + 7200),
+                    win("7d", 34.0, NOW + 5 * 86_400),
+                ],
+                NOW - STALE_AFTER - 1,
+            ),
+            acct("k2", "other", vec![win("7d", 34.0, NOW + 5 * 86_400)], NOW),
+        ]);
+        let o = Opts {
+            stale: Stale::Hide,
+            ..Opts::default()
+        };
+        assert_eq!(plain_texts(&s, &o), vec!["66% \u{21BB}5d"]);
+        // an account without data (`?`) is not one single window
+        let s = snap(vec![
+            acct("k1", "a", vec![win("7d", 34.0, NOW + 5 * 86_400)], NOW),
+            acct("k2", "b", vec![], NOW),
+        ]);
+        assert_eq!(
+            plain_texts(&s, &Opts::default()),
+            vec!["7d 66% \u{21BB}5d", "?"]
+        );
+    }
+
+    #[test]
+    fn a_matched_account_line_colours_the_label_and_the_account() {
+        let mut a = acct("k1", "work", vec![win("7d", 10.0, NOW + 90_000)], NOW);
+        a.color = Some("33".into());
+        let b = acct("k2", "plain", vec![win("7d", 50.0, NOW + 90_000)], NOW);
+        let s = snap(vec![a, b]);
+        let o = run(&s, &Opts::default());
+        let by = |l: &str| {
+            o.items
+                .iter()
+                .find(|i| i.label.as_deref() == Some(l))
+                .unwrap()
+        };
+        assert_eq!(by("work").label_color.as_deref(), Some("33"));
+        assert_eq!(by("plain").label_color, None);
+        assert!(o.account.is_none(), "a tie: no preferred account");
+        // the preferred account carries its colour
+        let mut top = acct("k1", "work", vec![win("7d", 10.0, NOW + 90_000)], NOW);
+        top.color = Some("33".into());
+        top.priority = 5;
+        let s = snap(vec![top, acct("k2", "plain", vec![], NOW)]);
+        let o = run(&s, &Opts::default());
+        let acc = o.account.unwrap();
+        assert_eq!(
+            (acc.label.as_str(), acc.color.as_deref()),
+            ("work", Some("33"))
+        );
+        // an index label is not the account's name: no colour
+        let mut top = acct("k1", "work", vec![win("7d", 10.0, NOW + 90_000)], NOW);
+        top.color = Some("33".into());
+        let s = snap(vec![top]);
+        let o = run(
+            &s,
+            &Opts {
+                label: LabelMode::Index,
+                ..Opts::default()
+            },
+        );
+        assert_eq!(o.items[0].label_color, None);
+        assert_eq!(o.account.unwrap().color, None);
+    }
+
+    #[test]
+    fn a_session_without_a_proxy_offers_the_tokens_of_a_lone_instance() {
+        use crate::config;
+        let conf = |text: &str| config::parse(text, None);
+        let one = conf("instance http://127.0.0.1:8317\n key-file /k\n");
+        let o = plain(&one);
+        assert_eq!(o.text.as_deref(), Some(""));
+        assert!(o.account.is_none() && o.items.is_empty());
+        assert_eq!(o.tokens["provider"], "claude");
+        assert_eq!(
+            o.tokens["instance"],
+            crate::switch::instance_id(&one.instances[0].origin.to_string())
+        );
+        let two = conf(
+            "instance http://127.0.0.1:8317\n key-file /k\ninstance http://127.0.0.1:8318\n key-file /k\n",
+        );
+        assert!(plain(&two).tokens.is_empty(), "which one would it be?");
+        assert!(plain(&conf("")).tokens.is_empty());
+        let codex = conf("instance http://127.0.0.1:8317\n key-file /k\n providers codex\n");
+        assert!(plain(&codex).tokens.is_empty(), "no Claude to pick for");
     }
 }

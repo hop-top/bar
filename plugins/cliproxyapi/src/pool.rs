@@ -120,6 +120,7 @@ pub fn account(accts: &[&Acct], label: impl Fn(&Acct) -> String) -> Option<Accou
     sole_top(accts).map(|a| Account {
         id: a.key.clone(),
         label: label(a),
+        color: None,
     })
 }
 
@@ -132,6 +133,7 @@ mod tests {
             key: key.into(),
             provider: "claude".into(),
             label: key.into(),
+            color: None,
             priority: prio,
             plan: None,
             windows: wins

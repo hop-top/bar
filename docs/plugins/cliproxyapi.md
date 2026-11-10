@@ -10,7 +10,7 @@ It is opt-in. Nothing runs, and nothing is read, until the placeholder is in you
 set left "#{model} │ #{cliproxyapi} │ #{repo}:#{branch}"
 ```
 
-Claude Code must reach the proxy through `ANTHROPIC_BASE_URL`; the segment is hidden for any other base URL.
+Claude Code must reach the proxy through `ANTHROPIC_BASE_URL`; the segment is hidden for any other base URL. In a session with no `ANTHROPIC_BASE_URL` at all it is hidden too, but with exactly one instance configured the plugin still offers that instance's tokens, so `#{account}` can link the [`pick`](#clicking-an-account) action there.
 
 ## What it shows
 
@@ -20,7 +20,8 @@ Per account of the provider that matches the current model (`claude`, `opus`, `s
 work 5h 59% ↻2h10m 7d 88% ↻3d4h │ home 7d 20% ↻5d
 ```
 
-- `work` is the account's label. `5h 59%` is a window and the share **left**; `↻2h10m` is the time to its reset (`3d4h`, `2h10m`, `41m`, `<1m`). `count=used` draws the share used instead.
+- `work` is the account's [label](#labels-and-colours). `5h 59%` is a window and the share **left**; `↻2h10m` is the time to its reset (`3d4h`, `2h10m`, `41m`, `<1m`). `count=used` draws the share used instead.
+- The window name is left out only when every account shown has exactly one window and it is the same one for all (`innoprofits 66% ↻5d │ personal 100% ↻5d16h`, all weekly). Any mix keeps every name, so no number is left without its window: `work 5h 40% ↻2h 7d 66% ↻5d │ innoprofits 7d 66% ↻5d`. The `pick` text follows the same rule.
 - A window the provider does not report is left out, never shown as 0%. Claude often reports only the weekly window; a Codex Pro plan has a weekly window only. An account never read yet shows `?`.
 - The entry turns `bad` at 10% left or less in any shown window. Otherwise it follows the colour ramp of the lowest share left.
 - `~` before the windows marks data older than a few minutes; data older than an hour is dropped.
@@ -71,6 +72,23 @@ One `instance` block per proxy; lines start with a keyword, `#` starts a comment
 Exactly one key source per instance. A block with a mistake is ignored as a whole, and `bar check` says which line.
 
 Without an alias an account is labelled with the part of its email before the `@`; the option `label=index` draws `#1`, `#2` instead, for screen sharing.
+
+### Labels and colours
+
+The plugin asks bar for your `account "<glob>" <label> <color>` lines of `bar.conf` (it declares [`inputs.accounts`](../plugins.md#account-rules)) and matches each glob against the account's email, where the email is visible, case-insensitively. An account is named by:
+
+1. the first matching `alias` line of `cliproxyapi.conf`, else
+2. the first matching `account` line of `bar.conf`, else
+3. the part of the email before the `@`.
+
+The colour is that of the first matching `account` line, also when an `alias` supplied the label (an alias has no colour). The label is drawn in that colour in each entry, and the account `#{account}` shows (see below) is drawn as is, in it. The same names are accepted and shown by `bar cliproxyapi list`, `use` and `pick` and by the `pick` chooser, which get the lines from bar (`bar cpa …` and clicks alike; a plugin started directly, without `bar`, sees none). Labels are cut at 24 characters (12 in the segment).
+
+```
+account "*@corp.example" work 33
+account "me@*" personal "#7aa2f7"
+```
+
+Only the label and colour are kept in the plugin's cache, never the glob or the email. A changed line shows at the next collection, at most a minute or two later.
 
 The file is separate from `bar.conf` on purpose: a project's `.bar.conf` can replace plugin lines, and nothing that decides where the management key is sent, or which command runs, should be settable from a repository.
 
@@ -166,8 +184,8 @@ bar cliproxyapi use --reset [<account>] [--instance URL] [--dry-run]
 bar cliproxyapi pick [--strategy most-left|soonest-reset] [--provider P] [--instance URL]
 ```
 
-- `list` prints one line per account: label, provider, priority, status (`active`, `unavailable`, `disabled`) and the proxy's account index. Never an email.
-- `<account>` is an account index, a label (an alias, or the email's part before the `@`, any case) or a position (`3` or `#3`, as `label=index` draws: among the provider's enabled accounts; with several providers in the instance a position needs `--provider`). A name that fits several accounts (the same label under two providers) is refused and the candidates listed; narrow it with `--provider`. A disabled account is refused: bar never enables one.
+- `list` prints one line per account: label (see [Labels and colours](#labels-and-colours)), provider, priority, status (`active`, `unavailable`, `disabled`) and the proxy's account index. Never an email.
+- `<account>` is an account index, a label (an alias, an `account` line of `bar.conf`, or the email's part before the `@`, any case; the label shown is the name, so an account renamed by an alias or line answers to that name only) or a position (`3` or `#3`, as `label=index` draws: among the provider's enabled accounts; with several providers in the instance a position needs `--provider`). A name that fits several accounts (the same label under two providers) is refused and the candidates listed; narrow it with `--provider`. A disabled account is refused: bar never enables one.
 - `use` prints the change (`work (claude): priority 0 -> 3`). An account already above every other enabled one, or with no enabled rival, is left as it is. `--dry-run` prints the change and sends nothing.
 - `--reset` puts back the priorities this plugin changed (kept in the plugin's own state file, mode 0600, with account indexes and numbers only). An account whose priority was changed by someone else since is left alone; a hand edit made between two switches becomes the priority a reset restores. With an account, only that one is restored.
 - `--next` switches to the account a strategy recommends (see [Choosing the next account](#choosing-the-next-account)); with several providers in the instance it needs `--provider`. `pick` lists the accounts in the recommended order and, on a terminal, asks which to use. The [`pick` action](#clicking-an-account) does the same in a native macOS chooser.
@@ -187,7 +205,7 @@ A strategy ranks the enabled accounts of one provider. An account's *left* is th
 
 Both put available accounts with quota left first, then exhausted ones, then unread ones, then those the proxy has cooling down; disabled accounts are left out. `use --next` switches to the first account of the first group that is not the proxy's current preferred one, and refuses when there is none (an account with no data is never picked blindly). Quota comes from the proxy's listing and the plugin's cache, so a Codex account's figure is as fresh as the last background read.
 
-`pick` prints one numbered row per account in that order, with each window's percent left and time to reset, and `*` on the account the proxy prefers:
+`pick` prints one numbered row per account in that order, with each window's percent left and time to reset, and `*` on the account the proxy prefers (the window names are left out when every row has exactly one window and it is the same, as in the segment):
 
 ```
  1    work   claude  5h 80% left ↻1h20m  7d 55% left ↻3d2h
@@ -221,6 +239,8 @@ action account cliproxyapi.next-soon   # or: among the most left, the soonest re
 action account cliproxyapi.pick
 ```
 
+With exactly one instance configured, `pick` is linked in sessions that do not use the proxy too: `#{account}` keeps showing the signed-in account, and a click offers the instance's Claude accounts. With several instances there is no link in such a session, since it is not clear which proxy is meant.
+
 `next` and `next-soon` are linked even when `#{account}` shows bar's own signed-in account (a round-robin pool has no single preferred account); `use` needs the account the plugin named.
 
 Links need the click handler installed with action support: run `bar click install` (again after upgrading bar). A click runs `bar-cliproxyapi --action <action>` with the tokens on its standard input; the plugin checks that the token names an account of its current listing, performs `use`, and exits non-zero with a reason when it refuses. bar shows the outcome in `action-status` in its state directory and refreshes the segment at the next render. A click has no session environment, so the plugin finds the instance whose listing holds the account; when two instances list the same index it refuses.
@@ -231,6 +251,6 @@ Management failures behave as for rendering: a 401 or 403, on the listing or on 
 
 - The plugin reads accounts and quota. The only change it ever makes is an account's routing priority, when you ask (`use`, `--reset` or a bound click); it never disables or enables an account.
 - Its output carries labels, the proxy's opaque account index and the provider name; bar's own cache of it (mode 0600) holds the same. `label=index` keeps the local part of an email off the screen and out of that output; the cache below still holds the label it replaced.
-- Its cache (`plugins/cliproxyapi/<hash>.json` in bar's state directory, mode 0600 in a 0700 directory) holds the label shown (your alias, else the part of the email before the `@`), the proxy's opaque account index and routing priority, plan name, usage windows and failure timers. It holds no emails (a label derived from one is the part before the `@`, or your alias), no file paths, no tokens, no account ids and no keys, only a salted, truncated digest of a refused key beside its random salt. The proxy is not called at all when this directory cannot be written, since a refusal could not be remembered; `bar check` says so.
+- Its cache (`plugins/cliproxyapi/<hash>.json` in bar's state directory, mode 0600 in a 0700 directory) holds the label shown (your alias, else your `account` line's label, else the part of the email before the `@`) and its colour, the proxy's opaque account index and routing priority, plan name, usage windows and failure timers. It holds no emails (a label derived from one is the part before the `@`, your alias or your `account` line's label; the lines' globs, which may hold an address, are matched and dropped), no file paths, no tokens, no account ids and no keys, only a salted, truncated digest of a refused key beside its random salt. The proxy is not called at all when this directory cannot be written, since a refusal could not be remembered; `bar check` says so.
 - Upstream addresses are compiled into the plugin. The proxy's `api-call` endpoint forwards an account's token to any URL it is given, so no configuration can choose where it goes.
 - Querying a provider's usage endpoint with your own credentials, through your own proxy, is subject to that provider's terms; check them before enabling it.

@@ -2,6 +2,7 @@
 //! reports into them. Every window is `{id, used percent, reset time,
 //! period}`; percent is always *used* (remaining is derived at render).
 
+use bar_plugin::proto::AccountRule;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -29,6 +30,10 @@ pub struct Acct {
     pub key: String,
     pub provider: String,
     pub label: String,
+    /// Colour of `label`, from the user's `account` line that matched
+    /// (as bar reads one); never the line's glob.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
     /// The proxy's routing priority (unset is 0); the highest available
     /// tier serves requests.
     #[serde(default)]
@@ -234,24 +239,51 @@ pub fn glob(pat: &str, s: &str) -> bool {
 /// email, else the part of the email before `@`, else `#<n>`. The email
 /// itself is used here and nowhere stored.
 pub fn label_for(email: &str, aliases: &[(String, String)], n: usize) -> String {
+    identify(email, aliases, &[], n).0
+}
+
+/// Label and colour of an account, from its email. The label: the first
+/// of the plugin's own `alias` lines to match, else the first of the
+/// user's `account` lines (bar.conf) to match, else the part of the email
+/// before `@`, else `#<n>`. The colour: that of the user's first matching
+/// line, whichever line supplied the label (an alias has none). The email
+/// and the globs are used here and nowhere stored.
+pub fn identify(
+    email: &str,
+    aliases: &[(String, String)],
+    rules: &[AccountRule],
+    n: usize,
+) -> (String, Option<String>) {
     let clean = |s: &str| -> String {
         s.chars()
             .filter(|c| c.is_ascii_alphanumeric() || "._-+".contains(*c))
             .take(24)
             .collect()
     };
-    if let Some((_, l)) = aliases.iter().find(|(g, _)| glob(g, email)) {
-        let l = bar_plugin::proto::sanitize(l);
-        if !l.is_empty() {
-            return l.chars().take(24).collect();
-        }
-    }
-    let local = clean(email.split('@').next().unwrap_or(""));
-    if local.is_empty() {
-        format!("#{n}")
-    } else {
-        local
-    }
+    let short = |l: &str| -> String { bar_plugin::proto::sanitize(l).chars().take(24).collect() };
+    // a line with nothing to show does not count as a match
+    let rule = rules
+        .iter()
+        .find(|r| glob(&r.glob, email) && !short(&r.label).trim().is_empty());
+    let color = rule
+        .map(|r| r.color.trim().to_string())
+        .filter(|c| bar_plugin::proto::valid_color(c));
+    let alias = aliases
+        .iter()
+        .find(|(g, _)| glob(g, email))
+        .map(|(_, l)| short(l))
+        .filter(|l| !l.is_empty());
+    let label = alias
+        .or_else(|| rule.map(|r| short(&r.label)))
+        .unwrap_or_else(|| {
+            let local = clean(email.split('@').next().unwrap_or(""));
+            if local.is_empty() {
+                format!("#{n}")
+            } else {
+                local
+            }
+        });
+    (label, color)
 }
 
 #[cfg(test)]
@@ -348,6 +380,48 @@ mod tests {
         assert_eq!(provider_of_model("grok-4", ""), None);
         assert_eq!(provider_of_model("", ""), None);
         assert_eq!(provider_of_model("opus/grok", ""), None);
+    }
+
+    fn rule(glob: &str, label: &str, color: &str) -> AccountRule {
+        AccountRule {
+            glob: glob.into(),
+            label: label.into(),
+            color: color.into(),
+        }
+    }
+
+    #[test]
+    fn the_plugin_s_alias_beats_the_users_lines_and_the_first_line_wins() {
+        let al = vec![("*@corp.test".to_string(), "mine".to_string())];
+        let rules = vec![
+            rule("*@corp.test", "work", "33"),
+            rule("*@corp.test", "second", "44"),
+            rule("*@home.test", "home", "#112233"),
+        ];
+        // alias for the label, the first matching line for the colour
+        assert_eq!(
+            identify("a@corp.test", &al, &rules, 1),
+            ("mine".into(), Some("33".into()))
+        );
+        // no alias: the first matching line, whole
+        assert_eq!(
+            identify("a@corp.test", &[], &rules, 1),
+            ("work".into(), Some("33".into()))
+        );
+        assert_eq!(
+            identify("A@Home.test", &[], &rules, 1),
+            ("home".into(), Some("#112233".into())),
+            "any case"
+        );
+        // no line, no alias: the local part, no colour
+        assert_eq!(identify("a@other.test", &al, &rules, 7), ("a".into(), None));
+        assert_eq!(identify("", &[], &rules, 7), ("#7".into(), None));
+        // a line with nothing to show, or a colour that is none, does not count
+        let odd = vec![rule("*", "\u{1b}", "33"), rule("*", "ok", "not a colour")];
+        assert_eq!(identify("a@x.test", &[], &odd, 1), ("ok".into(), None));
+        // the label is cut like an alias is
+        let long = vec![rule("*", &"x".repeat(40), "1")];
+        assert_eq!(identify("a@x.test", &[], &long, 1).0.len(), 24);
     }
 
     #[test]

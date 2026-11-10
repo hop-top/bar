@@ -157,7 +157,7 @@ pub fn parse_entries(inst: &Instance, v: &Value) -> Vec<Entry> {
             index: index.into(),
             name: name.into(),
             provider,
-            label: model::label_for(email, &inst.aliases, i + 1),
+            label: model::identify(email, &inst.aliases, &inst.rules, i + 1).0,
             priority: f["priority"].as_i64().unwrap_or(0),
             disabled,
             unavailable: f["unavailable"].as_bool().unwrap_or(false),
@@ -681,7 +681,7 @@ pub fn run_next(
 
 /// One ranked row of `pick`: number, mark, label, provider, per-window
 /// percent left and time to reset.
-fn window_text(r: &rank::Ranked, now: i64) -> String {
+fn window_text(r: &rank::Ranked, now: i64, bare: bool) -> String {
     let wins: Vec<String> = r
         .entry
         .windows
@@ -697,13 +697,17 @@ fn window_text(r: &rank::Ranked, now: i64) -> String {
                     up.then_some(win.resets_at),
                 ),
             };
+            let id = if bare {
+                String::new()
+            } else {
+                format!("{} ", win.id)
+            };
             match reset {
                 Some(t) => format!(
-                    "{} {left:.0}% left \u{21BB}{}",
-                    win.id,
+                    "{id}{left:.0}% left \u{21BB}{}",
                     crate::render::countdown(t - now)
                 ),
-                None => format!("{} {left:.0}% left", win.id),
+                None => format!("{id}{left:.0}% left"),
             }
         })
         .collect();
@@ -714,8 +718,17 @@ fn window_text(r: &rank::Ranked, now: i64) -> String {
     }
 }
 
-fn pick_row(n: usize, r: &rank::Ranked, preferred: bool, w: usize, now: i64) -> String {
-    let body = window_text(r, now);
+/// Whether the rows drop the window ids: see [`crate::render::single_window`].
+fn bare_ids(rows: &[rank::Ranked]) -> bool {
+    let sets: Vec<Vec<&Win>> = rows
+        .iter()
+        .map(|r| r.entry.windows.iter().collect())
+        .collect();
+    crate::render::single_window(sets.iter().map(Vec::as_slice))
+}
+
+fn pick_row(n: usize, r: &rank::Ranked, preferred: bool, w: usize, now: i64, bare: bool) -> String {
+    let body = window_text(r, now, bare);
     let note = if r.entry.unavailable {
         "  (unavailable)"
     } else {
@@ -765,10 +778,12 @@ pub fn run_pick(
             say(format!("{p}:"))?;
         }
         let pref = rank::preferred(&live.entries, p).map(|e| e.index.clone());
-        for r in rank::rank(&live.entries, p, strategy, live.now, None) {
+        let ranked = rank::rank(&live.entries, p, strategy, live.now, None);
+        let bare = bare_ids(&ranked);
+        for r in ranked {
             rows.push(r.entry);
             let mark = pref.as_deref() == Some(r.entry.index.as_str());
-            say(pick_row(rows.len(), &r, mark, width, live.now))?;
+            say(pick_row(rows.len(), &r, mark, width, live.now, bare))?;
         }
     }
     let Some(input) = input else {
@@ -822,6 +837,7 @@ pub fn run_choose(live: &Live, provider: &str, strategy: Strategy) -> Result<Vec
     if ranked.is_empty() {
         return refuse("no account to pick from");
     }
+    let bare = bare_ids(&ranked);
     let items: Vec<String> = ranked
         .iter()
         .enumerate()
@@ -841,7 +857,7 @@ pub fn run_choose(live: &Live, provider: &str, strategy: Strategy) -> Result<Vec
                     "{}. {} \u{2014} {}{un}{cur}",
                     i + 1,
                     crate::chooser::sanitize(&r.entry.label, 40),
-                    window_text(r, live.now)
+                    window_text(r, live.now, bare)
                 ),
                 crate::chooser::MAX_ITEM,
             )

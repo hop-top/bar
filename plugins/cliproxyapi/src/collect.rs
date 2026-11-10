@@ -134,11 +134,13 @@ fn parse_listing(inst: &Instance, v: &Value) -> Vec<(Acct, Signals)> {
             .iter()
             .find_map(|k| f[*k].as_str())
             .unwrap_or("");
+        let (label, color) = model::identify(email, &inst.aliases, &inst.rules, n + 1);
         out.push((
             Acct {
                 key: key.into(),
                 provider,
-                label: model::label_for(email, &inst.aliases, n + 1),
+                label,
+                color,
                 priority: f["priority"].as_i64().unwrap_or(0),
                 plan: f["id_token"]["plan_type"].as_str().map(model::plan_name),
                 windows: vec![],
