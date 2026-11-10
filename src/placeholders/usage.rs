@@ -49,17 +49,10 @@ fn rule_for(ctx: &Ctx, target: &str, key: &str) -> Rule {
 
 /// The `usage` windows of the plugin `set usage-source` names, from its
 /// cached default-options output.
-fn source<'a>(ctx: &'a Ctx<'a>) -> Option<&'a (String, crate::plugin::Usage)> {
-    ctx.memo
-        .usage
-        .get_or_init(|| {
-            let name = ctx.config.usage_source.as_deref()?;
-            Some((
-                name.to_string(),
-                crate::plugin::cached_output(ctx, name)?.usage?,
-            ))
-        })
-        .as_ref()
+fn source(ctx: &Ctx) -> Option<(String, crate::plugin::Usage)> {
+    let name = ctx.config.usage_source.as_deref()?;
+    let usage = crate::plugin::default_output(ctx, name)?.usage.clone()?;
+    Some((name.to_string(), usage))
 }
 
 /// Key, window, period in seconds and, for a window a plugin supplied, the
@@ -79,7 +72,7 @@ fn pick(ctx: &Ctx, ty: &str) -> Option<(&'static str, Window, i64, Option<String
         "5h" => usage.five_hour.as_ref(),
         _ => usage.seven_day.as_ref(),
     }?;
-    Some((key, w.clone(), period, Some(name.clone())))
+    Some((key, w.clone(), period, Some(name)))
 }
 
 /// `model` as a file-name part: lowercase letters and digits, at most 16.

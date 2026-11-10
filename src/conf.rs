@@ -160,6 +160,9 @@ pub struct Config {
     /// `set usage-source <plugin>`: the plugin whose `usage` windows
     /// `#{usage}` shows when Claude Code sends no `rate_limits`.
     pub usage_source: Option<String>,
+    /// `set account-source <plugin>`: the plugin whose `account` replaces
+    /// the signed-in account `#{account}` shows.
+    pub account_source: Option<String>,
     /// What a project `.bar.conf` may do (`set project-config`).
     pub project_config: ProjectMode,
     /// `set color-depth`: colours the output uses.
@@ -209,6 +212,7 @@ impl Default for Config {
             service_status: false,
             usage_api: false,
             usage_source: None,
+            account_source: None,
             gitlab_hosts: Vec::new(),
             project_config: ProjectMode::default(),
             color_depth: ColorDepth::default(),

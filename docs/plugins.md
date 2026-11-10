@@ -113,6 +113,7 @@ Stdout is one JSON object:
 ```
 
 - `items` (optional, an array of at most 16 objects) replaces the output's own `text`: each item is an output of its own (`label`, `icon`, `text`, `alt`, `style`, `score`, `metric`, `link`, `label_toggle`) drawn like one, items joined by one space. With `set wrap on`, a line too wide for `COLUMNS` may break between items, never inside one; the next row starts at the left like any wrapped row. Without wrapping the items stay on one row. An item without a string `text`, or with nothing visible, is left out; items do not nest. With `items`, the top-level `text` may be left out (it is not drawn).
+- `account` (optional) names an account for `#{account}`: see [Account](#account).
 - `usage` (optional) carries usage windows for `#{usage}`: see [Usage windows](#usage-windows).
 - `text` (required, a string, unless `items` is given) is stripped of escape and control characters (tabs and line breaks become spaces), line and paragraph separators (U+2028, U+2029) and Unicode format characters (bidi marks and overrides, zero-width spaces, soft hyphens, BOM; the joiners U+200C and U+200D and emoji tag characters are kept); wide characters (CJK, emoji) count as 2 cells. Nothing visible left omits the segment.
 - `alt` (optional) is shown instead of `text` while the plugin's toggle is on: `bar toggle <name>` flips `toggle-<name>` in the state directory, and a click on the text opens `bar://toggle/<name>` once the handler is installed (`bar click install`), unless the output has its own `link` or the placeholder sets `click=none`. Sanitised like `text`; colour, label and icon stay the same. Without `alt` there is no toggle. Both texts come from one render, so a toggle shows at once, without a refresh.
@@ -137,6 +138,10 @@ A plugin that knows a quota Claude Code does not report (a proxy's pool, say) ca
 ```
 
 `used_percentage` is a number, clamped to 0..100; `resets_at` is Unix seconds; each window is optional, and a window without both is ignored. With `set usage-source <plugin>` in the user's config, `#{usage}` shows these windows when Claude Code sends none: see [Plugin windows](config.md#plugin-windows). Only the result for the placeholder's `default` options counts, so a plugin should put `usage` in every output, whatever its options. `text` may be empty.
+
+### Account
+
+`"account": {"id": "a1b2c3", "label": "alice"}`: `id` a stable identifier, `label` what to show (sanitised like `text`); both strings, `label` visibly non-empty. With `set account-source <plugin>` in the user's config, `#{account}` shows the `label` of this output in place of the signed-in account, through the user's `account "<glob>"` rules: see [account](config.md#account-agents-sessions-tmux). As for usage windows, only the result for the placeholder's `default` options counts. A plugin should emit `account` only when it is certain which account is current, since the placeholder replaces what Claude Code reports.
 
 ## Caching and failure
 

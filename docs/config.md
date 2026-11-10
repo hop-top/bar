@@ -51,7 +51,7 @@ A project file comes with the repository, so what it may do is set in your confi
 | `safe` (default) | applied, except: no `%…%` values (commands or environment variables) in placeholder options or `default` lines, no `plugin` lines, no `set update-check`, `set service-status`, `set usage-api`, `set claude-dir` or `set gitlab-hosts`, and no plugin placeholder your config does not name (in a layout, a `default` line or a `plugin` line). Each such line is left out |
 | `full` | applied like your own config, `%cmd%` values and any plugin included |
 
-`set project-config` is read from your config only; in a project file it is left out. So is `set usage-source`, whatever the mode.
+`set project-config` is read from your config only; in a project file it is left out. So are `set usage-source` and `set account-source`, whatever the mode.
 
 `safe` limits what a project file adds, not what your config already allows. Under `safe` a project file can still use every built-in placeholder, including the git placeholders, which may run `git` in the session's directory, and `prs` and `issues`, which run `gh` or `glab` for the repository's remote (in bar's state directory, naming the repository with `-R`, so nothing in the project's directory reaches them), and it can pass options to the plugins your config names, which then run with those options. Use `off` for repositories you do not trust.
 
@@ -59,7 +59,7 @@ A project file comes with the repository, so what it may do is set in your confi
 
 | Directive | Form |
 |-----------|------|
-| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-64) `subagent subagent-hide separator gap wrap max-rows refresh icons icon-width skin skin-glyphs palette color-depth gradient claude-dir compact-at project-config update-check service-status usage-api usage-source gitlab-hosts budget-session budget-today budget-month budget-block budget-warn color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
+| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-64) `subagent subagent-hide separator gap wrap max-rows refresh icons icon-width skin skin-glyphs palette color-depth gradient claude-dir compact-at project-config update-check service-status usage-api usage-source account-source gitlab-hosts budget-session budget-today budget-month budget-block budget-warn color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
 | `default` | `default <placeholder> key=value ...` |
 | `account` | `account "<glob>" <label> <color>` |
 | `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%`; see [Rules](#rules) |
@@ -90,6 +90,7 @@ Quote values with spaces (double quotes; a value is one token). `#` outside quot
 | `service-status` | `off` (default) or `on`: reads the Claude status page every 5 minutes in the background, shown by [`status`](#status) |
 | `usage-api` | `off` (default) or `on`: per-model weekly windows and extra usage from Anthropic's usage endpoint, with Claude Code's sign-in. See [extra and the usage API](#extra-and-the-usage-api) |
 | `usage-source` | A plugin name, or `off` (default): where [usage](#usage) takes windows Claude Code does not send. See [Plugin windows](#plugin-windows). Read from your config only |
+| `account-source` | A plugin name, or `off` (default): the plugin whose `account` [account](#account-agents-sessions-tmux) shows in place of the signed-in account. Read from your config only |
 | `project-config` | `off`, `safe` (default) or `full`: what a project `.bar.conf` may do. See [Project config](#project-config) |
 | `budget-session`, `budget-today`, `budget-month`, `budget-block` | Dollar budget for [budget](#budget): `$20`, `20` or `12.50` (more than zero, at most two decimals); `off` clears it. Unset by default |
 | `budget-warn` | Percent of a budget from which spend takes the warn colour, `1%`-`100%`, default `80%`. See [budget](#budget) |
@@ -704,13 +705,14 @@ Who is signed in, running subagents, other open sessions and the tmux window.
 
 | Placeholder | Option | Default | Meaning |
 |---|---|---|---|
-| `account` | none | | Signed-in account (`oauthAccount.emailAddress` in `.claude.json`): the label and colour of the first matching `account` line, else the email in grey; `api-key` when only `ANTHROPIC_API_KEY` is set; hidden otherwise |
+| `account` | none | | Signed-in account (`oauthAccount.emailAddress` in `.claude.json`): the label and colour of the first matching `account` line, else the email in grey; `api-key` when only `ANTHROPIC_API_KEY` is set; hidden otherwise. A plugin can supply the account instead: see below |
 | `agents` | `names` | `0` | `1` appends the running subagents' types |
 | | `max` | none | Truncate the names with `…` |
 | `sessions` | none | | Live Claude Code sessions as `>2 ?1 v3`: working (warn colour), waiting on you (bad colour, bold), finished a turn (good colour); each part omitted at 0, hidden when all are 0 |
 | `tmux` | `max` | none | `session:window` of the tmux pane bar runs in, muted; truncated to `max` characters; hidden outside tmux |
 
 - `account`: `account "<glob>" <label> <color>` lines are tried in file order; `*` in the glob matches any run of characters. `.claude.json` is read from `CLAUDE_CONFIG_DIR`, else the home dir.
+- `account` with `set account-source <plugin>`: when the [plugin's](plugins.md#account) cached result for its `default` options names an account, `account` shows that one: its `label` is matched against the `account` lines like an email, so the same label and colour rules apply, and without a match the label shows as is. Without such an account (cold cache, none reported, the plugin missing) `account` behaves as before. The cache is read like any plugin's: nothing starts on the render path. With a proxy, the account is the one the proxy prefers, which is not a guarantee about any one request. Read from your config only.
 - `agents` renders `agents 2` (`2` alone when an icon replaces the label), with `names=1` `agents 2 Explore Plan`. It counts subagents tracked by the `bar click hook`; see [Hooks](#hooks).
 - `sessions` reads `<claude dir>/sessions/*.json` (Claude Code's own session files: process id, session id, `busy` status) and keeps those whose process is alive, the current session included. Waiting and finished come from the markers `bar click hook` writes ([Hooks](#hooks)); without the hooks only working sessions count.
 - `tmux` reads `$TMUX` and `$TMUX_PANE`; a background `tmux display-message` resolves the names (cached 30 s, 60 s backoff after a failure), so the first render in a pane is empty.
