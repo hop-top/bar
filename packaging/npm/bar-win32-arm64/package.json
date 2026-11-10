@@ -1,7 +1,7 @@
 {
   "name": "@hop-top/bar-win32-arm64",
   "version": "0.1.0-beta.0",
-  "description": "bar binary for win32 arm64 (aarch64-pc-windows-msvc), installed by @hop-top/bar",
+  "description": "bar and bar-cliproxyapi binaries for win32 arm64 (aarch64-pc-windows-msvc), installed by @hop-top/bar",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -15,7 +15,8 @@
     "arm64"
   ],
   "files": [
-    "bin/bar.exe"
+    "bin/bar.exe",
+    "bin/bar-cliproxyapi.exe"
   ],
   "preferUnplugged": true,
   "publishConfig": {
