@@ -12,7 +12,7 @@ OUT       directory to write; gets one ready-to-publish directory per
 Copies packaging/npm/, checks that every package.json (and each of the
 launcher's optionalDependencies) carries VERSION and that the launcher
 lists exactly the platform packages, verifies each archive against its
-.sha256, unpacks its binaries (bar, bar-cliproxyapi) into the platform package's bin/ and adds
+.sha256, unpacks its binaries (bar, bar-cliproxyapi, bar-routellm) into the platform package's bin/ and adds
 LICENSE to every package. Prints the package directories, platform
 packages first, in publish order.
 """
@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 NPM = ROOT / "packaging" / "npm"
 LAUNCHER = "bar"
 # executables each archive holds; bar finds the plugin in its own directory
-BINARIES = ("bar", "bar-cliproxyapi")
+BINARIES = ("bar", "bar-cliproxyapi", "bar-routellm")
 
 # platform package directory -> release target
 TARGETS = {

@@ -64,7 +64,7 @@ jobs:
       - name: Static binary
         run: |
           set -euo pipefail
-          for name in bar bar-cliproxyapi; do
+          for name in bar bar-cliproxyapi bar-routellm; do
             bin="target/${TARGET}/debug/${name}"
             if readelf -lW "$bin" | grep -q 'INTERP' || readelf -dW "$bin" | grep -q '(NEEDED)'; then
               echo "$bin is not statically linked" >&2
