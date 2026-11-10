@@ -145,6 +145,15 @@ pub fn lock(g: &Guard, path: &Path) -> Option<Held> {
     g.lock(Some(&lock_file(path)))
 }
 
+/// This instance's lock alone, for writing what was learned outside the
+/// proxy's lock (RouteLLM's answers). `None` when it is not free within
+/// `wait` or cannot be made.
+pub fn lock_own(path: &Path, wait: std::time::Duration) -> Option<fsio::Lock> {
+    let lf = lock_file(path);
+    fsio::private_dir(lf.parent()?).ok()?;
+    fsio::lock(&lf, wait).ok().flatten()
+}
+
 pub fn writable(path: &Path) -> bool {
     let Some(dir) = path.parent() else {
         return false;

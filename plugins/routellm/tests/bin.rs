@@ -185,7 +185,11 @@ fn the_action_timeout_and_samples_are_declared() {
     let h = Home::new("decl", &e);
     let v = out_json(&feed(h.cmd().arg("--ext-info").take_mut(), ""));
     for a in ["toggle", "on", "off"] {
-        assert_eq!(v["actions"][a]["timeout"], 30, "{a}");
+        assert_eq!(
+            v["actions"][a]["timeout"],
+            bar_routellm::toggle::WORST_SECS + 20,
+            "{a}"
+        );
         assert_eq!(v["actions"][a]["tokens"], json!(["instance", "to"]));
     }
     for o in [

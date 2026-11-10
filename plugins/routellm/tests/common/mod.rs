@@ -2,6 +2,7 @@
 //! Shared setup: an instance wired to a fake proxy and a fake RouteLLM.
 
 use crate::fake::{cpa, entry, routellm, Cpa, Server};
+use bar_plugin::keyguard::Guard;
 use bar_routellm::config::{self, Instance};
 use serde_json::json;
 use std::path::PathBuf;
@@ -54,4 +55,36 @@ impl Drop for Env {
 
 pub fn healthy() -> Server {
     routellm(true, &["auto", "private", "vision"])
+}
+
+/// Records, at every `/health`, whether any management lock is held.
+pub fn rl_watching_locks(
+    cell: std::sync::Arc<std::sync::Mutex<Option<Vec<std::path::PathBuf>>>>,
+) -> (Server, std::sync::Arc<std::sync::Mutex<Vec<bool>>>) {
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let s2 = seen.clone();
+    let srv = Server::start(move |r| {
+        if r.path == "/health" {
+            let held = cell.lock().unwrap().iter().flatten().any(|p| {
+                bar_plugin::fsio::lock(p, std::time::Duration::ZERO)
+                    .map(|l| l.is_none())
+                    .unwrap_or(false)
+            });
+            s2.lock().unwrap().push(held);
+            return crate::fake::ok(r#"{"status":"online"}"#);
+        }
+        crate::fake::ok(r#"{"data":[{"id":"auto"},{"id":"private"}]}"#)
+    });
+    (srv, seen)
+}
+
+pub fn lock_paths(e: &Env) -> Vec<std::path::PathBuf> {
+    vec![
+        Guard {
+            state_dir: &e.dir,
+            mgmt: &e.inst.management,
+        }
+        .lock_file(),
+        bar_routellm::cache::lock_file(&e.cache_path()),
+    ]
 }

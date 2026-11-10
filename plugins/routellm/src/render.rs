@@ -16,9 +16,8 @@ pub fn actions() -> BTreeMap<String, ActionSpec> {
         description: d.into(),
         tokens: vec!["instance".into(), "to".into()],
         confirm: false,
-        // lock wait (8 s) + provider read, RouteLLM health and models,
-        // change and read-back (3 s each)
-        timeout: 30,
+        // the toggle's worst case, with a margin (the protocol allows 120 s)
+        timeout: crate::toggle::WORST_SECS + 20,
     };
     BTreeMap::from([
         ("toggle".to_string(), a("Switch routing on or off")),
@@ -186,6 +185,9 @@ pub enum Dest {
     Frontier(String),
     /// Nowhere: the alias has no row and RouteLLM is not serving it.
     Blocked,
+    /// Routing is on and RouteLLM is not answering: where the proxy sends
+    /// the request then is not known to the plugin.
+    Down,
 }
 
 /// The destination of `alias` (the proxy's alias of the session's model),
@@ -210,6 +212,7 @@ pub fn destination(s: &Snapshot, alias: &str) -> Option<Dest> {
         .find(|r| r.alias.eq_ignore_ascii_case(alias));
     Some(match (w, row) {
         ("on", _) => Dest::Router(a.tier.clone()),
+        ("down", _) => Dest::Down,
         (_, Some(r)) => Dest::Frontier(r.model.clone()),
         _ => Dest::Blocked,
     })
@@ -311,7 +314,7 @@ pub fn output(s: &Snapshot, inst: &Instance, now: i64, o: &Opts, model_id: &str)
                     Output::text(&format!("{t} {marker}"))
                 }
                 Dest::Frontier(m) => Output::text(&format!("{tier} \u{2192} {}", short_model(m))),
-                Dest::Blocked => Output::styled(&format!("{tier} \u{2717}"), "bad"),
+                Dest::Blocked | Dest::Down => Output::styled(&format!("{tier} \u{2717}"), "bad"),
             };
             if it.style.is_none() && dim {
                 it.style = Some("dim".into());
@@ -685,11 +688,11 @@ mod tests {
             go(&off, "route-private", "{}")[2],
             t("private \u{2717}", Some("bad"))
         );
-        // routing on but RouteLLM down: an alias with a row falls through
+        // routing on but RouteLLM down: no destination is claimed
         let down = snap(false, Some(false), 100);
         assert_eq!(
             go(&down, "route-auto", "{}")[2],
-            t("auto \u{2192} sonnet-5-5", None)
+            t("auto \u{2717}", Some("bad"))
         );
         assert_eq!(
             go(&down, "route-private", "{}")[2],
@@ -732,11 +735,21 @@ mod tests {
     }
 
     #[test]
-    fn the_action_timeout_covers_the_lock_wait_and_every_call() {
-        // lock wait + provider read + health + models + change + read-back
-        let need = bar_plugin::keyguard::LOCK_WAIT.as_secs() + 5 * 3;
+    fn the_action_timeout_covers_the_worst_toggle_with_a_margin() {
+        // two passes, each waiting for the proxy's lock and the instance's
+        // (8 s each); the entry read twice, the change and three read-backs
+        // (3 s each); RouteLLM's health and models (3 s each); the pauses
+        let lock_waits = 2 * 2 * 8;
+        let calls = (2 + 1 + 3) * 3;
+        let probes = 2 * 3;
+        let pauses = 2;
+        let need = lock_waits + calls + probes + pauses;
         for (n, a) in actions() {
-            assert!(a.timeout >= need && a.timeout <= 120, "{n}: {}", a.timeout);
+            assert!(
+                a.timeout >= need + 10 && a.timeout <= 120,
+                "{n}: {} for {need}",
+                a.timeout
+            );
         }
     }
 
