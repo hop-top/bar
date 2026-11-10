@@ -40,7 +40,7 @@ fn cwd_links_in_each_editor_with_spaces_and_unicode() {
         ("cursor", format!("cursor://file{e}/")),
         ("zed", format!("zed://file{e}/")),
     ] {
-        let conf = format!("set left \"#{{cwd[base=1,open={open}]}}\"");
+        let conf = format!("set left \"#{{cwd[base=1;open={open}]}}\"");
         let o = run(&t).conf(&conf).cwd(&d).go();
         assert_eq!(o.plain.trim(), "café 日本", "{open}");
         assert!(o.raw.contains(&link_to(&url)), "{open}: {:?}", o.raw);
@@ -78,7 +78,7 @@ fn without_open_the_output_is_unchanged() {
         .unset("GIT_CONFIG_NOSYSTEM")
         .go();
     let none = run(&t)
-        .conf("set left \"#{cwd[open=none]} #{root[base=1,open=none]} #{repo[open=none]}\"")
+        .conf("set left \"#{cwd[open=none]} #{root[base=1;open=none]} #{repo[open=none]}\"")
         .cwd(&d)
         .unset("GIT_CONFIG_NOSYSTEM")
         .go();
@@ -95,7 +95,7 @@ fn abbreviated_paths_link_the_full_directory() {
     let sub = d.join("alpha/beta/gamma");
     std::fs::create_dir_all(&sub).unwrap();
     let o = run(&t)
-        .conf("set left \"#{cwd[fish=1,depth=2,open=vscode]} #{root[fish=1,open=zed]}\"")
+        .conf("set left \"#{cwd[fish=1;depth=2;open=vscode]} #{root[fish=1;open=zed]}\"")
         .cwd(&sub)
         .unset("GIT_CONFIG_NOSYSTEM")
         .go();
@@ -127,7 +127,7 @@ fn root_links_the_top_level_from_a_subdirectory() {
     let sub = d.join("src/deep");
     std::fs::create_dir_all(&sub).unwrap();
     let o = run(&t)
-        .conf("set left \"#{root[base=1,open=vscode]}\"")
+        .conf("set left \"#{root[base=1;open=vscode]}\"")
         .cwd(&sub)
         // git config env makes the file reader step aside; root needs it
         .unset("GIT_CONFIG_NOSYSTEM")
@@ -170,7 +170,7 @@ fn repo_keeps_its_web_link_and_link_off_wins() {
     let t = Tmp::new();
     let d = repo(&t, "proj");
     let o = run(&t)
-        .conf("set left \"#{repo[open=vscode,link=off]}\"")
+        .conf("set left \"#{repo[open=vscode;link=off]}\"")
         .cwd(&d)
         .go();
     assert_eq!(o.plain.trim(), "proj");
@@ -199,7 +199,7 @@ fn subagent_rows_link_the_subagents_directory() {
         serde_json::to_string(wt.to_str().unwrap()).unwrap()
     );
     let p = subagent::parse(&input);
-    let c = conf::parse("set subagent \"#{cwd[base=1,open=vscode]}\"\n").unwrap();
+    let c = conf::parse("set subagent \"#{cwd[base=1;open=vscode]}\"\n").unwrap();
     let rows = subagent::rows(&p, &c, 0, &ColdRunner, None);
     assert_eq!(rows.len(), 1);
     assert!(rows[0]
@@ -233,7 +233,7 @@ fn check_validates_open() {
 
 #[test]
 fn web_preview_samples_carry_the_link() {
-    let conf = "set left \"#{cwd[open=vscode]} #{root[base=1,open=files]} #{cwd}\"\n";
+    let conf = "set left \"#{cwd[open=vscode]} #{root[base=1;open=files]} #{cwd}\"\n";
     let out = hop_bar::web::render(conf, "{}", 120, 0, "");
     assert!(
         out.contains(&link_to("vscode://file/home/you/src/bar/")),

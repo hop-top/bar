@@ -288,7 +288,7 @@ fn zero_and_bad_options_render_nothing() {
         &t,
         &d,
         &path,
-        "#{repo} #{diff} #{diff[scope=nope]} #{diff[scope=unstaged,show=added]}",
+        "#{repo} #{diff} #{diff[scope=nope]} #{diff[scope=unstaged;show=added]}",
     );
     assert_eq!(out, "proj");
 }

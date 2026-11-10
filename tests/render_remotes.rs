@@ -103,7 +103,7 @@ fn origin_upstream_fork_from_files_without_spawning() {
     let o = render(
         &t,
         &d,
-        "set left \"#{origin[show=host,owner,repo,link=no]}|#{fork[show=repo]}|#{upstream[link=off,max=5]}\"",
+        "set left \"#{origin[show=host,owner,repo;link=no]}|#{fork[show=repo]}|#{upstream[link=off;max=5]}\"",
         &path,
     );
     assert_eq!(one(&o.plain), "github.com/me/proj|proj|upst…");
@@ -253,7 +253,7 @@ fn fish_branch_keeps_the_full_name_in_the_link() {
     let o = render(
         &t,
         &d,
-        "set left \"#{branch[fish=1]}|#{branch[fish=2,full=2]}|#{branch[fish=1,max=6]}\"",
+        "set left \"#{branch[fish=1]}|#{branch[fish=2;full=2]}|#{branch[fish=1;max=6]}\"",
         &path,
     );
     assert_eq!(one(&o.plain), "f/s/very-long|fe/sub/very-long|f/s/v…");
@@ -276,7 +276,7 @@ fn fish_and_depth_paths() {
     let (path, _) = no_git(&t);
     let o = run(&t)
         .conf(
-            "set left \"#{cwd[fish=1]}|#{cwd[depth=2]}|#{root[fish=1]}|#{cwd[fish=1,depth=3]}|#{root[base=1,fish=1]}\"",
+            "set left \"#{cwd[fish=1]}|#{cwd[depth=2]}|#{root[fish=1]}|#{cwd[fish=1;depth=3]}|#{root[base=1;fish=1]}\"",
         )
         .env("PATH", &path)
         .stdin(&format!(

@@ -89,21 +89,17 @@ pub fn placeholders(seg: &str) -> Vec<Ph> {
         .collect()
 }
 
-/// Option keys whose comma list a bare part continues.
-const LIST_KEYS: [&str; 3] = ["show", "alt", "checks"];
-
 /// Why `value` cannot be written as option `key`: the config file has no
-/// way to escape a double quote, and `,`, `]` and `}` end a value unless
-/// the key takes a comma list.
+/// way to escape a double quote, and `;`, `]` and `}` end a value (a list
+/// separates its items with `,`).
 pub fn value_error(key: &str, value: &str) -> Option<String> {
     if value.contains('"') {
         return Some("a value cannot hold \"".into());
     }
-    if key.is_empty() || key.contains(|c: char| "=,[]{}\" ".contains(c)) {
+    if key.is_empty() || key.contains(|c: char| "=;[]{}\" ".contains(c)) {
         return Some(format!("invalid option name `{key}`"));
     }
-    let list = LIST_KEYS.contains(&key) && !value.contains('=');
-    let bad: &[char] = if list { &[']', '}'] } else { &[',', ']', '}'] };
+    let bad: &[char] = &[';', ']', '}'];
     value.contains(bad).then(|| {
         format!(
             "`{key}` cannot hold {}",
@@ -115,23 +111,20 @@ pub fn value_error(key: &str, value: &str) -> Option<String> {
     })
 }
 
-/// `#{name}` or `#{name[k=v,...]}`; an empty value is written as the bare key.
+/// `#{name}` or `#{name[k=v;...]}`; an empty value is written as the bare key.
 pub fn write_placeholder(name: &str, options: &Options) -> String {
     if options.is_empty() {
         return format!("#{{{name}}}");
     }
     let mut parts: Vec<String> = Vec::new();
-    let mut after_list = false;
     for (k, v) in options.iter() {
-        // a bare key after a list option would read as one more list item
-        parts.push(if v.is_empty() && !after_list {
+        parts.push(if v.is_empty() {
             k.clone()
         } else {
             format!("{k}={v}")
         });
-        after_list = LIST_KEYS.contains(&k.as_str());
     }
-    format!("#{{{name}[{}]}}", parts.join(","))
+    format!("#{{{name}[{}]}}", parts.join(";"))
 }
 
 /// `seg` with its placeholder at `ph` given new options.

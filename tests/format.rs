@@ -47,7 +47,7 @@ fn splits_text_and_placeholders() {
 
 #[test]
 fn parses_options() {
-    let t = parse("#{prs[limit=3,author=@me]}").unwrap();
+    let t = parse("#{prs[limit=3;author=@me]}").unwrap();
     let (name, o) = ph(&t[0]);
     assert_eq!(name, "prs");
     assert_eq!(o.get("limit"), Some("3"));
@@ -56,7 +56,7 @@ fn parses_options() {
 
 #[test]
 fn value_keeps_pipes_and_ampersands() {
-    let t = parse(r#"#{issues[label=(a|b)&"c d",x=!y]}"#).unwrap();
+    let t = parse(r#"#{issues[label=(a|b)&"c d";x=!y]}"#).unwrap();
     let (_, o) = ph(&t[0]);
     assert_eq!(o.get("label"), Some(r#"(a|b)&"c d""#));
     assert_eq!(o.get("x"), Some("!y"));
@@ -64,7 +64,7 @@ fn value_keeps_pipes_and_ampersands() {
 
 #[test]
 fn comma_inside_quotes_is_not_a_separator() {
-    let t = parse(r#"#{issues[label="a,b",limit=2]}"#).unwrap();
+    let t = parse(r#"#{issues[label="a,b";limit=2]}"#).unwrap();
     let (_, o) = ph(&t[0]);
     assert_eq!(o.get("label"), Some(r#""a,b""#));
     assert_eq!(o.get("limit"), Some("2"));
@@ -164,8 +164,8 @@ fn configured_separator_is_trimmed() {
 }
 
 #[test]
-fn bare_part_continues_previous_list_value() {
-    let t = parse("#{usage[type=5h,show=bar,pct,width=3]}").unwrap();
+fn a_comma_list_is_one_value() {
+    let t = parse("#{usage[type=5h;show=bar,pct;width=3]}").unwrap();
     let (_, o) = ph(&t[0]);
     assert_eq!(o.get("show"), Some("bar,pct"));
     assert_eq!(o.get("type"), Some("5h"));
@@ -175,24 +175,33 @@ fn bare_part_continues_previous_list_value() {
 
 #[test]
 fn bare_flag_after_keyed_option_stays_a_flag() {
-    let t = parse("#{x[limit=3,verbose]}").unwrap();
+    let t = parse("#{x[limit=3;verbose]}").unwrap();
     let (_, o) = ph(&t[0]);
     assert_eq!(o.get("limit"), Some("3"));
     assert_eq!(o.get("verbose"), Some(""));
 }
 
 #[test]
-fn list_continuation_follows_the_last_key_set() {
-    let t = parse("#{usage[show=bar,a=1,show=pct,time]}").unwrap();
+fn every_option_may_hold_a_comma_list() {
+    let t = parse("#{usage[show=bar;a=1;show=pct,time]}").unwrap();
     let (_, o) = ph(&t[0]);
     assert_eq!(o.get("show"), Some("pct,time"));
     assert_eq!(o.get("a"), Some("1"));
-    let t = parse("#{usage[alt=pct,time,show=bar,pct]}").unwrap();
+    let t = parse("#{usage[alt=pct,time;show=bar,pct]}").unwrap();
     let (_, o) = ph(&t[0]);
     assert_eq!(o.get("alt"), Some("pct,time"));
     assert_eq!(o.get("show"), Some("bar,pct"));
-    let t = parse("#{prs[checks=fail,pending,limit=3]}").unwrap();
+    let t = parse("#{prs[checks=fail,pending;limit=3]}").unwrap();
     let (_, o) = ph(&t[0]);
     assert_eq!(o.get("checks"), Some("fail,pending"));
     assert_eq!(o.get("limit"), Some("3"));
+}
+
+#[test]
+fn any_option_takes_a_comma_list_and_quotes_protect_the_separator() {
+    let t = parse("#{p[windows=5h,7d;label=\"a;b\";flag]}").unwrap();
+    let (_, o) = ph(&t[0]);
+    assert_eq!(o.get("windows"), Some("5h,7d"));
+    assert_eq!(o.get("label"), Some("\"a;b\""));
+    assert_eq!(o.get("flag"), Some(""));
 }

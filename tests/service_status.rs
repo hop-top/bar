@@ -312,7 +312,7 @@ fn config_values_guard_and_check() {
     assert!(e[0].message.contains("service-status"), "{e:?}");
     for l in [
         "set left \"#{status}\"\n",
-        "set left \"#{status[show=state,text,strip,components=code|api,ok=1,hours=4,max=30,link=false]}\"\n",
+        "set left \"#{status[show=state,text,strip;components=code|api;ok=1;hours=4;max=30;link=false]}\"\n",
     ] {
         let r = hop_bar::check::check_text(l, None, &[]);
         assert!(!r.has_errors(), "{}", r.to_text());

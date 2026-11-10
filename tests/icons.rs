@@ -133,7 +133,7 @@ fn usage_windows_get_distinct_icons() {
         &t,
         &conf(
             "set icons emoji",
-            "#{usage[type=5h,view=pct]}|#{usage[type=7d,view=pct]}",
+            "#{usage[type=5h;view=pct]}|#{usage[type=7d;view=pct]}",
         ),
         &s,
     );

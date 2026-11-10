@@ -24,7 +24,7 @@ Search order, first existing wins:
 No file: the built-in layout, which is
 
 ```text
-set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3,author=@me]} │ #{issues[limit=3,assignee=@me]}"
+set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3;author=@me]} │ #{issues[limit=3;assignee=@me]}"
 set center "#{usage[type=5h]} │ #{usage[type=7d]}"
 set right "#{account}"
 ```
@@ -107,7 +107,7 @@ Quote values with spaces (double quotes; a value is one token). `#` outside quot
 
 | Part | Meaning |
 |---|---|
-| `<target>` | `usage[type=5h]`, `usage[type=7d]` or `usage[type=7d,model=<name>]` (spelled exactly so), `extra`, `spend`, or a plugin placeholder name that emits `metric` ([plugins](plugins.md#render)) |
+| `<target>` | `usage[type=5h]`, `usage[type=7d]` or `usage[type=7d;model=<name>]` (spelled exactly so), `extra`, `spend`, or a plugin placeholder name that emits `metric` ([plugins](plugins.md#render)) |
 | `early warn=X bad=Y` | Before the final stretch: score 0 at or below `bad` left, 50 at `warn`, 100 once what is left reaches the share of the window still to run. Both floors rise with the time left: `warn` to at least half and `bad` to at least a fifth of that share, so spending ahead of time turns amber, then red |
 | `early pace` | Same as `early warn=20% bad=5%` |
 | `final=<duration>` | Length of the final stretch before the reset or expiry: `s`, `m`, `h` or `d` |
@@ -129,12 +129,12 @@ set right "#{usage[type=5h]}"
 
 ## Placeholders
 
-`#{name[key=value,key=value]}`. Inline options override the matching `default` line. Defaults below are what the code applies when an option is unset. Plugins: see [plugins](plugins.md).
+`#{name[key=value;key=value]}`. Inline options override the matching `default` line. Defaults below are what the code applies when an option is unset. Plugins: see [plugins](plugins.md).
 
 - The `separator` (default `│`) splits a group into segments; a segment whose placeholders all render empty is dropped with its text.
 - Other text is drawn muted, and only beside a non-empty placeholder: `#{repo}:#{branch}` loses the colon when the branch is empty, and `#{branch} #{dirty} #{ahead}` on a clean tree reads `main ↑2` (one space kept between two values).
-- Double quotes protect `,`, `]` and `}` inside a value: `#{issues[label="a,b"]}`.
-- A bare word is an option with an empty value. After `show`, `alt` or `checks`, or an option a plugin declares as a [list](plugins.md#--ext-info) (unless it names another of the plugin's options), it continues that comma list instead: `#{usage[show=time,pct,width=8]}` sets `show` to `time,pct`.
+- Double quotes protect `;`, `]` and `}` inside a value: `#{issues[label="a;b"]}`.
+- Options are separated by `;`. A value that is a list separates its items with `,`: `#{usage[show=time,pct;width=8]}` sets `show` to `time,pct` and `width` to `8`. A bare word is an option with an empty value.
 - An unknown core placeholder name is looked up as a plugin; `bar check` reports names that are neither.
 
 ### Session
@@ -177,7 +177,7 @@ Fields of the session: model, effort, context, cost and the rest of the statusli
 
 Context window use: percentage, bar, token counts, room before auto-compaction, the cache split of the last request and growth per request.
 
-`#{ctx[show=pct, of=window|compact, count=used|left, glyphs=blocks, color=solid|gradient, width=5, click=none]}`
+`#{ctx[show=pct;of=window|compact;count=used|left;glyphs=blocks;color=solid|gradient;width=5;click=none]}`
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -232,7 +232,7 @@ The result is capped at the context window. When it lies below the window, `CLAU
 
 The 5-hour or weekly window: time to reset, a bar of what is left, percentages, projections and a sparkline, coloured by pace.
 
-`#{usage[type=5h|7d|h|d, model=<name>, show=time,bar, alt=time,pct, count=left|used, glyphs=blocks, color=solid|gradient, width=5, click=toggle|none]}`
+`#{usage[type=5h|7d|h|d;model=<name>;show=time,bar;alt=time,pct;count=left|used;glyphs=blocks;color=solid|gradient;width=5;click=toggle|none]}`
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -280,7 +280,7 @@ set center "#{usage[type=5h]} │ #{usage[type=7d]}"
 - Needs `set usage-api on`; the numbers come from the [usage API](#the-usage-api), since the statusline JSON has the overall windows only. Off, or before the first fetch, it renders nothing.
 - `model` matches the endpoint's model name case-insensitively as a substring (`opus` matches `Opus`); the windows the endpoint reports depend on the plan. A family it does not report renders nothing.
 - Weekly only: `type=5h` with `model` renders nothing.
-- Colour: `rule usage[type=7d,model=<name>]` (the name in lowercase letters and digits), else `rule usage[type=7d]`, else the built-in weekly rule.
+- Colour: `rule usage[type=7d;model=<name>]` (the name in lowercase letters and digits), else `rule usage[type=7d]`, else the built-in weekly rule.
 - The click toggle is the `7d` one (`bar toggle 7d`), shared with the overall weekly window. Spark samples go to `hist-7d-<name>`.
 - Numbers older than an hour (no successful fetch since) are not shown.
 
@@ -380,7 +380,7 @@ State lives in the per-transcript file of [`tokens`](#tokens-cache-cachettl): th
 
 Estimated spend for today and the calendar month, from every local transcript.
 
-`#{spendhist[period=today|month|both,tz=local|utc]}`
+`#{spendhist[period=today|month|both;tz=local|utc]}`
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -435,13 +435,13 @@ Snapshot fetch:
 
 Spend against a dollar budget for the session, today, this month or the 5-hour block, coloured as it nears the limit.
 
-`#{budget[type=session|today|month|block, show=ratio,bar, count=used|left, glyphs=blocks, width=5, tz=local|utc]}`
+`#{budget[type=session|today|month|block;show=ratio,bar;count=used|left;glyphs=blocks;width=5;tz=local|utc]}`
 
 ```text
 set budget-today $20
 set budget-block $8
 set budget-warn 75%
-set right "#{budget[type=today]} │ #{budget[type=block,show=pct,gauge]}"
+set right "#{budget[type=today]} │ #{budget[type=block;show=pct,gauge]}"
 ```
 
 | Option | Default | Meaning |
@@ -482,7 +482,7 @@ Colour:
 
 `#{extra}`: extra usage (usage past the plan's limits, billed per use) this month, e.g. `$12.34/$50.00`. Needs `set usage-api on`.
 
-`#{extra[show=used,limit, count=used|left, glyphs=blocks, width=5]}`
+`#{extra[show=used,limit;count=used|left;glyphs=blocks;width=5]}`
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -586,7 +586,7 @@ Links point at the `origin` remote's web address: ssh and scp remotes become `ht
 
 - Widths are terminal cells: a two-cell character (`機`) fills `fish=2`; a component always keeps at least one character, so `fish=1` keeps `機` too. Emoji sequences and combining accents stay whole.
 - A leading `.` is kept in addition (`.config` → `.c`), as are `~` and a Windows drive (`C:`). Separators stay as written (`\` on Windows).
-- `depth` (paths only) drops leading directories first, then `fish` applies to what is left: `#{cwd[depth=3,fish=1]}` gives `…/b/d/x` for `~/src/bar/docs/x`.
+- `depth` (paths only) drops leading directories first, then `fish` applies to what is left: `#{cwd[depth=3;fish=1]}` gives `…/b/d/x` for `~/src/bar/docs/x`.
 - `max` on `branch` applies after `fish`.
 
 #### Opening directories
@@ -729,7 +729,7 @@ Who is signed in, running subagents, other open sessions and the tmux window.
 
 ### status
 
-`#{status[show=state|text|strip, components=code|api, ok=0, hours=6, max=40, link=true]}`: the state of the Claude services from [status.claude.com](https://status.claude.com). Hidden while everything is operational.
+`#{status[show=state|text|strip;components=code|api;ok=0;hours=6;max=40;link=true]}`: the state of the Claude services from [status.claude.com](https://status.claude.com). Hidden while everything is operational.
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -951,7 +951,7 @@ Skin separators, `set skin-glyphs`: `nerd` (default) uses the Nerd Font / Powerl
 - An explicit `set color.good|warn|bad` or `set ramp` beats the [palette](#palettes) wherever it appears in the file.
 - `account "<glob>" <label> <color>` sets the label and colour [`account`](#account-agents-sessions-tmux) shows.
 - The usage colour follows the pace score of `rule usage[...]`; see [usage](#usage).
-- `fg=<colour>` paints a whole placeholder value in one colour, its label, icon and own colours included; `bold` draws it bold: `#{repo[fg=accent,bold]}`. Inside a quoted layout a hex value needs no quotes of its own: `set left "#{model[fg=#d08770]}"`.
+- `fg=<colour>` paints a whole placeholder value in one colour, its label, icon and own colours included; `bold` draws it bold: `#{repo[fg=accent;bold]}`. Inside a quoted layout a hex value needs no quotes of its own: `set left "#{model[fg=#d08770]}"`.
 
 ### Colour depth
 

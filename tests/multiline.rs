@@ -191,7 +191,7 @@ fn wrap_off_is_todays_layout() {
 
 #[test]
 fn wrap_off_matches_plain_goldens() {
-    let l = "set left \"#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3,author=@me]} │ #{issues[limit=3,assignee=@me]}\"\nset center \"#{dirty} │ #{ahead}\"\nset right \"#{account}\"\nset wrap off\n";
+    let l = "set left \"#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3;author=@me]} │ #{issues[limit=3;assignee=@me]}\"\nset center \"#{dirty} │ #{ahead}\"\nset right \"#{account}\"\nset wrap off\n";
     for cols in [200, 120, 80, 50, 20] {
         let p = format!(
             "{}/tests/fixtures/skins/plain-base-{cols}.txt",

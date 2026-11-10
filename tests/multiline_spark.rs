@@ -60,8 +60,8 @@ fn colours(row: &str) -> usize {
     v.len()
 }
 
-const SPARK_G: &str = "#{usage[type=5h,show=spark,color=gradient]}";
-const BAR_G: &str = "#{usage[type=5h,show=gauge,bar,color=gradient,width=8]}";
+const SPARK_G: &str = "#{usage[type=5h;show=spark;color=gradient]}";
+const BAR_G: &str = "#{usage[type=5h;show=gauge,bar;color=gradient;width=8]}";
 
 #[test]
 fn spark_gauge_and_gradient_render_on_every_line() {

@@ -113,7 +113,7 @@ pub fn render_models(
         }
         let win = models(model.trim())?;
         let mk = model_key(model);
-        let rule = rule_for(ctx, &format!("usage[type=7d,model={mk}]"), "7d");
+        let rule = rule_for(ctx, &format!("usage[type=7d;model={mk}]"), "7d");
         return render_window(
             ctx,
             opts,

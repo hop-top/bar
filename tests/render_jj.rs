@@ -104,7 +104,7 @@ fn max_truncates_the_description() {
     let d = workspace(&t, "proj");
     seed(&t, &d, SAMPLE);
     let o = run(&t)
-        .conf("set left \"#{jj[show=desc,max=5]}\"")
+        .conf("set left \"#{jj[show=desc;max=5]}\"")
         .env("PATH", "/nonexistent")
         .cwd(&d)
         .go();
@@ -249,7 +249,7 @@ fn check_accepts_options_and_warns_without_jj() {
     let t = Tmp::new();
     t.write(
         "xdg/bar/bar.conf",
-        "set left \"#{jj[show=change,desc,ttl=30,max=20]}\"\n",
+        "set left \"#{jj[show=change,desc;ttl=30;max=20]}\"\n",
     );
     let (iso, cwd) = common::isolation(t.path());
     let (path, _) = fake_jj(&t, SAMPLE);

@@ -9,7 +9,7 @@ use render_fx::*;
 
 use hop_bar::check::{check_text, Level};
 
-const CONF: &str = "set color-depth auto\nset left \"#{model[fg=#ff8800,bold]}\"";
+const CONF: &str = "set color-depth auto\nset left \"#{model[fg=#ff8800;bold]}\"";
 const STDIN: &str = r#"{"model":{"display_name":"Opus"}}"#;
 
 fn render(vars: &[(&'static str, &str)]) -> String {
@@ -64,7 +64,7 @@ fn default_depth_honours_no_color_and_dumb_terminals() {
     let go = |k: &'static str, v: &str| {
         let t = Tmp::new();
         run(&t)
-            .conf("set left \"#{model[fg=75,bold]}\"")
+            .conf("set left \"#{model[fg=75;bold]}\"")
             .stdin(STDIN)
             .env(k, v)
             .go()
@@ -87,7 +87,7 @@ fn errors(conf: &str) -> Vec<String> {
 
 #[test]
 fn check_validates_styling_options() {
-    let ok = "set left \"#{model[fg=#ff8800,bold,gradient=ember]} #{ctx[bg=good,fg=bright-cyan,gradient=1:#00ff00:blue]}\"\ndefault repo fg=accent bold=off\n";
+    let ok = "set left \"#{model[fg=#ff8800;bold;gradient=ember]} #{ctx[bg=good;fg=bright-cyan;gradient=1:#00ff00:blue]}\"\ndefault repo fg=accent bold=off\n";
     assert_eq!(errors(ok), Vec::<String>::new());
     for (opt, want) in [
         ("fg=pink", "invalid fg `pink`"),

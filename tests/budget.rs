@@ -294,7 +294,7 @@ fn check_validates_settings_options_and_missing_budgets() {
             .map(|i| (i.level, i.line, i.message))
             .collect::<Vec<_>>()
     };
-    let ok = "set budget-today $20\nset budget-warn 75%\nset left \"#{budget[type=today,show=ratio,pct,bar,glyphs=dots,width=8,count=left,tz=utc]}\"\n";
+    let ok = "set budget-today $20\nset budget-warn 75%\nset left \"#{budget[type=today;show=ratio,pct,bar;glyphs=dots;width=8;count=left;tz=utc]}\"\n";
     assert!(issues(ok).is_empty(), "{:?}", issues(ok));
     let bad = issues("set budget-today twenty\nset budget-warn 120%\n");
     assert_eq!(bad.len(), 2, "{bad:?}");

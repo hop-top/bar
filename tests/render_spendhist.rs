@@ -148,7 +148,7 @@ fn cli_end_to_end_with_background_job() {
     )
     .unwrap();
     let conf = format!(
-        "set claude-dir \"{}\"\nset left \"#{{spendhist[tz=utc,period=today]}}\"",
+        "set claude-dir \"{}\"\nset left \"#{{spendhist[tz=utc;period=today]}}\"",
         claude.display()
     );
     let first = run(&t).conf(&conf).go().plain.trim().to_string();

@@ -99,7 +99,7 @@ The web configurator runs bar's renderer in the browser, where no plugin can run
 
 - `options`: inline options over `default <name>` lines, `%…%` expanded, validated against the schema and typed, schema defaults filled in. An unknown key or a bad value omits the segment.
 - `session`: fields of the statusline JSON. `cwd` is `workspace.current_dir`, else `cwd`; `model` is `model.display_name`, else `model.id`; `model_id` is `model.id`; `effort` is `effort.level`; `context_used` is `context_window.used_percentage` (`null` when absent); `five_hour` / `seven_day` are `rate_limits.five_hour` / `rate_limits.seven_day` (`null` when absent). Missing strings are `""`.
-- `show`, `alt` and `checks` are list options for every placeholder, plugins included: a bare part after one continues its comma list, so `#{name[show=a,b]}` sends `show` as `a,b`, and `#{name[show=a,verbose]}` sends `show` as `a,verbose` rather than a separate `verbose` flag. Avoid those names for other kinds of option, or expect a comma list; put flags before them.
+- Options are separated by `;` and a list value separates its items with `,`: `#{name[show=a,b;verbose]}` sends `show` as `a,b` and `verbose` as an empty flag.
 - `config`: the plugin's own `plugin <name> k=v` line, as strings, without `ttl`. Nothing else from the config or the environment goes in; secrets stay in the keychain, and config holds only entry names.
 - `env`: only for plugins declaring `inputs.env`: the declared variables that are set, as strings; unset ones are absent. The key is absent without a declaration.
 - `columns`: `COLUMNS`, or `null`.
@@ -215,20 +215,20 @@ The session's track comes from `session.record`, which `bar click hook` keeps pe
 | `icon-all` | U+F45E (nf-oct-checklist) | Same, whole project. |
 | `click` | `toggle` | `none` drops the toggle and mark links (core option). |
 
-A mark precedes the count and shows what it covers: `◉` (U+25C9) for the session's track, `☰` (U+2630) for the whole project, both one cell wide (East Asian Width neutral, present in common monospace fonts); the label is drawn dim before `text`. With `set icons` not `none` the Nerd Font glyphs nf-oct-milestone (U+F45D, track) and nf-oct-checklist (U+F45E, whole project) replace the label. The plugin cannot tell which icon set is active: an output icon shows whenever icons are on, so `set icons emoji` also draws the Nerd Font glyphs, which need a Nerd Font. With emoji, set `icon-track` / `icon-all` (for example `#{tlc[icon-track=🎯,icon-all=📋]}`; at most 2 cells), or `icon=none` on the placeholder to fall back to the labels; `icon=<glyph>` on the placeholder beats both icons and so drops the distinction. An empty `label-*` or `icon-*` draws no mark for that scope. The mark follows the scope actually counted: `scope=track` without a session track shows the project mark.
+A mark precedes the count and shows what it covers: `◉` (U+25C9) for the session's track, `☰` (U+2630) for the whole project, both one cell wide (East Asian Width neutral, present in common monospace fonts); the label is drawn dim before `text`. With `set icons` not `none` the Nerd Font glyphs nf-oct-milestone (U+F45D, track) and nf-oct-checklist (U+F45E, whole project) replace the label. The plugin cannot tell which icon set is active: an output icon shows whenever icons are on, so `set icons emoji` also draws the Nerd Font glyphs, which need a Nerd Font. With emoji, set `icon-track` / `icon-all` (for example `#{tlc[icon-track=🎯;icon-all=📋]}`; at most 2 cells), or `icon=none` on the placeholder to fall back to the labels; `icon=<glyph>` on the placeholder beats both icons and so drops the distinction. An empty `label-*` or `icon-*` draws no mark for that scope. The mark follows the scope actually counted: `scope=track` without a session track shows the project mark.
 
 The mark is a toggle (`label_toggle: "scope"`, link `bar://toggle/tlc.scope`, with the click handler installed): `bar toggle tlc.scope` inverts the scope, track to project and project to track. Without a session track the project stays counted, whatever the toggle. The flag arrives as `toggles.scope`; the text toggle (count and track name) is independent. After a flip the new count shows at the next render once the plugin has run for it, not at ttl.
 
 `#{tlc[scope=all]}` counts the project; `#{tlc[status=DONE]}` counts within the tasks `tlc` lists for that status; `#{tlc[show=track]}` shows the slug by default and the count when toggled.
 
 ```
-set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3,author=@me]} │ #{tlc}"
+set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3;author=@me]} │ #{tlc}"
 ```
 
 That is the built-in `left` with `#{issues[...]}` replaced by `#{tlc}`. To keep issues and add tasks:
 
 ```
-set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3,author=@me]} │ #{issues[limit=3,assignee=@me]} │ #{tlc}"
+set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3;author=@me]} │ #{issues[limit=3;assignee=@me]} │ #{tlc}"
 ```
 
 ### `bar-claude-credits`
@@ -247,7 +247,7 @@ set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3,a
 ```
 plugin claude-credits org=00000000-0000-0000-0000-000000000000 keychain=claude-console-session-work
 rule claude-credits early pace final=3d bad=$50
-set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3,author=@me]} │ #{tlc}"
+set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3;author=@me]} │ #{tlc}"
 set center "#{usage[type=5h]} │ #{usage[type=7d]} │ #{claude-credits}"
 ```
 
@@ -261,4 +261,4 @@ set center "#{usage[type=5h]} │ #{usage[type=7d]} │ #{claude-credits}"
 
 - `ci`: option `name=1` appends the workflow name (`#{ci[name=1]}`). It runs `gh run list --branch <branch> --limit 1` in `session.cwd`. Empty text hides the segment without `gh`, outside a repo, with no git remote, on a detached HEAD or with no runs; a failed `gh` call (network, auth) exits non-zero and keeps the last value. The cache key has no branch, so after a branch switch an outage can show the previous branch's state until `gh` answers.
 - `mem`: no options. An unreadable source exits non-zero without output.
-- `health`: option `url` (`http` or `https`, no userinfo, no spaces or quotes) is required; option `label` is drawn dim before the mark: `#{health[url=https://example.com/up,label=api]}`. A status below 400 is up, so a redirect (3xx) counts as up and is not followed; a timeout (2 s) or error is down. The URL goes to `curl` on stdin, never in arguments. A bad or missing `url` exits non-zero with no output.
+- `health`: option `url` (`http` or `https`, no userinfo, no spaces or quotes) is required; option `label` is drawn dim before the mark: `#{health[url=https://example.com/up;label=api]}`. A status below 400 is up, so a redirect (3xx) counts as up and is not followed; a timeout (2 s) or error is down. The URL goes to `curl` on stdin, never in arguments. A bad or missing `url` exits non-zero with no output.

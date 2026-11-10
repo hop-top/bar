@@ -169,7 +169,7 @@ fn core_parses_what_the_plugin_prints_and_renders_it() {
     // options typed by the core's schema reach the plugin and shape the output
     let mut opts = Options::default();
     for (k, v) in [
-        ("windows", "7d+5h"),
+        ("windows", "7d,5h"),
         ("compact", "true"),
         ("count", "used"),
         ("pool", "max"),
@@ -183,4 +183,22 @@ fn core_parses_what_the_plugin_prints_and_renders_it() {
     let out = plugin::parse_output(&run(path, None, input)).expect("render output");
     assert_eq!(out.items[1].text.split('\u{B7}').next(), Some("50%"));
     let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_layout_passes_comma_lists_and_semicolon_options_to_the_plugin() {
+    let raw = serde_json::to_string(&bar_cliproxyapi::render::ext_info()).unwrap();
+    let info = plugin::parse_info(&raw).unwrap();
+    let hop_bar::format::Token::Placeholder { options, .. } =
+        hop_bar::format::parse("#{cliproxyapi[windows=5h,7d;count=used;show=label,pct]}")
+            .unwrap()
+            .pop()
+            .unwrap()
+    else {
+        panic!()
+    };
+    let v = plugin::validate(&info.options, &options).unwrap();
+    assert_eq!(v["windows"], "5h,7d");
+    assert_eq!(v["count"], "used");
+    assert_eq!(v["show"], "label,pct");
 }

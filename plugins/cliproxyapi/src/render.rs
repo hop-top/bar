@@ -160,14 +160,9 @@ impl Default for Opts {
 }
 
 /// A list option: a comma list as a string, or a JSON array of strings.
-/// `+`, `/`, `|` and spaces separate too, since a layout's own commas split
-/// placeholder options (`windows=5h+7d`).
 fn list(v: Option<&Value>) -> Option<Vec<String>> {
     let parts: Vec<String> = match v? {
-        Value::String(s) => s
-            .split(|c: char| c == ',' || c == '+' || c == '/' || c == '|' || c.is_whitespace())
-            .map(String::from)
-            .collect(),
+        Value::String(s) => s.split(',').map(|p| p.trim().to_string()).collect(),
         Value::Array(a) => a
             .iter()
             .filter_map(|x| x.as_str().map(String::from))
@@ -774,7 +769,7 @@ mod tests {
     #[test]
     fn options_parse_from_the_render_input() {
         let i: RenderInput = serde_json::from_str(
-            r#"{"options":{"windows":"7d+5h","show":"label,pct","count":"used","label":"index",
+            r#"{"options":{"windows":"7d,5h","show":"label,pct","count":"used","label":"index",
                 "sort":"name","accounts":"a,2","compact":true,"stale":"hide","link":"x://{account}","pool":"max"}}"#,
         )
         .unwrap();

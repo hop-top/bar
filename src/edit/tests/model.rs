@@ -87,7 +87,7 @@ fn set_option_on_selected_placeholder() {
     assert_eq!(ed.segments(0)[2], "#{repo}:#{branch[max=20]}");
     assert_eq!(ed.set_option("max", None), Ok(true));
     assert_eq!(ed.text(), CONF);
-    assert!(ed.set_option("label", Some("a,b")).is_err());
+    assert!(ed.set_option("label", Some("a;b")).is_err());
     assert_eq!(ed.text(), CONF);
 }
 

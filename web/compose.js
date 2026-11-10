@@ -210,7 +210,7 @@ const Compose = (() => {
         el("span", { className: "badge", textContent: l.sep ? "separator" : "text" }),
       );
     } else {
-      const summary = t.options.map(([k, v]) => (v === "" ? k : `${k}=${v}`)).join(",");
+      const summary = t.options.map(([k, v]) => (v === "" ? k : `${k}=${v}`)).join(";");
       name = t.name;
       main = el("button", { type: "button", className: "name", textContent: summary ? `${t.name}[${summary}]` : t.name });
     }
