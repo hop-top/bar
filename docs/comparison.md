@@ -94,6 +94,8 @@ All four read Claude Code's status-line JSON and show the model, context-window 
 |---|---|---|---|---|
 | Agents, sessions | `agent`; `agents`: running subagents with types (hooks); `sessions`: live sessions working, waiting, finished; own row under each subagent (`subagentStatusLine`): status, name, task, model, tokens, elapsed time | — | `agent` name | `agent`; running agents (companion mod); own line under each background task (`subagentStatusLine`) |
 | Account | `account`: email mapped to label and colour by glob; `api-key` | account email | via the `env` segment | — |
+| Proxy quota per account | `bar-cliproxyapi` plugin: each account behind a CLIProxyAPI proxy with its windows and resets, pooled into `usage` for the status line | — | — | — |
+| Account switching | `bar-cliproxyapi use`: prefer one account of the proxy, from the command line or a click on `account` or on an account's entry (click handler macOS only) | — | — | — |
 | Terminal, system | `tmux`; memory via the `bar-mem` plugin; Claude service status with 48 h incident strip (opt-in) | terminal width, memory, Claude service status with 48 h incident strip | `tmux`; any environment variable (`env`) | — |
 | Custom text, commands | literal layout text; `%cmd%` values (cached 1 h, run in background) | custom text, symbol, command (stdin JSON, timeout, optional cache), link | shell composition in `statusLine.command` | `cmd`: first line of a shell command, cached, run in background |
 
@@ -117,7 +119,7 @@ Measured times and memory: [Benchmarks](../README.md#benchmarks) and [method and
 | | bar | ccstatusline | claude-powerline | ccline |
 |---|---|---|---|---|
 | Links | repo, branch, origin, upstream, fork, commit, tag, PRs and merge requests, issues, service status; directory to file manager, VS Code, Cursor or Zed | branch, remotes, PR, directory to file manager, VS Code, Cursor or Zed; link widget; status page | — | not documented |
-| Clicks | toggles usage and plugin views; `model`, `effort`, `ctx` type `/model`, `/effort`, `/compact` (macOS, tmux) | — | — | — |
+| Clicks | toggles usage and plugin views; plugin actions bound with `action` lines; `model`, `effort`, `ctx` type `/model`, `/effort`, `/compact` (macOS, tmux) | — | — | — |
 
 ## Meta
 

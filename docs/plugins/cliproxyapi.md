@@ -27,6 +27,8 @@ work 5h 59% ↻2h10m 7d 88% ↻3d4h │ home 7d 20% ↻5d
 - The entries are items of one placeholder: with `set wrap on` a long line breaks between accounts, never inside one.
 - Nothing is shown when the session does not use a configured instance, the model's provider is not one the instance reads, or no account has data.
 
+What the plugin shows is what the proxy observes: it has no view of usage that did not go through that proxy (another machine, another client, the provider's own apps), so the figures can lag or differ from the provider's account page.
+
 Claude windows come from the rate-limit headers the proxy records from real traffic through each account. They are held in the proxy's memory: an account that has served no request since the proxy started shows no windows yet, and a restart clears them. Codex windows are read from Codex's usage endpoint through the proxy, using each account's own token, only while a Codex model is active.
 
 ## Setup
@@ -97,10 +99,10 @@ The key is held in memory that is overwritten when released, and passed to `curl
 | `pool` | `mean` | How `usage` pools the accounts, below. |
 | `base-url` | none | Base URL to use when `ANTHROPIC_BASE_URL` is not in the environment bar passes. |
 
-A layout's own commas split options, so write a list with `+`: `#{cliproxyapi[windows=5h+7d,count=used]}`. `show` takes commas, as everywhere.
+`windows`, `show` and `accounts` are list options: write them with commas (`windows=5h,7d`) or with `+` (`windows=5h+7d`). A bare part after a list continues it unless it names another option: `#{cliproxyapi[windows=5h,7d,count=used]}`.
 
 ```
-set left "#{cliproxyapi[windows=5h+7d,compact,sort=reset]}"
+set left "#{cliproxyapi[windows=5h,7d,compact=true,sort=reset]}"
 default cliproxyapi stale=dim label=index
 ```
 
