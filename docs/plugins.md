@@ -155,6 +155,18 @@ directly, with a 10 s limit and nothing on stdout needed. Exit 0 is success; any
 
 `"account": {"id": "a1b2c3", "label": "alice"}`: `id` a stable identifier, `label` what to show (sanitised like `text`); both strings, `label` visibly non-empty. With `set account-source <plugin>` in the user's config, `#{account}` shows the `label` of this output in place of the signed-in account, through the user's `account "<glob>"` rules: see [account](config.md#account-agents-sessions-tmux). As for usage windows, only the result for the placeholder's `default` options counts. A plugin should emit `account` only when it is certain which account is current, since the placeholder replaces what Claude Code reports.
 
+### Proxy plugins
+
+A plugin for an API proxy that holds several accounts (one `bar-<proxy>` per proxy) follows one output contract, so layouts and rules carry over from one proxy to another:
+
+- It detects its instance from the declared `ANTHROPIC_BASE_URL` input and is hidden when the session's base URL is not one it is configured for.
+- Its secrets live in its own owner-only file, keychain or command, never in `bar.conf`, argv, the environment, its output or its cache; it stops calling the proxy's management API after a 401 or 403 until the key changes.
+- It emits `items`, one per account, each with a `label` (alias, local part of the account name, or `#1`, `#2`), a `text` of `<window> <percent>% ↻<countdown>` per window, a `score` or `style`, optionally a `link`, and `tokens` `account` and `provider`; a top-level `usage` for the provider of the current model (see its `pool` option); and `account` only when the proxy's choice is certain.
+- Its options use the names `provider`, `windows`, `show`, `count`, `label`, `sort`, `accounts`, `compact`, `stale`, `link` and `pool`; window ids are `5h`, `7d` and `wk`; its action is `use`, taking the tokens `account` and `provider`.
+- It offers `list` and `use <account>` subcommands for scripting.
+
+[`bar-cliproxyapi`](plugins/cliproxyapi.md) is the reference implementation.
+
 ## Caching and failure
 
 - Results are cached per plugin, working directory (`session.cwd`), options and `plugin` line, plus session id and `session.record` for plugins declaring `"cache": "session"` (a new record is a new entry, so it shows at the next refresh), plus the values of declared `inputs`; other session data does not split the cache. Results are refreshed in the background once older than `ttl`; `plugin <name> ttl=5m` overrides the plugin's value, and `set refresh` is the floor.

@@ -6,4 +6,5 @@ pub mod collect;
 pub mod config;
 pub mod mgmt;
 pub mod model;
+pub mod pool;
 pub mod render;

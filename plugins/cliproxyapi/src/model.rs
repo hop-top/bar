@@ -29,6 +29,13 @@ pub struct Acct {
     pub key: String,
     pub provider: String,
     pub label: String,
+    /// The email's local part, for `label=local`; empty when unknown.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub local: String,
+    /// The proxy's routing priority (unset is 0); the highest available
+    /// tier serves requests.
+    #[serde(default)]
+    pub priority: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan: Option<String>,
     #[serde(default)]

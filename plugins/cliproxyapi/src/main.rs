@@ -92,7 +92,8 @@ fn run() -> Output {
     render::output(
         &snap,
         provider,
-        input.opt_str("label") == Some("index"),
+        &render::Opts::from_input(&input),
+        &inst.origin.to_string(),
         now,
     )
 }

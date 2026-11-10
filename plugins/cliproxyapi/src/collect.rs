@@ -133,6 +133,8 @@ fn parse_listing(inst: &Instance, v: &Value) -> Vec<(Acct, Signals)> {
                 key: key.into(),
                 provider,
                 label: model::label_for(email, &inst.aliases, n + 1),
+                local: model::label_for(email, &[], n + 1),
+                priority: f["priority"].as_i64().unwrap_or(0),
                 plan: f["id_token"]["plan_type"].as_str().map(model::plan_name),
                 windows: vec![],
                 at: 0,
