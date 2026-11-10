@@ -18,6 +18,8 @@ A status line for [Claude Code](https://code.claude.com/docs/en/statusline) that
   <a href="https://github.com/hop-top/bar/actions/workflows/test-rs-caller.yml"><img alt="CI" src="https://github.com/hop-top/bar/actions/workflows/test-rs-caller.yml/badge.svg?branch=next"></a>
   <a href="bench/README.md#ben-results"><img alt="bench" src="docs/badges/bench.svg"></a>
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue.svg"></a>
+  <a href=".github/release-please-config.json"><img alt="version" src="https://img.shields.io/static/v1?label=version&message=0.1.0-beta.0&color=blue"></a> <!-- x-release-please-version -->
+  <a href="https://github.com/hop-top/spec-12fc"><img alt="12fc" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/hop-top/bar/next/.12fc.json"></a>
 </p>
 <p align="center">
   <img alt="macOS" src="docs/badges/macos.svg"> <img alt="Linux" src="docs/badges/linux.svg"> <img alt="Windows" src="docs/badges/windows.svg">

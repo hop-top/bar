@@ -85,6 +85,10 @@
           "path": "docs/comparison.md"
         },
         {
+          "type": "generic",
+          "path": "README.md"
+        },
+        {
           "type": "json",
           "path": "packaging/npm/bar/package.json",
           "jsonpath": "$.version"

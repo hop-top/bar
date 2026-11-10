@@ -1,0 +1,30 @@
+name: 12fc
+
+# 12-Factor AI-CLI conformance (hop-top/spec-12fc). Runs on pushes to the
+# default branch and commits the shields.io endpoint badge `.12fc.json`.
+# The Action grades Go CLIs built on hop.top/kit; for this Rust CLI every
+# factor is `skip`, so the verdict is `ungradable` (grey badge) until a
+# Rust grader or a self-emitted report exists.
+on:
+  push:
+    branches: [next]
+
+permissions:
+  contents: write
+
+jobs:
+  conformance:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - uses: hop-top/spec-12fc@816391c45a3eb0175f9ab63438112d85296f6cd1 # main 2026-10-24
+        with:
+          command: all
+          kit-version: v0.5.0-alpha.1
+          upload-sarif: 'false'
+          sarif-path: ''
+          pr-comment: 'false'
+          commit-badge: 'true'
+          commit-badge-branch: next
