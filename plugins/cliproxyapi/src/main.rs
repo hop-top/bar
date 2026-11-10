@@ -62,14 +62,22 @@ fn run() -> Output {
     let mut raw = String::new();
     let _ = std::io::stdin().take(1 << 20).read_to_string(&mut raw);
     let input: RenderInput = serde_json::from_str(&raw).unwrap_or_default();
-    let Ok(cfg) = config::load(&config::path()) else {
+    let Ok(mut cfg) = config::load(&config::path()) else {
         return Output::hidden();
     };
-    let Some(inst) = base_url(&input)
-        .and_then(|u| Origin::parse(&u))
+    cfg.set_rules(&input.accounts);
+    let url = base_url(&input).filter(|u| !u.is_empty());
+    let Some(inst) = url
+        .as_deref()
+        .and_then(Origin::parse)
         .and_then(|o| cfg.instance_for(&o).cloned())
     else {
-        return Output::hidden();
+        // a session without a proxy: with one instance configured, its
+        // tokens let `#{account}` link the pick action
+        return match url {
+            None => render::plain(&cfg),
+            Some(_) => Output::hidden(),
+        };
     };
     let provider = match input.opt_str("provider") {
         Some(p @ ("claude" | "codex")) => p,
@@ -168,8 +176,13 @@ fn finish(r: Result<Vec<String>, switch::Refusal>) -> i32 {
     }
 }
 
-fn load_config() -> Result<config::Config, switch::Refusal> {
-    config::load(&config::path()).map_err(|e| switch::Refusal(e.to_string()))
+/// The config, with the user's `account` lines (`rules`) on its instances.
+fn load_config(
+    rules: &[bar_plugin::proto::AccountRule],
+) -> Result<config::Config, switch::Refusal> {
+    let mut cfg = config::load(&config::path()).map_err(|e| switch::Refusal(e.to_string()))?;
+    cfg.set_rules(rules);
+    Ok(cfg)
 }
 
 /// `list`, `use` and `pick`: exit 0 done, 1 refused or failed, 2 bad usage.
@@ -242,7 +255,8 @@ fn cli(args: &[String]) -> i32 {
             return usage("provider is claude or codex");
         }
     }
-    finish(session(instance.as_deref(), None, |live| {
+    let rules = bar_plugin::proto::accounts_from_env();
+    finish(session(&rules, instance.as_deref(), None, |live| {
         if is_pick {
             use std::io::IsTerminal;
             let tty = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
@@ -269,11 +283,12 @@ fn cli(args: &[String]) -> i32 {
 
 /// Connects to the picked instance and runs `f`.
 fn session(
+    rules: &[bar_plugin::proto::AccountRule],
     instance: Option<&str>,
     known: Option<(&str, &str)>,
     f: impl FnOnce(&switch::Live) -> Result<Vec<String>, switch::Refusal>,
 ) -> Result<Vec<String>, switch::Refusal> {
-    let cfg = load_config()?;
+    let cfg = load_config(rules)?;
     let state = bar_plugin::dirs::bar_state();
     let env = std::env::var("ANTHROPIC_BASE_URL").ok();
     let inst = switch::pick_instance(&cfg, instance, env.as_deref(), &state, known)?;
@@ -288,14 +303,15 @@ fn session(
 fn action(name: Option<&str>) -> i32 {
     let mut raw = String::new();
     let _ = std::io::stdin().take(1 << 16).read_to_string(&mut raw);
+    let rules = bar_plugin::proto::accounts_of_action(&raw);
     let strategy = match name {
         Some("next") => rank::Strategy::MostLeft,
         Some("next-soon") => rank::Strategy::SoonestReset,
-        Some("use") => return action_use(&raw),
+        Some("use") => return action_use(&raw, &rules),
         Some("pick") => {
             return finish(
                 switch::next_tokens(&raw, "pick").and_then(|(provider, id)| {
-                    let cfg = load_config()?;
+                    let cfg = load_config(&rules)?;
                     let inst = cfg
                         .instances
                         .iter()
@@ -315,7 +331,7 @@ fn action(name: Option<&str>) -> i32 {
     };
     let name = name.unwrap_or_default();
     finish(switch::next_tokens(&raw, name).and_then(|(provider, id)| {
-        let cfg = load_config()?;
+        let cfg = load_config(&rules)?;
         let inst = cfg
             .instances
             .iter()
@@ -328,9 +344,9 @@ fn action(name: Option<&str>) -> i32 {
     }))
 }
 
-fn action_use(raw: &str) -> i32 {
+fn action_use(raw: &str, rules: &[bar_plugin::proto::AccountRule]) -> i32 {
     finish(switch::action_tokens(raw).and_then(|(account, provider)| {
-        session(None, Some((&account, &provider)), |live| {
+        session(rules, None, Some((&account, &provider)), |live| {
             // an `auth_index` only: the link carries nothing else
             let target = live
                 .entries

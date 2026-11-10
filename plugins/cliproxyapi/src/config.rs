@@ -37,6 +37,10 @@ pub struct Instance {
     pub remote: bool,
     /// `(glob on the email, label)`, first match wins.
     pub aliases: Vec<(String, String)>,
+    /// The user's `account` lines from bar.conf, handed in by bar at run
+    /// time; never read from the plugin's own config or stored. Tried
+    /// after `aliases`.
+    pub rules: Vec<bar_plugin::proto::AccountRule>,
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -44,6 +48,15 @@ pub struct Config {
     pub instances: Vec<Instance>,
     /// Problems found while parsing; the instances that parsed are kept.
     pub errors: Vec<String>,
+}
+
+impl Config {
+    /// Gives every instance the user's `account` lines.
+    pub fn set_rules(&mut self, rules: &[bar_plugin::proto::AccountRule]) {
+        for i in &mut self.instances {
+            i.rules = rules.to_vec();
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -217,6 +230,7 @@ fn build(d: &Draft) -> Result<Instance, String> {
         providers,
         remote: d.remote,
         aliases: d.aliases.clone(),
+        rules: Vec::new(),
     })
 }
 

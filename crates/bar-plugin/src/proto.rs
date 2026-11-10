@@ -92,6 +92,61 @@ pub struct Inputs {
     pub env: Vec<String>,
     #[serde(default)]
     pub session: Vec<String>,
+    /// Ask for the user's `account` rules (`accounts` in the render and
+    /// action input, `BAR_ACCOUNTS` for `bar <name>`).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub accounts: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
+/// One of the user's `account "<glob>" <label> <color>` lines. The glob
+/// can hold an email address: match it where the address is visible and
+/// keep only the label and colour.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct AccountRule {
+    #[serde(default)]
+    pub glob: String,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub color: String,
+}
+
+/// Name of the environment variable `bar <name>` sets for a plugin that
+/// declared `inputs.accounts`: a JSON array of [`AccountRule`].
+pub const ACCOUNTS_ENV: &str = "BAR_ACCOUNTS";
+
+/// The rules in a JSON array (`accounts` of an input, or the value of
+/// [`ACCOUNTS_ENV`]); empty when absent or malformed. At most 64.
+pub fn parse_accounts(v: &Value) -> Vec<AccountRule> {
+    v.as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|r| serde_json::from_value::<AccountRule>(r.clone()).ok())
+                .filter(|r| !r.glob.is_empty())
+                .take(64)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The rules `bar <name>` put in the environment.
+pub fn accounts_from_env() -> Vec<AccountRule> {
+    std::env::var(ACCOUNTS_ENV)
+        .ok()
+        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        .map(|v| parse_accounts(&v))
+        .unwrap_or_default()
+}
+
+/// The `accounts` of an action's stdin.
+pub fn accounts_of_action(stdin: &str) -> Vec<AccountRule> {
+    serde_json::from_str::<Value>(stdin)
+        .map(|v| parse_accounts(&v["accounts"]))
+        .unwrap_or_default()
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -127,6 +182,9 @@ pub struct RenderInput {
     /// Values of the environment variables `--ext-info` `inputs.env` named.
     #[serde(default)]
     pub env: BTreeMap<String, String>,
+    /// The user's `account` lines, when `inputs.accounts` is declared.
+    #[serde(default)]
+    pub accounts: Vec<AccountRule>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -176,6 +234,10 @@ pub struct Usage {
 pub struct Account {
     pub id: String,
     pub label: String,
+    /// Set when a user `account` line matched: bar then draws `label` as
+    /// is, in this colour.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
 }
 
 /// A render output (also one item of `items`).
@@ -188,6 +250,9 @@ pub struct Output {
     pub alt: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
+    /// Colour of `label`: a code, `#rrggbb` or an ANSI name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_color: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     /// `good`, `warn`, `bad` or `dim`.
@@ -242,7 +307,9 @@ impl Output {
         if let Some(a) = &mut self.account {
             a.id = sanitize(&a.id);
             a.label = sanitize(&a.label);
+            a.color = a.color.take().filter(|c| valid_color(c));
         }
+        self.label_color = self.label_color.take().filter(|c| valid_color(c));
         self
     }
 
@@ -255,6 +322,13 @@ impl Output {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct CheckReport {
     pub warnings: Vec<String>,
+}
+
+/// A colour as bar reads one: a code, `#rrggbb` or an ANSI name.
+pub fn valid_color(c: &str) -> bool {
+    (1..=16).contains(&c.len())
+        && c.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"#-".contains(&b))
 }
 
 /// `[A-Za-z0-9._@-]`, 1 to `MAX_TOKEN` characters.

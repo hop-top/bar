@@ -143,7 +143,7 @@ fn core_parses_what_the_plugin_prints_and_renders_it() {
     // one item per account, most used first, with the tokens an action takes
     assert_eq!(out.items.len(), 2, "{text}");
     assert_eq!(out.items[0].label.as_deref(), Some("b"));
-    assert!(out.items[0].text.starts_with("7d 5%"), "{text}");
+    assert!(out.items[0].text.starts_with("5%"), "{text}");
     assert_eq!(out.items[0].style.as_deref(), Some("bad"));
     assert_eq!(out.items[1].label.as_deref(), Some("me"));
     assert_eq!(out.items[1].score, Some(50.0));
@@ -163,7 +163,7 @@ fn core_parses_what_the_plugin_prints_and_renders_it() {
     cache.store(&plan.key, &text).unwrap();
     let shown = plugin::render(&ctx, "cliproxyapi", &Options::default()).unwrap_or_default();
     assert!(
-        hop_bar::style::strip_codes(&shown).contains("me 7d 50%"),
+        hop_bar::style::strip_codes(&shown).contains("me 50%"),
         "{shown:?}"
     );
     // options typed by the core's schema reach the plugin and shape the output
