@@ -29,6 +29,103 @@ pub struct OptSpec {
     pub default: Option<Value>,
 }
 
+/// Most environment variables a plugin can declare.
+pub const MAX_ENV_INPUTS: usize = 8;
+/// Longest environment value passed on, in bytes; a longer one counts as unset.
+pub const MAX_ENV_VALUE: usize = 1024;
+/// Session fields a plugin can declare as inputs: the stable ones. The
+/// volatile ones (`context_used`, the rate-limit windows) would split the
+/// cache on every render.
+pub const SESSION_INPUTS: [&str; 5] = ["cwd", "model", "model_id", "effort", "session_id"];
+
+/// What a plugin's output depends on besides its options (`inputs` in
+/// `--ext-info`): each declared value is part of the cache key and is
+/// sent in the render input.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Inputs {
+    /// Environment variable names, `[A-Z0-9_]+`, sorted, at most 8.
+    pub env: Vec<String>,
+    /// Names from [`SESSION_INPUTS`], sorted.
+    pub session: Vec<String>,
+    /// Declared environment names bar refuses: `env_secret` ones.
+    pub refused: Vec<String>,
+}
+
+/// Names that hold credentials: their values would land in the key, the
+/// refresh arguments and the cache, so they cannot be declared.
+pub fn env_secret(name: &str) -> bool {
+    [
+        "KEY",
+        "TOKEN",
+        "SECRET",
+        "PASSWORD",
+        "PASSWD",
+        "CREDENTIAL",
+        "AUTH",
+    ]
+    .iter()
+    .any(|w| name.contains(w))
+}
+
+fn env_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 64
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
+}
+
+impl Inputs {
+    fn parse(v: &Value) -> Inputs {
+        let list = |k: &str| -> Vec<String> {
+            v[k].as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        let mut env: Vec<String> = list("env").into_iter().filter(|n| env_name(n)).collect();
+        env.sort();
+        env.dedup();
+        let refused = env.iter().filter(|n| env_secret(n)).cloned().collect();
+        env.retain(|n| !env_secret(n));
+        env.truncate(MAX_ENV_INPUTS);
+        let mut session: Vec<String> = list("session")
+            .into_iter()
+            .filter(|n| SESSION_INPUTS.contains(&n.as_str()))
+            .collect();
+        session.sort();
+        session.dedup();
+        Inputs {
+            env,
+            session,
+            refused,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.env.is_empty() && self.session.is_empty()
+    }
+
+    fn to_json(&self) -> Option<Value> {
+        (!self.is_empty()).then(|| json!({"env": self.env, "session": self.session}))
+    }
+
+    /// Values of the declared environment variables: only those set to
+    /// valid UTF-8 within [`MAX_ENV_VALUE`] bytes.
+    pub fn env_values(&self, get: &dyn Fn(&str) -> Option<String>) -> Map<String, Value> {
+        self.env
+            .iter()
+            .filter_map(|n| {
+                let v = get(n).filter(|v| v.len() <= MAX_ENV_VALUE)?;
+                Some((n.clone(), Value::from(v)))
+            })
+            .collect()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExtInfo {
     pub name: String,
@@ -38,6 +135,8 @@ pub struct ExtInfo {
     pub options: BTreeMap<String, OptSpec>,
     /// Seconds a render result stays fresh.
     pub ttl: u64,
+    /// Declared `inputs`: part of the cache key, sent in the render input.
+    pub inputs: Inputs,
     /// Seconds a background render may run: `timeout` clamped to 1..=15,
     /// else 3.
     pub timeout: u64,
@@ -78,6 +177,7 @@ impl ExtInfo {
             options: BTreeMap::new(),
             ttl: DEFAULT_TTL,
             timeout: RENDER_TIMEOUT.as_secs(),
+            inputs: Inputs::default(),
             icon: None,
             declares_icon_option: false,
             declares_bg_option: false,
@@ -121,6 +221,9 @@ impl ExtInfo {
             "options": options,
             "ttl": self.ttl,
         });
+        if let Some(i) = self.inputs.to_json() {
+            out["inputs"] = i;
+        }
         if self.timeout != RENDER_TIMEOUT.as_secs() {
             out["timeout"] = json!(format!("{}s", self.timeout));
         }
@@ -252,6 +355,7 @@ pub fn parse_info(raw: &str) -> Option<ExtInfo> {
         options,
         ttl: ttl_of(&v["ttl"]),
         timeout: timeout_of(&v["timeout"]),
+        inputs: Inputs::parse(&v["inputs"]),
         icon: clean_str(&v["icon"]).filter(|i| !i.trim().is_empty()),
         declares_icon_option,
         declares_bg_option,
