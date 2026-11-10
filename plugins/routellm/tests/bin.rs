@@ -250,10 +250,26 @@ fn setup_prints_the_snippet_and_writes_nothing_to_the_proxy() {
     let t = String::from_utf8_lossy(&o.stdout).to_string();
     assert!(o.status.success());
     assert!(
-        t.contains("oauth-model-alias:") && t.contains("fork: true"),
+        t.contains("model-alias:") && t.contains("fork: true") && t.contains("      keys:"),
+        "{t}"
+    );
+    assert!(
+        !t.contains("oauth-model-alias:") && !t.contains("api-key-entries"),
         "{t}"
     );
     assert!(!t.contains(KEY));
+    let o = feed(h.cmd().args(["setup", "--layout", "legacy"]).take_mut(), "");
+    let t = String::from_utf8_lossy(&o.stdout).to_string();
+    assert!(
+        t.contains("oauth-model-alias:")
+            && t.contains("api-key-entries:")
+            && !t.contains("keys:\n"),
+        "{t}"
+    );
+    let o = feed(h.cmd().args(["setup", "--layout", "v9"]).take_mut(), "");
+    assert_eq!(o.status.code(), Some(2));
+    let o = feed(h.cmd().args(["status", "--layout", "v8"]).take_mut(), "");
+    assert_eq!(o.status.code(), Some(2));
     assert_eq!(e.proxy.server.count(), 0, "setup makes no call");
 }
 

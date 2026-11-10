@@ -130,6 +130,7 @@ dependencies = [
  "hop-bar",
  "serde",
  "serde_json",
+ "serde_norway",
 ]
 
 [[package]]
