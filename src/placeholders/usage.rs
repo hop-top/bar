@@ -47,13 +47,39 @@ fn rule_for(ctx: &Ctx, target: &str, key: &str) -> Rule {
         .unwrap_or_else(|| builtin_rule(key))
 }
 
-/// Key, window and period in seconds for the `type` option.
-fn pick<'a>(ctx: &'a Ctx, ty: &str) -> Option<(&'static str, &'a Window, i64)> {
-    match ty {
-        "5h" | "h" => Some(("5h", ctx.session.five_hour.as_ref()?, 5 * 3600)),
-        "7d" | "d" => Some(("7d", ctx.session.seven_day.as_ref()?, 7 * 86400)),
-        _ => None,
+/// The `usage` windows of the plugin `set usage-source` names, from its
+/// cached default-options output.
+fn source<'a>(ctx: &'a Ctx<'a>) -> Option<&'a (String, crate::plugin::Usage)> {
+    ctx.memo
+        .usage
+        .get_or_init(|| {
+            let name = ctx.config.usage_source.as_deref()?;
+            Some((
+                name.to_string(),
+                crate::plugin::cached_output(ctx, name)?.usage?,
+            ))
+        })
+        .as_ref()
+}
+
+/// Key, window, period in seconds and, for a window a plugin supplied, the
+/// plugin, for the `type` option. The status line's `rate_limits` come
+/// first; a window it lacks falls back to the usage source.
+fn pick(ctx: &Ctx, ty: &str) -> Option<(&'static str, Window, i64, Option<String>)> {
+    let (key, own, period) = match ty {
+        "5h" | "h" => ("5h", ctx.session.five_hour.as_ref(), 5 * 3600),
+        "7d" | "d" => ("7d", ctx.session.seven_day.as_ref(), 7 * 86400),
+        _ => return None,
+    };
+    if let Some(w) = own {
+        return Some((key, w.clone(), period, None));
     }
+    let (name, usage) = source(ctx)?;
+    let w = match key {
+        "5h" => usage.five_hour.as_ref(),
+        _ => usage.seven_day.as_ref(),
+    }?;
+    Some((key, w.clone(), period, Some(name.clone())))
 }
 
 /// `model` as a file-name part: lowercase letters and digits, at most 16.
@@ -106,9 +132,14 @@ pub fn render_models(
             &rule,
         );
     }
-    let (key, win, period) = pick(ctx, opts.get("type").unwrap_or("5h"))?;
+    let (key, win, period, from) = pick(ctx, opts.get("type").unwrap_or("5h"))?;
     let rule = rule_for(ctx, &format!("usage[type={key}]"), key);
-    render_window(ctx, opts, state, key, key, win, period, &rule)
+    // a plugin's windows keep their own history: they are another account's
+    let hist = match &from {
+        Some(plugin) => format!("{key}@{plugin}"),
+        None => key.to_string(),
+    };
+    render_window(ctx, opts, state, key, &hist, &win, period, &rule)
 }
 
 /// One window; `key` names its toggle and link, `hist` its spark history.

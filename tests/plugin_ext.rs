@@ -353,3 +353,185 @@ fn items_survive_a_gradient() {
         "{plain:?}"
     );
 }
+
+// --- usage source ---
+
+use hop_bar::placeholders::usage;
+use hop_bar::session::{Session, Window};
+
+fn plugin_usage_json(five: f64, seven: f64) -> String {
+    json!({"text": "", "usage": {
+        "five_hour": {"used_percentage": five, "resets_at": NOW + 3600},
+        "seven_day": {"used_percentage": seven, "resets_at": NOW + 3 * DAY},
+    }})
+    .to_string()
+}
+
+fn no_limits() -> Session {
+    Session {
+        five_hour: None,
+        seven_day: None,
+        ..session()
+    }
+}
+
+fn usage_text(fx: &Fx, s: &Session, c: &hop_bar::conf::Config, o: &[(&str, &str)]) -> String {
+    let (cache, dirs) = (fx.cache(), fx.dirs());
+    let cx = ctx(s, c, &cache, &dirs);
+    strip_codes(&usage::render_with(&cx, &opts(o), &fx.state).unwrap_or_default())
+}
+
+#[test]
+fn usage_from_the_source_plugin_when_claude_sends_none() {
+    let fx = Fx::new();
+    let c = cfg("set usage-source echo\n");
+    fx.put("out.json", &plugin_usage_json(41.0, 12.5));
+    let s = no_limits();
+    fx.prime_in(&s, "echo", &c, &[]);
+    assert_eq!(usage_text(&fx, &s, &c, &[("show", "pct")]), "59%");
+    assert_eq!(
+        usage_text(&fx, &s, &c, &[("type", "7d"), ("show", "time")]),
+        "3d"
+    );
+    assert_eq!(
+        usage_text(&fx, &s, &c, &[("type", "7d"), ("show", "pct")]),
+        "88%"
+    );
+}
+
+#[test]
+fn claude_rate_limits_win_per_window() {
+    let fx = Fx::new();
+    let c = cfg("set usage-source echo\n");
+    fx.put("out.json", &plugin_usage_json(41.0, 12.5));
+    let s = Session {
+        five_hour: Some(Window {
+            used_percentage: 70.0,
+            resets_at: NOW + 3600,
+        }),
+        seven_day: None,
+        ..session()
+    };
+    fx.prime_in(&s, "echo", &c, &[]);
+    assert_eq!(
+        usage_text(&fx, &s, &c, &[("show", "pct")]),
+        "30%",
+        "Claude's 5h"
+    );
+    assert_eq!(
+        usage_text(&fx, &s, &c, &[("type", "7d"), ("show", "pct")]),
+        "88%",
+        "source's 7d"
+    );
+}
+
+#[test]
+fn no_source_or_cold_cache_renders_nothing_and_never_spawns() {
+    let fx = Fx::new();
+    fx.put("out.json", &plugin_usage_json(41.0, 12.5));
+    let s = no_limits();
+    let plain = cfg("");
+    assert_eq!(usage_text(&fx, &s, &plain, &[("show", "pct")]), "");
+    let c = cfg("set usage-source echo\n");
+    // nothing primed: cold, and the cache here cannot start a refresh
+    assert_eq!(usage_text(&fx, &s, &c, &[("show", "pct")]), "");
+    assert!(!fx.bin.join("stdin.json").exists(), "no synchronous run");
+    let missing = cfg("set usage-source nosuch\n");
+    assert_eq!(usage_text(&fx, &s, &missing, &[("show", "pct")]), "");
+}
+
+#[test]
+fn source_reads_the_default_options_result() {
+    let fx = Fx::new();
+    let c = cfg("set usage-source echo\ndefault echo mode=a\n");
+    fx.put("out.json", &plugin_usage_json(41.0, 12.5));
+    let s = no_limits();
+    // an entry for other options is not the one read
+    fx.prime_in(&s, "echo", &c, &[("mode", "b")]);
+    assert_eq!(usage_text(&fx, &s, &c, &[("show", "pct")]), "");
+    fx.prime_in(&s, "echo", &c, &[("mode", "a")]);
+    assert_eq!(usage_text(&fx, &s, &c, &[("show", "pct")]), "59%");
+}
+
+#[test]
+fn plugin_windows_are_validated() {
+    let o = plugin::parse_output(
+        r#"{"text":"","usage":{"five_hour":{"used_percentage":150,"resets_at":5},
+            "seven_day":{"used_percentage":"x","resets_at":5}}}"#,
+    )
+    .unwrap();
+    let u = o.usage.unwrap();
+    assert_eq!(u.five_hour.unwrap().used_percentage, 100.0, "clamped");
+    assert!(u.seven_day.is_none());
+    let none =
+        plugin::parse_output(r#"{"text":"","usage":{"five_hour":{"resets_at":5}}}"#).unwrap();
+    assert!(none.usage.is_none());
+    let neg = plugin::parse_output(
+        r#"{"text":"","usage":{"five_hour":{"used_percentage":-4,"resets_at":5.4}}}"#,
+    )
+    .unwrap();
+    let w = neg.usage.unwrap().five_hour.unwrap();
+    assert_eq!((w.used_percentage, w.resets_at), (0.0, 5));
+}
+
+#[test]
+fn source_history_is_kept_apart() {
+    let fx = Fx::new();
+    let c = cfg("set usage-source echo\n");
+    fx.put("out.json", &plugin_usage_json(41.0, 12.5));
+    let s = no_limits();
+    fx.prime_in(&s, "echo", &c, &[]);
+    usage_text(&fx, &s, &c, &[("show", "spark")]);
+    assert!(fx.state.join("hist-5h@echo").exists());
+    assert!(
+        !fx.state.join("hist-5h").exists(),
+        "not mixed with Claude's"
+    );
+    let own = session();
+    usage_text(&fx, &own, &c, &[("show", "spark")]);
+    assert!(fx.state.join("hist-5h").exists());
+    assert_eq!(hop_bar::history::step("7d@echo"), 6 * 3600);
+}
+
+#[test]
+fn source_windows_feed_pace_and_projection() {
+    let fx = Fx::new();
+    let c = cfg("set usage-source echo\n");
+    // 90% used with 4 of 5 hours to go: far ahead of pace
+    fx.put(
+        "out.json",
+        &json!({"text":"","usage":{"five_hour":{"used_percentage":90.0,"resets_at":NOW + 4 * 3600}}}).to_string(),
+    );
+    let s = no_limits();
+    fx.prime_in(&s, "echo", &c, &[]);
+    let text = usage_text(&fx, &s, &c, &[("show", "pct,proj")]);
+    assert!(text.starts_with("10%") && text.contains("p"), "{text:?}");
+}
+
+#[test]
+fn usage_source_is_user_config_only() {
+    for mode in ["safe", "full"] {
+        let user = format!("set project-config {mode}\n");
+        let l = hop_bar::conf::layers(Some(&user), |_| Some(Ok("set usage-source evil\n".into())));
+        let cfg = l.config.unwrap();
+        assert_eq!(cfg.usage_source, None, "{mode}");
+        assert_eq!(l.dropped.len(), 1, "{mode}");
+        assert!(
+            l.dropped[0].message.contains("user config"),
+            "{:?}",
+            l.dropped
+        );
+    }
+    let c = cfg("set usage-source cliproxyapi\n");
+    assert_eq!(c.usage_source.as_deref(), Some("cliproxyapi"));
+    assert_eq!(
+        cfg("set usage-source cliproxyapi\nset usage-source off\n").usage_source,
+        None
+    );
+    for bad in ["a b", "a/b", "", "x;y"] {
+        assert!(
+            hop_bar::conf::parse(&format!("set usage-source \"{bad}\"\n")).is_err(),
+            "{bad}"
+        );
+    }
+}

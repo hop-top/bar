@@ -157,6 +157,9 @@ pub struct Config {
     /// `set gitlab-hosts`: self-hosted GitLab hosts, lowercase, whose
     /// remotes `prs` and `issues` read with `glab`; gitlab.com always is.
     pub gitlab_hosts: Vec<String>,
+    /// `set usage-source <plugin>`: the plugin whose `usage` windows
+    /// `#{usage}` shows when Claude Code sends no `rate_limits`.
+    pub usage_source: Option<String>,
     /// What a project `.bar.conf` may do (`set project-config`).
     pub project_config: ProjectMode,
     /// `set color-depth`: colours the output uses.
@@ -205,6 +208,7 @@ impl Default for Config {
             update_check: false,
             service_status: false,
             usage_api: false,
+            usage_source: None,
             gitlab_hosts: Vec::new(),
             project_config: ProjectMode::default(),
             color_depth: ColorDepth::default(),

@@ -117,6 +117,7 @@ pub(super) fn apply_set(c: &mut Config, key: &str, val: &str) -> Result<(), Stri
                 _ => return Err(format!("invalid usage-api `{val}` (on|off)")),
             }
         }
+        "usage-source" => c.usage_source = plugin_ref("usage-source", val)?,
         "gitlab-hosts" => c.gitlab_hosts = crate::placeholders::glab::parse_hosts(val)?,
         "project-config" => {
             c.project_config = ProjectMode::parse(val).ok_or_else(|| {
@@ -181,6 +182,22 @@ pub(super) fn apply_set(c: &mut Config, key: &str, val: &str) -> Result<(), Stri
         _ => return Err(format!("unknown set key `{key}`")),
     }
     Ok(())
+}
+
+/// A plugin name (`[A-Za-z0-9_-]+`), or `off` for none.
+fn plugin_ref(key: &str, val: &str) -> Result<Option<String>, String> {
+    if val == "off" {
+        return Ok(None);
+    }
+    let ok = !val.is_empty()
+        && val
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+    if ok {
+        Ok(Some(val.to_string()))
+    } else {
+        Err(format!("invalid {key} `{val}` (a plugin name, or off)"))
+    }
 }
 
 /// `completed,failed`: a comma list of statuses, lower-cased; empty for

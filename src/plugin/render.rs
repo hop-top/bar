@@ -5,7 +5,7 @@ use std::path::Path;
 use serde_json::{json, Map, Value};
 
 use super::info::ttl_of;
-use super::{cached_info, find, validate, ExtInfo, Found};
+use super::{cached_info, find, validate, ExtInfo, Found, RESERVED};
 use crate::cache::{hash_hex, Job};
 use crate::click::{self, hook::read_record};
 use crate::conf::Config;
@@ -147,8 +147,18 @@ pub struct Metric {
 /// Most items one output can carry.
 pub const MAX_ITEMS: usize = 16;
 
+/// Usage windows an output carries, shaped like the status line's
+/// `rate_limits`: percent used 0..=100, reset time in Unix seconds.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Usage {
+    pub five_hour: Option<Window>,
+    pub seven_day: Option<Window>,
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Output {
+    /// `usage` windows, for `set usage-source`.
+    pub usage: Option<Usage>,
     /// With `items`, the output's own `text` is not drawn.
     pub text: String,
     /// `items`: each drawn like an output of its own, joined by a space,
@@ -176,6 +186,23 @@ fn int(v: &Value) -> Option<i64> {
             .filter(|f| f.is_finite())
             .map(|f| f.round() as i64)
     })
+}
+
+fn window(v: &Value) -> Option<Window> {
+    let used = v["used_percentage"].as_f64().filter(|u| u.is_finite())?;
+    Some(Window {
+        used_percentage: used.clamp(0.0, 100.0),
+        resets_at: int(&v["resets_at"])?,
+    })
+}
+
+/// `None` unless at least one window is valid.
+fn usage(v: &Value) -> Option<Usage> {
+    let u = Usage {
+        five_hour: window(&v["five_hour"]),
+        seven_day: window(&v["seven_day"]),
+    };
+    (u.five_hour.is_some() || u.seven_day.is_some()).then_some(u)
 }
 
 fn metric(v: &Value) -> Option<Metric> {
@@ -216,6 +243,7 @@ fn parse_one(v: &Value) -> Option<Output> {
     Some(Output {
         text: v.get("text")?.as_str()?.to_string(),
         items: Vec::new(),
+        usage: usage(&v["usage"]),
         alt: v["alt"]
             .as_str()
             .filter(|a| !sanitize(a).trim().is_empty())
@@ -378,6 +406,25 @@ fn toggled(mut out: Output, name: &str, opts: &Options, state: &Path) -> Output 
         out.link = Some(format!("bar://toggle/{name}"));
     }
     out
+}
+
+/// The cached output of `name` rendered with its `default <name>` options
+/// only, as `#{name}` bare would be: a plain cache read, which starts a
+/// background refresh when stale and never waits. `None` while cold, when
+/// the plugin is missing, not a placeholder, or its options are invalid.
+pub fn cached_output(ctx: &Ctx, name: &str) -> Option<Output> {
+    let cache = ctx.cache?;
+    let found = find(ctx.plugin_dirs, name)?;
+    let info = cached_info(cache, &found)?;
+    let mut opts = Options::default();
+    if let Some(d) = ctx.config.defaults.get(name) {
+        let ex = crate::expand::Expander::new(ctx.runner);
+        for (k, v) in d.iter().filter(|(k, _)| !RESERVED.contains(&k.as_str())) {
+            opts.set(k, &ex.expand(v));
+        }
+    }
+    let plan = plan(ctx, &found, &info, &opts)?;
+    parse_output(&cache.read_or_refresh(&plan.key, plan.ttl, &plan.job)?)
 }
 
 /// `#{name}` for a plugin found in `ctx.plugin_dirs`.
