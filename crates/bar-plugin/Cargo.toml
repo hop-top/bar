@@ -1,0 +1,15 @@
+[package]
+name = "bar-plugin"
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "Apache-2.0"
+description = "Shared building blocks for bar plugins: protocol types, secrets, curl requests, private files, key sources"
+authors = ["Jad Bitar <jadb@users.noreply.github.com>"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "=0.2.191"

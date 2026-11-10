@@ -239,7 +239,12 @@ fn reference() -> PathBuf {
 
 #[test]
 fn reference_plugins_declare_valid_web_objects() {
-    for e in std::fs::read_dir(reference()).unwrap().flatten() {
+    // the scripts, not the plugin crates (directories) beside them
+    for e in std::fs::read_dir(reference())
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().is_file())
+    {
         let out = std::process::Command::new(e.path())
             .arg("--ext-info")
             .output()

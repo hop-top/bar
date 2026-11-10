@@ -11,6 +11,10 @@ authors = ["Jad Bitar <jadb@users.noreply.github.com>"]
 name = "bar"
 path = "src/main.rs"
 
+[workspace]
+members = [".", "crates/bar-plugin", "plugins/cliproxyapi"]
+resolver = "2"
+
 [features]
 default = ["edit"]
 # `bar edit`, the terminal config editor
@@ -21,6 +25,7 @@ edit = ["dep:ratatui", "dep:crossterm"]
 test-tools = []
 
 [dependencies]
+bar-plugin = { path = "crates/bar-plugin" }
 clap = { version = "4", features = ["derive", "string"] }
 memchr = "2"
 hop-top-kit = { version = "=0.5.0-alpha.6", features = ["cli", "config"] }
