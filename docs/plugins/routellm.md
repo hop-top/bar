@@ -71,6 +71,8 @@ The plugin has two jobs, kept apart: a render only reads, and only an explicit a
 
 4. **Add `#{routellm}`** to a layout and run `bar check`, then `bar rl status --probe`, which reads the proxy once and reports a missing provider entry, aliases without an OFF row, or a RouteLLM that does not answer.
 
+`bar check` (the plugin's `--check`) makes no request. It reports, from the configuration file and the last cache: a missing, unreadable or malformed `routellm.conf` (with the line); a key source that is unreadable; a state directory that is not writable; a key the proxy refused; management off (404); no matching provider entry; an entry that points at another RouteLLM; aliases without an OFF row; a proxy not read yet; and an `on-priority` of 0 or less.
+
 The first time the plugin switches routing, the proxy re-saves its configuration file. A file in the legacy flat layout gets one line, `disabled: true`, which switching ON removes again; comments stay. A file in the v8 layout is re-serialised on the first write, which drops its comments. The proxy answers before it has applied the change; the plugin reads the entry again and reports what it finds. Keep this in mind for a configuration kept under version control: the switch shows up as a diff.
 
 ## Configuration file
@@ -110,12 +112,12 @@ RL off │ private ✗
 |---|---|---|
 | state | `RL on` (`good`), `RL off` (`dim`), `RL on ✗` (`bad`: on, but RouteLLM does not answer), `RL key?` (`bad`), `RL ?` | always, once the instance matches |
 | alias | the session's `route-*` alias, such as `route-auto` | `show` has `alias` and the session's model is an alias of the provider entry |
-| tier | the tier behind the alias and a marker: `auto ☁`, `private ⌂`. With routing OFF, the model the alias maps to: `auto → sonnet-5-5`. With routing OFF and no row for the alias: `private ✗` in `bad` | `show` has `tier` |
+| tier | the tier behind the alias and a marker: `auto ☁`, `private ⌂`. With routing OFF, the model the alias maps to, without its `claude-` prefix: `auto → sonnet-5-5`. With routing OFF and no row for the alias: `private ✗` in `bad` | `show` has `tier` |
 | capabilities | `vis tools 200k`, in `dim` | `show` has `caps` |
 
 - `⌂` marks a tier you declared local with `local-tiers`, `☁` any other: it may leave this host. The marker is **declared, not derived**: it says what `local-tiers` says, and RouteLLM does not report where a tier runs.
 - Capabilities come from the router's model list. A tier's capabilities are the union over every leaf it can reach, so `vis` reads "some leaf of this tier can".
-- `~` after the text marks data older than two minutes; `stale=dim` or `stale=hide` treat it differently.
+- ` ~` after the state text marks data older than two minutes; `stale=dim` draws every item dim instead, and `stale=hide` hides the segment. An unknown state (`RL ?`, `RL key?`) is never marked stale.
 - The state is what the proxy is configured to do. It says "routing is on", not "this request was routed".
 - An alias, tier or capability item needs the session's model to be an alias of the provider entry. A session on another model shows the state alone. Tiers without a client alias (`hard`, `light`, `codex`, `media` in a common setup) are listed only by `bar rl tiers --all`.
 - The segment is hidden when the proxy has no `routellm` entry, when its entry points at another RouteLLM than the configured one, and when management is off.
@@ -127,13 +129,14 @@ What the segment cannot show is a property of what the router exposes today: it 
 | Option | Default | Meaning |
 |---|---|---|
 | `show` | `state,alias,tier` | Items, in this order: `state`, `alias`, `tier`, `caps`. |
-| `label` | `alias` | `alias` draws the alias, `none` leaves it out. |
-| `compact` | off | Shorter text: `RL on │ auto ☁` without the alias. |
+| `label` | `alias` | `alias` draws the alias item, `none` leaves it out. |
+| `compact` | off | Leaves the alias item out, whatever `show` and `label` say; the state and tier items stay: `RL on │ auto ☁`. |
 | `stale` | `mark` | Old data: `mark` (`~`), `dim` or `hide`. |
-| `link` | none | A link template for the entries. |
+| `link` | none | A link template for the alias, tier and capabilities items, with `{instance}`, `{alias}` and `{tier}` (percent-encoded). The state item takes no `link`: it keeps the toggle click. |
+| `routed` | off | Hide the whole segment unless the session's model is a `route-*` alias. Off, the state shows for every session on the proxy. |
 | `base-url` | none | Base URL to use when `ANTHROPIC_BASE_URL` is not in the environment bar passes. |
 
-The list option `show` is comma separated: `#{routellm[show=state,tier,caps]}`. The plugin's `ttl` is 15 s and its time limit 8 s. It emits no `usage` and no `account`; those stay with [`bar-cliproxyapi`](cliproxyapi.md).
+The list option `show` is comma separated: `#{routellm[show=state,tier,caps]}`; a list that names none of `state`, `alias`, `tier`, `caps` keeps the default, and a segment with nothing selected is hidden. The plugin's `ttl` is 15 s and its time limit 8 s; an action may run for 30 s. It emits no `usage` and no `account`; those stay with [`bar-cliproxyapi`](cliproxyapi.md).
 
 ## Switching
 
@@ -162,11 +165,7 @@ The plugin declares the actions `toggle`, `on` and `off`, with the tokens `insta
 action routellm routellm.toggle
 ```
 
-A click re-reads the state before it writes and does nothing when `to` already holds, so a stale link cannot flip routing back. Links need the click handler installed with action support (macOS): run `bar click install`, again after upgrading bar. bar shows the outcome in `action-status` in its state directory and refreshes the segment at the next render. `on` and `off` bind separate links, for a layout with two clicks.
-
-### Session affinity
-
-With the proxy's `routing.session-affinity` on, a session already bound to a frontier account keeps that account until it fails over or the binding expires, so **ON can lag for sessions that were running before**; new sessions follow the switch at once. OFF is immediate. `bar rl status --probe` reads the proxy's routing setting and warns when affinity is on.
+The action times out after 30 s. A click re-reads the state before it writes and does nothing when `to` already holds, so a stale link cannot flip routing back. Links need the click handler installed with action support (macOS): run `bar click install`, again after upgrading bar. bar shows the outcome in `action-status` in its state directory and refreshes the segment at the next render. `on` and `off` bind separate links, for a layout with two clicks.
 
 ## With bar-cliproxyapi
 
@@ -186,7 +185,7 @@ The proxy bans a client IP for 30 minutes after five failed management attempts,
 
 - **401 or 403** stops every call to that proxy, from both plugins. The segment shows `RL key?` until the key changes or 24 hours pass. The plugin compares a salted, truncated digest, never the key. Processes take turns under a lock in the state directory, so a refused key costs one failed attempt however many sessions render at once; a process that cannot take the lock, or cannot write the state directory, sends nothing.
 - **An empty key is never sent**; an unreadable key source shows `RL key?` without any request.
-- **404** on the management route means management is off, or the proxy is too old to have the route: the segment is hidden for an hour, `bar rl on|off` refuses, and `bar check` says why.
+- **404** on the management route means management is off, or the proxy is too old to have the route: the segment is hidden and the proxy is not asked again for an hour, `bar rl on|off` refuses, and `bar check` says why.
 - **No `routellm` entry, or an entry pointing at another RouteLLM**: the segment is hidden, switching is refused, and `bar rl setup` shows what to add. The plugin never toggles an unrelated provider of the same name.
 - **RouteLLM down while ON**: `RL on ✗`. Requests for aliases that have an OFF row fall through to the frontier accounts; `route-private` fails. `bar rl off` is one command and never needs RouteLLM.
 - **RouteLLM down on `bar rl on`**: refused by the check; `--force` overrides it.
