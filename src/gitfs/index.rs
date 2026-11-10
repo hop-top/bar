@@ -17,7 +17,6 @@ fn be16(d: &[u8], at: usize) -> Option<u16> {
 /// Paths with a stage above 0, each counted once. `hash` is the object id
 /// length (20 or 32). `None` for anything this parser does not model,
 /// including a split index, whose entries live in another file.
-#[allow(clippy::cognitive_complexity)] // over the threshold; split when next touched
 pub fn unmerged(d: &[u8], hash: usize) -> Option<usize> {
     if d.get(..4)? != b"DIRC" {
         return None;
@@ -32,47 +31,71 @@ pub fn unmerged(d: &[u8], hash: usize) -> Option<usize> {
     let mut last: Option<Vec<u8>> = None;
     let mut count = 0;
     for _ in 0..entries {
-        let start = pos;
-        let flags = be16(d, start + 40 + hash)?;
-        let mut name_at = start + 40 + hash + 2;
-        if flags & 0x4000 != 0 {
-            if version < 3 {
-                return None;
-            }
-            name_at += 2;
-        }
-        let stage = (flags >> 12) & 3;
-        if version == 4 {
-            // strip count as git's offset varint, then a NUL-terminated suffix
-            let mut i = name_at;
-            let mut c = *d.get(i)?;
-            i += 1;
-            let mut strip = usize::from(c & 0x7f);
-            while c & 0x80 != 0 {
-                c = *d.get(i)?;
-                i += 1;
-                strip = strip.checked_add(1)?.checked_mul(128)? + usize::from(c & 0x7f);
-            }
-            let len = memchr::memchr(0, d.get(i..)?)?;
-            path.truncate(path.len().checked_sub(strip)?);
-            path.extend_from_slice(&d[i..i + len]);
-            pos = i + len + 1;
-        } else {
-            let len = memchr::memchr(0, d.get(name_at..)?)?;
-            path.clear();
-            path.extend_from_slice(&d[name_at..name_at + len]);
-            // entry padded with 1 to 8 NULs to a multiple of 8 bytes
-            pos = start + ((name_at - start + len + 8) & !7);
-        }
-        if pos > d.len() {
-            return None;
-        }
+        let (next, stage) = entry(d, version, hash, pos, &mut path)?;
+        pos = next;
         if stage > 0 && last.as_deref() != Some(path.as_slice()) {
             count += 1;
             last = Some(path.clone());
         }
     }
-    // extensions: 4-byte signature, 4-byte size, then the trailing checksum
+    extensions_fit(d, hash, pos)?.then_some(count)
+}
+
+/// One entry at `pos`: where the next one starts and the entry's stage,
+/// with `path` set to its path. `None` for a truncated entry, or an
+/// extended one in a version 2 index.
+fn entry(
+    d: &[u8],
+    version: u32,
+    hash: usize,
+    pos: usize,
+    path: &mut Vec<u8>,
+) -> Option<(usize, u16)> {
+    let flags = be16(d, pos + 40 + hash)?;
+    let mut name_at = pos + 40 + hash + 2;
+    if flags & 0x4000 != 0 {
+        if version < 3 {
+            return None;
+        }
+        name_at += 2;
+    }
+    let stage = (flags >> 12) & 3;
+    let next = if version == 4 {
+        // strip count as git's offset varint, then a NUL-terminated suffix
+        let (i, strip) = varint(d, name_at)?;
+        let len = memchr::memchr(0, d.get(i..)?)?;
+        path.truncate(path.len().checked_sub(strip)?);
+        path.extend_from_slice(&d[i..i + len]);
+        i + len + 1
+    } else {
+        let len = memchr::memchr(0, d.get(name_at..)?)?;
+        path.clear();
+        path.extend_from_slice(&d[name_at..name_at + len]);
+        // entry padded with 1 to 8 NULs to a multiple of 8 bytes
+        pos + ((name_at - pos + len + 8) & !7)
+    };
+    (next <= d.len()).then_some((next, stage))
+}
+
+/// Git's offset varint at `at`: the position after it and its value.
+fn varint(d: &[u8], at: usize) -> Option<(usize, usize)> {
+    let mut i = at;
+    let mut c = *d.get(i)?;
+    i += 1;
+    let mut v = usize::from(c & 0x7f);
+    while c & 0x80 != 0 {
+        c = *d.get(i)?;
+        i += 1;
+        v = v.checked_add(1)?.checked_mul(128)? + usize::from(c & 0x7f);
+    }
+    Some((i, v))
+}
+
+/// Walks the extensions from `pos` (4-byte signature, 4-byte size, then
+/// the trailing checksum): `true` when the last one ends where the
+/// checksum starts, `false` for one running into it or bytes left over.
+/// `None` for a split index (`link`): its entries live in another file.
+fn extensions_fit(d: &[u8], hash: usize, mut pos: usize) -> Option<bool> {
     let end = d.len().checked_sub(hash)?;
     while pos.checked_add(8)? <= end {
         if d.get(pos..pos + 4)? == b"link" {
@@ -81,8 +104,7 @@ pub fn unmerged(d: &[u8], hash: usize) -> Option<usize> {
         let size = usize::try_from(be32(d, pos + 4)?).ok()?;
         pos = pos.checked_add(8)?.checked_add(size)?;
     }
-    // an extension running into the checksum, or bytes left over
-    (pos == end).then_some(count)
+    Some(pos == end)
 }
 
 impl Repo {
