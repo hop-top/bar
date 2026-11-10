@@ -17,6 +17,7 @@ A status line for [Claude Code](https://code.claude.com/docs/en/statusline) that
 - **Plugins are plain programs.** Any executable that prints one JSON object is a placeholder. bar runs it in the background and caches the result ([Plugins](docs/plugins.md)).
 - **The layout is a config file.** tmux-style, options on every placeholder, linted by `bar check`, previewed by `bar preview`.
 - **It knows your Claude usage.** 5-hour and 7-day bars coloured by pace, projections, sparklines; context, cost, burn rate, tokens, prompt cache, spend history and budgets.
+- **It knows your proxy accounts.** Behind a CLIProxyAPI proxy, `bar-cliproxyapi` shows each account's 5-hour and 7-day quota with reset countdowns, feeds `#{usage}` and `#{account}`, and switches accounts from the command line or a click ([plugin](docs/plugins/cliproxyapi.md)).
 - **It knows your repo.** Branch, dirty state, commit, tag, stash, remotes, upstream, fork and operation in progress from files; lines added and removed and commit age from a background `git`; Jujutsu changes, PRs and issues from `gh` (merge requests from `glab` on GitLab), failing CI marked.
 
 ### Benchmarks
@@ -111,7 +112,7 @@ load=$(uptime | sed 's/.*load averages*: *//; s/[, ].*//')
 printf '{"label":"load","text":"%s"}\n' "$load"
 ```
 
-Save it as `bar-load` on `PATH`, make it executable, add `#{load}` to a line. Protocol and reference plugins: [docs/plugins.md](docs/plugins.md). Shipped with bar: [`bar-cliproxyapi`](docs/plugins/cliproxyapi.md), the per-account quota of a CLIProxyAPI proxy, with `bar cliproxyapi list|use|pick` (short: `bar cpa …`) to switch accounts.
+Save it as `bar-load` on `PATH`, make it executable, add `#{load}` to a line. Protocol and reference plugins: [docs/plugins.md](docs/plugins.md). Shipped with bar: [`bar-cliproxyapi`](docs/plugins/cliproxyapi.md), the per-account quota of a CLIProxyAPI proxy, with `bar cpa list|use|use --next|pick` (alias of `bar cliproxyapi …`) to switch accounts. Plugins can also return several items, supply `#{usage}` and `#{account}`, and bind click actions.
 
 ## Contributing
 
