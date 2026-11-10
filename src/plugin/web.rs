@@ -158,15 +158,7 @@ pub fn matching_sample(info: &ExtInfo, options: &Map<String, Value>) -> Option<O
 fn generic(name: &str) -> Output {
     Output {
         text: name.to_string(),
-        alt: None,
-        label: None,
-        icon: None,
-        label_toggle: None,
-        label_link: None,
-        style: None,
-        link: None,
-        metric: None,
-        score: None,
+        ..Output::default()
     }
 }
 

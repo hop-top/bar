@@ -16,7 +16,7 @@ pub use info::{
 };
 pub use render::{
     paint, paint_with, parse_output, plan, render, render_found, render_found_with, Metric, Output,
-    Plan,
+    Plan, MAX_ITEMS,
 };
 
 pub const PREFIX: &str = "bar-";
