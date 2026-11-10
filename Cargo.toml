@@ -15,6 +15,15 @@ path = "src/main.rs"
 members = [".", "crates/bar-plugin", "plugins/cliproxyapi", "plugins/routellm"]
 resolver = "2"
 
+# shared by every member through `[lints] workspace = true`
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+# threshold in clippy.toml; a function over it is split, not exempted
+cognitive_complexity = "warn"
+
 [features]
 default = ["edit"]
 # `bar edit`, the terminal config editor
@@ -23,6 +32,9 @@ edit = ["dep:ratatui", "dep:crossterm"]
 # (absolute entries) instead of fixed system paths, so tests can fake them.
 # Refused in release builds.
 test-tools = []
+
+[lints]
+workspace = true
 
 [dependencies]
 bar-plugin = { path = "crates/bar-plugin" }

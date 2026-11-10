@@ -1,5 +1,8 @@
 //! Unix: POSIX modes, inode identity, process groups, `kill`, `localtime_r`.
 
+// Allowed: libc calls: geteuid, gethostname, process-group signals, localtime_r.
+#![allow(unsafe_code)]
+
 use std::fs::{self, Metadata, OpenOptions};
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::process::CommandExt;

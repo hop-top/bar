@@ -46,6 +46,7 @@ fn private(p: &std::path::Path, text: &str) {
 }
 
 #[test]
+#[allow(clippy::cognitive_complexity)] // over the threshold; split when next touched
 fn core_parses_the_output_draws_it_and_runs_the_click() {
     let e = Env::new("compat", false, healthy(), 1000);
     let root = std::env::temp_dir().join(format!("rl-compat-{}", std::process::id()));

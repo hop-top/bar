@@ -36,6 +36,7 @@ fn run(path: impl AsRef<std::path::Path>, arg: Option<&str>, stdin: &str) -> Str
 }
 
 #[test]
+#[allow(clippy::cognitive_complexity)] // over the threshold; split when next touched
 fn core_parses_what_the_plugin_prints_and_renders_it() {
     let listing = json!({"files":[
         {"auth_index":"ix1","type":"claude","email":"a@corp.test",

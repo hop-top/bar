@@ -55,6 +55,7 @@ fn codes_quantise_to_the_nearest_of_16() {
 }
 
 #[test]
+#[allow(clippy::cognitive_complexity)] // over the threshold; split when next touched
 fn auto_depth_follows_the_environment() {
     let auto = |vars: &[(&str, &str)]| ColorDepth::Auto.resolve(env(vars));
     assert_eq!(auto(&[]), Depth::Ansi256);

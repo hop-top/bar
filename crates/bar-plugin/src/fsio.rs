@@ -1,6 +1,9 @@
 //! Files and reads with limits: capped stream reads, owner-only atomic
 //! writes, and reads that refuse a file other users could have touched.
 
+// Allowed: libc calls: flock, geteuid.
+#![allow(unsafe_code)]
+
 use crate::secret::{wipe, Secret};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};

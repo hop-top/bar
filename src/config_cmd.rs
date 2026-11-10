@@ -153,6 +153,7 @@ fn lint(text: &str, name: &str) {
     }
 }
 
+#[allow(clippy::cognitive_complexity)] // over the threshold; split when next touched
 fn import(m: &ArgMatches) {
     let file = m.get_one::<String>("file").map_or("-", String::as_str);
     let stdin = file == "-";

@@ -671,6 +671,7 @@ impl Checker<'_> {
     }
 
     /// Lints every line of `text`, a config file's contents.
+    #[allow(clippy::cognitive_complexity)] // over the threshold; split when next touched
     fn lint(&mut self, text: &str) {
         for (i, raw) in text.lines().enumerate() {
             let Ok(t) = tokenize(raw) else { continue };

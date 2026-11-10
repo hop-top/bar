@@ -135,6 +135,7 @@ fn render_shows_the_state_and_what_a_click_does() {
 }
 
 #[test]
+#[allow(clippy::cognitive_complexity)] // over the threshold; split when next touched
 fn a_routed_session_shows_alias_tier_and_where_off_sends_it() {
     let e = Env::new("routed", false, healthy(), 1000);
     let h = Home::new("routed", &e);

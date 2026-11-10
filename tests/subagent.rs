@@ -48,6 +48,7 @@ fn plain(rows: &[(String, String)]) -> Vec<(String, String)> {
 }
 
 #[test]
+#[allow(clippy::cognitive_complexity)] // over the threshold; split when next touched
 fn parses_the_documented_task_fields() {
     let p = subagent::parse(&input());
     assert_eq!(p.session_id, "s1");

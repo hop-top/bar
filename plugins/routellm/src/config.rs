@@ -131,6 +131,7 @@ fn token_ok(s: &str, max: usize) -> bool {
 }
 
 /// Parses config text; `home` expands a leading `~/` in `key-file`.
+#[allow(clippy::cognitive_complexity)] // over the threshold; split when next touched
 pub fn parse(text: &str, home: Option<&Path>) -> Config {
     let mut cfg = Config::default();
     let mut cur: Option<Draft> = None;

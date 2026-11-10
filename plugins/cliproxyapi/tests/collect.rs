@@ -99,6 +99,7 @@ fn std_handler(r: &Rec) -> Reply {
 }
 
 #[test]
+#[allow(clippy::cognitive_complexity)] // over the threshold; split when next touched
 fn collects_claude_from_signals_and_codex_through_api_call() {
     let s = Server::start(std_handler);
     let e = Env::new(&s, "ok");

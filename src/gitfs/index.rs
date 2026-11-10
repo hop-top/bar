@@ -17,6 +17,7 @@ fn be16(d: &[u8], at: usize) -> Option<u16> {
 /// Paths with a stage above 0, each counted once. `hash` is the object id
 /// length (20 or 32). `None` for anything this parser does not model,
 /// including a split index, whose entries live in another file.
+#[allow(clippy::cognitive_complexity)] // over the threshold; split when next touched
 pub fn unmerged(d: &[u8], hash: usize) -> Option<usize> {
     if d.get(..4)? != b"DIRC" {
         return None;
