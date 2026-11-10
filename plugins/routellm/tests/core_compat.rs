@@ -120,7 +120,7 @@ fn core_parses_the_output_draws_it_and_runs_the_click() {
     };
     let inf = plugin::cached_info(&cache, &found).expect("cached info");
     let mut opts = Options::default();
-    opts.set("show", "state,alias,tier,caps");
+    opts.set("show", "state,alias,tier,marker,caps");
     let plan = plugin::plan(&ctx, &found, &inf, &opts).expect("plan");
     let Job::PluginRender { path, input, .. } = &plan.job else {
         panic!("render job")
@@ -133,7 +133,7 @@ fn core_parses_the_output_draws_it_and_runs_the_click() {
     let words: Vec<&str> = out.items.iter().map(|i| i.text.as_str()).collect();
     assert_eq!(
         words,
-        ["RL on", "route-auto", "auto \u{2601}", "vis tools 200k"],
+        ["on", "route-auto[auto]", "\u{2601}", "vis tools 200k"],
         "{text}"
     );
     assert_eq!(out.items[0].style.as_deref(), Some("good"));
@@ -143,12 +143,12 @@ fn core_parses_the_output_draws_it_and_runs_the_click() {
     // drawn through the core's painter, with the toggle as a link
     let shown = {
         let mut o = Options::default();
-        o.set("show", "state,alias,tier,caps");
+        o.set("show", "state,alias,tier,marker,caps");
         plugin::render(&ctx, "routellm", &o).unwrap_or_default()
     };
     let plain = hop_bar::style::strip_codes(&shown);
     assert!(
-        plain.contains("RL on") && plain.contains("route-auto") && plain.contains("auto \u{2601}"),
+        plain.contains("on") && plain.contains("route-auto[auto]") && plain.contains("\u{2601}"),
         "{shown:?}"
     );
     let url = shown
@@ -159,10 +159,47 @@ fn core_parses_the_output_draws_it_and_runs_the_click() {
         .unwrap_or_else(|| panic!("no action link in {shown:?}"))
         .to_string();
 
+    // the default segment, drawn by the core (icons off: the dim label
+    // stands in for the icon)
+    let draw = |model: &str, o: &Options| -> String {
+        let session = Session {
+            model_id: model.into(),
+            model: model.into(),
+            cwd: "/tmp/work".into(),
+            ..Session::default()
+        };
+        let ctx = Ctx {
+            session: &session,
+            config: &cfg,
+            now: NOW,
+            runner: &ColdRunner,
+            cache: Some(&cache),
+            columns: Some(120),
+            plugin_dirs: &dirs,
+            memo: Default::default(),
+        };
+        let plan = plugin::plan(&ctx, &found, &inf, o).expect("plan");
+        let Job::PluginRender { path, input, .. } = &plan.job else {
+            panic!("render job")
+        };
+        cache.store(&plan.key, &run(path, None, input)).unwrap();
+        hop_bar::style::strip_codes(&plugin::render(&ctx, "routellm", o).unwrap_or_default())
+    };
+    let d = Options::default();
+    assert_eq!(draw("route-auto", &d), "RL route-auto[auto]");
+    assert_eq!(draw("route-private", &d), "RL route-private[private]");
+    assert_eq!(draw("claude-opus-4", &d), "RL on");
+
     // the click runs the real `bar-routellm --action toggle`
     action::run(&state, &url, &cfg, &dirs).unwrap();
     assert_eq!(e.proxy.entries.lock().unwrap()[0]["disabled"], true);
     let status = std::fs::read_to_string(state.join(STATUS_FILE)).unwrap();
     assert!(status.contains("ok:"), "{status:?}");
+    // after the click: tier and the full model id
+    assert_eq!(draw("route-auto", &d), "RL auto[claude-sonnet-5-5]");
+    // no row for the private alias: refused
+    assert_eq!(draw("route-private", &d), "RL private[\u{2717}]");
+    // not on an alias: the state word alone
+    assert_eq!(draw("claude-opus-4", &d), "RL off");
     let _ = std::fs::remove_dir_all(&root);
 }

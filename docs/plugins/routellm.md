@@ -132,41 +132,51 @@ Management is contacted over plain `http` only on `localhost`, `127.0.0.1` and `
 
 ## What it shows
 
+One item. With `set icons nerd` or `emoji`, a dim mark leads (nf-fa-random, U+F074); with `set icons none` the dim label `RL` stands in for it. The text carries the state colour.
+
 ```
-RL on │ auto ☁
-RL off │ auto → sonnet-5-5
-RL off │ private ✗
+ route-private[private]      routing on, the session on route-private
+ route-auto[auto]            routing on
+ codex[gpt-6.1-terra]        routing off, route-codex served by its proxy alias row
+ auto[claude-sonnet-5-5]     routing off, route-auto served by its proxy alias row
+ private[✗]                  routing off, no alias row: the proxy refuses
+ on                          the session is not on a route-* alias of the provider
+RL route-auto[auto]         the same with icons off
 ```
 
-| Item | Text | When |
+| Case | Text | Style |
 |---|---|---|
-| state | `RL on` (`good`), `RL off` (`dim`), `RL on ✗` (`bad`: on, but RouteLLM does not answer), `RL key?` (`bad`), `RL ?` | always, once the instance matches |
-| alias | the session's `route-*` alias, such as `route-auto` | `show` has `alias` and the session's model is an alias of the provider entry |
-| tier | the tier behind the alias and a marker: `auto ☁`, `private ⌂`. With routing OFF, the model the alias maps to, without its `claude-` prefix: `auto → sonnet-5-5`. With routing OFF and no row for the alias, or with routing on and RouteLLM not answering: `private ✗` in `bad` | `show` has `tier` |
-| capabilities | `vis tools 200k`, in `dim` | `show` has `caps` |
+| routing on | `alias[tier]`: `route-auto[auto]` | `good` |
+| routing on, RouteLLM does not answer | the same text | `bad` |
+| routing off | `tier[model]`, the full model id of the proxy's alias row: `auto[claude-sonnet-5-5]` | `dim` |
+| routing off, the alias has no row | `tier[✗]`: `private[✗]` | `bad` |
+| the session is not on a `route-*` alias of the provider | the state word: `on`, `off`, `on ✗` | state colour |
+| the management key is refused or missing, or the state is unknown | `RL key?`, `RL ?`, without a mark | `bad`, `dim` |
 
-- `⌂` marks a tier you declared local with `local-tiers`, `☁` any other: it may leave this host. The marker is **declared, not derived**: it says what `local-tiers` says, and RouteLLM does not report where a tier runs.
-- Capabilities come from the router's model list. A tier's capabilities are the union over every leaf it can reach, so `vis` reads "some leaf of this tier can".
-- ` ~` after the state text marks data older than two minutes; `stale=dim` draws every item dim instead, and `stale=hide` hides the segment. An unknown state (`RL ?`, `RL key?`) is never marked stale.
+- The mark is drawn dim whatever the state: the plugin protocol colours the text, not the icon. The plugin cannot tell which icon set is active, so `set icons emoji` also draws the Nerd Font glyph, which needs a Nerd Font; set `icon=🔀` on the placeholder (`#{routellm[icon=🔀]}`) for an emoji, or `icon=none` for the `RL` label.
+- Where the segment shows a session that is not on a route alias, a click on it still toggles routing, as a click on any item does. The `routed` option hides it for such sessions.
+- A click on the item toggles routing. With a `link`, the item opens the link instead; add `state` to `show` to keep a separate item for the toggle.
+- ` ~` after the text marks data older than two minutes; `stale=dim` draws the item dim instead, and `stale=hide` hides the segment. An unknown state (`RL ?`, `RL key?`) is never marked stale.
 - The state is what the proxy is configured to do. It says "routing is on", not "this request was routed".
-- An alias, tier or capability item needs the session's model to be an alias of the provider entry. A session on another model shows the state alone. Tiers without a client alias (`hard`, `light`, `codex`, `media` in a common setup) are listed only by `bar rtellm tiers --all`.
+- The alias and tier need the session's model to be an alias of the provider entry. Tiers without a client alias (`hard`, `light`, `codex`, `media` in a common setup) are listed only by `bar rtellm tiers --all`.
 - The segment is hidden when the proxy has no `routellm` entry, when its entry points at another RouteLLM than the configured one, and when management is off.
+- `show` can add separate items after the first: `state` (`on`, `off`, `on ✗`, a separate toggle target), `marker` (`⌂` for a tier declared local with `local-tiers`, `☁` for any other, with routing on; the marker is **declared, not derived**, RouteLLM does not report where a tier runs) and `caps` (`vis tools 200k`, in `dim`: the union over every leaf the tier can reach, so `vis` reads "some leaf of this tier can"). `#{routellm[show=state,alias,tier,marker,caps]}` draws `on │ route-auto[auto] │ ☁ │ vis tools 200k`.
 
-What the segment cannot show is a property of what the router exposes today: it has no view of which model served a request (RouteLLM reports the decision only in the body of a non-streamed reply, and Claude Code streams), no per-model health, and no OpenRouter limits or credits. The plugin does not read RouteLLM's log or trace files, and does not hold an OpenRouter key. `RL on` means the proxy routes to RouteLLM and RouteLLM's `/health` answers; it does not mean every model behind it is healthy.
+What the segment cannot show is a property of what the router exposes today: it has no view of which model served a request (RouteLLM reports the decision only in the body of a non-streamed reply, and Claude Code streams), no per-model health, and no OpenRouter limits or credits. The plugin does not read RouteLLM's log or trace files, and does not hold an OpenRouter key. "on" means the proxy routes to RouteLLM and RouteLLM's `/health` answers; it does not mean every model behind it is healthy.
 
 ### Options
 
 | Option | Default | Meaning |
 |---|---|---|
-| `show` | `state,alias,tier` | Items, in this order: `state`, `alias`, `tier`, `caps`. |
-| `label` | `alias` | `alias` draws the alias item, `none` leaves it out. |
-| `compact` | off | Leaves the alias item out, whatever `show` and `label` say; the state and tier items stay: `RL on │ auto ☁`. |
+| `show` | `alias,tier` | Parts, in this order: `state` (a separate item), `alias` and `tier` (together `alias[tier]` on, `tier[model]` off), `marker`, `caps` (separate items). |
+| `label` | `alias` | `alias` names the alias in the text, `none` leaves it out: `auto`. |
+| `compact` | off | Leaves the alias out, whatever `show` and `label` say: `auto` on, `auto[claude-sonnet-5-5]` off. |
 | `stale` | `mark` | Old data: `mark` (`~`), `dim` or `hide`. |
-| `link` | none | A link template for the alias, tier and capabilities items, with `{instance}`, `{alias}` and `{tier}` (percent-encoded). The state item takes no `link`: it keeps the toggle click. |
+| `link` | none | A link template for the alias, marker and capabilities items, with `{instance}`, `{alias}` and `{tier}` (percent-encoded). A separate `state` item takes no `link`: it keeps the toggle click. |
 | `routed` | off | Hide the whole segment unless the session's model is a `route-*` alias. Off, the state shows for every session on the proxy. |
 | `base-url` | none | Base URL to use when `ANTHROPIC_BASE_URL` is not in the environment bar passes. |
 
-The list option `show` is comma separated: `#{routellm[show=state,tier,caps]}`; a list that names none of `state`, `alias`, `tier`, `caps` keeps the default, and a segment with nothing selected is hidden. The plugin's `ttl` is 15 s and its time limit 8 s; an action may run for 78 s. It emits no `usage` and no `account`; those stay with [`bar-cliproxyapi`](cliproxyapi.md).
+The list option `show` is comma separated: `#{routellm[show=state,tier,caps]}`; a list that names none of `state`, `alias`, `tier`, `marker`, `caps` keeps the default, and a segment with nothing selected is hidden. The plugin's `ttl` is 15 s and its time limit 8 s; an action may run for 78 s. It emits no `usage` and no `account`; those stay with [`bar-cliproxyapi`](cliproxyapi.md).
 
 ## Switching
 
@@ -212,7 +222,7 @@ claude
 ```
 
 ```
-RL on │ route-private │ private ⌂
+ route-private[private]
 ```
 
 The alias fixes the tier, not the model: inside a tier RouteLLM still picks one of the tier's models. A tier with the same model on both sides, in RouteLLM's own configuration, pins one model. With routing OFF the proxy serves the alias from its own model-alias row (the one `bar rtellm setup` prints), and an alias with no row, such as `route-private`, is refused.
@@ -239,7 +249,7 @@ The proxy bans a client IP for 30 minutes after five failed management attempts,
 - **An empty key is never sent**; an unreadable key source shows `RL key?` without any request.
 - **404** on the management route means management is off, or the proxy is too old to have the route: the segment is hidden and the proxy is not asked again for an hour, and `bar check` says why. `bar rtellm on|off` and `bar rtellm status --probe` ask anyway, so a transient 404 never blocks the way out.
 - **No `routellm` entry, or an entry pointing at another RouteLLM**: the segment is hidden, switching is refused, and `bar rtellm setup` shows what to add. The plugin never toggles an unrelated provider of the same name.
-- **RouteLLM down while ON**: `RL on ✗`, with the session's tier marked `✗`. Whether a request falls through to the frontier accounts depends on the proxy; `route-private` fails. `bar rtellm off` is one command and never needs RouteLLM.
+- **RouteLLM down while ON**: the item keeps its text, in `bad`. Whether a request falls through to the frontier accounts depends on the proxy; `route-private` fails. `bar rtellm off` is one command and never needs RouteLLM.
 - **RouteLLM down on `bar rtellm on`**: refused by the check; `--force` overrides it.
 - **Timeouts, 5xx**: back-off from one minute doubling to an hour, serving the last good state marked `~`. A RouteLLM that does not answer does not back off the management read.
 - **The proxy replies before it applies a change**: the plugin reads the entry back a few times over about a second and a half. When it still does not show the change, or the request itself timed out, the command says the state is unknown and the cached state is dropped, so the next `bar rtellm status` or render reads the proxy again. The change is never sent twice.

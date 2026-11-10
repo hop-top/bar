@@ -32,7 +32,7 @@ pub fn ext_info() -> ExtInfo {
         default: Some(default.into()),
         ..OptSpec::string()
     };
-    o.insert("show".into(), text("state,alias,tier"));
+    o.insert("show".into(), text("alias,tier"));
     o.insert("label".into(), OptSpec::choice(&["alias", "none"], "alias"));
     o.insert("compact".into(), OptSpec::bool());
     o.insert(
@@ -65,12 +65,15 @@ pub fn ext_info() -> ExtInfo {
             "samples": [
                 // OFF, the alias served by a frontier model
                 { "when": { "compact": "true" },
-                  "output": { "text": "RL off auto \u{2192} sonnet-5-5", "style": "dim" } },
+                  "output": { "icon": ICON, "label": LABEL,
+                              "text": "auto[claude-sonnet-5-5]", "style": "dim" } },
                 // OFF, a private alias with no frontier row
                 { "when": { "label": "none" },
-                  "output": { "text": "RL off private \u{2717}", "style": "bad" } },
+                  "output": { "icon": ICON, "label": LABEL,
+                              "text": "private[\u{2717}]", "style": "bad" } },
                 // ON, RouteLLM up
-                { "output": { "text": "RL on route-auto auto \u{2601}", "style": "good" } }
+                { "output": { "icon": ICON, "label": LABEL,
+                              "text": "route-auto[auto]", "style": "good" } }
             ]
         })),
     }
@@ -102,6 +105,8 @@ pub struct Opts {
     pub state: bool,
     pub alias: bool,
     pub tier: bool,
+    /// The `\u{2302}`/`\u{2601}` item after the tier.
+    pub marker: bool,
     pub caps: bool,
     /// Draw the alias item (`label=alias`, and not `compact`).
     pub label: bool,
@@ -122,9 +127,10 @@ pub enum Stale {
 impl Default for Opts {
     fn default() -> Opts {
         Opts {
-            state: true,
+            state: false,
             alias: true,
             tier: true,
+            marker: false,
             caps: false,
             label: true,
             compact: false,
@@ -141,9 +147,17 @@ impl Opts {
         if let Some(list) = i.opt_str("show") {
             let has = |k: &str| list.split(',').any(|p| p.trim().eq_ignore_ascii_case(k));
             // a list naming none of the parts keeps the default
-            if ["state", "alias", "tier", "caps"].iter().any(|k| has(k)) {
-                (o.state, o.alias, o.tier, o.caps) =
-                    (has("state"), has("alias"), has("tier"), has("caps"));
+            if ["state", "alias", "tier", "marker", "caps"]
+                .iter()
+                .any(|k| has(k))
+            {
+                (o.state, o.alias, o.tier, o.marker, o.caps) = (
+                    has("state"),
+                    has("alias"),
+                    has("tier"),
+                    has("marker"),
+                    has("caps"),
+                );
             }
         }
         o.label = i.opt_str("label") != Some("none");
@@ -168,12 +182,6 @@ pub fn alias_of_model(model_id: &str) -> Option<String> {
     let m = model_id.rsplit('/').next().unwrap_or(model_id);
     (m.len() > 6 && m.get(..6).is_some_and(|p| p.eq_ignore_ascii_case("route-")))
         .then(|| m.to_ascii_lowercase())
-}
-
-/// The model an OFF alias serves, without the vendor prefix:
-/// `claude-sonnet-5-5` is drawn `sonnet-5-5`.
-fn short_model(m: &str) -> &str {
-    m.strip_prefix("claude-").unwrap_or(m)
 }
 
 /// Where a request of an alias goes in the current state.
@@ -235,11 +243,22 @@ fn expand(tpl: &str, inst: &Instance, alias: &str, tier: &str) -> String {
         .replace("{tier}", &escape(tier))
 }
 
-/// The segment: the state item, then, for a session on a `route-*` alias
-/// the provider exposes, the alias, the tier (or where the alias goes while
-/// routing is off) and the tier's capabilities. Hidden when the instance is
-/// not drivable. Items and the top level carry the toggle's tokens, so a
-/// bound `toggle` links every item; an item with a `link` keeps it.
+/// The segment's mark: nf-fa-random (U+F074), drawn dim in place of the
+/// label while icons are on.
+pub const ICON: &str = "\u{f074}";
+
+/// The label drawn in place of the icon with `set icons none`.
+pub const LABEL: &str = "RL";
+
+/// The segment, one item: `alias[tier]` while routing is on, `tier[model]`
+/// (the model the alias maps to) while it is off, `tier[\u{2717}]` when the
+/// alias has no row and routing is off. The text carries the state colour
+/// (`good` on, `dim` off, `bad` when RouteLLM does not answer or the alias
+/// is refused). A session not on a `route-*` alias of the provider gets the
+/// state word alone. `show` adds the separate `state`, `marker` and `caps`
+/// items. The first item carries the mark; every item carries the toggle's
+/// tokens, an item with a `link` keeps it. Hidden when the instance is not
+/// drivable.
 pub fn output(s: &Snapshot, inst: &Instance, now: i64, o: &Opts, model_id: &str) -> Output {
     if s.cache.problem.is_some() || (s.status == Status::Off) {
         return Output::hidden();
@@ -249,13 +268,6 @@ pub fn output(s: &Snapshot, inst: &Instance, now: i64, o: &Opts, model_id: &str)
         return Output::hidden();
     }
     let w = state_word(s);
-    let (text, style) = match w {
-        "on" => ("RL on", "good"),
-        "off" => ("RL off", "dim"),
-        "down" => ("RL on \u{2717}", "bad"),
-        "key?" => ("RL key?", "bad"),
-        _ => ("RL ?", "dim"),
-    };
     let old = stale(&s.cache, now) && matches!(w, "on" | "off" | "down");
     if old && o.stale == Stale::Hide {
         return Output::hidden();
@@ -266,21 +278,60 @@ pub fn output(s: &Snapshot, inst: &Instance, now: i64, o: &Opts, model_id: &str)
     } else {
         ""
     };
-    let state_style = if dim { "dim" } else { style };
     let tokens: BTreeMap<String, String> = BTreeMap::from([
         ("instance".into(), instance_id(&inst.origin)),
         // what a click would do: the opposite of the current state
         ("to".into(), if w == "off" { "on" } else { "off" }.into()),
     ]);
-    let mut items = Vec::new();
-    if o.state {
-        let mut it = Output::styled(&format!("{text}{mark}"), state_style);
+    let tokened = |mut it: Output| {
         it.tokens = tokens.clone();
-        items.push(it);
+        it
+    };
+    let finish = |mut items: Vec<Output>| {
+        if let Some(first) = items.first_mut() {
+            first.label = Some(LABEL.into());
+            first.icon = Some(ICON.into());
+        }
+        Output {
+            items,
+            tokens: tokens.clone(),
+            ..Default::default()
+        }
+    };
+    // no state to speak of: the words stay, without a mark
+    if matches!(w, "key?" | "?") {
+        let (text, style) = if w == "key?" {
+            ("RL key?", "bad")
+        } else {
+            ("RL ?", "dim")
+        };
+        return Output {
+            items: vec![tokened(Output::styled(text, style))],
+            tokens,
+            ..Default::default()
+        };
     }
+    let state_style = match w {
+        "on" => "good",
+        "off" => "dim",
+        _ => "bad",
+    };
+    let state_style = if dim { "dim" } else { state_style };
+    let state_text = match w {
+        "on" => "on",
+        "off" => "off",
+        _ => "on \u{2717}",
+    };
     let known = session_alias
         .as_deref()
         .and_then(|a| destination(s, a).map(|d| (a, d)));
+    let mut items = Vec::new();
+    if o.state || known.is_none() {
+        items.push(tokened(Output::styled(
+            &format!("{state_text}{mark}"),
+            state_style,
+        )));
+    }
     if let Some((alias, dest)) = known {
         let tier = s
             .cache
@@ -293,54 +344,59 @@ pub fn output(s: &Snapshot, inst: &Instance, now: i64, o: &Opts, model_id: &str)
             })
             .map(|a| a.tier.clone())
             .unwrap_or_default();
-        let link = |mut it: Output| {
-            it.link = o.link.as_deref().map(|t| expand(t, inst, alias, &tier));
-            if dim {
-                it.style = Some("dim".into());
-            }
-            it
+        let link = o.link.as_deref().map(|t| expand(t, inst, alias, &tier));
+        let named = o.alias && o.label && !o.compact;
+        let (text, style) = match (&dest, o.tier) {
+            (Dest::Router(_), true) if named => (format!("{alias}[{tier}]"), "good"),
+            (Dest::Router(_), true) => (tier.clone(), "good"),
+            (Dest::Down, true) if named => (format!("{alias}[{tier}]"), "bad"),
+            (Dest::Down, true) => (tier.clone(), "bad"),
+            (Dest::Frontier(m), true) => (format!("{tier}[{m}]"), "dim"),
+            (Dest::Blocked, true) => (format!("{tier}[\u{2717}]"), "bad"),
+            (d, false) => (
+                alias.to_string(),
+                match d {
+                    Dest::Router(_) => "good",
+                    Dest::Frontier(_) => "dim",
+                    _ => "bad",
+                },
+            ),
         };
-        if o.alias && o.label && !o.compact {
-            items.push(link(Output::text(alias)));
-        }
-        if o.tier {
-            let mut it = match &dest {
-                Dest::Router(t) => {
-                    let marker = if inst.local_tiers.iter().any(|l| l == t) {
-                        "\u{2302}"
-                    } else {
-                        "\u{2601}"
-                    };
-                    Output::text(&format!("{t} {marker}"))
-                }
-                Dest::Frontier(m) => Output::text(&format!("{tier} \u{2192} {}", short_model(m))),
-                Dest::Blocked | Dest::Down => Output::styled(&format!("{tier} \u{2717}"), "bad"),
-            };
-            if it.style.is_none() && dim {
-                it.style = Some("dim".into());
-            }
-            it.link = o.link.as_deref().map(|t| expand(t, inst, alias, &tier));
+        if (o.alias && o.label && !o.compact) || o.tier {
+            let style = if dim { "dim" } else { style };
+            let mut it = tokened(Output::styled(&format!("{text}{mark}"), style));
+            it.link = link.clone();
             items.push(it);
+        }
+        if o.marker {
+            if let Dest::Router(t) = &dest {
+                let m = if inst.local_tiers.iter().any(|l| l == t) {
+                    "\u{2302}"
+                } else {
+                    "\u{2601}"
+                };
+                let mut it = Output::text(m);
+                it.link = link.clone();
+                if dim {
+                    it.style = Some("dim".into());
+                }
+                items.push(it);
+            }
         }
         if o.caps {
             let t = s.cache.tiers.iter().find(|t| t.id == tier);
             if let Some(c) = t.map(caps_text).filter(|c| !c.is_empty()) {
-                let mut it = link(Output::styled(&c, "dim"));
-                it.style = Some("dim".into());
+                let mut it = Output::styled(&c, "dim");
+                it.link = link;
                 items.push(it);
             }
         }
     }
-    let mut out = Output {
-        items,
-        tokens,
-        ..Default::default()
-    };
-    if out.items.is_empty() {
+    if items.is_empty() {
         // nothing selected to draw
-        out = Output::hidden();
+        return Output::hidden();
     }
-    out
+    finish(items)
 }
 
 fn caps_text(t: &crate::cache::Tier) -> String {
@@ -632,28 +688,31 @@ mod tests {
     }
 
     #[test]
-    fn the_state_item_says_what_a_click_does() {
+    fn a_session_off_an_alias_shows_the_state_alone() {
         let i = inst();
         let go = |s: &Snapshot, now: i64, o: &Opts| output(s, &i, now, o, "claude-opus-4");
         let o = Opts::default();
         let on = go(&snap(false, Some(true), 100), 110, &o);
-        assert_eq!(texts(&on), vec![t("RL on", Some("good"))]);
+        assert_eq!(texts(&on), vec![t("on", Some("good"))]);
         assert_eq!(on.items[0].tokens["to"], "off");
         assert_eq!(on.items[0].tokens["instance"], instance_id(&i.origin));
         assert_eq!(on.tokens, on.items[0].tokens);
+        // the mark leads, the label stands in for it with icons off
+        assert_eq!(on.items[0].icon.as_deref(), Some(ICON));
+        assert_eq!(on.items[0].label.as_deref(), Some(LABEL));
         let off = go(&snap(true, None, 100), 110, &o);
-        assert_eq!(texts(&off), vec![t("RL off", Some("dim"))]);
+        assert_eq!(texts(&off), vec![t("off", Some("dim"))]);
         assert_eq!(off.items[0].tokens["to"], "on");
         let down = go(&snap(false, Some(false), 100), 110, &o);
-        assert_eq!(texts(&down), vec![t("RL on \u{2717}", Some("bad"))]);
+        assert_eq!(texts(&down), vec![t("on \u{2717}", Some("bad"))]);
         let old = go(&snap(false, Some(true), 100), 100 + STALE_AFTER + 1, &o);
-        assert_eq!(texts(&old), vec![t("RL on ~", Some("good"))]);
+        assert_eq!(texts(&old), vec![t("on ~", Some("good"))]);
         let dim = go(
             &snap(false, Some(true), 100),
             100 + STALE_AFTER + 1,
             &opts(r#"{"stale":"dim"}"#),
         );
-        assert_eq!(texts(&dim), vec![t("RL on", Some("dim"))]);
+        assert_eq!(texts(&dim), vec![t("on", Some("dim"))]);
         let hidden = go(
             &snap(false, Some(true), 100),
             1000,
@@ -681,38 +740,52 @@ mod tests {
     }
 
     #[test]
-    fn the_alias_maps_to_its_tier_and_marker() {
+    fn on_shows_alias_in_front_of_its_bracketed_tier() {
         let i = inst();
         let on = snap(false, Some(true), 100);
         let go = |s: &Snapshot, model: &str, o: &str| output(s, &i, 110, &opts(o), model);
-        // a cloud tier, and a tier declared local (private is by default)
+        // one item: the alias, the tier in brackets, green
+        let v = go(&on, "route-auto", "{}");
+        assert_eq!(texts(&v), vec![t("route-auto[auto]", Some("good"))]);
+        assert_eq!(v.items[0].icon.as_deref(), Some(ICON));
+        assert_eq!(v.items[0].label.as_deref(), Some(LABEL));
+        assert_eq!(v.items[0].tokens["to"], "off");
         assert_eq!(
-            texts(&go(&on, "route-auto", "{}")),
-            vec![
-                t("RL on", Some("good")),
-                t("route-auto", None),
-                t("auto \u{2601}", None)
-            ]
+            texts(&go(&on, "route-private", "{}")),
+            vec![t("route-private[private]", Some("good"))]
         );
-        assert_eq!(
-            texts(&go(&on, "route-private", "{}"))[2],
-            t("private \u{2302}", None)
-        );
-        // compact and `label=none` leave the alias item out
+        // compact and `label=none` leave the alias out
         for o in [r#"{"compact":true}"#, r#"{"label":"none"}"#] {
             assert_eq!(
                 texts(&go(&on, "route-auto", o)),
-                vec![t("RL on", Some("good")), t("auto \u{2601}", None)],
+                vec![t("auto", Some("good"))],
                 "{o}"
             );
         }
+        assert_eq!(
+            texts(&go(&on, "route-auto", r#"{"show":"alias"}"#)),
+            vec![t("route-auto", Some("good"))]
+        );
+        // `show` brings back the separate items
+        assert_eq!(
+            texts(&go(
+                &on,
+                "route-auto",
+                r#"{"show":"state,alias,tier,marker"}"#
+            )),
+            vec![
+                t("on", Some("good")),
+                t("route-auto[auto]", Some("good")),
+                t("\u{2601}", None)
+            ]
+        );
+        assert_eq!(
+            texts(&go(&on, "route-private", r#"{"show":"tier,marker"}"#)),
+            vec![t("private", Some("good")), t("\u{2302}", None)]
+        );
         // an alias the provider does not expose, or a plain model: state only
         for m in ["route-hard", "claude-opus-4", ""] {
-            assert_eq!(
-                texts(&go(&on, m, "{}")),
-                vec![t("RL on", Some("good"))],
-                "{m}"
-            );
+            assert_eq!(texts(&go(&on, m, "{}")), vec![t("on", Some("good"))], "{m}");
         }
         // `routed` hides a session that is not on an alias
         assert_eq!(
@@ -721,40 +794,52 @@ mod tests {
                 .as_deref(),
             Some("")
         );
-        assert_eq!(go(&on, "route-auto", r#"{"routed":true}"#).items.len(), 3);
+        assert_eq!(go(&on, "route-auto", r#"{"routed":true}"#).items.len(), 1);
     }
 
     #[test]
-    fn off_and_down_show_where_the_alias_goes() {
+    fn off_shows_the_tier_and_the_full_model_and_down_stays_red() {
         let i = inst();
         let go = |s: &Snapshot, model: &str, o: &str| texts(&output(s, &i, 110, &opts(o), model));
         let off = snap(true, None, 100);
+        // the model the alias maps to, as the proxy knows it
         assert_eq!(
             go(&off, "route-auto", "{}"),
-            vec![
-                t("RL off", Some("dim")),
-                t("route-auto", None),
-                t("auto \u{2192} sonnet-5-5", None)
-            ]
+            vec![t("auto[claude-sonnet-5-5]", Some("dim"))]
         );
         assert_eq!(
             go(&off, "route-auto", r#"{"show":"tier"}"#),
-            vec![t("auto \u{2192} sonnet-5-5", None)]
+            vec![t("auto[claude-sonnet-5-5]", Some("dim"))]
         );
         // no row: the proxy refuses, and the item says so
         assert_eq!(
-            go(&off, "route-private", "{}")[2],
-            t("private \u{2717}", Some("bad"))
+            go(&off, "route-private", "{}"),
+            vec![t("private[\u{2717}]", Some("bad"))]
         );
-        // routing on but RouteLLM down: no destination is claimed
+        // routing on but RouteLLM down: the ON text, in red
         let down = snap(false, Some(false), 100);
         assert_eq!(
-            go(&down, "route-auto", "{}")[2],
-            t("auto \u{2717}", Some("bad"))
+            go(&down, "route-auto", "{}"),
+            vec![t("route-auto[auto]", Some("bad"))]
         );
         assert_eq!(
-            go(&down, "route-private", "{}")[2],
-            t("private \u{2717}", Some("bad"))
+            go(&down, "route-private", "{}"),
+            vec![t("route-private[private]", Some("bad"))]
+        );
+        // old data: marked, or dim
+        let old = |o: &str| {
+            texts(&output(
+                &snap(false, Some(true), 100),
+                &i,
+                100 + STALE_AFTER + 1,
+                &opts(o),
+                "route-auto",
+            ))
+        };
+        assert_eq!(old("{}"), vec![t("route-auto[auto] ~", Some("good"))]);
+        assert_eq!(
+            old(r#"{"stale":"dim"}"#),
+            vec![t("route-auto[auto]", Some("dim"))]
         );
     }
 
@@ -772,7 +857,7 @@ mod tests {
         let o = output(&s, &i, 110, &opts(r#"{"show":"state,caps"}"#), "route-auto");
         assert_eq!(
             texts(&o),
-            vec![t("RL on", Some("good")), t("vis tools 200k", Some("dim"))]
+            vec![t("on", Some("good")), t("vis tools 200k", Some("dim"))]
         );
         let o = output(
             &s,
@@ -781,13 +866,20 @@ mod tests {
             &opts(r#"{"link":"x://{instance}/{alias}/{tier}?q={tier}%"}"#),
             "route-auto",
         );
-        // the state item stays clickable for the toggle; the others link
-        assert_eq!(o.items[0].link, None);
         assert_eq!(
-            o.items[1].link.as_deref(),
+            o.items[0].link.as_deref(),
             Some(format!("x://{}/route-auto/auto?q=auto%", instance_id(&i.origin)).as_str())
         );
-        assert!(o.items[2].link.is_some());
+        // the state item, when shown, stays clickable for the toggle
+        let o = output(
+            &s,
+            &i,
+            110,
+            &opts(r#"{"show":"state,alias,tier","link":"x://{alias}"}"#),
+            "route-auto",
+        );
+        assert_eq!(o.items[0].link, None);
+        assert!(o.items[1].link.is_some());
         let none = output(&s, &i, 110, &opts("{}"), "route-auto");
         assert!(none.items.iter().all(|i| i.link.is_none()));
     }

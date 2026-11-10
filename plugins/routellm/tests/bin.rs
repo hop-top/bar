@@ -120,8 +120,10 @@ fn render_shows_the_state_and_what_a_click_does() {
     let h = Home::new("render", &e);
     let input = json!({"env":{"ANTHROPIC_BASE_URL": e.proxy.server.origin()}}).to_string();
     let v = out_json(&feed(h.cmd(), &input));
-    assert_eq!(texts(&v), ["RL on"]);
+    assert_eq!(texts(&v), ["on"]);
     assert_eq!(v["items"][0]["style"], "good");
+    assert_eq!(v["items"][0]["label"], "RL");
+    assert!(v["items"][0]["icon"].is_string());
     assert_eq!(v["items"][0]["tokens"]["to"], "off");
     assert_eq!(v["tokens"]["to"], "off");
     assert!(v["tokens"]["instance"].is_string());
@@ -136,43 +138,46 @@ fn render_shows_the_state_and_what_a_click_does() {
 fn a_routed_session_shows_alias_tier_and_where_off_sends_it() {
     let e = Env::new("routed", false, healthy(), 1000);
     let h = Home::new("routed", &e);
-    // ON: the alias, its tier, the declared marker, the tier's capabilities
+    // ON: `alias[tier]`, one item, green
+    let v = render_for(&h, &e, "route-auto", json!({}));
+    assert_eq!(texts(&v), ["route-auto[auto]"]);
+    assert_eq!(v["items"][0]["style"], "good");
+    assert_eq!(v["items"][0]["tokens"]["to"], "off");
+    // the old multi-item form stays reachable
     let v = render_for(
         &h,
         &e,
         "route-auto",
-        json!({"show":"state,alias,tier,caps"}),
+        json!({"show":"state,alias,tier,marker,caps"}),
     );
     assert_eq!(
         texts(&v),
-        ["RL on", "route-auto", "auto \u{2601}", "vis tools 200k"]
+        ["on", "route-auto[auto]", "\u{2601}", "vis tools 200k"]
     );
     let v = render_for(&h, &e, "route-private", json!({}));
-    assert_eq!(texts(&v), ["RL on", "route-private", "private \u{2302}"]);
+    assert_eq!(texts(&v), ["route-private[private]"]);
     // a model that is no alias: the state alone, and `routed` hides it
     assert_eq!(
         texts(&render_for(&h, &e, "claude-opus-4", json!({}))),
-        ["RL on"]
+        ["on"]
     );
     assert_eq!(
         render_for(&h, &e, "claude-opus-4", json!({"routed":true}))["text"],
         ""
     );
-    // OFF: the frontier model the alias maps to, and a private alias with no row
+    // OFF: tier and the full model the alias maps to; a private alias with no row
     let o = feed(h.cmd().arg("off").take_mut(), "");
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     let v = render_for(&h, &e, "route-auto", json!({}));
-    assert_eq!(
-        texts(&v),
-        ["RL off", "route-auto", "auto \u{2192} sonnet-5-5"]
-    );
+    assert_eq!(texts(&v), ["auto[claude-sonnet-5-5]"]);
+    assert_eq!(v["items"][0]["style"], "dim");
     assert_eq!(v["items"][0]["tokens"]["to"], "on");
     let v = render_for(&h, &e, "route-private", json!({}));
-    assert_eq!(texts(&v), ["RL off", "route-private", "private \u{2717}"]);
-    assert_eq!(v["items"][2]["style"], "bad");
+    assert_eq!(texts(&v), ["private[\u{2717}]"]);
+    assert_eq!(v["items"][0]["style"], "bad");
     // nothing secret in any output
     for m in ["route-auto", "route-private"] {
-        let t = render_for(&h, &e, m, json!({"show":"state,alias,tier,caps"})).to_string();
+        let t = render_for(&h, &e, m, json!({"show":"state,alias,tier,marker,caps"})).to_string();
         for secret in [fake::SECRET, fake::HEADER_SECRET, KEY] {
             assert!(!t.contains(secret));
         }
