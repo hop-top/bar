@@ -18,7 +18,7 @@ A status line for [Claude Code](https://code.claude.com/docs/en/statusline) that
 - **The layout is a config file.** tmux-style, options on every placeholder, linted by `bar check`, previewed by `bar preview`.
 - **It knows your Claude usage.** 5-hour and 7-day bars coloured by pace, projections, sparklines; context, cost, burn rate, tokens, prompt cache, spend history and budgets.
 - **It knows your proxy accounts.** Behind a CLIProxyAPI proxy, `bar-cliproxyapi` shows each account's 5-hour and 7-day quota with reset countdowns, feeds `#{usage}` and `#{account}`, and switches accounts from the command line or a click ([plugin](docs/plugins/cliproxyapi.md)).
-- **It can switch a router.** `bar-routellm` shows whether a RouteLLM router behind your proxy is routing and turns it on or off from a click or `bar rl on|off` ([plugin](docs/plugins/routellm.md)).
+- **It can switch a router.** `bar-routellm` shows whether a RouteLLM router behind your proxy is routing and turns it on or off from a click or `bar rtellm on|off` ([plugin](docs/plugins/routellm.md)).
 - **It knows your repo.** Branch, dirty state, commit, tag, stash, remotes, upstream, fork and operation in progress from files; lines added and removed and commit age from a background `git`; Jujutsu changes, PRs and issues from `gh` (merge requests from `glab` on GitLab), failing CI marked.
 
 ### Benchmarks

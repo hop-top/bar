@@ -79,7 +79,7 @@ fn ext_info_declares_the_alias_inputs_timeout_and_actions() {
     let o = feed(h.cmd().arg("--ext-info").take_mut(), "");
     let v = out_json(&o);
     assert_eq!(v["name"], "routellm");
-    assert_eq!(v["aliases"], json!(["rl"]));
+    assert_eq!(v["aliases"], json!(["rtellm"]));
     assert_eq!(v["inputs"]["env"], json!(["ANTHROPIC_BASE_URL"]));
     assert_eq!(v["timeout"], "8s");
     assert_eq!(v["ttl"], "15s");

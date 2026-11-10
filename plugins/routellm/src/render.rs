@@ -59,7 +59,7 @@ pub fn ext_info() -> ExtInfo {
         }),
         timeout: Some("8s".into()),
         actions: actions(),
-        aliases: vec!["rl".into()],
+        aliases: vec!["rtellm".into()],
         web: Some(serde_json::json!({
             "category": "usage",
             "samples": [
@@ -375,7 +375,7 @@ pub fn status_lines(s: &Snapshot, inst: &Instance, now: i64) -> Vec<String> {
         (Status::Off, _) => "state: unknown (management API off)".into(),
         (_, Some(Problem::Unconfigured)) => {
             format!(
-                "state: not configured (no `{}` provider entry; run `bar rl setup`)",
+                "state: not configured (no `{}` provider entry; run `bar rtellm setup`)",
                 inst.provider
             )
         }
@@ -414,7 +414,7 @@ pub fn status_lines(s: &Snapshot, inst: &Instance, now: i64) -> Vec<String> {
             out.push(format!("alias: {} -> tier {}; off: {off}", a.alias, a.tier));
         }
         if !armed(c) {
-            out.push("warning: some aliases have no claude row, so OFF fails for them; run `bar rl setup`".into());
+            out.push("warning: some aliases have no claude row, so OFF fails for them; run `bar rtellm setup`".into());
         }
     }
     match c.up {
@@ -455,7 +455,7 @@ pub fn tier_lines(s: &Snapshot, inst: &Instance, all: bool) -> Vec<String> {
         ));
     }
     if out.is_empty() {
-        out.push("no tiers known; run `bar rl status --probe` while routing is on".into());
+        out.push("no tiers known; run `bar rtellm status --probe` while routing is on".into());
     }
     out
 }
@@ -543,7 +543,7 @@ pub fn setup_snippet(inst: &Instance, c: &Cache, layout: Layout) -> Vec<String> 
     let item = format!("{pad}- name: {}", inst.provider);
     let f = format!("{pad}  ");
     o.push(item);
-    // routing stays OFF until `bar rl on`
+    // routing stays OFF until `bar rtellm on`
     o.push(format!("{f}disabled: true"));
     o.push(format!("{f}base-url: {}/v1", inst.routellm));
     o.push(format!("{f}priority: {}", inst.on_priority));
@@ -562,7 +562,7 @@ pub fn setup_snippet(inst: &Instance, c: &Cache, layout: Layout) -> Vec<String> 
         "# The api-key value is a placeholder; put the key RouteLLM expects, if it checks one."
             .into(),
     );
-    o.push("# The provider is `disabled: true`: routing stays OFF until `bar rl on`.".into());
+    o.push("# The provider is `disabled: true`: routing stays OFF until `bar rtellm on`.".into());
     if layout == Layout::V8 {
         o.push("# The plugin's first toggle rewrites a v8-layout file (comments are dropped); keep a backup.".into());
     }
@@ -882,12 +882,12 @@ mod tests {
         let s = snap(false, Some(true), 1);
         let v8 = setup_snippet(&inst(), &s.cache, Layout::V8).join("\n");
         assert!(
-            v8.contains("OFF until `bar rl on`") && v8.contains("keep a backup"),
+            v8.contains("OFF until `bar rtellm on`") && v8.contains("keep a backup"),
             "{v8}"
         );
         let lg = setup_snippet(&inst(), &s.cache, Layout::Legacy).join("\n");
         assert!(
-            lg.contains("OFF until `bar rl on`") && !lg.contains("backup"),
+            lg.contains("OFF until `bar rtellm on`") && !lg.contains("backup"),
             "{lg}"
         );
     }

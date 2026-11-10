@@ -145,7 +145,7 @@ fn check_instance(i: &Instance, state: &std::path::Path, w: &mut Vec<String>) {
     }
     match (c.problem, &c.entry) {
         (Some(cache::Problem::Unconfigured), _) => w.push(format!(
-            "{}: the proxy has no `{}` provider entry; run `bar rl setup` and add it",
+            "{}: the proxy has no `{}` provider entry; run `bar rtellm setup` and add it",
             i.origin, i.provider
         )),
         (Some(cache::Problem::Mismatch), _) => w.push(format!(
@@ -153,11 +153,11 @@ fn check_instance(i: &Instance, state: &std::path::Path, w: &mut Vec<String>) {
             i.origin, i.provider, i.routellm
         )),
         (None, Some(_)) if !collect::armed(&c) => w.push(format!(
-            "{}: some aliases have no claude row, so OFF fails for them; run `bar rl setup`",
+            "{}: some aliases have no claude row, so OFF fails for them; run `bar rtellm setup`",
             i.origin
         )),
         (None, None) if c.at == 0 => w.push(format!(
-            "{}: not read yet; `bar rl status --probe` reads the proxy once",
+            "{}: not read yet; `bar rtellm status --probe` reads the proxy once",
             i.origin
         )),
         _ => {}
