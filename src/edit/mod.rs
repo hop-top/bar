@@ -47,7 +47,7 @@ pub fn run() -> Result<(), String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
         Err(e) => return Err(format!("{}: {e}", path.display())),
     };
-    let dirs = plugin::path_dirs(std::env::var_os("PATH").as_deref());
+    let dirs = plugin::plugin_dirs(std::env::var_os("PATH").as_deref());
     let plugins = plugin::discover(&dirs)
         .into_iter()
         .map(|f| f.name)

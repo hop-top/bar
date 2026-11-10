@@ -141,7 +141,7 @@ fn target() -> Result<PathBuf, String> {
 
 /// Lints `text` as a user config; prints the report and exits 2 on errors.
 fn lint(text: &str, name: &str) {
-    let dirs = plugin::path_dirs(std::env::var_os("PATH").as_deref());
+    let dirs = plugin::plugin_dirs(std::env::var_os("PATH").as_deref());
     let r = check::check_text(text, Some(PathBuf::from(name)), &dirs);
     if r.has_errors() {
         eprint!("{}", r.to_text());

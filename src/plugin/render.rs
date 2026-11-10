@@ -108,6 +108,7 @@ pub fn plan(ctx: &Ctx, found: &Found, info: &ExtInfo, opts: &Options) -> Option<
         job: Job::PluginRender {
             path,
             input: input.to_string(),
+            timeout: info.timeout,
         },
         ttl: ttl.max(ctx.config.refresh),
     })

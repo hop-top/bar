@@ -4,7 +4,7 @@ Any executable named `bar-<name>` on `PATH` (on Windows `bar-<name>.exe`, `.cmd`
 
 ## Discovery
 
-- `PATH` entries are scanned in order; relative entries are ignored.
+- `PATH` entries are scanned in order; relative entries are ignored. After them comes the directory holding the running `bar` (symlinks resolved), so plugins shipped beside `bar` are found without being on `PATH`. A copy on `PATH` wins over one beside `bar`.
 - Per name, the first executable regular file wins; non-executables are skipped.
 - Windows: a file is executable when its extension is one of `.com`, `.exe`, `.bat`, `.cmd` listed in `PATHEXT` (default `.COM;.EXE;.BAT;.CMD`); the name is the file name without `bar-` and the extension, case ignored in the extension. In one dir the extension listed first in `PATHEXT` wins. Extension-less files (shebang scripts) and `.ps1` are skipped, since Windows cannot start them directly; wrap a PowerShell script in a `.cmd`, e.g. `bar-hello.cmd` holding `@powershell -NoProfile -File "%~dp0bar-hello.ps1" %*`. `.bat`/`.cmd` plugins run through `cmd.exe`, so `echo` output ends in CRLF; bar trims it.
 - Names are `[A-Za-z0-9_-]+`. Core placeholder names (every name in [config](config.md#placeholders): `account`, `repo`, `model`, `usage`, `tokens`, `cwd` and the rest) always win: `bar-account` is never used.
@@ -38,6 +38,7 @@ Any executable named `bar-<name>` on `PATH` (on Windows `bar-<name>.exe`, `.cmd`
 | `description` | Optional string, shown by `bar plugin list`. |
 | `options` | Allowed options; keys, choices and string defaults are sanitised like `text`. Types: `int` (sent as a JSON integer), `string`, `bool` (written `true`/`yes`/`on`/`1` or `false`/`no`/`off`/`0`, sent as JSON `true`/`false`), `enum` (with `enum` choices, sent as the string). `default` fills a missing option when it fits the type. Options of unknown type are dropped. `icon`, `bg`, `fg`, `bold`, `gradient` and `click` are reserved: declared, they are dropped and `bar check` warns. |
 | `icon` | Optional default segment icon, used when `set icons` is not `none`. Sanitised; at most 2 cells. |
+| `timeout` | Optional. Limit for the background render, a number of seconds or a duration (`8s`), clamped to 1 to 15 s. Default 3 s; zero or unparsable means the default. |
 | `ttl` | How long a render result stays fresh: seconds (`300`) or a duration (`90s`, `5m`, `1h`, `1d`). Default 60 s; zero or unparsable means the default. |
 | `cache` | Optional. `"session"`: the output depends on the Claude Code session, so results are cached per session id and the render input carries `session.record`. Any other value or none: shared across sessions. |
 | `web` | Optional. What the [web configurator](web.md) shows for the plugin, which it cannot run: see [Web configurator metadata](#web-configurator-metadata). Without it the plugin still works everywhere, and the page and `bar edit` preview it as its name. |
@@ -75,7 +76,7 @@ The web configurator runs bar's renderer in the browser, where no plugin can run
 
 ## Render
 
-`bar-<name>` with no arguments, 3 s limit, run directly (no shell). Stdin:
+`bar-<name>` with no arguments, run directly (no shell), 3 s limit (`timeout` in `--ext-info` sets up to 15 s). Stdin:
 
 ```json
 {

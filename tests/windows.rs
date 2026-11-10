@@ -95,6 +95,7 @@ fn cmd_plugin_runs_for_info_and_render() {
     let out = Job::PluginRender {
         path,
         input: "{}".into(),
+        timeout: 3,
     }
     .execute(Duration::from_secs(10));
     assert!(out.is_some_and(|o| o.contains("\"hi\"")));

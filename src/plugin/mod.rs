@@ -9,7 +9,7 @@ pub mod web;
 
 use std::time::Duration;
 
-pub use discover::{discover, find, path_dirs, Found};
+pub use discover::{discover, find, path_dirs, plugin_dirs, plugin_dirs_with, Found};
 pub use info::{
     cached_info, info, info_job, info_now, parse_info, validate, ExtInfo, OptSpec, OptType,
     RESERVED,
@@ -24,6 +24,9 @@ pub const PREFIX: &str = "bar-";
 pub const CAPABILITY: &str = "placeholder";
 pub const INFO_TIMEOUT: Duration = Duration::from_secs(5);
 pub const RENDER_TIMEOUT: Duration = Duration::from_secs(3);
+/// Longest render limit a plugin can ask for in `--ext-info`; below the
+/// refresh budget of a detached job.
+pub const MAX_RENDER_TIMEOUT: Duration = Duration::from_secs(15);
 /// Render results stay fresh this long unless the plugin says otherwise.
 pub const DEFAULT_TTL: u64 = 60;
 /// `--ext-info` results stay fresh a day; the cache key carries the

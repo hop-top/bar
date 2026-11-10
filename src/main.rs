@@ -260,7 +260,7 @@ fn prices_cmd(m: &ArgMatches) {
 
 fn check(m: &ArgMatches) {
     let _palettes = hop_bar::palette::use_dir(conf::palette_dir_default());
-    let dirs = plugin::path_dirs(std::env::var_os("PATH").as_deref());
+    let dirs = plugin::plugin_dirs(std::env::var_os("PATH").as_deref());
     let user = conf::find_path_default().map(|p| check::source(&p));
     let project = cwd().and_then(|d| conf::project::find(&d)).map(|p| {
         let text = conf::project::read(&p);
@@ -474,7 +474,7 @@ fn click_cmd(m: &ArgMatches) {
 }
 
 fn plugin_cmd(m: &ArgMatches) {
-    let dirs = plugin::path_dirs(std::env::var_os("PATH").as_deref());
+    let dirs = plugin::plugin_dirs(std::env::var_os("PATH").as_deref());
     let (leaf, data) = match m.subcommand() {
         Some(("list", l)) => {
             let rows = plugin::discover(&dirs)
@@ -521,7 +521,7 @@ fn web_cmd(m: &ArgMatches) {
         .map(|d| std::path::absolute(d).unwrap_or_else(|_| d.clone()))
         .collect();
     let dirs = if given.is_empty() {
-        plugin::path_dirs(std::env::var_os("PATH").as_deref())
+        plugin::plugin_dirs(std::env::var_os("PATH").as_deref())
     } else {
         given
     };
