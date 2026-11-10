@@ -374,16 +374,16 @@ fn preview_shows_sample_transcript_stats() {
 #[test]
 fn check_flags_bad_usage_style_values() {
     let fx = Fx::new();
-    fx.conf("set left \"#{usage[show=bar,pct,glyphs=dots,count=used,alt=pct,time]}\"\n");
+    fx.conf("set left \"#{usage[show=bar,pct;glyphs=dots;count=used;alt=pct,time]}\"\n");
     let (code, stdout) = out(&mut fx.bar(&["check"]));
     assert_eq!(code, 0, "{stdout}");
 
-    fx.conf("set left \"#{usage[show=eta,proj,time,alt=proj,eta,bar]}\"\n");
+    fx.conf("set left \"#{usage[show=eta,proj,time;alt=proj,eta,bar]}\"\n");
     let (code, stdout) = out(&mut fx.bar(&["check"]));
     assert_eq!(code, 0, "{stdout}");
 
     fx.conf(
-        "set left \"#{usage[show=spark,gauge,time,alt=gauge,spark,color=gradient,width=8]}\"\n",
+        "set left \"#{usage[show=spark,gauge,time;alt=gauge,spark;color=gradient;width=8]}\"\n",
     );
     let (code, stdout) = out(&mut fx.bar(&["check"]));
     assert_eq!(code, 0, "{stdout}");

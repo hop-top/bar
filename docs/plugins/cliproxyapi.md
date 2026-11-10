@@ -99,10 +99,10 @@ The key is held in memory that is overwritten when released, and passed to `curl
 | `pool` | `mean` | How `usage` pools the accounts, below. |
 | `base-url` | none | Base URL to use when `ANTHROPIC_BASE_URL` is not in the environment bar passes. |
 
-`windows`, `show` and `accounts` are list options: write them with commas (`windows=5h,7d`) or with `+` (`windows=5h+7d`). A bare part after a list continues it unless it names another option: `#{cliproxyapi[windows=5h,7d,count=used]}`.
+`windows`, `show` and `accounts` are lists: separate the items with commas and the options with semicolons, `#{cliproxyapi[windows=5h,7d;count=used]}`.
 
 ```
-set left "#{cliproxyapi[windows=5h,7d,compact=true,sort=reset]}"
+set left "#{cliproxyapi[windows=5h,7d;compact;sort=reset]}"
 default cliproxyapi stale=dim label=index
 ```
 

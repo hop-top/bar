@@ -90,9 +90,9 @@ fn config_values_and_project_refusal() {
     assert!(e[0].message.contains("usage-api"), "{e:?}");
     for ok in [
         "#{usage[model=opus]}",
-        "#{usage[type=7d,model=sonnet,show=time,pct]}",
+        "#{usage[type=7d;model=sonnet;show=time,pct]}",
         "#{extra}",
-        "#{extra[show=used,limit,left,today,daily,pct,bar,gauge,time,count=left,width=8]}",
+        "#{extra[show=used,limit,left,today,daily,pct,bar,gauge,time;count=left;width=8]}",
         "#{spend[show=time,used,limit]}",
     ] {
         let r = hop_bar::check::check_text(&format!("set left \"{ok}\"\n"), None, &[]);
@@ -214,7 +214,7 @@ fn per_model_rule_and_its_weekly_fallback() {
     let base = render("set usage-api on\n");
     // a model rule that scores 82% left as bad changes the colour
     let model = render(
-        "set usage-api on\nrule usage[type=7d,model=opus] early warn=95% bad=90% final=1h bad=30%\n",
+        "set usage-api on\nrule usage[type=7d;model=opus] early warn=95% bad=90% final=1h bad=30%\n",
     );
     assert_ne!(base, model);
     // the weekly rule applies when there is no model rule

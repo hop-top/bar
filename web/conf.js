@@ -70,7 +70,7 @@ const Conf = (() => {
         const opts = t.options
           .filter(([k]) => k !== "")
           .map(([k, v]) => (v === "" ? k : `${k}=${v}`))
-          .join(",");
+          .join(";");
         return opts ? `#{${t.name}[${opts}]}` : `#{${t.name}}`;
       })
       .join("");

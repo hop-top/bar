@@ -6,7 +6,7 @@ use hop_bar::style::{strip_codes, visible_width_with};
 
 /// Layout the plain goldens in `tests/fixtures/skins` were captured with,
 /// before skins existed.
-const L: &str = "set left \"#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3,author=@me]} │ #{issues[limit=3,assignee=@me]}\"\nset center \"#{dirty} │ #{ahead}\"\nset right \"#{account}\"\n";
+const L: &str = "set left \"#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3;author=@me]} │ #{issues[limit=3;assignee=@me]}\"\nset center \"#{dirty} │ #{ahead}\"\nset right \"#{account}\"\n";
 const EXTRAS: [(&str, &str); 3] = [
     ("base", ""),
     ("icons", "set icons nerdfont\nset icon-width 2\n"),

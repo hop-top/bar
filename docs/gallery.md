@@ -65,7 +65,7 @@ set skin powerline
 set palette nord
 set icons nerdfont
 set left "#{model}#{effort} │ #{ctx[bg=52]} │ #{repo}:#{branch}"
-set center "#{usage[type=5h,bg=22]} │ #{usage[type=7d]}"
+set center "#{usage[type=5h;bg=22]} │ #{usage[type=7d]}"
 set right "#{account}"
 ```
 
@@ -253,7 +253,7 @@ set right "#{account}"
 ```text
 set palette nord
 set color-depth truecolor
-set left "#{model[fg=accent,bold]}#{effort} │ #{ctx} │ #{repo[fg=#d08770]}:#{branch}"
+set left "#{model[fg=accent;bold]}#{effort} │ #{ctx} │ #{repo[fg=#d08770]}:#{branch}"
 set right "#{usage[type=5h]} │ #{usage[type=7d]}"
 ```
 
@@ -263,7 +263,7 @@ set right "#{usage[type=5h]} │ #{usage[type=7d]}"
 
 ```text
 set color-depth truecolor
-set left "#{model[gradient=dusk,bold]}#{effort} │ #{ctx} │ #{repo[gradient=lagoon]}:#{branch}"
+set left "#{model[gradient=dusk;bold]}#{effort} │ #{ctx} │ #{repo[gradient=lagoon]}:#{branch}"
 set right "#{usage[type=5h]} │ #{usage[type=7d]}"
 ```
 
@@ -313,7 +313,7 @@ set right "#{account}"
 
 ```text
 set palette default
-set left "#{usage[type=5h,glyphs=blocks,width=10]} │ #{usage[type=7d,glyphs=blocks,width=10]}"
+set left "#{usage[type=5h;glyphs=blocks;width=10]} │ #{usage[type=7d;glyphs=blocks;width=10]}"
 ```
 
 ![Usage bars drawn with the shades glyph set, nord palette.](gallery/glyphs-shades.svg)
@@ -322,7 +322,7 @@ set left "#{usage[type=5h,glyphs=blocks,width=10]} │ #{usage[type=7d,glyphs=bl
 
 ```text
 set palette nord
-set left "#{usage[type=5h,glyphs=shades,width=10]} │ #{usage[type=7d,glyphs=shades,width=10]}"
+set left "#{usage[type=5h;glyphs=shades;width=10]} │ #{usage[type=7d;glyphs=shades;width=10]}"
 ```
 
 ![Usage bars drawn with the dots glyph set, gruvbox palette.](gallery/glyphs-dots.svg)
@@ -331,7 +331,7 @@ set left "#{usage[type=5h,glyphs=shades,width=10]} │ #{usage[type=7d,glyphs=sh
 
 ```text
 set palette gruvbox
-set left "#{usage[type=5h,glyphs=dots,width=10]} │ #{usage[type=7d,glyphs=dots,width=10]}"
+set left "#{usage[type=5h;glyphs=dots;width=10]} │ #{usage[type=7d;glyphs=dots;width=10]}"
 ```
 
 ![Usage bars drawn with the squares glyph set, dracula palette.](gallery/glyphs-squares.svg)
@@ -340,7 +340,7 @@ set left "#{usage[type=5h,glyphs=dots,width=10]} │ #{usage[type=7d,glyphs=dots
 
 ```text
 set palette dracula
-set left "#{usage[type=5h,glyphs=squares,width=10]} │ #{usage[type=7d,glyphs=squares,width=10]}"
+set left "#{usage[type=5h;glyphs=squares;width=10]} │ #{usage[type=7d;glyphs=squares;width=10]}"
 ```
 
 ![Usage bars drawn with the bars glyph set, solarized palette.](gallery/glyphs-bars.svg)
@@ -349,7 +349,7 @@ set left "#{usage[type=5h,glyphs=squares,width=10]} │ #{usage[type=7d,glyphs=s
 
 ```text
 set palette solarized
-set left "#{usage[type=5h,glyphs=bars,width=10]} │ #{usage[type=7d,glyphs=bars,width=10]}"
+set left "#{usage[type=5h;glyphs=bars;width=10]} │ #{usage[type=7d;glyphs=bars;width=10]}"
 ```
 
 ![Usage bars drawn with the braille glyph set, terminal palette.](gallery/glyphs-braille.svg)
@@ -358,7 +358,7 @@ set left "#{usage[type=5h,glyphs=bars,width=10]} │ #{usage[type=7d,glyphs=bars
 
 ```text
 set palette terminal
-set left "#{usage[type=5h,glyphs=braille,width=10]} │ #{usage[type=7d,glyphs=braille,width=10]}"
+set left "#{usage[type=5h;glyphs=braille;width=10]} │ #{usage[type=7d;glyphs=braille;width=10]}"
 ```
 
 ![Usage bars drawn with the eighths glyph set, mono palette.](gallery/glyphs-eighths.svg)
@@ -367,7 +367,7 @@ set left "#{usage[type=5h,glyphs=braille,width=10]} │ #{usage[type=7d,glyphs=b
 
 ```text
 set palette mono
-set left "#{usage[type=5h,glyphs=eighths,width=10]} │ #{usage[type=7d,glyphs=eighths,width=10]}"
+set left "#{usage[type=5h;glyphs=eighths;width=10]} │ #{usage[type=7d;glyphs=eighths;width=10]}"
 ```
 
 ## Solid and gradient bars
@@ -380,7 +380,7 @@ set left "#{usage[type=5h,glyphs=eighths,width=10]} │ #{usage[type=7d,glyphs=e
 
 ```text
 set palette default
-set left "#{usage[type=5h,color=solid,width=10,show=bar,pct]} │ #{usage[type=7d,color=solid,width=10,show=bar,pct]}"
+set left "#{usage[type=5h;color=solid;width=10;show=bar,pct]} │ #{usage[type=7d;color=solid;width=10;show=bar,pct]}"
 ```
 
 ![10-cell usage bars with color=gradient, default palette, burning state.](gallery/color-gradient.svg)
@@ -389,7 +389,7 @@ set left "#{usage[type=5h,color=solid,width=10,show=bar,pct]} │ #{usage[type=7
 
 ```text
 set palette default
-set left "#{usage[type=5h,color=gradient,width=10,show=bar,pct]} │ #{usage[type=7d,color=gradient,width=10,show=bar,pct]}"
+set left "#{usage[type=5h;color=gradient;width=10;show=bar,pct]} │ #{usage[type=7d;color=gradient;width=10;show=bar,pct]}"
 ```
 
 ## Projections and count
@@ -402,7 +402,7 @@ set left "#{usage[type=5h,color=gradient,width=10,show=bar,pct]} │ #{usage[typ
 
 ```text
 set palette default
-set left "#{usage[type=5h,show=time,bar,eta,proj]} │ #{usage[type=7d,show=time,bar,eta,proj]}"
+set left "#{usage[type=5h;show=time,bar,eta,proj]} │ #{usage[type=7d;show=time,bar,eta,proj]}"
 ```
 
 ![Usage with count=used and show=pct,bar: the bar fills with what is used, default palette, burning state.](gallery/usage-count-used.svg)
@@ -411,7 +411,7 @@ set left "#{usage[type=5h,show=time,bar,eta,proj]} │ #{usage[type=7d,show=time
 
 ```text
 set palette default
-set left "#{usage[type=5h,count=used,show=pct,bar]} │ #{usage[type=7d,count=used,show=pct,bar]}"
+set left "#{usage[type=5h;count=used;show=pct,bar]} │ #{usage[type=7d;count=used;show=pct,bar]}"
 ```
 
 ## Spark and gauge
@@ -424,7 +424,7 @@ set left "#{usage[type=5h,count=used,show=pct,bar]} │ #{usage[type=7d,count=us
 
 ```text
 set palette solarized
-set left "#{usage[type=5h,show=time,spark,gauge,pct]} │ #{usage[type=7d,show=time,spark,gauge,pct]}"
+set left "#{usage[type=5h;show=time,spark,gauge,pct]} │ #{usage[type=7d;show=time,spark,gauge,pct]}"
 ```
 
 ![Sparklines with color=gradient, each cell coloured by its own value, default palette.](gallery/spark-gradient.svg)
@@ -433,7 +433,7 @@ set left "#{usage[type=5h,show=time,spark,gauge,pct]} │ #{usage[type=7d,show=t
 
 ```text
 set palette default
-set left "#{usage[type=5h,show=spark,bar,color=gradient,width=8]} │ #{usage[type=7d,show=spark,bar,color=gradient,width=8]}"
+set left "#{usage[type=5h;show=spark,bar;color=gradient;width=8]} │ #{usage[type=7d;show=spark,bar;color=gradient;width=8]}"
 ```
 
 ## Pace states
@@ -522,7 +522,7 @@ set right "#{usage[type=5h]} │ #{usage[type=7d]}"
 `COLUMNS=100 bar preview --state early` with:
 
 ```text
-set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} #{dirty} #{ahead} │ #{prs[limit=3,author=@me]} │ #{issues[limit=3,assignee=@me]}"
+set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} #{dirty} #{ahead} │ #{prs[limit=3;author=@me]} │ #{issues[limit=3;assignee=@me]}"
 set right "#{account}"
 set left@2 "#{usage[type=5h]} │ #{usage[type=7d]} │ #{spendhist}"
 set right@2 "#{sessions}"

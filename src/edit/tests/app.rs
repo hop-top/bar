@@ -79,7 +79,7 @@ fn options_cycle_choices_and_type_values() {
     press(&mut a, &[KeyCode::Backspace]);
     type_str(&mut a, "8");
     press(&mut a, &[KeyCode::Enter]);
-    assert_eq!(a.ed.segments(2), ["#{usage[type=7d,width=8]}"]);
+    assert_eq!(a.ed.segments(2), ["#{usage[type=7d;width=8]}"]);
     // backspace unsets
     press(&mut a, &[KeyCode::Backspace]);
     assert_eq!(a.ed.segments(2), ["#{usage[type=7d]}"]);

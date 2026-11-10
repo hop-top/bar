@@ -165,11 +165,11 @@ fn gradient_keeps_links_width_and_combining_marks() {
 #[test]
 fn gradient_beats_fg_and_keeps_truncation() {
     let out =
-        render("set color-depth truecolor\nset left \"#{d[fg=75,gradient=#000000:#ffffff]}\"");
+        render("set color-depth truecolor\nset left \"#{d[fg=75;gradient=#000000:#ffffff]}\"");
     assert_eq!(ink_of(&out, 'l'), "38;2;0;0;0");
     assert!(!out.contains("38;5;75"));
     // values are cut before they are painted
-    let c = parse("set color-depth truecolor\nset left \"#{name[max=4,gradient=moss]}\"").unwrap();
+    let c = parse("set color-depth truecolor\nset left \"#{name[max=4;gradient=moss]}\"").unwrap();
     let s = Session {
         name: "a long session name".into(),
         ..Session::default()
@@ -183,7 +183,7 @@ fn gradient_beats_fg_and_keeps_truncation() {
 
 #[test]
 fn empty_values_stay_empty() {
-    let out = render("set left \"#{e[fg=75,bold,gradient=ash]} │ #{x}\"");
+    let out = render("set left \"#{e[fg=75;bold;gradient=ash]} │ #{x}\"");
     assert_eq!(strip_codes(&out), "x");
 }
 

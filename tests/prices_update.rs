@@ -221,7 +221,7 @@ fn spend_fx<'a>(root: &'a Path, model: &str) -> impl Fn() -> String + 'a {
     std::fs::write(
         cfg.join("bar.conf"),
         format!(
-            "set claude-dir \"{}\"\nset left \"#{{spendhist[tz=utc,period=today]}}\"\n",
+            "set claude-dir \"{}\"\nset left \"#{{spendhist[tz=utc;period=today]}}\"\n",
             claude.display()
         ),
     )

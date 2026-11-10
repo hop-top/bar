@@ -431,7 +431,7 @@ fn compact_at_parses() {
 #[test]
 fn check_validates_ctx_options() {
     use hop_bar::check::check_text;
-    let ok = "set left \"#{ctx[show=bar,pct,tokens,left,split,growth,trend,gauge,of=compact,count=left,glyphs=eighths,color=gradient,width=8,click=none]}\"\nset compact-at 90%\n";
+    let ok = "set left \"#{ctx[show=bar,pct,tokens,left,split,growth,trend,gauge;of=compact;count=left;glyphs=eighths;color=gradient;width=8;click=none]}\"\nset compact-at 90%\n";
     assert!(check_text(ok, None, &[]).issues.is_empty());
     for bad in [
         "show=pct,nope",

@@ -108,7 +108,7 @@ fn options_len_link_and_step() {
     );
     let id = head(&d);
     let o = run(&t)
-        .conf("set left \"#{sha[len=12,link=no]}|#{sha[len=0]}|#{gitop}|#{stash}|#{conflicts}\"")
+        .conf("set left \"#{sha[len=12;link=no]}|#{sha[len=0]}|#{gitop}|#{stash}|#{conflicts}\"")
         .cwd(&d)
         .unset("GIT_CONFIG_NOSYSTEM")
         .go();

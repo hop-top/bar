@@ -142,7 +142,7 @@ fn ttl_option_accepted_by_check() {
     let t = Tmp::new();
     t.write(
         "xdg/bar/bar.conf",
-        "set left \"#{dirty[ttl=30,show=staged]}#{ahead[ttl=5]}#{worktree}\"\n",
+        "set left \"#{dirty[ttl=30;show=staged]}#{ahead[ttl=5]}#{worktree}\"\n",
     );
     let (iso, cwd) = common::isolation(t.path());
     let o = assert_cmd::Command::cargo_bin("bar")

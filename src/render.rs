@@ -52,7 +52,7 @@ impl CommandRunner for ColdRunner {
 pub const CONFIG_ERROR: &str = "bar: config error, run bar check";
 
 /// `builtin_config` as config text.
-pub const BUILTIN_CONF: &str = "set left \"#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3,author=@me]} │ #{issues[limit=3,assignee=@me]}\"
+pub const BUILTIN_CONF: &str = "set left \"#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3;author=@me]} │ #{issues[limit=3;assignee=@me]}\"
 set center \"#{usage[type=5h]} │ #{usage[type=7d]}\"
 set right \"#{account}\"
 ";
@@ -60,7 +60,7 @@ set right \"#{account}\"
 /// Layout used when no config file exists.
 pub fn builtin_config() -> Config {
     Config {
-        left: "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3,author=@me]} │ #{issues[limit=3,assignee=@me]}".into(),
+        left: "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3;author=@me]} │ #{issues[limit=3;assignee=@me]}".into(),
         center: "#{usage[type=5h]} │ #{usage[type=7d]}".into(),
         right: "#{account}".into(),
         ..Config::default()

@@ -323,7 +323,7 @@ fn render_returns_within_50ms_with_slow_job() {
     std::fs::create_dir_all(&cfg_dir).unwrap();
     std::fs::write(
         cfg_dir.join("bar.conf"),
-        "set left \"#{model[click=%sleep 5; echo 9%]}\"\n",
+        "set left \"#{model[click=%sleep 5 && echo 9%]}\"\n",
     )
     .unwrap();
     let run = || {
@@ -344,7 +344,7 @@ fn render_returns_within_50ms_with_slow_job() {
     run();
     let state = Cache::with_exe(&t.path().join("state"), bin());
     assert!(
-        state.lock_path("expand:sleep 5; echo 9").exists(),
+        state.lock_path("expand:sleep 5 && echo 9").exists(),
         "render went through the cache and spawned the slow refresh"
     );
     // Process start-up of a debug binary under a parallel test run is
@@ -356,7 +356,7 @@ fn render_returns_within_50ms_with_slow_job() {
         "bar render took {best:?}"
     );
     let cfg = hop_bar::conf::Config {
-        left: "#{model[click=%sleep 5; echo 8%]}".into(),
+        left: "#{model[click=%sleep 5 && echo 8%]}".into(),
         ..hop_bar::conf::Config::default()
     };
     let session = hop_bar::session::parse("{}");
@@ -366,7 +366,7 @@ fn render_returns_within_50ms_with_slow_job() {
     let took = start.elapsed();
     assert!(took < Duration::from_millis(50), "render took {took:?}");
     let state2 = Cache::with_exe(&t.path().join("state2"), bin());
-    assert!(state2.lock_path("expand:sleep 5; echo 8").exists());
+    assert!(state2.lock_path("expand:sleep 5 && echo 8").exists());
 }
 
 #[test]

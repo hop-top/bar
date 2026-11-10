@@ -49,7 +49,7 @@ GIT = (
 
 def usage_pair(opts):
     return (
-        f'set left "#{{usage[type=5h,{opts}]}} │ #{{usage[type=7d,{opts}]}}"\n'
+        f'set left "#{{usage[type=5h;{opts}]}} │ #{{usage[type=7d;{opts}]}}"\n'
     )
 
 
@@ -104,7 +104,7 @@ section(
             "per-segment backgrounds over the palette's, nord palette.",
             "set skin powerline\nset palette nord\nset icons nerdfont\n"
             + MID.replace("#{ctx}", "#{ctx[bg=52]}").replace(
-                "#{usage[type=5h]}", "#{usage[type=5h,bg=22]}"
+                "#{usage[type=5h]}", "#{usage[type=5h;bg=22]}"
             ),
         ),
     ],
@@ -156,7 +156,7 @@ section(
             "fg=accent and bold on the model, fg=#d08770 on the repository, "
             "truecolor, nord palette.",
             "set palette nord\nset color-depth truecolor\n"
-            'set left "#{model[fg=accent,bold]}#{effort} │ #{ctx} │ '
+            'set left "#{model[fg=accent;bold]}#{effort} │ #{ctx} │ '
             '#{repo[fg=#d08770]}:#{branch}"\n'
             'set right "#{usage[type=5h]} │ #{usage[type=7d]}"\n',
         ),
@@ -165,7 +165,7 @@ section(
             "gradient=dusk on the model and gradient=lagoon on the repository, "
             "truecolor.",
             "set color-depth truecolor\n"
-            'set left "#{model[gradient=dusk,bold]}#{effort} │ #{ctx} │ '
+            'set left "#{model[gradient=dusk;bold]}#{effort} │ #{ctx} │ '
             '#{repo[gradient=lagoon]}:#{branch}"\n'
             'set right "#{usage[type=5h]} │ #{usage[type=7d]}"\n',
         ),
@@ -207,7 +207,7 @@ section(
         sample(
             f"glyphs-{g}",
             f"Usage bars drawn with the {g} glyph set, {p} palette.",
-            f"set palette {p}\n" + usage_pair(f"glyphs={g},width=10"),
+            f"set palette {p}\n" + usage_pair(f"glyphs={g};width=10"),
             state="burning",
             columns=60,
         )
@@ -224,7 +224,7 @@ section(
         sample(
             f"color-{c}",
             f"10-cell usage bars with color={c}, default palette, burning state.",
-            "set palette default\n" + usage_pair(f"color={c},width=10,show=bar,pct"),
+            "set palette default\n" + usage_pair(f"color={c};width=10;show=bar,pct"),
             state="burning",
             columns=60,
         )
@@ -250,7 +250,7 @@ section(
             "usage-count-used",
             "Usage with count=used and show=pct,bar: the bar fills with what "
             "is used, default palette, burning state.",
-            "set palette default\n" + usage_pair("count=used,show=pct,bar"),
+            "set palette default\n" + usage_pair("count=used;show=pct,bar"),
             state="burning",
             columns=60,
         ),
@@ -278,7 +278,7 @@ section(
             "Sparklines with color=gradient, each cell coloured by its own "
             "value, default palette.",
             "set palette default\n"
-            + usage_pair("show=spark,bar,color=gradient,width=8"),
+            + usage_pair("show=spark,bar;color=gradient;width=8"),
             columns=60,
             history=True,
         ),

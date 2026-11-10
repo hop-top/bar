@@ -26,7 +26,7 @@ fn plain(s: &str) -> String {
 
 #[test]
 fn render_measures_time_from_the_given_now() {
-    let conf = "set left \"#{usage[type=5h,view=time,show=time]}\"";
+    let conf = "set left \"#{usage[type=5h;view=time;show=time]}\"";
     let out = plain(&web::render(conf, &session(json!({})), 80, NOW, ""));
     assert!(out.contains("2h0m"), "{out:?}");
     let later = plain(&web::render(conf, &session(json!({})), 80, NOW + 3600, ""));
@@ -99,7 +99,7 @@ fn inspect_lists_parse_errors() {
 
 #[test]
 fn tokens_split_text_and_placeholders() {
-    let v = web::tokens("#{usage[type=5h,show=bar,pct]} │ x");
+    let v = web::tokens("#{usage[type=5h;show=bar,pct]} │ x");
     assert_eq!(v["ok"], true);
     assert_eq!(v["tokens"][0]["name"], "usage");
     assert_eq!(

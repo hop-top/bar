@@ -198,7 +198,7 @@ fn preview_prs(opts: &str, icons: &str) -> String {
 #[test]
 fn preview_samples_check_states() {
     assert_eq!(preview_prs("", "none"), "#131✗ #129 #128");
-    let all = "[checks=fail,pending,pass,icon=none]";
+    let all = "[checks=fail,pending,pass;icon=none]";
     assert_eq!(preview_prs(all, "none"), "#131✗ #129• #128✓");
     assert_eq!(preview_prs(all, "emoji"), "#131❌ #129🟡 #128✅");
     assert_eq!(preview_prs("[checks=none]", "none"), "#131 #129 #128");

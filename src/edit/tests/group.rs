@@ -53,11 +53,11 @@ fn write_placeholder_forms() {
     assert_eq!(write_placeholder("ctx", &Options::default()), "#{ctx}");
     assert_eq!(
         write_placeholder("usage", &opts(&[("type", "5h"), ("show", "time,pct")])),
-        "#{usage[type=5h,show=time,pct]}"
+        "#{usage[type=5h;show=time,pct]}"
     );
-    // a bare key after a list option would join the list
+    // a bare key stays an option beside a list
     let w = write_placeholder("usage", &opts(&[("show", "bar,pct"), ("x", "")]));
-    assert_eq!(w, "#{usage[show=bar,pct,x=]}");
+    assert_eq!(w, "#{usage[show=bar,pct;x]}");
     match &parse(&w).unwrap()[0] {
         Token::Placeholder { options, .. } => {
             assert_eq!(options.get("show"), Some("bar,pct"));
@@ -92,8 +92,9 @@ fn set_option_replaces_in_place_or_removes() {
 #[test]
 fn value_error_refuses_what_cannot_be_written() {
     assert!(value_error("label", "a\"b").is_some());
-    assert!(value_error("label", "a,b").is_some());
+    assert!(value_error("label", "a;b").is_some());
     assert!(value_error("max", "1}").is_some());
+    assert!(value_error("label", "a,b").is_none());
     assert!(value_error("show", "time,pct").is_none());
     assert!(value_error("show", "a]").is_some());
     assert!(value_error("", "x").is_some());
