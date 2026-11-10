@@ -1,6 +1,6 @@
 {
- "bar_commit": "eb5a71f169cf19902aea2154da43b2025b545e40",
- "inputs": "sha256:75eda5ea32cacfc63199b550678d99455c32a659f33a279997136a91b8a59683",
+ "bar_commit": "d64182cf75b2b9268b3ffa625711d5ae6505dc31",
+ "inputs": "sha256:58a7eb8c46b7dc7370bc1e99ad7ec8e1ff95b9098013e73b0229b714b528aec5",
  "date": "2026-11-10",
  "runner": "native",
  "host": {
@@ -13,7 +13,7 @@
   "cpu": "Apple (model not exposed)",
   "cpus": 10,
   "cpu_quota": "none",
-  "mem_gib": 31,
+  "mem_gib": 12,
   "libc": "glibc 2.43",
   "base_image": null,
   "debian_snapshot": null
