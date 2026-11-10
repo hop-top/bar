@@ -194,6 +194,8 @@ A plugin for an API proxy that holds several accounts (one `bar-<proxy>` per pro
 
 [`bar-cliproxyapi`](plugins/cliproxyapi.md) is the reference implementation.
 
+A plugin may also drive the proxy rather than only read it. [`bar-routellm`](plugins/routellm.md) switches a RouteLLM router behind the proxy on and off by one field of the proxy's configuration, only on an explicit action (a bound click or `bar rl on|off`), and follows the same rules for secrets and for the management API: its own owner-only configuration file, and no call after a 401 or 403 until the key changes. Both proxy plugins share one refusal record per management address, so two plugins with the same key cost one failed attempt, not two.
+
 ## Caching and failure
 
 - Results are cached per plugin, working directory (`session.cwd`), options and `plugin` line, plus session id and `session.record` for plugins declaring `"cache": "session"` (a new record is a new entry, so it shows at the next refresh), plus the values of declared `inputs`; other session data does not split the cache. Results are refreshed in the background once older than `ttl`; `plugin <name> ttl=5m` overrides the plugin's value, and `set refresh` is the floor.
@@ -220,7 +222,7 @@ Five POSIX shell scripts ship in `plugins/`. They need `sh` and the tool they wr
 
 Each declares a `web` object with preview samples and option hints, so the [web configurator](web.md) can show it.
 
-A compiled plugin ships beside `bar` in the release archives, Homebrew and npm: [`bar-cliproxyapi`](plugins/cliproxyapi.md) shows per-account quota of a CLIProxyAPI proxy as `#{cliproxyapi}`, one entry per account, and checks its own setup under `bar check`.
+A compiled plugin ships beside `bar` in the release archives, Homebrew and npm: [`bar-cliproxyapi`](plugins/cliproxyapi.md) shows per-account quota of a CLIProxyAPI proxy as `#{cliproxyapi}`, one entry per account, and checks its own setup under `bar check`; [`bar-routellm`](plugins/routellm.md) shows whether a RouteLLM router behind that proxy is routing, with the alias and tier of the session, and switches it from a click or `bar rl on|off`.
 
 ### `bar-tlc`
 
