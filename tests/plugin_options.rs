@@ -116,6 +116,7 @@ fn render_timeout_kills_plugin() {
         path: found.path.display().to_string(),
         input: "{}".into(),
         timeout: 3,
+        accounts: false,
     };
     let t = Instant::now();
     assert!(job.execute(Duration::from_secs(20)).is_none());

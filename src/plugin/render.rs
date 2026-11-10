@@ -10,6 +10,7 @@ use super::info::ttl_of;
 use super::{cached_info, find, validate, ExtInfo, Found, RESERVED};
 use crate::cache::{hash_hex, Job};
 use crate::click::{self, hook::read_record};
+use crate::color::Color;
 use crate::conf::Config;
 use crate::icons::{self, Pick};
 use crate::options::Options;
@@ -40,6 +41,41 @@ fn session_json(s: &Session, record: Option<Value>) -> Value {
         v["record"] = r;
     }
     v
+}
+
+/// The user's `account "<glob>" <label> <color>` lines as plugins get
+/// them (`inputs.accounts`): `[{"glob","label","color"}]`, in order, the
+/// colour as written in a config. The globs can hold email addresses:
+/// they travel in a plugin's stdin or environment only.
+pub fn account_rules(config: &Config) -> Value {
+    Value::Array(
+        config
+            .accounts
+            .iter()
+            .map(|r| json!({"glob": r.glob, "label": r.label, "color": r.color.to_string()}))
+            .collect(),
+    )
+}
+
+/// The user's account rules for a process that has no render context
+/// (the refresh job, a click, `bar <name>`): the user config, with the
+/// project one over it when `cwd` names a directory.
+pub fn load_account_rules(cwd: Option<&Path>) -> Value {
+    match crate::conf::load(cwd) {
+        crate::conf::LoadResult::Ok(c) => account_rules(&c),
+        _ => Value::Array(Vec::new()),
+    }
+}
+
+/// `input` with `accounts` set when `rules` has any.
+pub fn with_accounts(input: &str, rules: Value) -> String {
+    let Ok(mut v) = serde_json::from_str::<Value>(input) else {
+        return input.to_string();
+    };
+    if rules.as_array().is_some_and(|a| !a.is_empty()) {
+        v["accounts"] = rules;
+    }
+    v.to_string()
 }
 
 /// What one placeholder fetches: cached per option set, fresh for `ttl`.
@@ -109,6 +145,14 @@ pub fn plan(ctx: &Ctx, found: &Found, info: &ExtInfo, opts: &Options) -> Option<
             .collect();
         format!(":{}", json!({"env": env, "session": picked}))
     };
+    // the rules take part in the key as a hash, never in clear: a changed
+    // `account` line is a new entry
+    let rules = (info.inputs.accounts && !ctx.config.accounts.is_empty())
+        .then(|| hash_hex(&account_rules(ctx.config).to_string()));
+    let declared = match &rules {
+        Some(h) => format!("{declared}:accounts={h}"),
+        None => declared,
+    };
     let key = format!(
         "plugin:{}:{path}:{scope}:{options}:{config}:{toggles}{declared}",
         found.name
@@ -129,6 +173,7 @@ pub fn plan(ctx: &Ctx, found: &Found, info: &ExtInfo, opts: &Options) -> Option<
             path,
             input: input.to_string(),
             timeout: info.timeout,
+            accounts: rules.is_some(),
         },
         ttl: ttl.max(ctx.config.refresh),
     })
@@ -164,6 +209,9 @@ pub struct Account {
     pub id: String,
     /// What `#{account}` shows; sanitised.
     pub label: String,
+    /// Colour of `label`, set when the plugin matched the user's `account`
+    /// rules itself: the label is then drawn as is, in this colour.
+    pub color: Option<Color>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -185,6 +233,8 @@ pub struct Output {
     /// Shown instead of `text` while the placeholder's toggle is on.
     pub alt: Option<String>,
     pub label: Option<String>,
+    /// Colour of `label` (`label_color`), as an `account` line takes one.
+    pub label_color: Option<Color>,
     /// Segment icon; replaces `label` when an icon is shown.
     pub icon: Option<String>,
     /// Name of the toggle a click on the label or icon flips
@@ -261,6 +311,7 @@ fn account(v: &Value) -> Option<Account> {
     (!label.is_empty()).then(|| Account {
         id: id.chars().take(128).collect(),
         label,
+        color: v["color"].as_str().and_then(Color::parse),
     })
 }
 
@@ -311,6 +362,7 @@ fn parse_one(v: &Value) -> Option<Output> {
             .filter(|a| !sanitize(a).trim().is_empty())
             .map(String::from),
         label: v["label"].as_str().map(String::from),
+        label_color: v["label_color"].as_str().and_then(Color::parse),
         icon: v["icon"].as_str().map(String::from),
         label_toggle: v["label_toggle"]
             .as_str()
@@ -408,7 +460,11 @@ fn paint_one(
     Some(if label.trim().is_empty() {
         body
     } else {
-        format!("{} {body}", marked(&dim(&label), out))
+        let shown = match out.label_color {
+            Some(c) => fg(c, &label),
+            None => dim(&label),
+        };
+        format!("{} {body}", marked(&shown, out))
     })
 }
 

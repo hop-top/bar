@@ -54,7 +54,13 @@ impl Placeholder for Account {
     fn render(&self, ctx: &Ctx, _opts: &Options) -> Option<String> {
         // a plugin's account stands in for the signed-in one; the same
         // `account "<glob>"` rules apply, matched against its label
-        let shown = source_account(ctx).map(|a| a.label).or_else(email);
+        let source = source_account(ctx);
+        // a plugin that matched the rules itself names the colour: its
+        // label is drawn as is
+        if let Some((label, color)) = source.as_ref().and_then(|a| Some((&a.label, a.color?))) {
+            return Some(bold(&fg(color, &sanitize(label))));
+        }
+        let shown = source.map(|a| a.label).or_else(email);
         let Some(email) = shown else {
             let key = std::env::var("ANTHROPIC_API_KEY")
                 .ok()

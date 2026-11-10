@@ -55,10 +55,14 @@ pub enum Job {
     PluginInfo { path: String },
     /// `<path>` with `input` on stdin, no shell, within `timeout` seconds
     /// (1..=15); stdout when it parses as plugin output.
+    /// With `accounts`, the user's `account` rules are read here, in the
+    /// job's own process, and added to `input` as `accounts`: they never
+    /// travel in the request (argv).
     PluginRender {
         path: String,
         input: String,
         timeout: u64,
+        accounts: bool,
     },
     /// `tmux display-message -p '#S:#I' -t <pane>`, no shell; `pane` is
     /// `%` and digits.
@@ -92,6 +96,19 @@ pub enum Job {
     },
 }
 
+/// The render input as the plugin gets it: with `accounts`, plus the
+/// user's account rules (read from the config of the session's directory).
+fn render_stdin(input: &str, accounts: bool) -> String {
+    if !accounts {
+        return input.to_string();
+    }
+    let cwd = serde_json::from_str::<Value>(input)
+        .ok()
+        .and_then(|v| v["session"]["cwd"].as_str().map(std::path::PathBuf::from))
+        .filter(|p| p.is_absolute());
+    plugin::with_accounts(input, plugin::load_account_rules(cwd.as_deref()))
+}
+
 impl Job {
     pub(crate) fn to_value(&self) -> Value {
         match self {
@@ -121,8 +138,9 @@ impl Job {
                 path,
                 input,
                 timeout,
+                accounts,
             } => {
-                json!({"kind": "plugin-render", "path": path, "input": input, "timeout": timeout})
+                json!({"kind": "plugin-render", "path": path, "input": input, "timeout": timeout, "accounts": accounts})
             }
             Job::Tmux { pane } => json!({"kind": "tmux", "pane": pane}),
             Job::Transcript { path, state } => {
@@ -222,6 +240,7 @@ impl Job {
                     .map_or(plugin::RENDER_TIMEOUT.as_secs(), |t| {
                         t.clamp(1, plugin::MAX_RENDER_TIMEOUT.as_secs())
                     }),
+                accounts: v["accounts"].as_bool().unwrap_or(false),
             }),
             Some("tmux") => Ok(Job::Tmux {
                 pane: v["pane"]
@@ -323,9 +342,10 @@ impl Job {
                 path,
                 input,
                 timeout,
+                accounts,
             } => run_child(
                 Command::new(path),
-                Some(input.clone().into_bytes()),
+                Some(render_stdin(input, *accounts).into_bytes()),
                 limit.min(Duration::from_secs(*timeout)),
             )
             .filter(|o| plugin::parse_output(o).is_some()),
