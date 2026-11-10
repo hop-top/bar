@@ -135,10 +135,9 @@ fn render_shows_the_state_and_what_a_click_does() {
 }
 
 #[test]
-#[allow(clippy::cognitive_complexity)] // over the threshold; split when next touched
-fn a_routed_session_shows_alias_tier_and_where_off_sends_it() {
-    let e = Env::new("routed", false, healthy(), 1000);
-    let h = Home::new("routed", &e);
+fn a_routed_session_shows_alias_and_tier() {
+    let e = Env::new("routed-on", false, healthy(), 1000);
+    let h = Home::new("routed-on", &e);
     // ON: `alias[tier]`, one item, green
     let v = render_for(&h, &e, "route-auto", json!({}));
     assert_eq!(texts(&v), ["route-auto[auto]"]);
@@ -166,6 +165,12 @@ fn a_routed_session_shows_alias_tier_and_where_off_sends_it() {
         render_for(&h, &e, "claude-opus-4", json!({"routed":true}))["text"],
         ""
     );
+}
+
+#[test]
+fn routing_off_shows_the_tier_and_where_the_alias_goes() {
+    let e = Env::new("routed-off", false, healthy(), 1000);
+    let h = Home::new("routed-off", &e);
     // OFF: tier and the full model the alias maps to; a private alias with no row
     let o = feed(h.cmd().arg("off").take_mut(), "");
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));

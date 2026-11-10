@@ -99,7 +99,6 @@ fn std_handler(r: &Rec) -> Reply {
 }
 
 #[test]
-#[allow(clippy::cognitive_complexity)] // over the threshold; split when next touched
 fn collects_claude_from_signals_and_codex_through_api_call() {
     let s = Server::start(std_handler);
     let e = Env::new(&s, "ok");
@@ -132,6 +131,13 @@ fn collects_claude_from_signals_and_codex_through_api_call() {
     );
     assert_eq!(c.windows.len(), 1, "pro plan: 7d only");
     assert_eq!((c.windows[0].id.as_str(), c.windows[0].used), ("7d", 42.0));
+}
+
+#[test]
+fn every_request_carries_the_key_and_the_api_call_goes_upstream() {
+    let s = Server::start(std_handler);
+    let e = Env::new(&s, "requests");
+    e.run(KEY, T0, &["codex"]);
     // every request carried the key as a bearer token, and the api-call
     // went to the compiled-in URL with the token placeholder
     let log = s.log.lock().unwrap().clone();

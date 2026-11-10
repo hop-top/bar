@@ -55,56 +55,47 @@ fn codes_quantise_to_the_nearest_of_16() {
 }
 
 #[test]
-#[allow(clippy::cognitive_complexity)] // over the threshold; split when next touched
 fn auto_depth_follows_the_environment() {
-    let auto = |vars: &[(&str, &str)]| ColorDepth::Auto.resolve(env(vars));
-    assert_eq!(auto(&[]), Depth::Ansi256);
-    assert_eq!(auto(&[("COLORTERM", "truecolor")]), Depth::True);
-    assert_eq!(auto(&[("COLORTERM", "24bit")]), Depth::True);
-    assert_eq!(auto(&[("COLORTERM", "yes")]), Depth::Ansi256);
-    assert_eq!(auto(&[("NO_COLOR", "1")]), Depth::None);
-    assert_eq!(
-        auto(&[("NO_COLOR", "")]),
-        Depth::Ansi256,
-        "empty NO_COLOR is unset"
-    );
-    assert_eq!(auto(&[("FORCE_COLOR", "0")]), Depth::None);
-    assert_eq!(auto(&[("FORCE_COLOR", "false")]), Depth::None);
-    assert_eq!(
-        auto(&[("FORCE_COLOR", "1"), ("NO_COLOR", "1")]),
-        Depth::Ansi16
-    );
-    // FORCE_COLOR is a floor: it never lowers what the terminal reports
-    assert_eq!(
-        auto(&[("FORCE_COLOR", "2"), ("COLORTERM", "truecolor")]),
-        Depth::True
-    );
-    assert_eq!(auto(&[("FORCE_COLOR", "1")]), Depth::Ansi256);
-    assert_eq!(
-        auto(&[("FORCE_COLOR", "2"), ("NO_COLOR", "1")]),
-        Depth::Ansi256
-    );
-    // TERM=dumb: no colour unless forced
-    assert_eq!(
-        auto(&[("TERM", "dumb"), ("COLORTERM", "truecolor")]),
-        Depth::None
-    );
-    assert_eq!(
-        auto(&[("TERM", "dumb"), ("FORCE_COLOR", "1")]),
-        Depth::Ansi16
-    );
-    assert_eq!(auto(&[("TERM", "xterm")]), Depth::Ansi256);
-    assert_eq!(auto(&[("FORCE_COLOR", "3")]), Depth::True);
-    assert_eq!(
-        auto(&[
-            ("FORCE_COLOR", "true"),
-            ("NO_COLOR", "1"),
-            ("COLORTERM", "truecolor")
-        ]),
-        Depth::True
-    );
-    assert_eq!(auto(&[("FORCE_COLOR", "true")]), Depth::Ansi256);
-    // a fixed depth ignores the environment
+    let cases: &[(&[(&str, &str)], Depth)] = &[
+        (&[], Depth::Ansi256),
+        (&[("COLORTERM", "truecolor")], Depth::True),
+        (&[("COLORTERM", "24bit")], Depth::True),
+        (&[("COLORTERM", "yes")], Depth::Ansi256),
+        (&[("NO_COLOR", "1")], Depth::None),
+        // empty NO_COLOR is unset
+        (&[("NO_COLOR", "")], Depth::Ansi256),
+        (&[("FORCE_COLOR", "0")], Depth::None),
+        (&[("FORCE_COLOR", "false")], Depth::None),
+        (&[("FORCE_COLOR", "1"), ("NO_COLOR", "1")], Depth::Ansi16),
+        // FORCE_COLOR is a floor: it never lowers what the terminal reports
+        (
+            &[("FORCE_COLOR", "2"), ("COLORTERM", "truecolor")],
+            Depth::True,
+        ),
+        (&[("FORCE_COLOR", "1")], Depth::Ansi256),
+        (&[("FORCE_COLOR", "2"), ("NO_COLOR", "1")], Depth::Ansi256),
+        // TERM=dumb: no colour unless forced
+        (&[("TERM", "dumb"), ("COLORTERM", "truecolor")], Depth::None),
+        (&[("TERM", "dumb"), ("FORCE_COLOR", "1")], Depth::Ansi16),
+        (&[("TERM", "xterm")], Depth::Ansi256),
+        (&[("FORCE_COLOR", "3")], Depth::True),
+        (
+            &[
+                ("FORCE_COLOR", "true"),
+                ("NO_COLOR", "1"),
+                ("COLORTERM", "truecolor"),
+            ],
+            Depth::True,
+        ),
+        (&[("FORCE_COLOR", "true")], Depth::Ansi256),
+    ];
+    for (vars, want) in cases {
+        assert_eq!(ColorDepth::Auto.resolve(env(vars)), *want, "{vars:?}");
+    }
+}
+
+#[test]
+fn a_fixed_depth_ignores_the_environment() {
     let fixed = ColorDepth::Fixed(Depth::Ansi256);
     assert_eq!(fixed.resolve(env(&[("NO_COLOR", "1")])), Depth::Ansi256);
     assert_eq!(fixed.resolve(env(&[("TERM", "dumb")])), Depth::Ansi256);

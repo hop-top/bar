@@ -4,10 +4,13 @@ use std::fs;
 
 const SPEC: &str = include_str!("fixtures/spec.conf");
 
+fn spec() -> conf::Config {
+    conf::parse(SPEC).unwrap()
+}
+
 #[test]
-#[allow(clippy::cognitive_complexity)] // over the threshold; split when next touched
-fn parses_spec_sample() {
-    let c = conf::parse(SPEC).unwrap();
+fn spec_sample_settings_and_colours() {
+    let c = spec();
     assert_eq!(c.gap, 3);
     assert_eq!(c.wrap, Wrap::Off);
     assert_eq!(c.refresh, 5);
@@ -20,6 +23,11 @@ fn parses_spec_sample() {
         c.ramp,
         [196, 202, 208, 214, 220, 226, 190, 154, 118, 82, 46]
     );
+}
+
+#[test]
+fn spec_sample_accounts_and_rules() {
+    let c = spec();
     let globs: Vec<_> = c.accounts.iter().map(|a| a.glob.as_str()).collect();
     assert_eq!(globs, ["*acme*", "*@widgets.example.org", "*@example.net"]);
     assert_eq!(c.accounts[0].label, "acme");
@@ -36,6 +44,11 @@ fn parses_spec_sample() {
     assert_eq!(r.final_secs, 3600);
     assert_eq!(r.final_bad, Amount::Percent(30));
     assert_eq!(c.rules[1].final_secs, 86400);
+}
+
+#[test]
+fn spec_sample_defaults_and_plugins() {
+    let c = spec();
     assert_eq!(c.defaults["prs"].get("limit"), Some("5"));
     assert_eq!(c.defaults["usage"].get("click"), Some("toggle"));
     let p = &c.plugins["claude-credits"];

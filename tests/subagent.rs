@@ -48,14 +48,18 @@ fn plain(rows: &[(String, String)]) -> Vec<(String, String)> {
 }
 
 #[test]
-#[allow(clippy::cognitive_complexity)] // over the threshold; split when next touched
-fn parses_the_documented_task_fields() {
+fn parses_the_session_and_drops_tasks_without_an_id() {
     let p = subagent::parse(&input());
     assert_eq!(p.session_id, "s1");
     assert_eq!(p.cwd, "/nonexistent/proj");
     assert_eq!(p.columns, Some(120));
     let ids: Vec<&str> = p.tasks.iter().map(|t| t.id.as_str()).collect();
     assert_eq!(ids, ["a1", "a2", "a3"], "a task without an id is dropped");
+}
+
+#[test]
+fn parses_the_documented_task_fields() {
+    let p = subagent::parse(&input());
     let t = &p.tasks[0];
     assert_eq!(t.kind, "local_agent");
     assert_eq!(t.agent_type, "Explore");
