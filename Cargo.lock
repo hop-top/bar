@@ -123,6 +123,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bar-routellm"
+version = "0.0.0"
+dependencies = [
+ "bar-plugin",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "bitflags"
 version = "2.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -18,6 +18,7 @@ use crate::mgmt::{Api, Client, MErr};
 use crate::model::{self, Signals, Win};
 use crate::rank::{self, Strategy};
 use bar_plugin::fsio;
+use bar_plugin::keyguard::{Guard, Held};
 use bar_plugin::keysource;
 use bar_plugin::proto::ActionSpec;
 use bar_plugin::secret::Secret;
@@ -407,7 +408,7 @@ pub struct Live<'a> {
     client: Client<'a>,
     pub entries: Vec<Entry>,
     /// Held while the instance is used: no other process calls it.
-    _lock: fsio::Lock,
+    _lock: Held,
 }
 
 /// Lists the instance's credentials. Makes no call when the cache says
@@ -423,11 +424,18 @@ pub fn connect<'a>(
         return refuse("no key");
     }
     let path = cache::file(state_dir, &inst.origin.to_string());
-    let Some(lock) = cache::lock(&path) else {
+    let g = Guard {
+        state_dir,
+        mgmt: &inst.management,
+    };
+    let Some(lock) = cache::lock(&g, &path) else {
         return refuse("the proxy is being used by another bar process, or the state directory is not writable; try again");
     };
     let mut c: Cache = cache::load(&path);
-    if let Some(st) = c.refusal(key, AUTH_HOLD, now) {
+    if let Some(st) = c
+        .refusal(key, AUTH_HOLD, now)
+        .or_else(|| g.refusal(key, now))
+    {
         return refuse(format!(
             "management refused the key ({st}); no calls until the key changes"
         ));
@@ -458,7 +466,7 @@ pub fn connect<'a>(
             }
             Err(MErr::NotFound) => continue,
             Err(MErr::Auth(s)) => {
-                collect::stop(&path, &mut c, s, key, now);
+                collect::stop(&g, &path, &mut c, s, key, now);
                 return refuse(format!(
                     "management refused the key ({s}); no calls until the key changes"
                 ));
@@ -481,7 +489,11 @@ impl Live<'_> {
             Err(MErr::Auth(s)) => {
                 let path = cache::file(self.state_dir, &self.inst.origin.to_string());
                 let mut ch = cache::load(&path);
-                collect::stop(&path, &mut ch, s, self.key, self.now);
+                let g = Guard {
+                    state_dir: self.state_dir,
+                    mgmt: &self.inst.management,
+                };
+                collect::stop(&g, &path, &mut ch, s, self.key, self.now);
                 refuse(format!(
                     "management refused the key ({s}); no calls until the key changes"
                 ))

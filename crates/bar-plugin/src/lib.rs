@@ -6,7 +6,9 @@
 pub mod dirs;
 pub mod fsio;
 pub mod http;
+pub mod keyguard;
 pub mod keysource;
+pub mod mgmt;
 pub mod proto;
 pub mod secret;
 pub mod sha256;

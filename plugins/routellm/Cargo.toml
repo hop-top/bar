@@ -1,0 +1,21 @@
+[package]
+name = "bar-routellm"
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "Apache-2.0"
+description = "bar plugin: routing toggle and state of a RouteLLM behind a CLIProxyAPI proxy"
+authors = ["Jad Bitar <jadb@users.noreply.github.com>"]
+
+[lib]
+name = "bar_routellm"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bar-routellm"
+path = "src/main.rs"
+
+[dependencies]
+bar-plugin = { path = "../../crates/bar-plugin" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }

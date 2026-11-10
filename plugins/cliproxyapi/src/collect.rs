@@ -16,6 +16,7 @@ use crate::cache::{self, AuthFail, Cache};
 use crate::config::Instance;
 use crate::mgmt::{Api, ApiReply, Client, MErr};
 use crate::model::{self, Acct, Signals, Win};
+use bar_plugin::keyguard::Guard;
 use bar_plugin::secret::Secret;
 use serde_json::Value;
 use std::path::Path;
@@ -31,7 +32,7 @@ pub const STALE_AFTER: i64 = 360;
 /// Data older than this is dropped.
 pub const KEEP: i64 = 3600;
 /// A refused key is not retried for this long (or until it changes).
-pub const AUTH_HOLD: i64 = 24 * 3600;
+pub const AUTH_HOLD: i64 = bar_plugin::keyguard::AUTH_HOLD;
 /// Management disabled: ask again after this long.
 pub const OFF_HOLD: i64 = 3600;
 /// Upstream calls in flight at once.
@@ -80,11 +81,22 @@ fn snap(status: Status, c: &Cache, now: i64) -> Snapshot {
     Snapshot { status, accounts }
 }
 
+fn guard<'a>(ctx: &'a Ctx) -> Guard<'a> {
+    Guard {
+        state_dir: ctx.state_dir,
+        mgmt: &ctx.inst.management,
+    }
+}
+
 /// What is known without any call: the cache, with its failure state.
 pub fn cached(ctx: &Ctx) -> (Snapshot, Cache) {
     let path = cache::file(ctx.state_dir, &ctx.inst.origin.to_string());
     let c = cache::load(&path);
-    let status = if let Some(st) = c.refusal(ctx.key, AUTH_HOLD, ctx.now) {
+    let g = guard(ctx);
+    let status = if let Some(st) = c
+        .refusal(ctx.key, AUTH_HOLD, ctx.now)
+        .or_else(|| g.refusal(ctx.key, ctx.now))
+    {
         Status::AuthStopped(st)
     } else if ctx.now < c.off_until {
         Status::Off
@@ -201,14 +213,16 @@ fn upstream(client: &Client, key: &str, now: i64) -> Up {
 /// Records a management refusal of `key`. The save falls back to a file
 /// without accounts when the full cache cannot be written; `false` when
 /// the refusal could not be written at all (the caller still stops).
-pub fn stop(path: &Path, c: &mut Cache, status: u16, key: &Secret, now: i64) -> bool {
+pub fn stop(g: &Guard, path: &Path, c: &mut Cache, status: u16, key: &Secret, now: i64) -> bool {
+    // the shared record first: other plugins of this proxy honour it
+    let shared = g.stop(status, key, now);
     let fp = c.fp(key);
     c.auth_fail = Some(AuthFail {
         status,
         at: now,
         fp,
     });
-    cache::save_state(path, c)
+    cache::save_state(path, c) || shared
 }
 
 fn stopped(s: u16, known: Snapshot) -> Snapshot {
@@ -234,7 +248,7 @@ pub fn collect(ctx: &Ctx) -> Snapshot {
         return known;
     }
     let path = cache::file(ctx.state_dir, &ctx.inst.origin.to_string());
-    let Some(_lock) = cache::lock(&path) else {
+    let Some(_lock) = cache::lock(&guard(ctx), &path) else {
         return Snapshot {
             status: Status::Backoff,
             ..known
@@ -275,7 +289,7 @@ fn run(ctx: &Ctx, path: &Path, known: Snapshot, mut c: Cache) -> Snapshot {
             }
             Err(MErr::NotFound) => continue,
             Err(MErr::Auth(s)) => {
-                stop(path, &mut c, s, ctx.key, now);
+                stop(&guard(ctx), path, &mut c, s, ctx.key, now);
                 return stopped(s, known);
             }
             Err(MErr::Transient(_)) => {
@@ -393,7 +407,7 @@ fn run(ctx: &Ctx, path: &Path, known: Snapshot, mut c: Cache) -> Snapshot {
     }
     if let Some(s) = mgmt {
         c.accounts = list.into_iter().map(|(a, _)| a).collect();
-        stop(path, &mut c, s, ctx.key, now);
+        stop(&guard(ctx), path, &mut c, s, ctx.key, now);
         return stopped(s, known);
     }
     // Codex accounts not read upstream this run: passive data when the
