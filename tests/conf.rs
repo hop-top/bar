@@ -5,6 +5,7 @@ use std::fs;
 const SPEC: &str = include_str!("fixtures/spec.conf");
 
 #[test]
+#[allow(clippy::cognitive_complexity)] // over the threshold; split when next touched
 fn parses_spec_sample() {
     let c = conf::parse(SPEC).unwrap();
     assert_eq!(c.gap, 3);

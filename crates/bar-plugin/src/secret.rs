@@ -1,6 +1,9 @@
 //! Bytes holding a credential, overwritten with zeros when dropped so the
 //! token does not linger in freed memory of the background job.
 
+// Allowed: volatile write that wipes the secret.
+#![allow(unsafe_code)]
+
 use std::sync::atomic::{compiler_fence, Ordering};
 
 /// Zeros `b` with volatile writes the optimiser cannot remove.

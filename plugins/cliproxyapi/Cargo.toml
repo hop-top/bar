@@ -20,6 +20,9 @@ path = "src/main.rs"
 # the macOS chooser. Refused in release builds.
 test-tools = []
 
+[lints]
+workspace = true
+
 [dependencies]
 bar-plugin = { path = "../../crates/bar-plugin" }
 serde = { version = "1", features = ["derive"] }

@@ -259,6 +259,7 @@ pub const LABEL: &str = "RL";
 /// items. The first item carries the mark; every item carries the toggle's
 /// tokens, an item with a `link` keeps it. Hidden when the instance is not
 /// drivable.
+#[allow(clippy::cognitive_complexity)] // over the threshold; split when next touched
 pub fn output(s: &Snapshot, inst: &Instance, now: i64, o: &Opts, model_id: &str) -> Output {
     if s.cache.problem.is_some() || (s.status == Status::Off) {
         return Output::hidden();

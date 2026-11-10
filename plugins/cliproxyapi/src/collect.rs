@@ -262,6 +262,7 @@ pub fn collect(ctx: &Ctx) -> Snapshot {
     run(ctx, &path, known, c)
 }
 
+#[allow(clippy::cognitive_complexity)] // over the threshold; split when next touched
 fn run(ctx: &Ctx, path: &Path, known: Snapshot, mut c: Cache) -> Snapshot {
     let now = ctx.now;
     // a changed key clears an old refusal

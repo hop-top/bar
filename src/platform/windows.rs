@@ -1,6 +1,9 @@
 //! Windows: `PATHEXT` executables, creation flags instead of process
 //! groups, `taskkill` for process trees, Win32 zone conversion.
 
+// Allowed: Win32 calls: console, process, time and host name.
+#![allow(unsafe_code)]
+
 use std::fs::{self, Metadata, OpenOptions};
 use std::os::windows::fs::MetadataExt;
 use std::os::windows::process::CommandExt;
