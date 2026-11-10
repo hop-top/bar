@@ -5,7 +5,7 @@
 use super::models::user_path;
 use serde_json::Value;
 use std::collections::BTreeMap;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 pub const URL: &str = "https://models.dev/api.json";
@@ -34,18 +34,7 @@ fn fetch(max_time: u64) -> Result<Vec<u8>, String> {
     crate::net::get(URL, &[], max_time, MAX_BYTES)
 }
 
-/// Reads at most `cap` bytes; a longer stream is an error, not a
-/// truncated body, whatever the server declared up front.
-pub fn read_capped(r: impl Read, cap: usize) -> Result<Vec<u8>, String> {
-    let mut buf = Vec::new();
-    r.take(cap as u64 + 1)
-        .read_to_end(&mut buf)
-        .map_err(|e| format!("read: {e}"))?;
-    if buf.len() > cap {
-        return Err(format!("response over {cap} bytes"));
-    }
-    Ok(buf)
-}
+pub use bar_plugin::fsio::read_capped;
 
 /// The trimmed snapshot text for a models.dev body, and its model
 /// count. Models without an input and output price are dropped.

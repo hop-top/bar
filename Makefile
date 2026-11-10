@@ -6,11 +6,11 @@ build:
 	cargo build --release
 
 test:
-	cargo test --locked --features test-tools
+	cargo test --locked --workspace --features hop-bar/test-tools
 
 lint:
 	cargo fmt --all -- --check
-	cargo clippy --all-targets -- -D warnings
+	cargo clippy --workspace --all-targets -- -D warnings
 
 format:
 	cargo fmt --all
