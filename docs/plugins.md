@@ -113,6 +113,7 @@ Stdout is one JSON object:
 ```
 
 - `items` (optional, an array of at most 16 objects) replaces the output's own `text`: each item is an output of its own (`label`, `icon`, `text`, `alt`, `style`, `score`, `metric`, `link`, `label_toggle`) drawn like one, items joined by one space. With `set wrap on`, a line too wide for `COLUMNS` may break between items, never inside one; the next row starts at the left like any wrapped row. Without wrapping the items stay on one row. An item without a string `text`, or with nothing visible, is left out; items do not nest. With `items`, the top-level `text` may be left out (it is not drawn).
+- `usage` (optional) carries usage windows for `#{usage}`: see [Usage windows](#usage-windows).
 - `text` (required, a string, unless `items` is given) is stripped of escape and control characters (tabs and line breaks become spaces), line and paragraph separators (U+2028, U+2029) and Unicode format characters (bidi marks and overrides, zero-width spaces, soft hyphens, BOM; the joiners U+200C and U+200D and emoji tag characters are kept); wide characters (CJK, emoji) count as 2 cells. Nothing visible left omits the segment.
 - `alt` (optional) is shown instead of `text` while the plugin's toggle is on: `bar toggle <name>` flips `toggle-<name>` in the state directory, and a click on the text opens `bar://toggle/<name>` once the handler is installed (`bar click install`), unless the output has its own `link` or the placeholder sets `click=none`. Sanitised like `text`; colour, label and icon stay the same. Without `alt` there is no toggle. Both texts come from one render, so a toggle shows at once, without a refresh.
 - `click` is a reserved option name: `toggle` (default) or `none`, never sent to the plugin; a `click` entry in `options` is ignored, and `bar check` warns about it.
@@ -125,6 +126,17 @@ Stdout is one JSON object:
   2. `score`: clamped to 0..100, then the `ramp`.
   3. `metric` (`remaining`, `granted`, `expires_at` required; `granted_at` optional) with a `rule <name>` whose target is exactly the placeholder name, e.g. `rule claude-credits early pace final=3d bad=$50`. Amounts are cents; times are Unix seconds. In the final stretch the score is `100 - remaining * 100 / (bad + 1)`, so unspent credit turns red before it expires. Before that, the pace score of the percent left of `granted`, with `$` thresholds read as shares of the grant; `granted_at`, when present, gives the pace period (`expires_at - granted_at`); without it only the floors apply.
   4. Otherwise plain.
+
+### Usage windows
+
+A plugin that knows a quota Claude Code does not report (a proxy's pool, say) can put it in `usage`, shaped like the status line's `rate_limits`:
+
+```json
+{ "text": "", "usage": { "five_hour": { "used_percentage": 41.0, "resets_at": 1800000000 },
+                         "seven_day": { "used_percentage": 12.5, "resets_at": 1800400000 } } }
+```
+
+`used_percentage` is a number, clamped to 0..100; `resets_at` is Unix seconds; each window is optional, and a window without both is ignored. With `set usage-source <plugin>` in the user's config, `#{usage}` shows these windows when Claude Code sends none: see [Plugin windows](config.md#plugin-windows). Only the result for the placeholder's `default` options counts, so a plugin should put `usage` in every output, whatever its options. `text` may be empty.
 
 ## Caching and failure
 

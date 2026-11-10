@@ -51,7 +51,7 @@ A project file comes with the repository, so what it may do is set in your confi
 | `safe` (default) | applied, except: no `%…%` values (commands or environment variables) in placeholder options or `default` lines, no `plugin` lines, no `set update-check`, `set service-status`, `set usage-api`, `set claude-dir` or `set gitlab-hosts`, and no plugin placeholder your config does not name (in a layout, a `default` line or a `plugin` line). Each such line is left out |
 | `full` | applied like your own config, `%cmd%` values and any plugin included |
 
-`set project-config` is read from your config only; in a project file it is left out.
+`set project-config` is read from your config only; in a project file it is left out. So is `set usage-source`, whatever the mode.
 
 `safe` limits what a project file adds, not what your config already allows. Under `safe` a project file can still use every built-in placeholder, including the git placeholders, which may run `git` in the session's directory, and `prs` and `issues`, which run `gh` or `glab` for the repository's remote (in bar's state directory, naming the repository with `-R`, so nothing in the project's directory reaches them), and it can pass options to the plugins your config names, which then run with those options. Use `off` for repositories you do not trust.
 
@@ -59,7 +59,7 @@ A project file comes with the repository, so what it may do is set in your confi
 
 | Directive | Form |
 |-----------|------|
-| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-64) `subagent subagent-hide separator gap wrap max-rows refresh icons icon-width skin skin-glyphs palette color-depth gradient claude-dir compact-at project-config update-check service-status usage-api gitlab-hosts budget-session budget-today budget-month budget-block budget-warn color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
+| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-64) `subagent subagent-hide separator gap wrap max-rows refresh icons icon-width skin skin-glyphs palette color-depth gradient claude-dir compact-at project-config update-check service-status usage-api usage-source gitlab-hosts budget-session budget-today budget-month budget-block budget-warn color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
 | `default` | `default <placeholder> key=value ...` |
 | `account` | `account "<glob>" <label> <color>` |
 | `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%`; see [Rules](#rules) |
@@ -89,6 +89,7 @@ Quote values with spaces (double quotes; a value is one token). `#` outside quot
 | `update-check` | `off` (default) or `on`: a daily check for a newer bar release, shown by [`update`](#update) |
 | `service-status` | `off` (default) or `on`: reads the Claude status page every 5 minutes in the background, shown by [`status`](#status) |
 | `usage-api` | `off` (default) or `on`: per-model weekly windows and extra usage from Anthropic's usage endpoint, with Claude Code's sign-in. See [extra and the usage API](#extra-and-the-usage-api) |
+| `usage-source` | A plugin name, or `off` (default): where [usage](#usage) takes windows Claude Code does not send. See [Plugin windows](#plugin-windows). Read from your config only |
 | `project-config` | `off`, `safe` (default) or `full`: what a project `.bar.conf` may do. See [Project config](#project-config) |
 | `budget-session`, `budget-today`, `budget-month`, `budget-block` | Dollar budget for [budget](#budget): `$20`, `20` or `12.50` (more than zero, at most two decimals); `off` clears it. Unset by default |
 | `budget-warn` | Percent of a budget from which spend takes the warn colour, `1%`-`100%`, default `80%`. See [budget](#budget) |
@@ -253,6 +254,22 @@ Components (`show`):
 - `view` stays as an alias: `bar` is `time,bar`, `pct` is `time,pct`, `time` is `time`; `show` wins when both are set.
 - `count=used` makes the percentage and the bar fill show used instead of remaining; the colour still follows the pace score of what remains.
 - Expired or missing windows render nothing.
+
+#### Plugin windows
+
+Claude Code sends `rate_limits` only for some subscriptions, and not at all behind a proxy. `set usage-source <plugin>` names a [plugin](plugins.md#usage-windows) whose `usage` windows `#{usage}` then shows:
+
+```
+default myproxy pool=mean
+set usage-source myproxy
+set center "#{usage[type=5h]} │ #{usage[type=7d]}"
+```
+
+- Claude Code's `rate_limits` win, window by window; the plugin supplies a window only when Claude Code sent none for it.
+- The windows are those of the plugin's cached result for its `default <plugin>` options only (a bare `#{myproxy}`), read like any plugin result: no process starts on the render path, the plugin refreshes in the background at its `ttl`, and a cold cache shows nothing.
+- Everything else works on those windows as on Claude Code's: pace colour and `rule usage[...]`, `eta`, `proj`, `spark`, toggles. Spark samples go to `hist-5h@<plugin>` / `hist-7d@<plugin>`, apart from Claude Code's.
+- [Per-model windows](#per-model-windows) (`model=`) and [budget](#budget) are unchanged.
+- Read from your config only: a project `.bar.conf` cannot set it, in any mode. `set usage-source off` clears it.
 
 #### Per-model windows
 

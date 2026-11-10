@@ -63,6 +63,8 @@ pub struct Ctx<'a> {
 pub struct Memo {
     /// The repository's web address (`repo::cached_remote`).
     pub(crate) remote: std::cell::OnceCell<Option<String>>,
+    /// The plugin named by `set usage-source` and its `usage` windows.
+    pub(crate) usage: std::cell::OnceCell<Option<(String, crate::plugin::Usage)>>,
 }
 
 pub trait Placeholder {
