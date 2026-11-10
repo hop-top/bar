@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::time::Duration;
 
 use serde_json::{json, Map, Value};
 
@@ -570,6 +571,10 @@ pub fn default_output(ctx: &Ctx, name: &str) -> Option<std::rc::Rc<Output>> {
     out
 }
 
+/// Seconds after which a plugin's `usage` and `account` are no longer
+/// taken as current: the larger of this and five times its `ttl`.
+pub const USAGE_ACCOUNT_MAX_AGE: u64 = 900;
+
 /// The cached output of `name` rendered with its `default <name>` options
 /// only, as `#{name}` bare would be: a plain cache read, which starts a
 /// background refresh when stale and never waits. `None` while cold, when
@@ -588,6 +593,13 @@ pub fn cached_output(ctx: &Ctx, name: &str) -> Option<Output> {
     let plan = plan(ctx, &found, &info, &opts)?;
     let mut out = parse_output(&cache.read_or_refresh(&plan.key, plan.ttl, &plan.job)?)?;
     out.entry = hash_hex(&plan.key);
+    // a plugin that stopped refreshing (its backend is down) must not keep
+    // feeding `usage` and `account` as if they were live
+    let bound = Duration::from_secs((plan.ttl * 5).max(USAGE_ACCOUNT_MAX_AGE));
+    if crate::cache::modified_age(&cache.path_for(&plan.key)).is_some_and(|a| a > bound) {
+        out.usage = None;
+        out.account = None;
+    }
     Some(out)
 }
 

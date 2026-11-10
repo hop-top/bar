@@ -7,16 +7,18 @@
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
-/// Every variable that moves a dir `bar toggle` or `bar click run`
-/// reads: the state dir, the XDG bases, Claude Code's config dir (its
-/// `sessions/`) and tmux's socket dir.
-pub const HANDLER_ENV: [&str; 6] = [
+/// Every variable that moves a dir `bar toggle`, `bar click run` or
+/// `bar click action` reads: the state dir, the XDG bases, Claude Code's
+/// config dir (its `sessions/`), tmux's socket dir, and `PATH`, where an
+/// action finds its plugin.
+pub const HANDLER_ENV: [&str; 7] = [
     "BAR_STATE_DIR",
     "XDG_STATE_HOME",
     "XDG_CONFIG_HOME",
     "XDG_DATA_HOME",
     "CLAUDE_CONFIG_DIR",
     "TMUX_TMPDIR",
+    "PATH",
 ];
 
 /// The variables that pick the state dir; with neither set the handler
@@ -146,4 +148,16 @@ pub fn handler_warnings(
         ));
     }
     out
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::*;
+
+    #[test]
+    fn the_install_path_is_baked_into_the_handler() {
+        let env = handler_env(&|k| (k == "PATH").then(|| "/home/u/.local/bin:/usr/bin".into()));
+        let cmd = shell_command(Path::new("/b/bar"), &env);
+        assert!(cmd.contains("PATH='/home/u/.local/bin:/usr/bin' "), "{cmd}");
+    }
 }

@@ -141,7 +141,9 @@ fn run(argv: &[String]) -> Result<Secret, KeyError> {
             Ok(None) if Instant::now() >= end => {
                 let _ = child.kill();
                 let _ = child.wait();
-                let _ = reader.join();
+                // not joined: a grandchild holding the pipe open would
+                // block here past the budget
+                drop(reader);
                 return Err(KeyError::TimedOut);
             }
             Ok(None) => std::thread::sleep(Duration::from_millis(10)),

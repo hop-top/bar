@@ -26,7 +26,9 @@ fn setup(out: &str, conf: &str) -> (Fx, Config) {
     let fx = Fx::new();
     fx.put("ext.json", &echo_info(use_action()));
     fx.put("out.json", out);
-    std::fs::write(fx.state.join(NONCE_FILE), NONCE).unwrap();
+    let f = fx.state.join(NONCE_FILE);
+    std::fs::write(&f, NONCE).unwrap();
+    std::fs::set_permissions(&f, std::os::unix::fs::PermissionsExt::from_mode(0o600)).unwrap();
     let c = cfg(conf);
     fx.prime("echo", &c, &[]);
     (fx, c)
@@ -272,6 +274,13 @@ fn handler_runs_the_action_with_tokens_on_stdin() {
 }
 
 #[test]
+fn the_action_child_gets_the_state_dir_the_link_was_drawn_in() {
+    let (fx, c, url) = linked(ONE);
+    run(&fx, &c, &url).unwrap();
+    assert_eq!(fx.file("action.state"), fx.state.display().to_string());
+}
+
+#[test]
 fn handler_reports_a_failing_plugin() {
     let (fx, c, url) = linked(ONE);
     fx.put("action-exit", "3");
@@ -491,4 +500,19 @@ fn bar_click_action_refuses_and_exits_1() {
         .assert()
         .code(1)
         .stderr(predicates::str::contains("refused"));
+}
+
+#[test]
+fn a_nonce_file_others_can_read_is_not_a_nonce_and_is_replaced_private() {
+    use std::os::unix::fs::PermissionsExt;
+    let fx = Fx::new();
+    let f = fx.state.join(NONCE_FILE);
+    std::fs::write(&f, NONCE).unwrap();
+    std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o644)).unwrap();
+    assert_eq!(action::nonce(&fx.state), None);
+    let n = action::ensure_nonce(&fx.state).unwrap();
+    assert_ne!(n, NONCE);
+    assert_eq!(action::nonce(&fx.state), Some(n));
+    let mode = std::fs::metadata(&f).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o600);
 }

@@ -46,7 +46,16 @@ fn hex32(s: &str) -> bool {
 /// The install's nonce; `None` when the handler was not installed with
 /// action support (or the file is not a nonce).
 pub fn nonce(state: &Path) -> Option<String> {
-    let s = std::fs::read_to_string(state.join(NONCE_FILE)).ok()?;
+    let path = state.join(NONCE_FILE);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        // a secret other users can read is no secret
+        if std::fs::metadata(&path).ok()?.permissions().mode() & 0o077 != 0 {
+            return None;
+        }
+    }
+    let s = std::fs::read_to_string(path).ok()?;
     let s = s.trim();
     hex32(s).then(|| s.to_string())
 }
@@ -63,7 +72,9 @@ pub fn ensure_nonce(state: &Path) -> Result<String, String> {
         return Ok(n);
     }
     let n = random_hex()?;
-    super::write_private(&state.join(NONCE_FILE), &n).map_err(|e| e.to_string())?;
+    // a fresh 0600 file renamed into place: a loose file already there
+    // does not keep its mode
+    super::write_atomic(&state.join(NONCE_FILE), &n).map_err(|e| e.to_string())?;
     Ok(n)
 }
 
@@ -159,6 +170,7 @@ pub fn run(state: &Path, url: &str, config: &Config, dirs: &[PathBuf]) -> Result
         let mut c = std::process::Command::new(&found.path);
         c.arg("--action")
             .arg(&u.action)
+            .env("BAR_STATE_DIR", state)
             .current_dir(crate::cache::outside_project(state));
         let ran = run_child(c, Some(input.into_bytes()), ACTION_TIMEOUT);
         cache.age_entry(&u.entry);

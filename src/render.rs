@@ -17,15 +17,57 @@ use crate::session::Session;
 use crate::skin::{self, Paint, Seg, Side};
 use crate::style::{self, dim, visible_width_with, ITEM_BREAK};
 
+/// SGR parameters in force after `text`: each `ESC[..m` sequence adds its
+/// parameters (a colour as one unit); `0`, `39`, `49` and `22` take away
+/// what they reset.
+fn sgr_after(mut active: Vec<String>, text: &str) -> Vec<String> {
+    let mut rest = text;
+    while let Some(i) = rest.find("\x1b[") {
+        let body = &rest[i + 2..];
+        let Some(end) = body.find(|c: char| !(c.is_ascii_digit() || c == ';')) else {
+            break;
+        };
+        let (params, tail) = body.split_at(end);
+        rest = &tail[tail.starts_with('m') as usize..];
+        if !tail.starts_with('m') {
+            continue;
+        }
+        let kind = |p: &str| match p.split(';').next().unwrap_or("").parse::<u32>() {
+            Ok(30..=38 | 90..=97) => 'f',
+            Ok(40..=48 | 100..=107) => 'b',
+            Ok(1 | 2) => 'w',
+            _ => 'o',
+        };
+        match params {
+            "" | "0" => active.clear(),
+            "39" => active.retain(|p| kind(p) != 'f'),
+            "49" => active.retain(|p| kind(p) != 'b'),
+            "22" => active.retain(|p| kind(p) != 'w'),
+            p => {
+                // a colour replaces the one before it
+                let k = kind(p);
+                if k == 'f' || k == 'b' {
+                    active.retain(|q| kind(q) != k);
+                }
+                active.push(p.to_string());
+            }
+        }
+    }
+    active
+}
+
 /// A segment's text cut at its [`ITEM_BREAK`]s, each cut dropping the
 /// space after it (colour codes may sit between the two); one piece when
-/// there is no break.
+/// there is no break. Colour and weight in force at a cut are closed at
+/// the end of the piece and set again at the start of the next, so every
+/// row stands alone.
 fn item_pieces(text: &str) -> Vec<String> {
     let mut parts = text.split(ITEM_BREAK);
     let mut out: Vec<String> = parts.next().map(String::from).into_iter().collect();
+    let mut active = sgr_after(Vec::new(), out.first().map_or("", String::as_str));
     for part in parts {
-        // only SGR codes (a gradient's colour) can sit before the space
         let mut head = 0;
+        // only SGR codes (a gradient's colour) can sit before the space
         let bytes = part.as_bytes();
         while bytes[head..].starts_with(b"\x1b[") {
             match part[head..].find('m') {
@@ -34,10 +76,19 @@ fn item_pieces(text: &str) -> Vec<String> {
             }
         }
         let rest = part[head..].strip_prefix(' ').unwrap_or(&part[head..]);
-        out.push(format!("{}{rest}", &part[..head]));
+        let reopen: String = active.iter().map(|p| format!("\x1b[{p}m")).collect();
+        if !active.is_empty() {
+            if let Some(prev) = out.last_mut() {
+                prev.push_str("\x1b[0m");
+            }
+        }
+        let piece = format!("{reopen}{}{rest}", &part[..head]);
+        active = sgr_after(active, &format!("{}{rest}", &part[..head]));
+        out.push(piece);
     }
     out
 }
+
 use std::path::PathBuf;
 
 /// Cold cache: every `%command%` expands to nothing.
@@ -565,5 +616,36 @@ pub fn run(
         LoadResult::Invalid(_) => CONFIG_ERROR.to_string(),
         LoadResult::Missing => render_with(session, &builtin_config(), columns, runner, cache),
         LoadResult::Ok(c) => render_with(session, &c, columns, runner, cache),
+    }
+}
+
+#[cfg(test)]
+mod pieces_tests {
+    use super::*;
+
+    const B: char = ITEM_BREAK;
+
+    #[test]
+    fn colour_and_bold_are_closed_and_reopened_at_each_cut() {
+        let t = format!("\x1b[1m\x1b[38;5;1maaaa{B} bbbb{B} cccc\x1b[39m\x1b[22m");
+        let p = item_pieces(&t);
+        assert_eq!(
+            p,
+            [
+                "\x1b[1m\x1b[38;5;1maaaa\x1b[0m",
+                "\x1b[1m\x1b[38;5;1mbbbb\x1b[0m",
+                "\x1b[1m\x1b[38;5;1mcccc\x1b[39m\x1b[22m",
+            ]
+        );
+    }
+
+    #[test]
+    fn plain_and_gradient_text_is_unchanged() {
+        assert_eq!(item_pieces(&format!("a{B} b")), ["a", "b"]);
+        // a gradient recolours each character: the last colour carries
+        let t = format!("\x1b[38;5;1ma\x1b[38;5;2mb{B} \x1b[38;5;3mc\x1b[39m");
+        let p = item_pieces(&t);
+        assert_eq!(p[0], "\x1b[38;5;1ma\x1b[38;5;2mb\x1b[0m");
+        assert!(p[1].starts_with("\x1b[38;5;2m\x1b[38;5;3mc"), "{:?}", p[1]);
     }
 }

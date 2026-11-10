@@ -160,7 +160,8 @@ pub(super) fn guard(
         return Err("`project-config` is read from the user config only".into());
     }
     // which plugin feeds a placeholder, and what a click runs, is the
-    // user's choice, whatever the mode
+    // user's choice, whatever the mode (the options that plugin runs
+    // with are not: see "project config" in the docs)
     if t[0] == "set"
         && matches!(
             t.get(1).map(String::as_str),

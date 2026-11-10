@@ -190,6 +190,31 @@ fn default_for_absent_plugin_warns_but_layout_use_errors() {
 }
 
 #[test]
+fn check_validates_the_usage_and_account_sources() {
+    let fx = Fx::new();
+    fx.exe(
+        "bar-nocap",
+        "#!/bin/sh\necho '{\"name\":\"nocap\",\"version\":\"1\",\"capabilities\":[\"discover\"]}'\n",
+    );
+    fx.conf("set usage-source nosuch\nset account-source nosuch2\n");
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_eq!(code, 0, "{stdout}");
+    assert!(
+        stdout.contains("usage-source nosuch") && stdout.contains("not on PATH"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("account-source nosuch2"), "{stdout}");
+    fx.conf("set usage-source model\n");
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_eq!(code, 2, "{stdout}");
+    assert!(stdout.contains("core placeholder"), "{stdout}");
+    fx.conf("set account-source nocap\n");
+    let (code, stdout) = out(&mut fx.bar(&["check"]));
+    assert_eq!(code, 2, "{stdout}");
+    assert!(stdout.contains("placeholder capability"), "{stdout}");
+}
+
+#[test]
 fn check_flags_multi_query_cost() {
     let fx = Fx::new();
     fx.exe("gh", "#!/bin/sh\n");
