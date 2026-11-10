@@ -31,45 +31,79 @@ pub struct Item {
     pub aliases: Vec<Alias>,
 }
 
+/// A field where JSON `null` (what Go writes for a nil slice, map or
+/// pointer) reads as the type's default.
+fn nullable<'de, D, T>(d: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de> + Default,
+{
+    Ok(Option::<T>::deserialize(d)?.unwrap_or_default())
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Soft<T> {
+    Is(T),
+    Other(serde::de::IgnoredAny),
+}
+
+/// Like `nullable`, and a value of the wrong type reads as the default
+/// too: one odd entry of the listing must not break the others.
+fn soft<'de, D, T>(d: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de> + Default,
+{
+    Ok(match Option::<Soft<T>>::deserialize(d)? {
+        Some(Soft::Is(v)) => v,
+        _ => T::default(),
+    })
+}
+
 #[derive(Deserialize)]
 struct RawList {
-    #[serde(default, rename = "openai-compatibility")]
-    items: Vec<RawItem>,
+    #[serde(
+        default,
+        rename = "openai-compatibility",
+        deserialize_with = "nullable"
+    )]
+    items: Vec<Option<RawItem>>,
 }
 
 #[derive(Deserialize)]
 struct RawItem {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     name: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     disabled: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     priority: i64,
-    #[serde(default, rename = "base-url")]
+    #[serde(default, rename = "base-url", deserialize_with = "nullable")]
     base_url: String,
-    #[serde(default)]
-    models: Vec<RawModel>,
+    #[serde(default, deserialize_with = "soft")]
+    models: Vec<Option<RawModel>>,
 }
 
 #[derive(Deserialize)]
 struct RawModel {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     name: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     alias: String,
 }
 
 #[derive(Deserialize)]
 struct RawAliases {
-    #[serde(default, rename = "oauth-model-alias")]
-    by_channel: BTreeMap<String, Vec<RawRow>>,
+    #[serde(default, rename = "oauth-model-alias", deserialize_with = "nullable")]
+    by_channel: BTreeMap<String, Option<Vec<Option<RawRow>>>>,
 }
 
 #[derive(Deserialize)]
 struct RawRow {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     name: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     alias: String,
 }
 
@@ -84,13 +118,19 @@ impl<'a> Client<'a> {
     /// The entry named `name`, when the proxy has one. The whole reply is
     /// wiped when this returns.
     pub fn entry(&self, name: &str) -> Result<Option<Item>, MErr> {
-        let body = self.0.request("GET", LIST, None, T_CALL, CAP_LIST)?;
+        let body = self
+            .0
+            .request("GET", LIST, None, T_CALL, CAP_LIST)
+            .map_err(|e| capped(e, "provider listing"))?;
         parse_entry(body.as_bytes(), name)
     }
 
     /// The `route-*` aliases of the claude channel.
     pub fn claude_rows(&self) -> Result<Vec<Row>, MErr> {
-        let body = self.0.request("GET", ALIASES, None, T_CALL, CAP_LIST)?;
+        let body = self
+            .0
+            .request("GET", ALIASES, None, T_CALL, CAP_LIST)
+            .map_err(|e| capped(e, "alias listing"))?;
         parse_rows(body.as_bytes())
     }
 
@@ -100,6 +140,16 @@ impl<'a> Client<'a> {
         self.0
             .request("PATCH", LIST, Some(&body), T_CALL, CAP_PATCH)
             .map(drop)
+    }
+}
+
+/// A reply over the size cap says so, rather than "response over N bytes".
+fn capped(e: MErr, what: &str) -> MErr {
+    match e {
+        MErr::Transient(m) if m.starts_with("response over ") => {
+            MErr::Transient(format!("{what} is over {} KiB", CAP_LIST / 1024))
+        }
+        e => e,
     }
 }
 
@@ -119,6 +169,7 @@ pub fn parse_entry(body: &[u8], name: &str) -> Result<Option<Item>, MErr> {
     Ok(list
         .items
         .into_iter()
+        .flatten()
         .find(|i| i.name == name)
         .map(|i| Item {
             name: i.name,
@@ -128,6 +179,7 @@ pub fn parse_entry(body: &[u8], name: &str) -> Result<Option<Item>, MErr> {
             aliases: i
                 .models
                 .into_iter()
+                .flatten()
                 .filter(|m| !m.alias.is_empty())
                 .map(|m| Alias {
                     alias: m.alias,
@@ -143,6 +195,8 @@ pub fn parse_rows(body: &[u8]) -> Result<Vec<Row>, MErr> {
     Ok(a.by_channel
         .get("claude")
         .into_iter()
+        .flatten()
+        .flatten()
         .flatten()
         .filter(|r| r.alias.starts_with("route-"))
         .map(|r| Row {
@@ -226,5 +280,73 @@ mod tests {
             }]
         );
         assert!(parse_rows(b"{}").unwrap().is_empty());
+    }
+
+    #[test]
+    fn json_null_is_the_default_everywhere() {
+        // Go marshals nil slices, maps and unset pointers as null
+        let body = r#"{"openai-compatibility":[
+            null,
+            {"name":"other","priority":null,"disabled":null,"base-url":null,"models":null},
+            {"name":"third","models":[null,{"name":null,"alias":null}]},
+            {"name":"routellm","priority":null,"disabled":true,"base-url":"http://127.0.0.1:6060/v1",
+             "models":[null,{"name":"auto","alias":"route-auto"},{"name":null,"alias":"x"}]}]}"#;
+        let it = parse_entry(body.as_bytes(), "routellm").unwrap().unwrap();
+        assert!(it.disabled);
+        assert_eq!(it.priority, 0);
+        assert_eq!(it.aliases.len(), 2);
+        assert_eq!(it.aliases[0].tier, "auto");
+        let other = parse_entry(body.as_bytes(), "other").unwrap().unwrap();
+        assert!(other.aliases.is_empty() && other.base_url.is_empty());
+        for b in [
+            r#"{"openai-compatibility":null}"#,
+            r#"{"openai-compatibility":[{"name":"routellm","models":null}]}"#,
+        ] {
+            let _ = parse_entry(b.as_bytes(), "routellm").unwrap();
+        }
+        assert_eq!(
+            parse_entry(br#"{"openai-compatibility":null}"#, "routellm").unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn one_odd_unrelated_entry_does_not_break_the_target() {
+        let body = r#"{"openai-compatibility":[
+            {"name":"odd","models":"not-a-list","api-key-entries":{"x":1}},
+            {"name":"routellm","disabled":false,"base-url":"http://127.0.0.1:6060/v1",
+             "models":[{"name":"auto","alias":"route-auto"}]}]}"#;
+        let it = parse_entry(body.as_bytes(), "routellm").unwrap().unwrap();
+        assert!(!it.disabled);
+        assert_eq!(it.aliases.len(), 1);
+    }
+
+    #[test]
+    fn null_channels_and_rows_in_the_alias_listing() {
+        let body = r#"{"oauth-model-alias":{"codex":null,"claude":[null,
+            {"name":"claude-sonnet-5-5","alias":"route-auto"},{"name":null,"alias":null}]}}"#;
+        let r = parse_rows(body.as_bytes()).unwrap();
+        assert_eq!(r.len(), 1);
+        assert!(parse_rows(br#"{"oauth-model-alias":null}"#)
+            .unwrap()
+            .is_empty());
+        assert!(parse_rows(br#"{"oauth-model-alias":{"claude":null}}"#)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn a_listing_over_the_cap_has_its_own_message() {
+        let e = capped(
+            MErr::Transient("response over 131072 bytes".into()),
+            "provider listing",
+        );
+        assert_eq!(
+            e,
+            MErr::Transient("provider listing is over 128 KiB".into())
+        );
+        let other = MErr::Transient("status 500".into());
+        assert_eq!(capped(other.clone(), "x"), other);
+        assert_eq!(capped(MErr::NotFound, "x"), MErr::NotFound);
     }
 }
