@@ -510,8 +510,8 @@ fn link_actions(
 
 /// `value` of `#{account}` inside the link of the action bound to it
 /// (`action account <plugin>.<action>`), when the plugin `set
-/// account-source` names supplied the account shown and its output carries
-/// the tokens the action takes.
+/// account-source` names carries the tokens the action takes and, for an
+/// action that takes an `account` token, supplied the account shown.
 pub fn link_account(ctx: &Ctx, value: String) -> String {
     let linked = || -> Option<String> {
         let b = ctx
@@ -526,9 +526,14 @@ pub fn link_account(ctx: &Ctx, value: String) -> String {
             .filter(|s| *s == b.plugin)?;
         let cache = ctx.cache?;
         let out = default_output(ctx, src)?;
-        out.account.as_ref()?;
         let found = find(ctx.plugin_dirs, src)?;
         let spec = cached_info(cache, &found)?.actions.get(&b.action)?.clone();
+        // an action aimed at the account shown needs the plugin to have
+        // named it; one that is not (switch to another account, say) is
+        // linked even while the shown account is bar's own
+        if out.account.is_none() && spec.tokens.iter().any(|t| t == "account") {
+            return None;
+        }
         let t = action_tokens(&spec, &out.tokens, &out.tokens)?;
         let url = click::action::build(cache.state_dir(), &b.plugin, &b.action, &t, &out.entry)?;
         Some(link(&url, &value))
