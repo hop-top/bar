@@ -191,13 +191,22 @@ pub fn plan_name(p: &str) -> String {
 
 /// The provider whose quota applies to Claude Code's model: `claude`,
 /// `opus`, `sonnet`, `haiku` mean claude; `gpt`, `codex`, `o<digit>` mean
-/// codex. A proxy prefix (`prefix/model`) is ignored. `None`: not a
-/// provider this plugin reads.
-pub fn provider_of_model(model_id: &str, model: &str) -> Option<&'static str> {
+/// codex. A proxy prefix (`prefix/model`) is ignored. A router alias
+/// (`route-*`) names no provider by itself: it means `route`
+/// (`claude`, `codex` or `none`). `None`: not a provider this plugin
+/// reads.
+pub fn provider_of_model(model_id: &str, model: &str, route: &str) -> Option<&'static str> {
     for m in [model_id, model] {
         let m = m.rsplit('/').next().unwrap_or(m).to_ascii_lowercase();
         if m.is_empty() {
             continue;
+        }
+        if m.starts_with("route-") {
+            return match route {
+                "claude" => Some("claude"),
+                "codex" => Some("codex"),
+                _ => None,
+            };
         }
         let b = m.as_bytes();
         if ["claude", "opus", "sonnet", "haiku"]
@@ -373,13 +382,37 @@ mod tests {
 
     #[test]
     fn model_picks_the_provider() {
-        assert_eq!(provider_of_model("claude-opus-4", ""), Some("claude"));
-        assert_eq!(provider_of_model("", "Sonnet"), Some("claude"));
-        assert_eq!(provider_of_model("team/gpt-5-codex", ""), Some("codex"));
-        assert_eq!(provider_of_model("o3-mini", ""), Some("codex"));
-        assert_eq!(provider_of_model("grok-4", ""), None);
-        assert_eq!(provider_of_model("", ""), None);
-        assert_eq!(provider_of_model("opus/grok", ""), None);
+        assert_eq!(
+            provider_of_model("claude-opus-4", "", "claude"),
+            Some("claude")
+        );
+        assert_eq!(provider_of_model("", "Sonnet", "claude"), Some("claude"));
+        assert_eq!(
+            provider_of_model("team/gpt-5-codex", "", "claude"),
+            Some("codex")
+        );
+        assert_eq!(provider_of_model("o3-mini", "", "claude"), Some("codex"));
+        assert_eq!(provider_of_model("grok-4", "", "claude"), None);
+        assert_eq!(provider_of_model("", "", "claude"), None);
+        assert_eq!(provider_of_model("opus/grok", "", "claude"), None);
+    }
+
+    #[test]
+    fn a_route_alias_means_the_route_provider() {
+        let p = |id: &str, route: &str| provider_of_model(id, "", route);
+        assert_eq!(p("route-auto", "claude"), Some("claude"));
+        assert_eq!(p("route-private", "claude"), Some("claude"));
+        assert_eq!(p("team/route-vision", "claude"), Some("claude"));
+        assert_eq!(p("ROUTE-Auto", "codex"), Some("codex"));
+        assert_eq!(p("route-auto", "none"), None);
+        assert_eq!(
+            provider_of_model("", "route-auto", "claude"),
+            Some("claude")
+        );
+        // only the `route-` prefix counts
+        assert_eq!(p("router-random-0.5", "claude"), None);
+        assert_eq!(p("myroute-auto", "claude"), None);
+        assert_eq!(p("claude-opus-4", "none"), Some("claude"));
     }
 
     fn rule(glob: &str, label: &str, color: &str) -> AccountRule {

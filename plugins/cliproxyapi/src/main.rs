@@ -84,6 +84,7 @@ fn run() -> Output {
         _ => match bar_cliproxyapi::model::provider_of_model(
             &input.session.model_id,
             &input.session.model,
+            input.opt_str("route-provider").unwrap_or("claude"),
         ) {
             Some(p) if inst.providers.iter().any(|x| x == p) => p,
             _ => return Output::hidden(),
