@@ -45,8 +45,7 @@ pub struct ExtInfo {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct OptSpec {
-    /// `int`, `string`, `bool`, `enum` or `list` (a string a layout may write
-    /// as a comma list).
+    /// `int`, `string`, `bool` or `enum`.
     #[serde(rename = "type")]
     pub kind: String,
     #[serde(default, rename = "enum", skip_serializing_if = "Vec::is_empty")]
@@ -59,13 +58,6 @@ impl OptSpec {
     pub fn string() -> OptSpec {
         OptSpec {
             kind: "string".into(),
-            ..Default::default()
-        }
-    }
-    pub fn list(default: &str) -> OptSpec {
-        OptSpec {
-            kind: "list".into(),
-            default: Some(default.into()),
             ..Default::default()
         }
     }

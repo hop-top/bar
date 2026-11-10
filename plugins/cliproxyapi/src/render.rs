@@ -21,8 +21,12 @@ pub fn ext_info() -> ExtInfo {
         "provider".into(),
         OptSpec::choice(&["auto", "claude", "codex"], "auto"),
     );
-    o.insert("windows".into(), OptSpec::list("5h,7d,wk"));
-    o.insert("show".into(), OptSpec::list("label,pct,reset"));
+    let text = |default: &str| OptSpec {
+        default: Some(default.into()),
+        ..OptSpec::string()
+    };
+    o.insert("windows".into(), text("5h,7d,wk"));
+    o.insert("show".into(), text("label,pct,reset"));
     o.insert("count".into(), OptSpec::choice(&["left", "used"], "left"));
     o.insert(
         "label".into(),
@@ -32,7 +36,7 @@ pub fn ext_info() -> ExtInfo {
         "sort".into(),
         OptSpec::choice(&["name", "used", "reset"], "used"),
     );
-    o.insert("accounts".into(), OptSpec::list(""));
+    o.insert("accounts".into(), OptSpec::string());
     o.insert("compact".into(), OptSpec::bool());
     o.insert(
         "stale".into(),

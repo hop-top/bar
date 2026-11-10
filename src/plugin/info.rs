@@ -19,10 +19,6 @@ pub enum OptType {
     String,
     Bool,
     Enum,
-    /// A string that is a list: a layout may write it with commas
-    /// (`windows=5h,7d`); a bare part after it continues the list unless it
-    /// names another declared option.
-    List,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -255,7 +251,6 @@ impl ExtInfo {
                     OptType::String => "string",
                     OptType::Bool => "bool",
                     OptType::Enum => "enum",
-                    OptType::List => "list",
                 };
                 let mut o = json!({ "type": kind });
                 if s.kind == OptType::Enum {
@@ -328,7 +323,7 @@ pub(super) fn typed(spec: &OptSpec, raw: &str) -> Option<Value> {
             .iter()
             .any(|c| c == raw)
             .then(|| Value::from(raw)),
-        OptType::String | OptType::List => Some(Value::from(raw)),
+        OptType::String => Some(Value::from(raw)),
     }
 }
 
@@ -336,7 +331,7 @@ fn default_fits(spec: &OptSpec, v: &Value) -> bool {
     match spec.kind {
         OptType::Int => v.is_i64(),
         OptType::Bool => v.is_boolean(),
-        OptType::String | OptType::List => v.is_string(),
+        OptType::String => v.is_string(),
         OptType::Enum => v
             .as_str()
             .is_some_and(|s| spec.choices.iter().any(|c| c == s)),
@@ -351,7 +346,6 @@ fn opt_spec(v: &Value) -> Option<OptSpec> {
         "string" => OptType::String,
         "bool" => OptType::Bool,
         "enum" => OptType::Enum,
-        "list" => OptType::List,
         _ => return None,
     };
     let choices = v["enum"]
@@ -492,27 +486,12 @@ pub fn validate(
     opts: &Options,
 ) -> Result<Map<String, Value>, String> {
     let mut out = BTreeMap::new();
-    // a bare part after a list option continues that list, unless it names
-    // a declared option
-    let mut list_of: Option<String> = None;
     for (k, v) in opts.iter() {
-        if let Some(l) = list_of
-            .as_deref()
-            .filter(|_| v.is_empty() && !schema.contains_key(k))
-        {
-            let joined = match out.get(l) {
-                Some(Value::String(s)) => format!("{s},{k}"),
-                _ => k.clone(),
-            };
-            out.insert(l.to_string(), Value::from(joined));
-            continue;
-        }
         let spec = schema
             .get(k)
             .ok_or_else(|| format!("unknown option `{k}`"))?;
         let val = typed(spec, v).ok_or_else(|| format!("invalid value `{v}` for `{k}`"))?;
         out.insert(k.clone(), val);
-        list_of = (spec.kind == OptType::List).then(|| k.clone());
     }
     for (k, spec) in schema {
         if let (false, Some(d)) = (out.contains_key(k), &spec.default) {
