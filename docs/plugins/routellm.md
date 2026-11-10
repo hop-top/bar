@@ -197,6 +197,28 @@ action routellm routellm.toggle
 
 The action times out after 78 s. A click re-reads the state before it writes and does nothing when `to` already holds, so a stale link cannot flip routing back. Links need the click handler installed with action support (macOS): run `bar click install`, again after upgrading bar. bar shows the outcome in `action-status` in its state directory and refreshes the segment at the next render. `on` and `off` bind separate links, for a layout with two clicks.
 
+## Recipe: send a whole session through one route
+
+RouteLLM routes by model name, so pin every model Claude Code asks for to one alias. These are Claude Code's own settings; bar does not change a session's model, it shows the result:
+
+```sh
+ANTHROPIC_BASE_URL=http://127.0.0.1:8317 \
+ANTHROPIC_MODEL=route-private \
+ANTHROPIC_DEFAULT_OPUS_MODEL=route-private \
+ANTHROPIC_DEFAULT_SONNET_MODEL=route-private \
+ANTHROPIC_DEFAULT_HAIKU_MODEL=route-private \
+CLAUDE_CODE_SUBAGENT_MODEL=route-private \
+claude
+```
+
+```
+RL on │ route-private │ private ⌂
+```
+
+The alias fixes the tier, not the model: inside a tier RouteLLM still picks one of the tier's models. A tier with the same model on both sides, in RouteLLM's own configuration, pins one model. With routing OFF the proxy serves the alias from its own model-alias row (the one `bar rtellm setup` prints), and an alias with no row, such as `route-private`, is refused.
+
+To send a session to a Codex account through the proxy instead, see [bar-cliproxyapi: a session on a Codex account](cliproxyapi.md#recipe-a-session-on-a-codex-account).
+
 ## With bar-cliproxyapi
 
 The two segments share a layout and one proxy.
