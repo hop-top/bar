@@ -184,3 +184,36 @@ fn core_parses_what_the_plugin_prints_and_renders_it() {
     assert_eq!(out.items[1].text.split('\u{B7}').next(), Some("50%"));
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn core_accepts_comma_lists_for_the_declared_list_options() {
+    let raw = serde_json::to_string(&bar_cliproxyapi::render::ext_info()).unwrap();
+    let info = plugin::parse_info(&raw).unwrap();
+    for layout in [
+        "#{cliproxyapi[windows=5h,7d]}",
+        "#{cliproxyapi[windows=5h+7d,accounts=a,b,sort=name]}",
+        "#{cliproxyapi[show=label,pct,windows=7d,5h]}",
+    ] {
+        let hop_bar::format::Token::Placeholder { options, .. } =
+            hop_bar::format::parse(layout).unwrap().pop().unwrap()
+        else {
+            panic!("{layout}")
+        };
+        let v =
+            plugin::validate(&info.options, &options).unwrap_or_else(|e| panic!("{layout}: {e}"));
+        assert!(
+            v.contains_key("windows") || v.contains_key("show"),
+            "{layout}"
+        );
+    }
+    let hop_bar::format::Token::Placeholder { options, .. } =
+        hop_bar::format::parse("#{cliproxyapi[windows=5h,7d]}")
+            .unwrap()
+            .pop()
+            .unwrap()
+    else {
+        panic!()
+    };
+    let v = plugin::validate(&info.options, &options).unwrap();
+    assert_eq!(v["windows"], "5h,7d");
+}
