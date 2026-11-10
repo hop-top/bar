@@ -33,8 +33,12 @@ fn run(path: impl AsRef<std::path::Path>, arg: &str) -> String {
 #[test]
 fn a_click_switches_the_account_through_the_core_handler() {
     let files = json!([
-        {"name":"a.json","auth_index":"ix-a","type":"claude","email":"alice@corp.test"},
-        {"name":"b.json","auth_index":"ix-b","type":"claude","email":"bob@corp.test","priority":2}
+        {"name":"a.json","auth_index":"ix-a","type":"claude","email":"alice@corp.test",
+         "quota":{"signals":{"Anthropic-Ratelimit-Unified-7d-Utilization":"0.9",
+           "Anthropic-Ratelimit-Unified-7d-Reset":"1800086400"}}},
+        {"name":"b.json","auth_index":"ix-b","type":"claude","email":"bob@corp.test","priority":2,
+         "quota":{"signals":{"Anthropic-Ratelimit-Unified-7d-Utilization":"0.1",
+           "Anthropic-Ratelimit-Unified-7d-Reset":"1800086400"}}}
     ]);
     let (server, st) = pool(files, "e2e-key");
     let root = std::env::temp_dir().join(format!("cpa-e2e-{}", std::process::id()));
@@ -88,20 +92,34 @@ fn a_click_switches_the_account_through_the_core_handler() {
     };
     let inf = plugin::cached_info(&cache, &found).unwrap();
     let plan = plugin::plan(&ctx, &found, &inf, &Options::default()).unwrap();
-    // the plugin's collector fills its own cache (the snapshot the action
-    // checks); the output carrying the tokens is what the render stored
+    // the plugin's own render output (tokens included) is what bar stores;
+    // its collector fills the snapshot the action checks
     let Job::PluginRender { path, input, .. } = &plan.job else {
         panic!("render job")
     };
-    let mut ch = Command::new(path)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
-    std::io::Write::write_all(&mut ch.stdin.take().unwrap(), input.as_bytes()).unwrap();
-    assert!(ch.wait_with_output().unwrap().status.success());
-    let out = json!({"text":"alice","tokens":{"account":"ix-a","provider":"claude"}});
-    cache.store(&plan.key, &out.to_string()).unwrap();
+    let render = || {
+        let mut ch = Command::new(path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        std::io::Write::write_all(&mut ch.stdin.take().unwrap(), input.as_bytes()).unwrap();
+        let done = ch.wait_with_output().unwrap();
+        assert!(done.status.success());
+        String::from_utf8(done.stdout).unwrap()
+    };
+    // the first render starts the collection; the second reads its result
+    render();
+    let mut out = render();
+    for _ in 0..50 {
+        if out.contains("\"ix-a\"") {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        out = render();
+    }
+    assert!(out.contains("\"ix-a\""), "tokens missing: {out}");
+    cache.store(&plan.key, &out).unwrap();
 
     let shown = plugin::render(&ctx, "cliproxyapi", &Options::default()).unwrap_or_default();
     let url = shown
