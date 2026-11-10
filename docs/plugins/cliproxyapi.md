@@ -1,5 +1,7 @@
 # bar-cliproxyapi
 
+The plugin is a `bar-cliproxyapi` program next to `bar`; its commands run through bar as `bar cliproxyapi …`.
+
 `bar-cliproxyapi` shows the quota of the accounts behind a [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) proxy as the placeholder `#{cliproxyapi}`: one entry per account, each with its usage windows and the time they reset. It ships next to `bar` and is found like any [plugin](../plugins.md).
 
 It is opt-in. Nothing runs, and nothing is read, until the placeholder is in your layout and the plugin's own configuration file exists.
@@ -154,26 +156,51 @@ Responses are size-capped (256 KiB for the account list, 128 KiB for an upstream
 
 ## Switching accounts
 
-`bar-cliproxyapi` can also prefer one account. The proxy serves the highest *available* priority tier of a provider (a cooling or disabled account drops out for the moment), so "use X" sets X's priority one above every other enabled account of its provider, including one only cooling down (it returns after the cooldown). Nothing is disabled and no other account is changed; the proxy keeps the priority with the credential, across restarts.
+`bar cliproxyapi` (bar runs the `bar-cliproxyapi` plugin for any `bar <name> …`) can also prefer one account. The proxy serves the highest *available* priority tier of a provider (a cooling or disabled account drops out for the moment), so "use X" sets X's priority one above every other enabled account of its provider, including one only cooling down (it returns after the cooldown). Nothing is disabled and no other account is changed; the proxy keeps the priority with the credential, across restarts.
 
 ```
-bar-cliproxyapi list [--provider P] [--instance URL]
-bar-cliproxyapi use <account> [--provider P] [--instance URL] [--dry-run]
-bar-cliproxyapi use --reset [<account>] [--instance URL] [--dry-run]
+bar cliproxyapi list [--provider P] [--instance URL]
+bar cliproxyapi use <account> [--provider P] [--instance URL] [--dry-run]
+bar cliproxyapi use --next [--strategy most-left|soonest-reset] [--provider P] [--instance URL] [--dry-run]
+bar cliproxyapi use --reset [<account>] [--instance URL] [--dry-run]
+bar cliproxyapi pick [--strategy most-left|soonest-reset] [--provider P] [--instance URL]
 ```
 
 - `list` prints one line per account: label, provider, priority, status (`active`, `unavailable`, `disabled`) and the proxy's account index. Never an email.
 - `<account>` is an account index, a label (an alias, or the email's part before the `@`, any case) or a position (`3` or `#3`, as `label=index` draws: among the provider's enabled accounts; with several providers in the instance a position needs `--provider`). A name that fits several accounts (the same label under two providers) is refused and the candidates listed; narrow it with `--provider`. A disabled account is refused: bar never enables one.
 - `use` prints the change (`work (claude): priority 0 -> 3`). An account already above every other enabled one, or with no enabled rival, is left as it is. `--dry-run` prints the change and sends nothing.
 - `--reset` puts back the priorities this plugin changed (kept in the plugin's own state file, mode 0600, with account indexes and numbers only). An account whose priority was changed by someone else since is left alone; a hand edit made between two switches becomes the priority a reset restores. With an account, only that one is restored.
+- `--next` switches to the account a strategy recommends (see [Choosing the next account](#choosing-the-next-account)); with several providers in the instance it needs `--provider`. `pick` lists the accounts in the recommended order and, on a terminal, asks which to use.
 - The instance is `--instance`, else the session's `ANTHROPIC_BASE_URL`, else the only configured instance.
 - Exit status: 0 done, 1 refused or failed (the reason on stderr), 2 bad usage.
 
 The change applies to new selections. With the proxy's `session-affinity` on, a running session stays on the account it is bound to until that account fails over, and new sessions follow the priority. The proxy's `routing.strategy` still decides between accounts of the same tier.
 
+### Choosing the next account
+
+A strategy ranks the enabled accounts of one provider. An account's *left* is the smallest share of quota left over its windows (100 minus the largest percent used; a window whose reset has passed counts as unused). An account with no window data is *unread*. The window that limits an account gives its *reset*, when its quota returns.
+
+| Strategy | Order |
+|---|---|
+| `most-left` (default) | Left, highest first; a tie goes to the sooner reset. |
+| `soonest-reset` | The accounts within 10 points of the best left come first, soonest reset first, so quota about to expire is used before it is lost; the rest follow by left. |
+
+Both put available accounts with quota left first, then exhausted ones, then unread ones, then those the proxy has cooling down; disabled accounts are left out. `use --next` switches to the first account of the first group that is not the proxy's current preferred one, and refuses when there is none (an account with no data is never picked blindly). Quota comes from the proxy's listing and the plugin's cache, so a Codex account's figure is as fresh as the last background read.
+
+`pick` prints one numbered row per account in that order, with each window's percent left and time to reset, and `*` on the account the proxy prefers:
+
+```
+ 1    work   claude  5h 80% left ↻1h20m  7d 55% left ↻3d2h
+ 2    home   claude  5h 60% left ↻4h10m  7d 90% left ↻5d
+ 3  * lab    claude  5h 10% left ↻20m
+ 4    spare  claude  no data
+```
+
+On a terminal it then asks `use which? [1-4, q to quit]` and switches as `use` does; a blank line or `q` quits. Without a terminal (a pipe, a script) it only prints the list.
+
 ### Clicking an account
 
-The plugin declares the action `use` with the tokens `account` and `provider`. Bind it in `bar.conf` for either placement:
+The plugin declares the action `use` with the tokens `account` and `provider`, and the actions `next` (`most-left`) and `next-soon` (`soonest-reset`) with the tokens `provider` and `instance`, which its output always carries at the top level. Bind one in `bar.conf` for either placement:
 
 ```
 # the account segment: a click runs `use` for the account it shows
@@ -182,9 +209,15 @@ action account cliproxyapi.use
 
 # the plugin's own segment: a click on an account's item runs it for that account
 action cliproxyapi cliproxyapi.use
+
+# a click on #{account} switches to the next account, whichever shows
+action account cliproxyapi.next
+action account cliproxyapi.next-soon   # or: among the most left, the soonest reset
 ```
 
-Links need the click handler installed with action support: run `bar click install` (again after upgrading bar). A click runs `bar-cliproxyapi --action use` with the tokens on its standard input; the plugin checks that the token names an account of its current listing, performs `use`, and exits non-zero with a reason when it refuses. bar shows the outcome in `action-status` in its state directory and refreshes the segment at the next render. A click has no session environment, so the plugin finds the instance whose listing holds the account; when two instances list the same index it refuses.
+`next` and `next-soon` are linked even when `#{account}` shows bar's own signed-in account (a round-robin pool has no single preferred account); `use` needs the account the plugin named.
+
+Links need the click handler installed with action support: run `bar click install` (again after upgrading bar). A click runs `bar-cliproxyapi --action <action>` with the tokens on its standard input; the plugin checks that the token names an account of its current listing, performs `use`, and exits non-zero with a reason when it refuses. bar shows the outcome in `action-status` in its state directory and refreshes the segment at the next render. A click has no session environment, so the plugin finds the instance whose listing holds the account; when two instances list the same index it refuses.
 
 Management failures behave as for rendering: a 401 or 403, on the listing or on the change, stops every call until the key changes.
 

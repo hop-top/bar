@@ -111,7 +111,7 @@ load=$(uptime | sed 's/.*load averages*: *//; s/[, ].*//')
 printf '{"label":"load","text":"%s"}\n' "$load"
 ```
 
-Save it as `bar-load` on `PATH`, make it executable, add `#{load}` to a line. Protocol and reference plugins: [docs/plugins.md](docs/plugins.md). Shipped with bar: [`bar-cliproxyapi`](docs/plugins/cliproxyapi.md), the per-account quota of a CLIProxyAPI proxy.
+Save it as `bar-load` on `PATH`, make it executable, add `#{load}` to a line. Protocol and reference plugins: [docs/plugins.md](docs/plugins.md). Shipped with bar: [`bar-cliproxyapi`](docs/plugins/cliproxyapi.md), the per-account quota of a CLIProxyAPI proxy, with `bar cliproxyapi list|use|pick` to switch accounts.
 
 ## Contributing
 

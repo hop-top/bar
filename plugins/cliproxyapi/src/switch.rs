@@ -15,7 +15,8 @@ use crate::cache::{self, Cache};
 use crate::collect::{self, valid_index, AUTH_HOLD};
 use crate::config::{Config, Instance};
 use crate::mgmt::{Api, Client, MErr};
-use crate::model;
+use crate::model::{self, Signals, Win};
+use crate::rank::{self, Strategy};
 use bar_plugin::fsio;
 use bar_plugin::keysource;
 use bar_plugin::proto::ActionSpec;
@@ -34,14 +35,34 @@ pub const MAX_BUMPS: usize = 64;
 
 /// The actions `--ext-info` declares.
 pub fn actions() -> BTreeMap<String, ActionSpec> {
-    BTreeMap::from([(
-        "use".to_string(),
-        ActionSpec {
-            description: "Prefer this account".into(),
-            tokens: vec!["account".into(), "provider".into()],
-            confirm: false,
-        },
-    )])
+    BTreeMap::from([
+        (
+            "use".to_string(),
+            ActionSpec {
+                description: "Prefer this account".into(),
+                tokens: vec!["account".into(), "provider".into()],
+                confirm: false,
+            },
+        ),
+        (
+            "next".to_string(),
+            ActionSpec {
+                description: "Prefer the account with the most quota left".into(),
+                tokens: vec!["instance".into(), "provider".into()],
+                confirm: false,
+            },
+        ),
+        (
+            "next-soon".to_string(),
+            ActionSpec {
+                description:
+                    "Prefer the account whose quota resets soonest, among those with the most left"
+                        .into(),
+                tokens: vec!["instance".into(), "provider".into()],
+                confirm: false,
+            },
+        ),
+    ])
 }
 
 /// One credential of the listing, as far as switching needs it. The
@@ -59,6 +80,11 @@ pub struct Entry {
     pub priority: i64,
     pub disabled: bool,
     pub unavailable: bool,
+    /// The listing's passive rate-limit headers, lower-cased.
+    pub signals: Signals,
+    /// Quota windows: the listing's passive data, else what the plugin's
+    /// cache holds (see [`fill_windows`]).
+    pub windows: Vec<Win>,
 }
 
 impl Entry {
@@ -120,9 +146,35 @@ pub fn parse_entries(inst: &Instance, v: &Value) -> Vec<Entry> {
             priority: f["priority"].as_i64().unwrap_or(0),
             disabled,
             unavailable: f["unavailable"].as_bool().unwrap_or(false),
+            signals: crate::collect::lower_signals(&f["quota"]["signals"]),
+            windows: vec![],
         });
     }
     out
+}
+
+/// Gives each entry its windows: Claude's from the listing's headers, else
+/// the cache's; Codex's from the cache while it is within [`collect::KEEP`],
+/// else the listing's passive headers.
+pub fn fill_windows(entries: &mut [Entry], cached: &[model::Acct], now: i64) {
+    for e in entries {
+        let held = cached
+            .iter()
+            .find(|a| a.key == e.index && a.provider == e.provider)
+            .filter(|a| now - a.at <= collect::KEEP)
+            .map(|a| a.windows.clone())
+            .unwrap_or_default();
+        let passive = if e.provider == "claude" {
+            model::claude_windows(&e.signals)
+        } else {
+            model::codex_signal_windows(&e.signals, now)
+        };
+        e.windows = match (e.provider.as_str(), held.is_empty(), passive.is_empty()) {
+            ("claude", _, false) => passive,
+            (_, false, _) => held,
+            _ => passive,
+        };
+    }
 }
 
 /// Why nothing was changed.
@@ -377,15 +429,17 @@ pub fn connect<'a>(
         let client = Client::new(&base, key).map_err(Refusal)?;
         match client.credentials() {
             Ok(v) => {
+                let mut entries = parse_entries(inst, &v);
+                fill_windows(&mut entries, &c.accounts, now);
                 return Ok(Live {
                     inst,
                     key,
                     state_dir,
                     now,
                     client,
-                    entries: parse_entries(inst, &v),
+                    entries,
                     _lock: lock,
-                })
+                });
             }
             Err(MErr::NotFound) => continue,
             Err(MErr::Auth(s)) => {
@@ -549,6 +603,218 @@ pub fn run_list(live: &Live, provider: Option<&str>) -> Vec<String> {
         .collect()
 }
 
+/// The only provider with an enabled account, when there is just one.
+fn sole_provider(list: &[Entry]) -> Option<String> {
+    let mut ps: Vec<&str> = list
+        .iter()
+        .filter(|e| !e.disabled)
+        .map(|e| e.provider.as_str())
+        .collect();
+    ps.sort_unstable();
+    ps.dedup();
+    match ps.as_slice() {
+        [one] => Some((*one).to_string()),
+        _ => None,
+    }
+}
+
+fn left_text(r: &rank::Ranked) -> String {
+    r.left.map_or("no data".into(), |l| format!("{l:.0}% left"))
+}
+
+/// `use --next`, and the `next` and `next-soon` actions: switches to the
+/// account `strategy` recommends for `provider` (the instance's only
+/// provider when `None`), never the one already preferred. Refuses when
+/// no other account has quota left.
+pub fn run_next(
+    live: &Live,
+    provider: Option<&str>,
+    strategy: Strategy,
+    dry_run: bool,
+) -> Result<Vec<String>, Refusal> {
+    let provider = match provider {
+        Some(p) => p.to_string(),
+        None => sole_provider(&live.entries)
+            .ok_or_else(|| Refusal("name a provider with --provider (claude or codex)".into()))?,
+    };
+    let Some(pick) = rank::next(&live.entries, &provider, strategy, live.now) else {
+        let n = live
+            .entries
+            .iter()
+            .filter(|e| e.provider == provider && !e.disabled)
+            .count();
+        return refuse(format!(
+            "no other {provider} account with quota left ({n} enabled)"
+        ));
+    };
+    let mut out = vec![format!(
+        "{}: {} ({provider}), {}",
+        strategy.name(),
+        pick.entry.label,
+        left_text(&pick)
+    )];
+    let index = pick.entry.index.clone();
+    out.extend(run_use(
+        live,
+        Some(&index),
+        Some(&provider),
+        false,
+        dry_run,
+    )?);
+    Ok(out)
+}
+
+/// One ranked row of `pick`: number, mark, label, provider, per-window
+/// percent left and time to reset.
+fn pick_row(n: usize, r: &rank::Ranked, preferred: bool, w: usize, now: i64) -> String {
+    let wins: Vec<String> = r
+        .entry
+        .windows
+        .iter()
+        .map(|win| {
+            let (left, reset) = match (
+                win.resets_at > 0 && win.resets_at <= now,
+                win.resets_at > now,
+            ) {
+                (true, _) => (100.0, None),
+                (_, up) => (
+                    (100.0 - win.used).clamp(0.0, 100.0),
+                    up.then_some(win.resets_at),
+                ),
+            };
+            match reset {
+                Some(t) => format!(
+                    "{} {left:.0}% left \u{21BB}{}",
+                    win.id,
+                    crate::render::countdown(t - now)
+                ),
+                None => format!("{} {left:.0}% left", win.id),
+            }
+        })
+        .collect();
+    let body = if wins.is_empty() {
+        "no data".to_string()
+    } else {
+        wins.join("  ")
+    };
+    let note = if r.entry.unavailable {
+        "  (unavailable)"
+    } else {
+        ""
+    };
+    format!(
+        "{n:>2}  {}  {:<w$}  {:<6}  {body}{note}",
+        if preferred { '*' } else { ' ' },
+        r.entry.label,
+        r.entry.provider,
+    )
+}
+
+/// `pick`: the accounts in the order `strategy` recommends (the proxy's
+/// preferred one marked `*`), one numbered row each, grouped by provider
+/// when `provider` is `None`. With `input` (a terminal), asks for a
+/// number (`q` or an empty line quits) and switches to that account as
+/// `use` would; without, only lists.
+pub fn run_pick(
+    live: &Live,
+    provider: Option<&str>,
+    strategy: Strategy,
+    input: Option<&mut dyn std::io::BufRead>,
+    out: &mut dyn std::io::Write,
+) -> Result<(), Refusal> {
+    let mut providers: Vec<&str> = live
+        .entries
+        .iter()
+        .filter(|e| !e.disabled && provider.is_none_or(|p| e.provider == p))
+        .map(|e| e.provider.as_str())
+        .collect();
+    providers.sort_unstable();
+    providers.dedup();
+    if providers.is_empty() {
+        return refuse("no account to pick from");
+    }
+    let width = live
+        .entries
+        .iter()
+        .map(|e| e.label.len())
+        .max()
+        .unwrap_or(0);
+    let mut rows: Vec<&Entry> = Vec::new();
+    let mut say = |l: String| writeln!(out, "{l}").map_err(|e| Refusal(e.to_string()));
+    for p in &providers {
+        if providers.len() > 1 {
+            say(format!("{p}:"))?;
+        }
+        let pref = rank::preferred(&live.entries, p).map(|e| e.index.clone());
+        for r in rank::rank(&live.entries, p, strategy, live.now, None) {
+            rows.push(r.entry);
+            let mark = pref.as_deref() == Some(r.entry.index.as_str());
+            say(pick_row(rows.len(), &r, mark, width, live.now))?;
+        }
+    }
+    let Some(input) = input else {
+        return Ok(());
+    };
+    loop {
+        write!(out, "use which? [1-{}, q to quit] ", rows.len())
+            .map_err(|e| Refusal(e.to_string()))?;
+        let _ = out.flush();
+        let mut line = String::new();
+        if input
+            .read_line(&mut line)
+            .map_err(|e| Refusal(e.to_string()))?
+            == 0
+        {
+            return Ok(());
+        }
+        let t = line.trim();
+        if t.is_empty() || t.eq_ignore_ascii_case("q") {
+            return Ok(());
+        }
+        match t
+            .parse::<usize>()
+            .ok()
+            .filter(|n| (1..=rows.len()).contains(n))
+        {
+            Some(n) => {
+                let e = rows[n - 1];
+                for l in run_use(live, Some(&e.index), Some(&e.provider), false, false)? {
+                    writeln!(out, "{l}").map_err(|e| Refusal(e.to_string()))?;
+                }
+                return Ok(());
+            }
+            None => {
+                writeln!(out, "not a choice").map_err(|e| Refusal(e.to_string()))?;
+            }
+        }
+    }
+}
+
+/// The short stable id of an instance, as the `instance` token carries it:
+/// a token cannot hold a URL.
+pub fn instance_id(origin: &str) -> String {
+    bar_plugin::sha256::hex(origin.as_bytes())[..16].to_string()
+}
+
+/// Validates the `--action next` / `next-soon` input and returns
+/// `(provider, instance id)`.
+pub fn next_tokens(stdin: &str, action: &str) -> Result<(String, String), Refusal> {
+    let v: Value = serde_json::from_str(stdin).map_err(|_| Refusal("bad input".into()))?;
+    if v["action"].as_str() != Some(action) {
+        return refuse("unknown action");
+    }
+    let t = v["tokens"].as_object();
+    let get = |k: &str| t.and_then(|m| m.get(k)).and_then(Value::as_str);
+    let (Some(p), Some(i)) = (get("provider"), get("instance")) else {
+        return refuse("needs the provider and instance tokens");
+    };
+    let hex = i.len() == 16 && i.bytes().all(|b| b.is_ascii_hexdigit());
+    if !hex || !crate::config::PROVIDERS.contains(&p) {
+        return refuse("malformed tokens");
+    }
+    Ok((p.into(), i.into()))
+}
+
 /// The instance a command talks to: `--instance`, else the session's
 /// `ANTHROPIC_BASE_URL`, else the only configured one, else the only one
 /// whose cached accounts include `known` (an `auth_index` and provider).
@@ -633,6 +899,8 @@ mod tests {
             priority,
             disabled: false,
             unavailable: false,
+            signals: Default::default(),
+            windows: vec![],
         }
     }
 

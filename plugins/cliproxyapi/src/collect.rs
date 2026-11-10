@@ -96,7 +96,7 @@ pub fn cached(ctx: &Ctx) -> (Snapshot, Cache) {
     (snap(status, &c, ctx.now), c)
 }
 
-fn lower_signals(v: &Value) -> Signals {
+pub fn lower_signals(v: &Value) -> Signals {
     v.as_object()
         .map(|m| {
             m.iter()

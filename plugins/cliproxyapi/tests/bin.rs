@@ -105,6 +105,12 @@ fn renders_only_for_the_configured_instance() {
     // a pool of one: usage and the preferred account ride along
     assert_eq!(o["usage"]["seven_day"]["used_percentage"], 50.0);
     assert_eq!(o["account"], json!({"id":"ix1","label":"me"}));
+    // what the `next` actions take, for a link on `#{account}`
+    assert_eq!(o["tokens"]["provider"], "claude");
+    assert_eq!(
+        o["tokens"]["instance"],
+        bar_cliproxyapi::switch::instance_id(&s.origin())
+    );
     // another base URL, or a non-matching model: hidden, no request
     let n = s.count();
     assert_eq!(
