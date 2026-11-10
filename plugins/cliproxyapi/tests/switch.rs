@@ -362,3 +362,64 @@ fn ext_info_declares_the_use_action() {
         json!({"description":"Prefer this account","tokens":["account","provider"],"confirm":false})
     );
 }
+
+#[test]
+fn a_position_names_the_account_label_index_draws() {
+    let mut a = cred("a", "claude", "ann@corp.test", None);
+    a["disabled"] = true.into();
+    let fleet = json!([
+        a,
+        cred("b", "codex", "bea@corp.test", None),
+        cred("c", "claude", "cy@corp.test", Some(1)),
+        cred("d", "claude", "dee@corp.test", Some(1)),
+    ]);
+    // quota signals so the render draws items
+    let mut fleet = fleet;
+    for f in fleet.as_array_mut().unwrap() {
+        f["quota"] = json!({"signals":{"Anthropic-Ratelimit-Unified-7d-Utilization":"0.5",
+            "Anthropic-Ratelimit-Unified-7d-Reset":"4102444800"}});
+    }
+    let (s, st) = pool(fleet, KEY);
+    let h = Home::new("positions");
+    let conf = h.conf(&[s.origin()]);
+    let input = json!({"options":{"label":"index","provider":"claude"},
+        "session":{"model_id":"claude-opus-4"},"env":{"ANTHROPIC_BASE_URL":s.origin()}});
+    let o = h.run(&conf, &[], &input.to_string());
+    let out: Value = serde_json::from_slice(&o.stdout).unwrap();
+    let drawn: Vec<(String, String)> = out["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| {
+            (
+                i["label"].as_str().unwrap().to_string(),
+                i["tokens"]["account"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect();
+    assert!(drawn.contains(&("#2".into(), "ix-d".into())), "{drawn:?}");
+    // the same number, given to `use`, names the same account
+    let o = h.run(&conf, &["use", "#2", "--provider", "claude"], "");
+    assert!(o.status.success(), "{}", err(&o));
+    assert!(text(&o).starts_with("dee (claude)"), "{}", text(&o));
+    assert_eq!(prio(&st.lock().unwrap(), "d"), 2);
+    // without a provider, a position is ambiguous across providers
+    let o = h.run(&conf, &["use", "#2"], "");
+    assert_eq!(o.status.code(), Some(1));
+    assert!(err(&o).contains("--provider"), "{}", err(&o));
+}
+
+#[test]
+fn a_hand_edit_between_switches_becomes_the_priority_a_reset_restores() {
+    let (s, st) = pool(fleet(), KEY);
+    let h = Home::new("handedit");
+    let conf = h.conf(&[s.origin()]);
+    h.run(&conf, &["use", "alice"], "");
+    assert_eq!(prio(&st.lock().unwrap(), "a"), 3);
+    // the user lowers alice by hand, then switches to her again
+    st.lock().unwrap()[0]["priority"] = 1.into();
+    h.run(&conf, &["use", "alice"], "");
+    assert_eq!(prio(&st.lock().unwrap(), "a"), 3);
+    h.run(&conf, &["use", "--reset", "alice"], "");
+    assert_eq!(prio(&st.lock().unwrap(), "a"), 1);
+}

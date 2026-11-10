@@ -59,11 +59,11 @@ One `instance` block per proxy; lines start with a keyword, `#` starts a comment
 |---|---|
 | `instance <url>` | The proxy, as Claude Code's `ANTHROPIC_BASE_URL` names it. Only scheme, host and port count (`HTTP://Localhost:8318/` equals `http://localhost:8318`); a path, query or user info is ignored or refused. A session whose base URL matches no instance shows nothing; there is no fallback to another instance. |
 | `management <url>` | The management API base, ending in `/v8/management` (or `/v0/management`). Default: `<instance origin>/v8/management`. |
-| `key-file <path>` | First line of an owner-only (0600) file, at most 1 KiB. `~/` is expanded. |
+| `key-file <path>` | First line of an owner-only (0600) file, at most 1 KiB. `~/` is expanded (against `HOME`, `USERPROFILE` on Windows). On Windows the owner-only check is not made; keep the file in your profile directory, whose ACL keeps other users out. |
 | `key-keychain <service>` | macOS: the generic password with that service name (`/usr/bin/security find-generic-password -s <service> -w`). |
 | `key-command <program> [args...]` | The first line of the program's output. The program must be an absolute path; there is no shell, so no variables, pipes or globs. 5 s limit. |
 | `providers <list>` | Providers to read, default `claude,codex`. |
-| `alias "<glob>" <label>` | Label for accounts whose email matches the glob (`*` and `?`, case-insensitive); the first match wins. |
+| `alias "<glob>" <label>` | Label for accounts whose email matches the glob (`*` and `?`, case-insensitive, matched against the first 256 characters); the first match wins. |
 | `remote yes` | Allow a management host that is not on this machine. Requires an `https` management URL. |
 
 Exactly one key source per instance. A block with a mistake is ignored as a whole, and `bar check` says which line.
@@ -90,9 +90,9 @@ The key is held in memory that is overwritten when released, and passed to `curl
 | `windows` | `5h,7d,wk` | Windows to show, in this order; a window an account lacks is omitted. `7d` is a window of exactly seven days, `wk` any other length of about a week. |
 | `show` | `label,pct,reset` | Parts per account: `label`, `pct`, `reset`, `plan`. |
 | `count` | `left` | `left` or `used`: which share `pct` draws. |
-| `label` | `alias` | `alias` (the `alias` line, else the part of the email before `@`), `local` (always the part before `@`), `index` (`#1`, `#2`, for screen sharing) or `none`. Labels are cut at 12 characters. |
+| `label` | `alias` | `alias` (the `alias` line, else the part of the email before `@`), `index` (`#1`, `#2`, for screen sharing) or `none`. Labels are cut at 12 characters. |
 | `sort` | `used` | `used` (most used window first), `reset` (soonest reset first) or `name`. |
-| `accounts` | all | Accounts to show: labels or local parts (`*` and `?` match), or positions in the proxy's list (`2` or `#2`). |
+| `accounts` | all | Accounts to show: labels or local parts (`*` and `?` match), or positions (`2` or `#2`, counted as `label=index` counts: among the enabled accounts of the provider). |
 | `compact` | off | `59%·2h10m` per window, without the window name. |
 | `stale` | `mark` | Old data: `mark` (`~`), `dim` or `hide`. |
 | `link` | none | A link template for each account; `{account}`, `{label}`, `{provider}` and `{instance}` are URL-escaped. |
@@ -144,17 +144,17 @@ To open your own handler for an account instead, give each entry a link: `#{clip
 
 The proxy bans a client IP for 30 minutes after five failed management attempts, localhost included, and a ban does not affect proxy traffic but blocks the management panel. The plugin therefore never retries a refusal:
 
-- **401 or 403** from the management API stops every call. The segment shows `key?` until the key changes (the plugin compares a fingerprint, never the key) or 24 hours pass. That is at most one failed attempt per key.
+- **401 or 403** from the management API stops every call. The segment shows `key?` until the key changes or 24 hours pass; a refused key is tried again at most once a day. The plugin compares a salted, truncated digest, never the key. Processes of one proxy take turns under a lock in the state directory, so a refused key costs one failed attempt however many sessions render at once; a run that cannot take the lock, or cannot write the state directory, sends nothing. After a 401 or 403 on an upstream call the remaining calls of the run are not sent, and the first upstream call of a run goes alone.
 - **An empty key is never sent**; an unreadable key source shows `key?` without any request.
 - **404** means management is off (or an older proxy without `/v8`): the plugin tries the legacy `/v0/management` paths once, then waits an hour.
-- **Timeouts, 5xx, bad responses**: back-off from one minute doubling to an hour, serving the last good data meanwhile.
+- **Timeouts, 5xx, bad responses**: back-off from one minute doubling to an hour, serving the last good data meanwhile. The same holds per account for its upstream reads. A run starts no new upstream call after 10 s and saves what it has learned as it goes.
 - **An upstream 401 or 403 for one account** (its own token was refused) marks that account and pauses it for an hour; it does not touch the management key. An upstream 429 honours `Retry-After`.
 
 Responses are size-capped (256 KiB for the account list, 128 KiB for an upstream call, 64 KiB for the cache), and a loopback proxy is contacted directly even when `HTTP_PROXY` is set. Plain `http` is used only for `localhost`, `127.0.0.1` and `::1`.
 
 ## Switching accounts
 
-`bar-cliproxyapi` can also prefer one account. The proxy serves the highest *available* priority tier of a provider (a cooling or disabled account drops out), so "use X" sets X's priority one above every other available account of its provider. Nothing is disabled and no other account is changed; the proxy keeps the priority with the credential, across restarts.
+`bar-cliproxyapi` can also prefer one account. The proxy serves the highest *available* priority tier of a provider (a cooling or disabled account drops out for the moment), so "use X" sets X's priority one above every other enabled account of its provider, including one only cooling down (it returns after the cooldown). Nothing is disabled and no other account is changed; the proxy keeps the priority with the credential, across restarts.
 
 ```
 bar-cliproxyapi list [--provider P] [--instance URL]
@@ -163,9 +163,9 @@ bar-cliproxyapi use --reset [<account>] [--instance URL] [--dry-run]
 ```
 
 - `list` prints one line per account: label, provider, priority, status (`active`, `unavailable`, `disabled`) and the proxy's account index. Never an email.
-- `<account>` is an account index, a label (an alias, or the email's part before the `@`, any case) or a position (`3` or `#3`, as `label=index` draws). A name that fits several accounts (the same label under two providers) is refused and the candidates listed; narrow it with `--provider`. A disabled account is refused: bar never enables one.
-- `use` prints the change (`work (claude): priority 0 -> 3`). An account already above every other available one, or with no available rival, is left as it is. `--dry-run` prints the change and sends nothing.
-- `--reset` puts back the priorities this plugin changed (kept in the plugin's own state file, mode 0600, with account indexes and numbers only). An account whose priority was changed by someone else since is left alone. With an account, only that one is restored.
+- `<account>` is an account index, a label (an alias, or the email's part before the `@`, any case) or a position (`3` or `#3`, as `label=index` draws: among the provider's enabled accounts; with several providers in the instance a position needs `--provider`). A name that fits several accounts (the same label under two providers) is refused and the candidates listed; narrow it with `--provider`. A disabled account is refused: bar never enables one.
+- `use` prints the change (`work (claude): priority 0 -> 3`). An account already above every other enabled one, or with no enabled rival, is left as it is. `--dry-run` prints the change and sends nothing.
+- `--reset` puts back the priorities this plugin changed (kept in the plugin's own state file, mode 0600, with account indexes and numbers only). An account whose priority was changed by someone else since is left alone; a hand edit made between two switches becomes the priority a reset restores. With an account, only that one is restored.
 - The instance is `--instance`, else the session's `ANTHROPIC_BASE_URL`, else the only configured instance.
 - Exit status: 0 done, 1 refused or failed (the reason on stderr), 2 bad usage.
 
@@ -191,7 +191,7 @@ Management failures behave as for rendering: a 401 or 403, on the listing or on 
 ## Privacy
 
 - The plugin reads accounts and quota. The only change it ever makes is an account's routing priority, when you ask (`use`, `--reset` or a bound click); it never disables or enables an account.
-- Its output carries labels, the proxy's opaque account index and the provider name; bar's own cache of it (mode 0600) holds the same. `label=index` keeps even the local part of an email off the screen and out of that output.
-- Its cache (`plugins/cliproxyapi/<hash>.json` in bar's state directory, mode 0600 in a 0700 directory) holds the label shown, the local part of the account's email (for `label=local`), the proxy's opaque account index and routing priority, plan name, usage windows and failure timers. It holds no emails (a label derived from one is the part before the `@`, or your alias), no file paths, no tokens, no account ids and no keys.
+- Its output carries labels, the proxy's opaque account index and the provider name; bar's own cache of it (mode 0600) holds the same. `label=index` keeps the local part of an email off the screen and out of that output; the cache below still holds the label it replaced.
+- Its cache (`plugins/cliproxyapi/<hash>.json` in bar's state directory, mode 0600 in a 0700 directory) holds the label shown (your alias, else the part of the email before the `@`), the proxy's opaque account index and routing priority, plan name, usage windows and failure timers. It holds no emails (a label derived from one is the part before the `@`, or your alias), no file paths, no tokens, no account ids and no keys, only a salted, truncated digest of a refused key beside its random salt. The proxy is not called at all when this directory cannot be written, since a refusal could not be remembered; `bar check` says so.
 - Upstream addresses are compiled into the plugin. The proxy's `api-call` endpoint forwards an account's token to any URL it is given, so no configuration can choose where it goes.
 - Querying a provider's usage endpoint with your own credentials, through your own proxy, is subject to that provider's terms; check them before enabling it.

@@ -118,7 +118,12 @@ fn renders_only_for_the_configured_instance() {
     assert_eq!(s.count(), n);
     // the cache file lands in bar's state dir, owner-only
     let cache_dir = h.0.join("state/plugins/cliproxyapi");
-    assert_eq!(std::fs::read_dir(cache_dir).unwrap().count(), 1);
+    let names: Vec<String> = std::fs::read_dir(cache_dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names.iter().filter(|n| n.ends_with(".json")).count(), 1);
+    assert_eq!(names.iter().filter(|n| n.ends_with(".lock")).count(), 1);
 }
 
 #[test]
@@ -213,4 +218,33 @@ fn a_loose_config_file_hides_the_segment_and_check_says_why() {
     let v: Value = serde_json::from_slice(&out.stdout).unwrap();
     let w = v["warnings"][0].as_str().unwrap();
     assert!(w.contains("mode 0644"), "{w}");
+}
+
+#[test]
+fn concurrent_processes_cost_one_failed_attempt_per_key() {
+    let s = Server::start(|_| {
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        fake::status(401)
+    });
+    let h = Home::new("race");
+    let key = h.file("key", "wrong-key\n", 0o600);
+    let conf = h.file(
+        "c.conf",
+        &format!("instance {}\n key-file {}\n", s.origin(), key.display()),
+        0o600,
+    );
+    let url = s.origin();
+    let hs: Vec<_> = (0..6)
+        .map(|i| {
+            let mut c = h.cmd(&conf);
+            // different cwd/option sets in the host: same instance here
+            let input = json!({"options":{"label":if i % 2 == 0 {"alias"} else {"index"}},
+                "session":{"model_id":"claude-opus-4"},"env":{"ANTHROPIC_BASE_URL":url}});
+            std::thread::spawn(move || render(std::mem::replace(&mut c, Command::new(BIN)), input))
+        })
+        .collect();
+    for t in hs {
+        assert_eq!(t.join().unwrap()["text"], "key?");
+    }
+    assert_eq!(s.count(), 1, "one failed attempt across all processes");
 }

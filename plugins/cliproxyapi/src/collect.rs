@@ -7,13 +7,15 @@
 //! every further call until the key changes (the proxy bans a client
 //! after five failed attempts); a 404 means management is off and waits an
 //! hour; other failures back off from a minute to an hour while the last
-//! good data is served.
+//! good data is served. Processes of one instance take turns under a
+//! lock: the cache is read, the proxy called and the outcome saved by one
+//! at a time, so a refused key costs one failed attempt, not one per
+//! process. Nothing is sent when the lock or the cache cannot be had.
 
 use crate::cache::{self, AuthFail, Cache};
 use crate::config::Instance;
 use crate::mgmt::{Api, ApiReply, Client, MErr};
 use crate::model::{self, Acct, Signals, Win};
-use bar_plugin::keysource::fingerprint;
 use bar_plugin::secret::Secret;
 use serde_json::Value;
 use std::path::Path;
@@ -34,6 +36,9 @@ pub const AUTH_HOLD: i64 = 24 * 3600;
 pub const OFF_HOLD: i64 = 3600;
 /// Upstream calls in flight at once.
 pub const PARALLEL: usize = 4;
+/// No new batch of upstream calls starts after this many seconds of the
+/// run (the host stops a job at 15 s).
+pub const DEADLINE: u64 = 10;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Status {
@@ -79,13 +84,14 @@ fn snap(status: Status, c: &Cache, now: i64) -> Snapshot {
 pub fn cached(ctx: &Ctx) -> (Snapshot, Cache) {
     let path = cache::file(ctx.state_dir, &ctx.inst.origin.to_string());
     let c = cache::load(&path);
-    let status = match &c.auth_fail {
-        Some(f) if f.fp == fingerprint(ctx.key) && ctx.now - f.at < AUTH_HOLD => {
-            Status::AuthStopped(f.status)
-        }
-        _ if ctx.now < c.off_until => Status::Off,
-        _ if ctx.now < c.retry_at => Status::Backoff,
-        _ => Status::Ok,
+    let status = if let Some(st) = c.refusal(ctx.key, AUTH_HOLD, ctx.now) {
+        Status::AuthStopped(st)
+    } else if ctx.now < c.off_until {
+        Status::Off
+    } else if ctx.now < c.retry_at {
+        Status::Backoff
+    } else {
+        Status::Ok
     };
     (snap(status, &c, ctx.now), c)
 }
@@ -100,7 +106,7 @@ fn lower_signals(v: &Value) -> Signals {
         .unwrap_or_default()
 }
 
-fn valid_index(s: &str) -> bool {
+pub fn valid_index(s: &str) -> bool {
     (1..=64).contains(&s.len())
         && s.bytes()
             .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
@@ -133,7 +139,6 @@ fn parse_listing(inst: &Instance, v: &Value) -> Vec<(Acct, Signals)> {
                 key: key.into(),
                 provider,
                 label: model::label_for(email, &inst.aliases, n + 1),
-                local: model::label_for(email, &[], n + 1),
                 priority: f["priority"].as_i64().unwrap_or(0),
                 plan: f["id_token"]["plan_type"].as_str().map(model::plan_name),
                 windows: vec![],
@@ -142,6 +147,7 @@ fn parse_listing(inst: &Instance, v: &Value) -> Vec<(Acct, Signals)> {
                 unavailable: f["unavailable"].as_bool().unwrap_or(false),
                 upstream_auth: false,
                 retry_at: 0,
+                fails: 0,
             },
             lower_signals(&f["quota"]["signals"]),
         ));
@@ -190,17 +196,29 @@ fn upstream(client: &Client, key: &str, now: i64) -> Up {
     }
 }
 
-pub fn stop(path: &Path, c: &mut Cache, status: u16, fp: String, now: i64) {
+/// Records a management refusal of `key`. The save falls back to a file
+/// without accounts when the full cache cannot be written; `false` when
+/// the refusal could not be written at all (the caller still stops).
+pub fn stop(path: &Path, c: &mut Cache, status: u16, key: &Secret, now: i64) -> bool {
+    let fp = c.fp(key);
     c.auth_fail = Some(AuthFail {
         status,
         at: now,
         fp,
     });
-    let _ = cache::save(path, c);
+    cache::save_state(path, c)
+}
+
+fn stopped(s: u16, known: Snapshot) -> Snapshot {
+    Snapshot {
+        status: Status::AuthStopped(s),
+        accounts: known.accounts,
+    }
 }
 
 /// Lists, reads quota, updates the cache. Makes no management call when
-/// the cache says one would be refused, disabled or too soon.
+/// the cache says one would be refused, disabled or too soon, or when
+/// another process holds the instance (its result is served instead).
 pub fn collect(ctx: &Ctx) -> Snapshot {
     // an empty key is a failed attempt to the proxy: never send one
     if ctx.key.as_bytes().is_empty() {
@@ -209,16 +227,30 @@ pub fn collect(ctx: &Ctx) -> Snapshot {
             accounts: vec![],
         };
     }
-    let (known, mut c) = cached(ctx);
+    let (known, _) = cached(ctx);
     if known.status != Status::Ok {
         return known;
     }
-    let now = ctx.now;
     let path = cache::file(ctx.state_dir, &ctx.inst.origin.to_string());
-    let fp = fingerprint(ctx.key);
+    let Some(_lock) = cache::lock(&path) else {
+        return Snapshot {
+            status: Status::Backoff,
+            ..known
+        };
+    };
+    // what another process learned while this one waited
+    let (known, c) = cached(ctx);
+    if known.status != Status::Ok {
+        return known;
+    }
+    run(ctx, &path, known, c)
+}
+
+fn run(ctx: &Ctx, path: &Path, known: Snapshot, mut c: Cache) -> Snapshot {
+    let now = ctx.now;
     // a changed key clears an old refusal
     if c.auth_fail.take().is_some() {
-        let _ = cache::save(&path, &c);
+        let _ = cache::save_state(path, &c);
     }
 
     // the listing, v8 first (or the generation that answered last), the
@@ -241,11 +273,8 @@ pub fn collect(ctx: &Ctx) -> Snapshot {
             }
             Err(MErr::NotFound) => continue,
             Err(MErr::Auth(s)) => {
-                stop(&path, &mut c, s, fp, now);
-                return Snapshot {
-                    status: Status::AuthStopped(s),
-                    accounts: known.accounts,
-                };
+                stop(path, &mut c, s, ctx.key, now);
+                return stopped(s, known);
             }
             Err(MErr::Transient(_)) => {
                 missing = false;
@@ -256,7 +285,7 @@ pub fn collect(ctx: &Ctx) -> Snapshot {
     let Some((base, listing, api)) = found else {
         if missing {
             c.off_until = now + OFF_HOLD;
-            let _ = cache::save(&path, &c);
+            let _ = cache::save_state(path, &c);
             return Snapshot {
                 status: Status::Off,
                 accounts: vec![],
@@ -264,7 +293,7 @@ pub fn collect(ctx: &Ctx) -> Snapshot {
         }
         c.fails += 1;
         c.retry_at = now + cache::backoff(c.fails);
-        let _ = cache::save(&path, &c);
+        let _ = cache::save_state(path, &c);
         return snap(Status::Backoff, &c, now);
     };
     let client = Client::new(&base, ctx.key).expect("checked above");
@@ -280,6 +309,7 @@ pub fn collect(ctx: &Ctx) -> Snapshot {
             a.at = p.at;
             a.upstream_auth = p.upstream_auth;
             a.retry_at = p.retry_at;
+            a.fails = p.fails;
             if a.plan.is_none() {
                 a.plan = p.plan.clone();
             }
@@ -306,10 +336,34 @@ pub fn collect(ctx: &Ctx) -> Snapshot {
         })
         .map(|(i, _)| i)
         .collect();
-    let mut outcomes: Vec<(usize, Up)> = Vec::new();
-    for chunk in todo.chunks(PARALLEL) {
+
+    // the listing is saved before the upstream phase, with a short hold:
+    // a run cut off in it is not repeated at once
+    let store = |c: &mut Cache, list: &[(Acct, Signals)]| {
+        c.accounts = list.iter().map(|(a, _)| a.clone()).collect();
+        cache::save_state(path, c)
+    };
+    c.api = Some(api.name().into());
+    c.off_until = 0;
+    c.retry_at = now + cache::backoff(1);
+    store(&mut c, &list);
+
+    // the first call goes alone: a management refusal costs one attempt
+    let mut batches: Vec<&[usize]> = Vec::new();
+    if let Some((one, rest)) = todo.split_first().map(|(_, r)| (&todo[..1], r)) {
+        batches.push(one);
+        batches.extend(rest.chunks(PARALLEL));
+    }
+    let started = std::time::Instant::now();
+    let mut done: Vec<usize> = Vec::new();
+    let mut mgmt = None;
+    for batch in batches {
+        if started.elapsed().as_secs() >= DEADLINE {
+            break;
+        }
+        let mut outcomes: Vec<(usize, Up)> = Vec::new();
         std::thread::scope(|s| {
-            let hs: Vec<_> = chunk
+            let hs: Vec<_> = batch
                 .iter()
                 .map(|&i| {
                     let key = list[i].0.key.clone();
@@ -321,52 +375,33 @@ pub fn collect(ctx: &Ctx) -> Snapshot {
                 outcomes.push((i, h.join().unwrap_or(Up::Failed)));
             }
         });
-    }
-    if let Some(s) = outcomes.iter().find_map(|(_, u)| match u {
-        Up::Mgmt(s) => Some(*s),
-        _ => None,
-    }) {
-        stop(&path, &mut c, s, fp, now);
-        return Snapshot {
-            status: Status::AuthStopped(s),
-            accounts: known.accounts,
-        };
-    }
-    for (i, up) in outcomes {
-        let (a, sig) = &mut list[i];
-        let passive = model::codex_signal_windows(sig, now);
-        match up {
-            Up::Got(w, plan) => {
-                a.windows = w;
-                a.at = now;
-                a.upstream_auth = false;
-                a.retry_at = 0;
-                if plan.is_some() {
-                    a.plan = plan;
-                }
+        for (i, up) in outcomes {
+            done.push(i);
+            if let Up::Mgmt(s) = up {
+                mgmt = Some(s);
                 continue;
             }
-            Up::Rate(r) => a.retry_at = now + r.unwrap_or(300).min(86_400) as i64,
-            Up::UpstreamAuth => {
-                a.upstream_auth = true;
-                a.retry_at = now + 3600;
-            }
-            Up::Failed | Up::Mgmt(_) => a.retry_at = now + 60,
+            let (a, sig) = &mut list[i];
+            apply(a, sig, up, now);
         }
-        if !passive.is_empty() {
-            a.windows = passive;
-            a.at = now;
+        if mgmt.is_some() {
+            break;
         }
+        store(&mut c, &list);
+    }
+    if let Some(s) = mgmt {
+        c.accounts = list.into_iter().map(|(a, _)| a).collect();
+        stop(path, &mut c, s, ctx.key, now);
+        return stopped(s, known);
     }
     // Codex accounts not read upstream this run: passive data when the
     // snapshot has any and no fresh upstream result is held
-    let fetched: Vec<usize> = todo;
     for (i, (a, sig)) in list
         .iter_mut()
         .enumerate()
         .filter(|(_, (a, _))| a.provider == "codex")
     {
-        if fetched.contains(&i) {
+        if done.contains(&i) {
             continue;
         }
         let fresh = a.at > 0 && now - a.at < TTL_UPSTREAM && !a.windows.is_empty();
@@ -377,12 +412,40 @@ pub fn collect(ctx: &Ctx) -> Snapshot {
         }
     }
 
-    c.accounts = list.into_iter().map(|(a, _)| a).collect();
-    c.api = Some(api.name().into());
     c.fails = 0;
     c.retry_at = 0;
-    c.off_until = 0;
     c.auth_fail = None;
-    let _ = cache::save(&path, &c);
+    store(&mut c, &list);
     snap(Status::Ok, &c, now)
+}
+
+/// Folds one upstream outcome (not a management refusal) into `a`.
+fn apply(a: &mut Acct, sig: &Signals, up: Up, now: i64) {
+    let passive = model::codex_signal_windows(sig, now);
+    match up {
+        Up::Got(w, plan) => {
+            a.windows = w;
+            a.at = now;
+            a.upstream_auth = false;
+            a.retry_at = 0;
+            a.fails = 0;
+            if plan.is_some() {
+                a.plan = plan;
+            }
+            return;
+        }
+        Up::Rate(r) => a.retry_at = now + r.unwrap_or(300).min(86_400) as i64,
+        Up::UpstreamAuth => {
+            a.upstream_auth = true;
+            a.retry_at = now + 3600;
+        }
+        Up::Failed | Up::Mgmt(_) => {
+            a.fails += 1;
+            a.retry_at = now + cache::backoff(a.fails);
+        }
+    }
+    if !passive.is_empty() {
+        a.windows = passive;
+        a.at = now;
+    }
 }

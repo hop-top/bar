@@ -155,10 +155,32 @@ fn run(argv: &[String]) -> Result<Secret, KeyError> {
     first_line(buf.as_bytes())
 }
 
-/// SHA-256 of the key, hex: stands for the key in a cache without being
-/// able to recover it.
-pub fn fingerprint(key: &Secret) -> String {
-    crate::sha256::hex_wiped(key.as_bytes())
+/// A fresh random salt, hex: from the standard library's per-process
+/// random hasher keys, mixed with the clock and process id.
+pub fn new_salt() -> String {
+    use std::hash::{BuildHasher, Hasher};
+    let mut seed = Vec::new();
+    for _ in 0..2 {
+        let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+        h.write_u32(std::process::id());
+        seed.extend_from_slice(&h.finish().to_le_bytes());
+    }
+    let t = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    seed.extend_from_slice(&t.to_le_bytes());
+    crate::sha256::hex(&seed)[..32].to_string()
+}
+
+/// A salted digest of the key (SHA-256 over `salt`, a zero byte and the
+/// key; the first 16 bytes, hex): stands for the key in a cache that
+/// keeps the salt beside it, without a bare hash of the key to look up.
+pub fn fingerprint(key: &Secret, salt: &str) -> String {
+    let mut m = Secret::with_capacity(salt.len() + 1 + key.as_bytes().len());
+    m.push(salt.as_bytes());
+    m.push(&[0]);
+    m.push(key.as_bytes());
+    crate::sha256::hex_wiped(m.as_bytes())[..32].to_string()
 }
 
 /// Splits a command line into arguments: whitespace separates, `"` and `'`
@@ -247,12 +269,15 @@ mod tests {
     }
 
     #[test]
-    fn fingerprint_is_the_sha256() {
+    fn fingerprint_is_salted_and_short() {
         let k = Secret::new(b"abc".to_vec());
-        assert_eq!(
-            fingerprint(&k),
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-        );
+        let a = fingerprint(&k, "s1");
+        assert_eq!(a.len(), 32);
+        assert_eq!(a, fingerprint(&k, "s1"));
+        assert_ne!(a, fingerprint(&k, "s2"));
+        assert!(!"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".contains(&a));
+        assert_ne!(new_salt(), new_salt());
+        assert_eq!(new_salt().len(), 32);
     }
 
     #[cfg(unix)]

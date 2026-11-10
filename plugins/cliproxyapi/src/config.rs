@@ -79,7 +79,7 @@ pub fn load(path: &Path) -> Result<Config, LoadError> {
         e => LoadError::Unsafe(e),
     })?;
     let text = std::str::from_utf8(raw.as_bytes()).map_err(|_| LoadError::NotUtf8)?;
-    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let home = bar_plugin::dirs::home();
     Ok(parse(text, home.as_deref()))
 }
 

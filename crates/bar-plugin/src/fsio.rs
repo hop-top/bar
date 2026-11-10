@@ -73,6 +73,83 @@ pub fn write_atomic_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     r
 }
 
+/// An exclusive lock on a file, held until dropped. On Unix it is a
+/// `flock` (released by the system when the process ends, however it
+/// ends); elsewhere a created file, removed on drop and ignored once
+/// older than `STALE`.
+pub struct Lock {
+    #[cfg(unix)]
+    _f: File,
+    #[cfg(not(unix))]
+    path: PathBuf,
+}
+
+/// A lock file older than this is taken to be left by a dead process
+/// (non-Unix only).
+pub const STALE: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Takes the lock on `path` (created 0600; its directory must exist),
+/// waiting at most `wait`. `Ok(None)` when another holder outlasted the
+/// wait; `Err` when the file cannot be created at all.
+pub fn lock(path: &Path, wait: std::time::Duration) -> std::io::Result<Option<Lock>> {
+    let end = std::time::Instant::now() + wait;
+    loop {
+        if let Some(l) = try_lock(path)? {
+            return Ok(Some(l));
+        }
+        if std::time::Instant::now() >= end {
+            return Ok(None);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
+#[cfg(unix)]
+fn try_lock(path: &Path) -> std::io::Result<Option<Lock>> {
+    use std::os::unix::io::AsRawFd;
+    let mut o = OpenOptions::new();
+    private_file(o.read(true).write(true).create(true).truncate(false));
+    let f = o.open(path)?;
+    // SAFETY: flock on a descriptor this function owns
+    if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+        Ok(Some(Lock { _f: f }))
+    } else {
+        let e = std::io::Error::last_os_error();
+        if e.kind() == std::io::ErrorKind::WouldBlock {
+            Ok(None)
+        } else {
+            Err(e)
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn try_lock(path: &Path) -> std::io::Result<Option<Lock>> {
+    let mut o = OpenOptions::new();
+    match o.write(true).create_new(true).open(path) {
+        Ok(_) => Ok(Some(Lock { path: path.into() })),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            let old = fs::metadata(path)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.elapsed().ok())
+                .is_some_and(|age| age > STALE);
+            if old {
+                let _ = fs::remove_file(path);
+            }
+            Ok(None)
+        }
+        Err(e) => Err(e),
+    }
+}
+
+#[cfg(not(unix))]
+impl Drop for Lock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
 /// Why a private file was not read.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FileError {
@@ -208,6 +285,19 @@ mod tests {
             read_private(&d.join("none"), 3).unwrap_err(),
             FileError::Missing
         );
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_lock_excludes_until_dropped() {
+        let d = tmp("lock");
+        let p = d.join("x.lock");
+        let w = std::time::Duration::from_millis(60);
+        let a = lock(&p, w).unwrap().expect("first holder");
+        assert!(lock(&p, w).unwrap().is_none(), "second waits out");
+        drop(a);
+        assert!(lock(&p, w).unwrap().is_some());
+        assert!(lock(&d.join("no").join("x"), w).is_err());
         let _ = fs::remove_dir_all(&d);
     }
 

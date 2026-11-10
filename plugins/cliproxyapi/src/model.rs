@@ -29,9 +29,6 @@ pub struct Acct {
     pub key: String,
     pub provider: String,
     pub label: String,
-    /// The email's local part, for `label=local`; empty when unknown.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub local: String,
     /// The proxy's routing priority (unset is 0); the highest available
     /// tier serves requests.
     #[serde(default)]
@@ -53,6 +50,9 @@ pub struct Acct {
     /// No upstream call for this account before this time.
     #[serde(default)]
     pub retry_at: i64,
+    /// Consecutive failed upstream reads; sets the backoff.
+    #[serde(default)]
+    pub fails: u32,
 }
 
 /// Window id for a period in seconds.
@@ -221,6 +221,9 @@ pub fn glob(pat: &str, s: &str) -> bool {
             Some((c, rest)) => s.first().is_some_and(|x| x == c) && go(rest, &s[1..]),
         }
     }
+    // the subject comes from the proxy: bound the work of a pattern
+    // with several `*`
+    let s: String = s.chars().take(256).collect();
     go(
         pat.to_ascii_lowercase().as_bytes(),
         s.to_ascii_lowercase().as_bytes(),
