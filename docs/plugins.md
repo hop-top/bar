@@ -10,6 +10,10 @@ Any executable named `bar-<name>` on `PATH` (on Windows `bar-<name>.exe`, `.cmd`
 - Names are `[A-Za-z0-9_-]+`. Core placeholder names (every name in [config](config.md#placeholders): `account`, `repo`, `model`, `usage`, `tokens`, `cwd` and the rest) always win: `bar-account` is never used.
 - `bar plugin list` shows every plugin found (name, version, description, path); `bar plugin info <name>` runs `--ext-info` now and shows the parsed result plus the path, or exits 1 when no such plugin is on `PATH`. Both accept `--format json` (also `yaml`, `csv`, `text`).
 
+### Commands
+
+`bar <name> <args>` runs the plugin found for `<name>` (as above) with the arguments after it, with bar's standard input, output and error, and exits with the plugin's status, as `git` runs `git-<name>`. A built-in command of bar always wins (`bar check` is never a plugin's), and a name that is neither is a usage error (exit 2). The protocol calls (`--ext-info`, a render on stdin, `--check`, `--action`) are made by bar on `bar-<name>` directly.
+
 ## `--ext-info`
 
 `bar-<name> --ext-info`, stdin closed, 5 s limit. Stdout is one JSON object:
@@ -167,7 +171,7 @@ A plugin for an API proxy that holds several accounts (one `bar-<proxy>` per pro
 - Its secrets live in its own owner-only file, keychain or command, never in `bar.conf`, argv, the environment, its output or its cache; it stops calling the proxy's management API after a 401 or 403 until the key changes.
 - It emits `items`, one per account, each with a `label` (alias, local part of the account name, or `#1`, `#2`), a `text` of `<window> <percent>% ↻<countdown>` per window, a `score` or `style`, optionally a `link`, and `tokens` `account` and `provider`; a top-level `usage` for the provider of the current model (see its `pool` option); and `account` only when the proxy's choice is certain.
 - Its options use the names `provider`, `windows`, `show`, `count`, `label`, `sort`, `accounts`, `compact`, `stale`, `link` and `pool`; window ids are `5h`, `7d` and `wk`; its action is `use`, taking the tokens `account` and `provider`.
-- It offers `list` and `use <account>` subcommands for scripting.
+- It offers subcommands for scripting (`list`, `use <account>`, `pick`), run as `bar <name> <args>`.
 
 [`bar-cliproxyapi`](plugins/cliproxyapi.md) is the reference implementation.
 
