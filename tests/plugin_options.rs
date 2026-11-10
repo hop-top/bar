@@ -149,3 +149,56 @@ fn slow_plugin_never_blocks_render() {
     assert_eq!(out, "");
     assert!(took < Duration::from_millis(1000), "{took:?}");
 }
+
+// --- list options ---
+
+fn list_schema() -> std::collections::BTreeMap<String, hop_bar::plugin::OptSpec> {
+    hop_bar::plugin::parse_info(
+        r#"{"name":"p","version":"1","options":{
+            "windows":{"type":"list","default":"5h,7d"},
+            "compact":{"type":"bool"},
+            "label":{"type":"string"}}}"#,
+    )
+    .unwrap()
+    .options
+}
+
+fn parsed(layout: &str) -> hop_bar::options::Options {
+    match hop_bar::format::parse(layout).unwrap().pop().unwrap() {
+        hop_bar::format::Token::Placeholder { options, .. } => options,
+        t => panic!("{t:?}"),
+    }
+}
+
+#[test]
+fn a_list_option_takes_a_comma_list_in_a_layout() {
+    let s = list_schema();
+    for (layout, want) in [
+        ("#{p[windows=5h,7d]}", json!({"windows": "5h,7d"})),
+        ("#{p[windows=5h,7d,wk]}", json!({"windows": "5h,7d,wk"})),
+        ("#{p[windows=5h+7d]}", json!({"windows": "5h+7d"})),
+        (
+            "#{p[windows=5h,7d,label=x]}",
+            json!({"windows": "5h,7d", "label": "x"}),
+        ),
+        // a declared option after the list stays an option
+        (
+            "#{p[windows=5h,7d,label]}",
+            json!({"windows": "5h,7d", "label": ""}),
+        ),
+        (
+            "#{p[label=x,windows=7d]}",
+            json!({"windows": "7d", "label": "x"}),
+        ),
+    ] {
+        let o = parsed(layout);
+        let got = validate(&s, &o).unwrap_or_else(|e| panic!("{layout}: {e}"));
+        assert_eq!(Value::Object(got), want, "{layout}");
+    }
+}
+
+#[test]
+fn a_bare_part_after_a_non_list_option_is_still_unknown() {
+    let s = list_schema();
+    assert!(validate(&s, &parsed("#{p[label=x,7d]}")).is_err());
+}

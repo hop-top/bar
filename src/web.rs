@@ -135,7 +135,7 @@ pub fn plugins(manifest: &str) -> Value {
                         OptType::Enum => ("one", spec.choices.iter().map(String::as_str).collect()),
                         OptType::Bool => ("one", vec!["true", "false"]),
                         OptType::Int => ("int", choices),
-                        OptType::String => ("any", choices),
+                        OptType::String | OptType::List => ("any", choices),
                     };
                     json!({
                         "key": key,
