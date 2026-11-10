@@ -82,8 +82,11 @@ jobs:
           persist-credentials: false
       - name: Toolchain
         run: rustup toolchain install stable --profile minimal --target "$TARGET" && rustup default stable
+      # the plugin crates stay at 0.0.0 (one Cargo.lock entry to bump, not
+      # three); the plugin reports bar's version, the tag's.
       - name: Build
-        run: cargo build --release --locked --target "$TARGET" -p hop-bar -p bar-cliproxyapi
+        run: |
+          BAR_RELEASE_VERSION="${TAG#v}" cargo build --release --locked --target "$TARGET" -p hop-bar -p bar-cliproxyapi
       # musl: no program interpreter and no shared libraries, or the build fails.
       - name: Static binary
         if: endsWith(matrix.target, '-musl')
