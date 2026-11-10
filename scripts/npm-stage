@@ -12,7 +12,7 @@ OUT       directory to write; gets one ready-to-publish directory per
 Copies packaging/npm/, checks that every package.json (and each of the
 launcher's optionalDependencies) carries VERSION and that the launcher
 lists exactly the platform packages, verifies each archive against its
-.sha256, unpacks its binary into the platform package's bin/ and adds
+.sha256, unpacks its binaries (bar, bar-cliproxyapi) into the platform package's bin/ and adds
 LICENSE to every package. Prints the package directories, platform
 packages first, in publish order.
 """
@@ -28,6 +28,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 NPM = ROOT / "packaging" / "npm"
 LAUNCHER = "bar"
+# executables each archive holds; bar finds the plugin in its own directory
+BINARIES = ("bar", "bar-cliproxyapi")
 
 # platform package directory -> release target
 TARGETS = {
@@ -82,10 +84,15 @@ def unpack(asset, exe, dest):
     out = dest / exe
     if asset.suffix == ".zip":
         with zipfile.ZipFile(asset) as z:
+            if exe not in z.namelist():
+                die(f"{asset.name}: no {exe}")
             out.write_bytes(z.read(exe))
     else:
         with tarfile.open(asset) as t:
-            member = t.getmember(exe)
+            try:
+                member = t.getmember(exe)
+            except KeyError:
+                die(f"{asset.name}: no {exe}")
             if not member.isfile():
                 die(f"{asset.name}: {exe} is not a regular file")
             out.write_bytes(t.extractfile(member).read())
@@ -113,7 +120,8 @@ def main(argv):
         if not asset.is_file():
             die(f"missing {asset.name} in {assets}")
         verify(asset)
-        unpack(asset, "bar.exe" if windows else "bar", out / d / "bin")
+        for exe in BINARIES:
+            unpack(asset, exe + (".exe" if windows else ""), out / d / "bin")
     for d in order:
         print(out / d)
 

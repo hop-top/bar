@@ -44,12 +44,13 @@ Full feature comparison: [docs/comparison.md](docs/comparison.md).
 
 ## Install
 
-Download an archive from [Releases](https://github.com/hop-top/bar/releases) and put `bar` on your `PATH` (on Linux, the `-musl` archives are static and run on any distribution; the `-gnu` ones need glibc 2.35 or newer), or build from source with a [Rust toolchain](https://rustup.rs):
+Download an archive from [Releases](https://github.com/hop-top/bar/releases) and put `bar` and `bar-cliproxyapi` on your `PATH` (on Linux, the `-musl` archives are static and run on any distribution; the `-gnu` ones need glibc 2.35 or newer), or build from source with a [Rust toolchain](https://rustup.rs):
 
 ```sh
 git clone https://github.com/hop-top/bar.git
 cd bar
 cargo install --path . --locked
+cargo install --path plugins/cliproxyapi --locked   # optional: bar-cliproxyapi plugin
 ```
 
 With Node or Bun, from npm (prebuilt binary, no install script):

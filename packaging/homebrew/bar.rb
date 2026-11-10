@@ -31,10 +31,11 @@ class Bar < Formula
   end
 
   def install
-    bin.install "bar"
+    bin.install "bar", "bar-cliproxyapi"
   end
 
   test do
     assert_match version.to_s, shell_output("#{bin}/bar --version")
+    assert_predicate bin/"bar-cliproxyapi", :executable?
   end
 end
