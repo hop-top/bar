@@ -192,23 +192,34 @@ fn request_args(url: &str, headers: &[&str], o: &Opts) -> Vec<String> {
     a
 }
 
-/// Splits curl's output into body and trailer.
-fn split_trailer(out: &[u8]) -> Option<Response> {
-    let text_end = out.len();
-    let nl2 = out.iter().rposition(|&b| b == b'\n')?;
-    let nl1 = out[..nl2].iter().rposition(|&b| b == b'\n')?;
-    let status = std::str::from_utf8(&out[nl1 + 1..nl2])
-        .ok()?
-        .trim()
-        .parse()
-        .ok()?;
-    let retry_after = std::str::from_utf8(&out[nl2 + 1..text_end])
-        .ok()
-        .and_then(|r| r.trim().parse().ok());
+/// Splits curl's output into body and trailer. The body stays in the same
+/// buffer (cut in place, so no unwiped copy is left behind); when there is
+/// no trailer the buffer is wiped, since it may hold a credential.
+fn split_trailer(out: &mut Vec<u8>) -> Option<Response> {
+    let parsed = (|| {
+        let nl2 = out.iter().rposition(|&b| b == b'\n')?;
+        let nl1 = out[..nl2].iter().rposition(|&b| b == b'\n')?;
+        let status = std::str::from_utf8(&out[nl1 + 1..nl2])
+            .ok()?
+            .trim()
+            .parse()
+            .ok()?;
+        let retry_after = std::str::from_utf8(&out[nl2 + 1..])
+            .ok()
+            .and_then(|r| r.trim().parse().ok());
+        Some((nl1, status, retry_after))
+    })();
+    let Some((nl1, status, retry_after)) = parsed else {
+        crate::secret::wipe(out);
+        return None;
+    };
+    // the trailer bytes are not secret, but go with the rest
+    crate::secret::wipe(&mut out[nl1..]);
+    out.truncate(nl1);
     Some(Response {
         status,
         retry_after,
-        body: out[..nl1].to_vec(),
+        body: std::mem::take(out),
     })
 }
 
@@ -235,12 +246,20 @@ pub fn request(url: &str, headers: &[&str], config: &[u8], o: &Opts) -> Result<R
     if body.is_err() {
         let _ = child.kill();
     }
-    let st = child.wait().map_err(|e| format!("curl: {e}"))?;
-    let body = body?;
+    let st = child.wait().map_err(|e| format!("curl: {e}"));
+    let mut body = body?;
+    let st = match st {
+        Ok(st) => st,
+        Err(e) => {
+            crate::secret::wipe(&mut body);
+            return Err(e);
+        }
+    };
     if !st.success() {
+        crate::secret::wipe(&mut body);
         return Err(format!("curl failed ({st})"));
     }
-    split_trailer(&body).ok_or_else(|| "curl: no status".into())
+    split_trailer(&mut body).ok_or_else(|| "curl: no status".into())
 }
 
 /// Builds curl config-file lines. The result is a `Secret`: it holds the
@@ -404,15 +423,28 @@ mod tests {
 
     #[test]
     fn trailer_splits_off_status_and_retry_after() {
-        let r = split_trailer(b"{\"a\":1}\n429\n120").unwrap();
+        let r = split_trailer(&mut b"{\"a\":1}\n429\n120".to_vec()).unwrap();
         assert_eq!((r.status, r.retry_after), (429, Some(120)));
         assert_eq!(r.body, b"{\"a\":1}");
-        let r = split_trailer(b"x\ny\n200\n").unwrap();
+        let r = split_trailer(&mut b"x\ny\n200\n".to_vec()).unwrap();
         assert_eq!(
             (r.status, r.retry_after, r.body.as_slice()),
             (200, None, &b"x\ny"[..])
         );
-        assert!(split_trailer(b"no trailer").is_none());
+        assert!(split_trailer(&mut b"no trailer".to_vec()).is_none());
+    }
+
+    #[test]
+    fn the_body_is_cut_in_place_and_a_bad_reply_is_wiped() {
+        let mut v = b"SECRET-BODY\n200\n".to_vec();
+        let at = v.as_ptr();
+        let r = split_trailer(&mut v).unwrap();
+        // no second copy of the body exists
+        assert_eq!(r.body.as_ptr(), at);
+        assert_eq!(r.body, b"SECRET-BODY");
+        let mut bad = b"SECRET-BODY".to_vec();
+        assert!(split_trailer(&mut bad).is_none());
+        assert!(bad.iter().all(|&b| b == 0), "{bad:?}");
     }
 
     #[test]
