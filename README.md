@@ -27,16 +27,16 @@ With token counters:
 
 | Tool | Warm | Cold | Cold CPU, incl. background | Memory |
 |---|---|---|---|---|
-| **bar** | **0.82 ms** | **1.91 ms** | **5.6 ms** | **3.7 MiB** |
-| [claude-powerline](https://github.com/Owloops/claude-powerline) | 42.8 ms | 57.1 ms | 72.3 ms | 102 MiB |
-| [ccstatusline](https://github.com/sirmalloc/ccstatusline) | 91.9 ms | 97.6 ms | 124.0 ms | 116 MiB |
+| **bar** | **0.82 ms** | **1.90 ms** | **5.7 ms** | **3.8 MiB** |
+| [claude-powerline](https://github.com/Owloops/claude-powerline) | 41.9 ms | 56.9 ms | 72.3 ms | 102 MiB |
+| [ccstatusline](https://github.com/sirmalloc/ccstatusline) | 91.7 ms | 97.0 ms | 122.2 ms | 116 MiB |
 
 No token counters:
 
 | Tool | Warm | Cold | Cold CPU, incl. background | Memory |
 |---|---|---|---|---|
-| **bar** | **0.80 ms** | **0.99 ms** | **1.7 ms** | **3.6 MiB** |
-| [ccline](https://github.com/Haleclipse/CCometixLine) | 0.92 ms | 6.61 ms | 2.2 ms | 5.1 MiB |
+| **bar** | **0.81 ms** | **1.01 ms** | **1.8 ms** | **3.8 MiB** |
+| [ccline](https://github.com/Haleclipse/CCometixLine) | 0.93 ms | 6.61 ms | 2.3 ms | 5.0 MiB |
 <!-- bench:readme:end -->
 
 Medians, same session data and equivalent layouts ([method and raw results](bench/README.md#ben-results)).
