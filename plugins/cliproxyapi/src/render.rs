@@ -67,7 +67,7 @@ pub fn items(s: &Snapshot, provider: &str, index_labels: bool, now: i64) -> Vec<
         .filter(|a| a.provider == provider && !a.disabled)
         .enumerate()
         .map(|(i, a)| {
-            let stale = now - a.at > STALE_AFTER;
+            let stale = a.at > 0 && now - a.at > STALE_AFTER;
             let label = if index_labels {
                 format!("#{}", i + 1)
             } else {
@@ -179,6 +179,17 @@ mod tests {
         let o = output(&s, "claude", true, 1000);
         assert!(o.text.unwrap().starts_with("#1 "));
         assert!(output(&s, "codex", false, 1000).text.as_deref() == Some(""));
+        // never read (no signals yet): unknown, not stale
+        let mut idle = acct("idle", 0.0, 0);
+        idle.windows.clear();
+        let s = Snapshot {
+            status: Status::Ok,
+            accounts: vec![idle],
+        };
+        assert_eq!(
+            output(&s, "claude", false, 1000).text.as_deref(),
+            Some("idle ?")
+        );
     }
 
     #[test]
