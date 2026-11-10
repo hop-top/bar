@@ -108,6 +108,11 @@ pub fn env_secret(name: &str) -> bool {
         "PASSWD",
         "CREDENTIAL",
         "AUTH",
+        "PASS",
+        "PRIVATE",
+        "COOKIE",
+        "BEARER",
+        "JWT",
     ]
     .iter()
     .any(|w| name.contains(w))
@@ -500,4 +505,27 @@ pub fn validate(
     }
     // sorted, so the cache key does not depend on option order
     Ok(out.into_iter().collect())
+}
+
+#[cfg(test)]
+mod secret_name_tests {
+    use super::env_secret;
+
+    #[test]
+    fn credential_looking_names_are_refused() {
+        for n in [
+            "API_KEY",
+            "GH_PASS",
+            "SESSION_COOKIE",
+            "JWT",
+            "BEARER_X",
+            "PRIVATE_DIR",
+            "MY_AUTH",
+        ] {
+            assert!(env_secret(n), "{n}");
+        }
+        for n in ["ANTHROPIC_BASE_URL", "HOME", "LANG"] {
+            assert!(!env_secret(n), "{n}");
+        }
+    }
 }

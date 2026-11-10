@@ -26,6 +26,7 @@ fi
 if [ "$1" = "--action" ]; then
   echo "$2" > "$here/action.name"
   cat > "$here/action.json"
+  printf '%s' "$BAR_STATE_DIR" > "$here/action.state"
   [ -f "$here/action-exit" ] && exit "$(cat "$here/action-exit")"
   exit 0
 fi

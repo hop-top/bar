@@ -604,6 +604,29 @@ impl Checker<'_> {
 }
 
 impl Checker<'_> {
+    /// `set usage-source` / `set account-source` naming `name`: a plugin
+    /// placeholder, or `#{usage}` / `#{account}` get nothing from it.
+    fn source(&mut self, key: &str, name: &str) {
+        if crate::placeholders::lookup(name).is_some() {
+            self.error(
+                0,
+                format!("`set {key} {name}`: `{name}` is a core placeholder, not a plugin"),
+            );
+            return;
+        }
+        let Some(found) = plugin::find(self.dirs, name) else {
+            let msg = format!("`set {key} {name}`: plugin `{name}` not on PATH");
+            self.add(Level::Warning, 0, msg);
+            return;
+        };
+        if !plugin::info(&found).is_placeholder() {
+            let msg = format!(
+                "`set {key} {name}`: plugin `{name}` does not declare the placeholder capability"
+            );
+            self.error(0, msg);
+        }
+    }
+
     /// An `action <placeholder> <plugin>.<action>` line.
     fn action(&mut self, placeholder: &str, target: &str, line: usize) {
         let Some((plug, act)) = target.split_once('.') else {
@@ -771,6 +794,14 @@ pub fn check_layers(user: Option<Source>, project: Option<Source>, dirs: &[PathB
         c.budgets = cfg.budgets;
         c.usage_api = cfg.usage_api;
         c.account_source = cfg.account_source.clone();
+        for (k, v) in [
+            ("usage-source", &cfg.usage_source),
+            ("account-source", &cfg.account_source),
+        ] {
+            if let Some(n) = v {
+                c.source(k, n);
+            }
+        }
         let gitlab = !cfg.gitlab_hosts.is_empty() || cwd_on_gitlab(&cfg.gitlab_hosts);
         c.glab_missing = gitlab
             && !dirs

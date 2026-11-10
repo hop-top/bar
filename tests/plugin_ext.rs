@@ -400,6 +400,28 @@ fn usage_from_the_source_plugin_when_claude_sends_none() {
 }
 
 #[test]
+fn a_source_that_stopped_refreshing_stops_feeding_usage() {
+    let fx = Fx::new();
+    let c = cfg("set usage-source echo\n");
+    fx.put("out.json", &plugin_usage_json(41.0, 12.5));
+    let s = no_limits();
+    fx.prime_in(&s, "echo", &c, &[]);
+    assert_eq!(usage_text(&fx, &s, &c, &[("show", "pct")]), "59%");
+    // every cached entry two hours old: the plugin is not delivering
+    let old = std::time::SystemTime::now() - std::time::Duration::from_secs(7200);
+    for e in std::fs::read_dir(fx.state.join("cache")).unwrap().flatten() {
+        if e.file_type().unwrap().is_file() {
+            let f = std::fs::OpenOptions::new()
+                .write(true)
+                .open(e.path())
+                .unwrap();
+            f.set_modified(old).unwrap();
+        }
+    }
+    assert_eq!(usage_text(&fx, &s, &c, &[("show", "pct")]), "");
+}
+
+#[test]
 fn claude_rate_limits_win_per_window() {
     let fx = Fx::new();
     let c = cfg("set usage-source echo\n");

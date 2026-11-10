@@ -96,7 +96,7 @@ pub(crate) fn nonce() -> String {
     )
 }
 
-fn modified_age(path: &Path) -> Option<Duration> {
+pub(crate) fn modified_age(path: &Path) -> Option<Duration> {
     fs::metadata(path).and_then(|m| m.modified()).ok().map(age)
 }
 

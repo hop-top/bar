@@ -151,6 +151,10 @@ bar-<plugin> --action <action>      # stdin: {"action": "<action>", "tokens": {"
 
 directly, with a 10 s limit and nothing on stdout needed. Exit 0 is success; any other exit is a failure, shown in `action-status` in the state directory. bar has already checked that the user bound the action, that the plugin declares it, and that the token values are in the plugin's cached output, but a plugin should validate its tokens itself: it runs with the user's rights. The action runs in the background of a click, never on the render path, and the plugin's output refreshes at the next render.
 
+### Check
+
+A plugin with the `check` capability answers `bar-<plugin> --check` (5 s limit, no stdin) with a JSON array of strings or `{"warnings": ["..."]}`: problems with its own configuration, found without a network call (a missing key file, a remembered refusal). `bar check` shows each, sanitised, at most 8 of 200 characters, as a warning for a plugin the layout uses.
+
 ### Account
 
 `"account": {"id": "a1b2c3", "label": "alice"}`: `id` a stable identifier, `label` what to show (sanitised like `text`); both strings, `label` visibly non-empty. With `set account-source <plugin>` in the user's config, `#{account}` shows the `label` of this output in place of the signed-in account, through the user's `account "<glob>"` rules: see [account](config.md#account-agents-sessions-tmux). As for usage windows, only the result for the placeholder's `default` options counts. A plugin should emit `account` only when it is certain which account is current, since the placeholder replaces what Claude Code reports.

@@ -95,7 +95,9 @@ fn args(url: &str, headers: &[&str], o: &Opts) -> Vec<String> {
         .map(String::from),
     );
     a.push(o.cap.to_string());
-    if o.noproxy {
+    // a plain-http request is never sent through a proxy: a bearer token
+    // would cross it in the clear
+    if o.noproxy || url.starts_with("http://") {
         a.extend(["--noproxy", "*"].map(String::from));
     }
     // say who is asking, rather than curl's own version string
@@ -354,6 +356,17 @@ mod tests {
         assert!(!a.iter().any(|x| x == "--noproxy"));
         let r = request_args("https://x", &[], &op);
         assert!(r.windows(2).any(|w| w == ["--user-agent", "bar/1.2.3"]));
+    }
+
+    #[test]
+    fn plain_http_implies_noproxy() {
+        let mut op = o(5, 10);
+        op.scheme = Scheme::LoopbackHttp;
+        assert!(!op.noproxy);
+        let a = args("http://127.0.0.1:1", &[], &op);
+        assert!(a.windows(2).any(|w| w == ["--noproxy", "*"]));
+        let a = args("https://proxy.example.test", &[], &op);
+        assert!(!a.iter().any(|x| x == "--noproxy"));
     }
 
     #[test]

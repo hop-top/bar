@@ -53,7 +53,7 @@ A project file comes with the repository, so what it may do is set in your confi
 
 `set project-config` is read from your config only; in a project file it is left out. So are `set usage-source`, `set account-source` and `action` lines, whatever the mode.
 
-`safe` limits what a project file adds, not what your config already allows. Under `safe` a project file can still use every built-in placeholder, including the git placeholders, which may run `git` in the session's directory, and `prs` and `issues`, which run `gh` or `glab` for the repository's remote (in bar's state directory, naming the repository with `-R`, so nothing in the project's directory reaches them), and it can pass options to the plugins your config names, which then run with those options. Use `off` for repositories you do not trust.
+`safe` limits what a project file adds, not what your config already allows. Under `safe` a project file can still use every built-in placeholder, including the git placeholders, which may run `git` in the session's directory, and `prs` and `issues`, which run `gh` or `glab` for the repository's remote (in bar's state directory, naming the repository with `-R`, so nothing in the project's directory reaches them), and it can pass options to the plugins your config names, which then run with those options (the plugins named by `usage-source` and `account-source` included, so a repository can change which windows or account label they supply). Use `off` for repositories you do not trust.
 
 ### Directives
 
@@ -271,7 +271,8 @@ set center "#{usage[type=5h]} │ #{usage[type=7d]}"
 - The windows are those of the plugin's cached result for its `default <plugin>` options only (a bare `#{myproxy}`), read like any plugin result: no process starts on the render path, the plugin refreshes in the background at its `ttl`, and a cold cache shows nothing.
 - Everything else works on those windows as on Claude Code's: pace colour and `rule usage[...]`, `eta`, `proj`, `spark`, toggles. Spark samples go to `hist-5h@<plugin>` / `hist-7d@<plugin>`, apart from Claude Code's.
 - [Per-model windows](#per-model-windows) (`model=`) and [budget](#budget) are unchanged.
-- Read from your config only: a project `.bar.conf` cannot set it, in any mode. `set usage-source off` clears it.
+- A cached result older than five times the plugin's `ttl` (15 minutes at least) no longer feeds `usage`, so a plugin whose backend is down does not leave old numbers looking live; the same bound applies to `account`.
+- Read from your config only: a project `.bar.conf` cannot set it, in any mode. `set usage-source off` clears it. Which plugin is named is your choice, but `default` lines and inline options of a project file still apply to it under `safe` (see [project config](#project-config)): a repository can change which windows or account label your `#{usage}` and `#{account}` take from that plugin.
 
 #### Per-model windows
 
@@ -764,7 +765,7 @@ Placeholder option values (inline and from `default` lines) expand before use; `
 
 - `@me`: passed to `gh` as the search value; GitHub resolves it to the logged-in user. It is the default for "mine" in the built-in layout.
 - `%$VAR%`: environment variable; unset gives an empty value.
-- `%cmd%`: run through `sh -c` (on Windows `cmd /D /S /C`, the text passed as typed at a `cmd` prompt) with a 3 s limit; on timeout the command and everything it started are killed. Stdout is trimmed; a command that fails or times out keeps the last cached value (empty when there is none) and is retried after 60 s. The output is cached for 1 h, keyed by the command text only, so it is shared by every session and directory. It is stored in a 0600 cache file: do not print secrets. A cold cache renders empty and refreshes in the background.
+- `%cmd%`: run through `sh -c` (on Windows `cmd /D /S /C`, the text passed as typed at a `cmd` prompt) with a 3 s limit; on timeout the command and everything it started are killed. Stdout is trimmed; a command that fails or times out keeps the last cached value (empty when there is none) and is retried after 60 s. The output is cached for 1 h, keyed by the command text only, so it is shared by every session and directory. It is stored in a 0600 cache file: do not print secrets. A cold cache renders empty and refreshes in the background. In a placeholder option, quote a command that holds `;`, since `;` separates options.
 
 ## Styling
 
@@ -1237,6 +1238,8 @@ action myproxy myproxy.use        # a click on an item of #{myproxy} runs it for
 - The segment (for a plugin with `items`, each item that carries the action's tokens) is drawn inside an OSC 8 link `bar://action/<plugin>.<action>?<token>=<value>&k=<entry>&n=<nonce>`, once the handler is installed with action support (reinstall with `bar click install` after upgrading) and `click` is not `none`. An output with a `link` of its own keeps it.
 - `bar click action <url>` (the handler calls it) fails closed. It refuses a malformed link (strict characters, each key once), a link whose `n` is not this install's `action-nonce`, an `action` line missing from your config, an action the plugin's `--ext-info` does not declare, tokens other than the declared ones, and token values that are not in the cached output the link was drawn from (`k` names that cache entry). Only then does it run `bar-<plugin> --action <action>` with `{"action": "<action>", "tokens": {...}}` on stdin: directly, no shell, in the state directory, within 10 s. It prints nothing, writes one line to `action-status`, and marks that cache entry stale, so the plugin's output refreshes at the next render. Other cache entries of the plugin refresh at their `ttl`.
 - The nonce is the boundary against pages: any page or app can open a `bar://` URL, and none can know the nonce, which lives in the state directory with mode 0600. The [command allowlist](#clickable-commands) is untouched.
+- The handler runs with the `PATH` of the shell that ran `bar click install` (it is baked in with the dir variables), so a plugin the renderer finds there is found by a click; reinstall after changing `PATH` or installing a plugin elsewhere.
+- The plugin runs with the state directory of the render that drew the link (`BAR_STATE_DIR`).
 - The click handler needs macOS; on other systems the links are not drawn.
 
 ### Clickable commands

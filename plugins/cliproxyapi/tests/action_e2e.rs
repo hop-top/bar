@@ -66,6 +66,11 @@ fn a_click_switches_the_account_through_the_core_handler() {
     std::env::set_var("BAR_STATE_DIR", &state);
     std::env::set_var("ANTHROPIC_BASE_URL", server.origin());
     std::fs::write(state.join(NONCE_FILE), "0123456789abcdef0123456789abcdef").unwrap();
+    std::fs::set_permissions(
+        state.join(NONCE_FILE),
+        std::fs::Permissions::from_mode(0o600),
+    )
+    .unwrap();
 
     let dirs = plugin::plugin_dirs_with(None, Some(&bin.join("bar")));
     let found = plugin::find(&dirs, "cliproxyapi").unwrap();
