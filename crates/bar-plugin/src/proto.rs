@@ -39,6 +39,9 @@ pub struct ExtInfo {
     /// Actions bindable as clicks, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub actions: BTreeMap<String, ActionSpec>,
+    /// Other names `bar <name>` answers to: up to 4 of `[a-z0-9-]`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub web: Option<Value>,
 }

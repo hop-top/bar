@@ -1,6 +1,6 @@
 # bar-cliproxyapi
 
-The plugin is a `bar-cliproxyapi` program next to `bar`; its commands run through bar as `bar cliproxyapi …`.
+The plugin is a `bar-cliproxyapi` program next to `bar`; its commands run through bar as `bar cliproxyapi …`, or with the alias `bar cpa …`.
 
 `bar-cliproxyapi` shows the quota of the accounts behind a [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) proxy as the placeholder `#{cliproxyapi}`: one entry per account, each with its usage windows and the time they reset. It ships next to `bar` and is found like any [plugin](../plugins.md).
 
@@ -159,7 +159,7 @@ Responses are size-capped (256 KiB for the account list, 128 KiB for an upstream
 `bar cliproxyapi` (bar runs the `bar-cliproxyapi` plugin for any `bar <name> …`) can also prefer one account. The proxy serves the highest *available* priority tier of a provider (a cooling or disabled account drops out for the moment), so "use X" sets X's priority one above every other enabled account of its provider, including one only cooling down (it returns after the cooldown). Nothing is disabled and no other account is changed; the proxy keeps the priority with the credential, across restarts.
 
 ```
-bar cliproxyapi list [--provider P] [--instance URL]
+bar cliproxyapi list [--provider P] [--instance URL]   # or: bar cpa list …
 bar cliproxyapi use <account> [--provider P] [--instance URL] [--dry-run]
 bar cliproxyapi use --next [--strategy most-left|soonest-reset] [--provider P] [--instance URL] [--dry-run]
 bar cliproxyapi use --reset [<account>] [--instance URL] [--dry-run]

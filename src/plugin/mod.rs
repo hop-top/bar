@@ -2,6 +2,7 @@
 //! with `--ext-info` (kit ext-discover, extended) and rendered with JSON on
 //! stdin. Both runs go through the cache; render never waits on a plugin.
 
+mod alias;
 pub mod check;
 mod discover;
 mod info;
@@ -10,6 +11,7 @@ pub mod web;
 
 use std::time::Duration;
 
+pub use alias::{resolve, valid_alias, Resolved, MAX_ALIASES};
 pub use discover::{discover, find, path_dirs, plugin_dirs, plugin_dirs_with, Found};
 pub use info::{
     cached_info, env_secret, info, info_job, info_now, parse_info, validate, ActionSpec, ExtInfo,
