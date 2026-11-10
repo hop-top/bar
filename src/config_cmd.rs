@@ -153,7 +153,6 @@ fn lint(text: &str, name: &str) {
     }
 }
 
-#[allow(clippy::cognitive_complexity)] // over the threshold; split when next touched
 fn import(m: &ArgMatches) {
     let file = m.get_one::<String>("file").map_or("-", String::as_str);
     let stdin = file == "-";
@@ -195,30 +194,43 @@ fn import(m: &ArgMatches) {
     let diff = hop_bar::diff::unified(old.as_deref().unwrap_or(""), &new, from, &name);
     print!("{diff}");
     let _ = std::io::stdout().flush();
-    let notable = confio::notable(&text);
-    if !notable.is_empty() {
-        eprintln!("{shown} has lines that run commands or plugins, read the environment or set what project configs may do:");
-        for (line, what) in &notable {
-            eprintln!("  line {line}: {what}");
-        }
-    }
+    warn_notable(shown, &text);
     if !m.get_flag("yes") {
-        if stdin {
-            usage("reading the config from stdin needs --yes");
-        }
-        if !std::io::stdin().is_terminal() {
-            usage("stdin is not a terminal; pass --yes to write");
-        }
-        eprint!("write {name}? [y/N] ");
-        let mut answer = String::new();
-        let _ = std::io::stdin().lock().read_line(&mut answer);
-        if !matches!(answer.trim(), "y" | "Y" | "yes") {
-            fail("import", "nothing written", 1);
-        }
+        confirm(stdin, &name);
     }
     match confio::write_config(&target, old.as_deref(), &new) {
         Ok(Some(bak)) => println!("wrote {name} (old file: {})", bak.display()),
         Ok(None) => println!("wrote {name}"),
         Err(e) => fail("import", &e, 1),
+    }
+}
+
+/// Points out the lines of `text` that reach outside the config.
+fn warn_notable(shown: &str, text: &str) {
+    let notable = confio::notable(text);
+    if notable.is_empty() {
+        return;
+    }
+    eprintln!("{shown} has lines that run commands or plugins, read the environment or set what project configs may do:");
+    for (line, what) in &notable {
+        eprintln!("  line {line}: {what}");
+    }
+}
+
+/// Asks on the terminal before `name` is written; exits unless the answer
+/// is yes. The question needs a terminal on stdin, so a config read from
+/// stdin cannot be confirmed.
+fn confirm(stdin: bool, name: &str) {
+    if stdin {
+        usage("reading the config from stdin needs --yes");
+    }
+    if !std::io::stdin().is_terminal() {
+        usage("stdin is not a terminal; pass --yes to write");
+    }
+    eprint!("write {name}? [y/N] ");
+    let mut answer = String::new();
+    let _ = std::io::stdin().lock().read_line(&mut answer);
+    if !matches!(answer.trim(), "y" | "Y" | "yes") {
+        fail("import", "nothing written", 1);
     }
 }
