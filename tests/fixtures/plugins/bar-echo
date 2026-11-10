@@ -1,10 +1,13 @@
 #!/bin/sh
 # Test plugin. Control files beside the script: out.json (stdout body),
-# exit (exit code). Logs every --ext-info call to info.log and saves the
-# render input to stdin.json.
+# exit (exit code), ext.json (replaces the default --ext-info), check.json
+# (stdout of --check), action-exit (exit code of --action). Logs every
+# --ext-info call to info.log, saves the render input to stdin.json and the
+# --action input to action.json.
 here=$(dirname "$0")
 if [ "$1" = "--ext-info" ]; then
   echo x >> "$here/info.log"
+  if [ -f "$here/ext.json" ]; then cat "$here/ext.json"; exit 0; fi
   cat <<'JSON'
 {"name":"echo","version":"1.0.0","description":"test plugin",
  "capabilities":["discover","placeholder"],
@@ -14,6 +17,16 @@ if [ "$1" = "--ext-info" ]; then
    "verbose":{"type":"bool"},
    "label":{"type":"string"}}}
 JSON
+  exit 0
+fi
+if [ "$1" = "--check" ]; then
+  cat "$here/check.json" 2>/dev/null
+  exit 0
+fi
+if [ "$1" = "--action" ]; then
+  echo "$2" > "$here/action.name"
+  cat > "$here/action.json"
+  [ -f "$here/action-exit" ] && exit "$(cat "$here/action-exit")"
   exit 0
 fi
 cat > "$here/stdin.json"

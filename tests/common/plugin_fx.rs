@@ -130,7 +130,7 @@ pub fn refresh(cache: &Cache, key: String, job: hop_bar::cache::Job) {
     use std::process::{Command, Stdio};
     let out = match &job {
         Job::PluginInfo { path } => Command::new(path).arg("--ext-info").output().unwrap(),
-        Job::PluginRender { path, input } => {
+        Job::PluginRender { path, input, .. } => {
             let mut child = Command::new(path)
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
@@ -207,4 +207,16 @@ pub fn cfg(src: &str) -> Config {
 
 pub fn paint(out: &str, name: &str, cfg: &Config) -> String {
     plugin::paint(&parse_output(out).unwrap(), name, cfg, NOW).unwrap_or_default()
+}
+
+/// `--ext-info` of the echo fixture with `extra` fields merged in.
+pub fn echo_info(extra: serde_json::Value) -> String {
+    let mut v = serde_json::json!({
+        "name": "echo", "version": "1.0.0", "capabilities": ["placeholder"],
+        "options": { "limit": {"type": "int", "default": 3} },
+    });
+    for (k, x) in extra.as_object().unwrap() {
+        v[k] = x.clone();
+    }
+    v.to_string()
 }

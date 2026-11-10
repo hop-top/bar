@@ -218,7 +218,7 @@ pub fn render_with(
     runner: &dyn CommandRunner,
     cache: Option<&Cache>,
 ) -> String {
-    let dirs = plugin::path_dirs(std::env::var_os("PATH").as_deref());
+    let dirs = plugin::plugin_dirs(std::env::var_os("PATH").as_deref());
     render_in(session, config, columns, runner, cache, &dirs)
 }
 

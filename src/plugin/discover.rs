@@ -27,6 +27,25 @@ pub fn path_dirs(path: Option<&OsStr>) -> Vec<PathBuf> {
     .unwrap_or_default()
 }
 
+/// [`path_dirs`] plus the directory holding the running `bar` (symlinks
+/// resolved), last: plugins shipped beside `bar` are found without being
+/// on `PATH`, and a copy on `PATH` wins.
+pub fn plugin_dirs(path: Option<&OsStr>) -> Vec<PathBuf> {
+    let exe = std::env::current_exe().and_then(std::fs::canonicalize).ok();
+    plugin_dirs_with(path, exe.as_deref())
+}
+
+/// As [`plugin_dirs`] for a given executable path (`None`: none added).
+pub fn plugin_dirs_with(path: Option<&OsStr>, exe: Option<&std::path::Path>) -> Vec<PathBuf> {
+    let mut dirs = path_dirs(path);
+    if let Some(dir) = exe.and_then(|e| e.parent()).filter(|d| d.is_absolute()) {
+        if !dirs.iter().any(|d| d == dir) {
+            dirs.push(dir.to_path_buf());
+        }
+    }
+    dirs
+}
+
 fn valid_name(name: &str) -> bool {
     !name.is_empty()
         && lookup(name).is_none()

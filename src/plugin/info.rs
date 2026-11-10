@@ -5,7 +5,9 @@ use std::time::UNIX_EPOCH;
 
 use serde_json::{json, Map, Value};
 
-use super::{Found, CAPABILITY, DEFAULT_TTL, INFO_TIMEOUT, INFO_TTL};
+use super::{
+    Found, CAPABILITY, DEFAULT_TTL, INFO_TIMEOUT, INFO_TTL, MAX_RENDER_TIMEOUT, RENDER_TIMEOUT,
+};
 use crate::cache::{Cache, Job};
 use crate::conf::duration;
 use crate::options::Options;
@@ -36,6 +38,9 @@ pub struct ExtInfo {
     pub options: BTreeMap<String, OptSpec>,
     /// Seconds a render result stays fresh.
     pub ttl: u64,
+    /// Seconds a background render may run: `timeout` clamped to 1..=15,
+    /// else 3.
+    pub timeout: u64,
     /// Default segment icon, used when an icon set is chosen.
     pub icon: Option<String>,
     /// The plugin declared an `icon` option; it is ignored, the name is
@@ -72,6 +77,7 @@ impl ExtInfo {
             capabilities: Vec::new(),
             options: BTreeMap::new(),
             ttl: DEFAULT_TTL,
+            timeout: RENDER_TIMEOUT.as_secs(),
             icon: None,
             declares_icon_option: false,
             declares_bg_option: false,
@@ -115,6 +121,9 @@ impl ExtInfo {
             "options": options,
             "ttl": self.ttl,
         });
+        if self.timeout != RENDER_TIMEOUT.as_secs() {
+            out["timeout"] = json!(format!("{}s", self.timeout));
+        }
         if let Some(icon) = &self.icon {
             out["icon"] = json!(icon);
         }
@@ -200,6 +209,17 @@ pub(super) fn ttl_of(v: &Value) -> u64 {
         .unwrap_or(DEFAULT_TTL)
 }
 
+/// Render limit in seconds from `timeout` (a number or a duration string),
+/// clamped to 1..=15; 3 when absent or unparsable.
+pub(super) fn timeout_of(v: &Value) -> u64 {
+    v.as_u64()
+        .or_else(|| v.as_str().and_then(|s| duration(s.trim()).ok()))
+        .filter(|&t| t > 0)
+        .map_or(RENDER_TIMEOUT.as_secs(), |t| {
+            t.min(MAX_RENDER_TIMEOUT.as_secs())
+        })
+}
+
 /// Placeholder options bar handles itself; never sent to a plugin.
 pub const RESERVED: [&str; 6] = ["icon", "bg", "fg", "bold", "gradient", "click"];
 
@@ -231,6 +251,7 @@ pub fn parse_info(raw: &str) -> Option<ExtInfo> {
             .unwrap_or_default(),
         options,
         ttl: ttl_of(&v["ttl"]),
+        timeout: timeout_of(&v["timeout"]),
         icon: clean_str(&v["icon"]).filter(|i| !i.trim().is_empty()),
         declares_icon_option,
         declares_bg_option,

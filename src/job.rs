@@ -53,9 +53,13 @@ pub enum Job {
     Jj { dir: String },
     /// `<path> --ext-info`, no shell; stdout when it parses as plugin info.
     PluginInfo { path: String },
-    /// `<path>` with `input` on stdin, no shell; stdout when it parses as
-    /// plugin output.
-    PluginRender { path: String, input: String },
+    /// `<path>` with `input` on stdin, no shell, within `timeout` seconds
+    /// (1..=15); stdout when it parses as plugin output.
+    PluginRender {
+        path: String,
+        input: String,
+        timeout: u64,
+    },
     /// `tmux display-message -p '#S:#I' -t <pane>`, no shell; `pane` is
     /// `%` and digits.
     Tmux { pane: String },
@@ -113,8 +117,12 @@ impl Job {
             }
             Job::Jj { dir } => json!({"kind": "jj", "dir": dir}),
             Job::PluginInfo { path } => json!({"kind": "plugin-info", "path": path}),
-            Job::PluginRender { path, input } => {
-                json!({"kind": "plugin-render", "path": path, "input": input})
+            Job::PluginRender {
+                path,
+                input,
+                timeout,
+            } => {
+                json!({"kind": "plugin-render", "path": path, "input": input, "timeout": timeout})
             }
             Job::Tmux { pane } => json!({"kind": "tmux", "pane": pane}),
             Job::Transcript { path, state } => {
@@ -209,6 +217,11 @@ impl Job {
                     .as_str()
                     .ok_or("plugin job without input")?
                     .into(),
+                timeout: v["timeout"]
+                    .as_u64()
+                    .map_or(plugin::RENDER_TIMEOUT.as_secs(), |t| {
+                        t.clamp(1, plugin::MAX_RENDER_TIMEOUT.as_secs())
+                    }),
             }),
             Some("tmux") => Ok(Job::Tmux {
                 pane: v["pane"]
@@ -306,10 +319,14 @@ impl Job {
                 run_child(c, None, limit.min(plugin::INFO_TIMEOUT))
                     .filter(|o| plugin::parse_info(o).is_some())
             }
-            Job::PluginRender { path, input } => run_child(
+            Job::PluginRender {
+                path,
+                input,
+                timeout,
+            } => run_child(
                 Command::new(path),
                 Some(input.clone().into_bytes()),
-                limit.min(plugin::RENDER_TIMEOUT),
+                limit.min(Duration::from_secs(*timeout)),
             )
             .filter(|o| plugin::parse_output(o).is_some()),
             Job::Tmux { pane } => {
