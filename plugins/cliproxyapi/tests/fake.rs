@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! A tiny in-process management server for tests: synthetic accounts
 //! only, loopback only, every request recorded.
 
