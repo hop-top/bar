@@ -259,13 +259,25 @@ fn main() {
 
 /// `bar <name> <args>`: runs the plugin `bar-<name>` (found as a render
 /// finds one) with `args`, stdio inherited, and exits with its status. A
-/// name that is no plugin is a usage error, as any unknown command.
+/// name that is no plugin but is an alias a plugin declares runs that
+/// plugin; any other name is a usage error, as any unknown command.
 fn external(name: &str, args: &[OsString]) -> ! {
     let dirs = plugin::plugin_dirs(std::env::var_os("PATH").as_deref());
-    let Some(found) = plugin::find(&dirs, name) else {
-        eprintln!("bar: unrecognized command `{name}`");
-        eprintln!("see `bar --help`; `bar plugin list` shows the plugins found");
-        std::process::exit(EXIT_USAGE);
+    let cache = Cache::new(&click::state_dir());
+    let found = match plugin::resolve(&dirs, name, &|f| plugin::info_now(&cache, f).aliases) {
+        plugin::Resolved::One(f) => f,
+        plugin::Resolved::Ambiguous(names) => {
+            eprintln!(
+                "bar: `{name}` is an alias of several plugins ({}); run one as `bar <plugin> ...`",
+                names.join(", ")
+            );
+            std::process::exit(EXIT_USAGE);
+        }
+        plugin::Resolved::Unknown => {
+            eprintln!("bar: unrecognized command `{name}`");
+            eprintln!("see `bar --help`; `bar plugin list` shows the plugins found");
+            std::process::exit(EXIT_USAGE);
+        }
     };
     let mut c = std::process::Command::new(&found.path);
     c.args(args);

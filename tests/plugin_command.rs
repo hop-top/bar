@@ -79,3 +79,77 @@ fn an_unknown_name_is_a_usage_error() {
     assert_eq!(out.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&out.stderr).contains("nosuchthing"));
 }
+
+/// A plugin whose `--ext-info` declares `aliases`, answering other calls
+/// with its own name.
+fn aliased(bin: &std::path::Path, name: &str, aliases: &str) {
+    script(
+        bin,
+        &format!("bar-{name}"),
+        &format!(
+            r#"if [ "$1" = "--ext-info" ]; then
+  echo '{{"name":"{name}","version":"1","capabilities":[],"aliases":{aliases}}}'; exit 0; fi
+echo "{name}:$*""#
+        ),
+    );
+}
+
+#[test]
+fn a_declared_alias_runs_its_plugin() {
+    let (home, bin) = setup("alias");
+    aliased(&bin, "cliproxyapi", r#"["cpa","proxy-x"]"#);
+    let out = bar(&home, &bin)
+        .args(["cpa", "list", "-x"])
+        .output()
+        .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        "cliproxyapi:list -x\n"
+    );
+    let out = bar(&home, &bin).args(["proxy-x"]).output().unwrap();
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "cliproxyapi:\n");
+    // not declared: still unknown
+    let out = bar(&home, &bin).arg("cpb").output().unwrap();
+    assert_eq!(out.status.code(), Some(2));
+}
+
+#[test]
+fn a_real_plugin_wins_over_an_alias() {
+    let (home, bin) = setup("alias-real");
+    aliased(&bin, "cliproxyapi", r#"["cpa"]"#);
+    script(&bin, "bar-cpa", "echo REAL");
+    let out = bar(&home, &bin).arg("cpa").output().unwrap();
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "REAL\n");
+}
+
+#[test]
+fn a_builtin_wins_over_an_alias() {
+    let (home, bin) = setup("alias-builtin");
+    aliased(&bin, "thief", r#"["check","plugin"]"#);
+    let out = bar(&home, &bin).arg("check").output().unwrap();
+    assert!(!String::from_utf8_lossy(&out.stdout).contains("thief:"));
+    let out = bar(&home, &bin).args(["plugin", "list"]).output().unwrap();
+    assert!(!String::from_utf8_lossy(&out.stdout).contains("thief:"));
+}
+
+#[test]
+fn an_alias_two_plugins_declare_is_an_error_naming_both() {
+    let (home, bin) = setup("alias-ambiguous");
+    aliased(&bin, "one", r#"["dup"]"#);
+    aliased(&bin, "two", r#"["dup"]"#);
+    let out = bar(&home, &bin).arg("dup").output().unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    let e = String::from_utf8_lossy(&out.stderr);
+    assert!(e.contains("one") && e.contains("two"), "{e}");
+    assert!(!String::from_utf8_lossy(&out.stdout).contains(":"));
+}
+
+#[test]
+fn invalid_aliases_are_dropped_and_the_list_is_short() {
+    use hop_bar::plugin::parse_info;
+    let i = parse_info(
+        r#"{"name":"p","version":"1","aliases":["ok","Bad","a b","","waytoolongaliasname123","ok","b","c","d","e"]}"#,
+    )
+    .unwrap();
+    assert_eq!(i.aliases, ["ok", "b", "c", "d"]);
+}

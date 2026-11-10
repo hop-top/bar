@@ -63,6 +63,7 @@ pub fn ext_info() -> ExtInfo {
         }),
         timeout: Some("15s".into()),
         actions: crate::switch::actions(),
+        aliases: vec!["cpa".into()],
         web: Some(serde_json::json!({
             "category": "usage",
             "samples": [

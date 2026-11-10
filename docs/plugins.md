@@ -12,7 +12,7 @@ Any executable named `bar-<name>` on `PATH` (on Windows `bar-<name>.exe`, `.cmd`
 
 ### Commands
 
-`bar <name> <args>` runs the plugin found for `<name>` (as above) with the arguments after it, with bar's standard input, output and error, and exits with the plugin's status, as `git` runs `git-<name>`. A built-in command of bar always wins (`bar check` is never a plugin's), and a name that is neither is a usage error (exit 2). The protocol calls (`--ext-info`, a render on stdin, `--check`, `--action`) are made by bar on `bar-<name>` directly.
+`bar <name> <args>` runs the plugin found for `<name>` (as above) with the arguments after it, with bar's standard input, output and error, and exits with the plugin's status, as `git` runs `git-<name>`. A name that is no plugin but is an alias a plugin declares (`aliases`, below) runs that plugin; a plugin named so always wins over an alias, and an alias two plugins declare is a usage error naming both. A built-in command of bar always wins (`bar check` is never a plugin's), and a name that is neither is a usage error (exit 2). The protocol calls (`--ext-info`, a render on stdin, `--check`, `--action`) are made by bar on `bar-<name>` directly.
 
 ## `--ext-info`
 
@@ -42,6 +42,7 @@ Any executable named `bar-<name>` on `PATH` (on Windows `bar-<name>.exe`, `.cmd`
 | `description` | Optional string, shown by `bar plugin list`. |
 | `options` | Allowed options; keys, choices and string defaults are sanitised like `text`. Types: `int` (sent as a JSON integer), `string`, `bool` (written `true`/`yes`/`on`/`1` or `false`/`no`/`off`/`0`, sent as JSON `true`/`false`), `enum` (with `enum` choices, sent as the string). `default` fills a missing option when it fits the type. Options of unknown type are dropped. `icon`, `bg`, `fg`, `bold`, `gradient` and `click` are reserved: declared, they are dropped and `bar check` warns. |
 | `icon` | Optional default segment icon, used when `set icons` is not `none`. Sanitised; at most 2 cells. |
+| `aliases` | Optional. Other names `bar <name> <args>` answers to: up to 4 of `[a-z0-9-]`, at most 16 characters each, e.g. `["cpa"]`. They apply to that command only, not to placeholders or config. A built-in command of bar and a plugin of the same name win over an alias. Looked up only when no plugin is named so; the answer is cached like the rest of `--ext-info` |
 | `actions` | Optional. Actions a click can run: `{"use": {"description": "Prefer this account", "tokens": ["account", "provider"], "confirm": false, "timeout": 120}}`. Names are letters, digits, `-` and `_`; tokens are up to 8 names of `[a-z0-9_-]`. See [Actions](#actions). `confirm` is kept for the plugin's own use: bar runs the action without asking. `timeout` (seconds, at most 120) lifts the 10 s limit for an action that waits on the user, such as a chooser |
 | `inputs` | Optional. What the output depends on besides options: `{"env": ["ANTHROPIC_BASE_URL"], "session": ["model_id"]}`. Each declared value is part of the cache key, and the declared environment variables are sent as `env` in the render input. `env`: up to 8 names of `[A-Z0-9_]`, at most 64 characters; a name containing `KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `CREDENTIAL` or `AUTH` is refused, since values go into the cache key and the refresh process's arguments (a plugin that needs a secret reads its own environment, which it inherits); values longer than 1 KiB count as unset. `session`: any of `cwd`, `model`, `model_id`, `effort`, `session_id`; the volatile fields (`context_used`, `five_hour`, `seven_day`) cannot be declared, they would split the cache on every render. |
 | `timeout` | Optional. Limit for the background render, a number of seconds or a duration (`8s`), clamped to 1 to 15 s. Default 3 s; zero or unparsable means the default. |
@@ -171,7 +172,7 @@ A plugin for an API proxy that holds several accounts (one `bar-<proxy>` per pro
 - Its secrets live in its own owner-only file, keychain or command, never in `bar.conf`, argv, the environment, its output or its cache; it stops calling the proxy's management API after a 401 or 403 until the key changes.
 - It emits `items`, one per account, each with a `label` (alias, local part of the account name, or `#1`, `#2`), a `text` of `<window> <percent>% ↻<countdown>` per window, a `score` or `style`, optionally a `link`, and `tokens` `account` and `provider`; a top-level `usage` for the provider of the current model (see its `pool` option); and `account` only when the proxy's choice is certain.
 - Its options use the names `provider`, `windows`, `show`, `count`, `label`, `sort`, `accounts`, `compact`, `stale`, `link` and `pool`; window ids are `5h`, `7d` and `wk`; its action is `use`, taking the tokens `account` and `provider`.
-- It offers subcommands for scripting (`list`, `use <account>`, `pick`), run as `bar <name> <args>`.
+- It offers subcommands for scripting (`list`, `use <account>`, `pick`), run as `bar <name> <args>` or, by its alias, `bar cpa <args>`.
 
 [`bar-cliproxyapi`](plugins/cliproxyapi.md) is the reference implementation.
 

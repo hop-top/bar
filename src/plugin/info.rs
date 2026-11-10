@@ -48,6 +48,16 @@ pub struct ActionSpec {
 /// Most tokens an action can take.
 pub const MAX_TOKENS: usize = 8;
 
+fn aliases_of(v: &Value) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for a in v.as_array().into_iter().flatten().filter_map(Value::as_str) {
+        if super::valid_alias(a) && !out.iter().any(|o| o == a) && out.len() < super::MAX_ALIASES {
+            out.push(a.to_string());
+        }
+    }
+    out
+}
+
 fn actions_of(v: &Value) -> BTreeMap<String, ActionSpec> {
     v.as_object()
         .map(|o| {
@@ -195,6 +205,8 @@ pub struct ExtInfo {
     pub ttl: u64,
     /// Declared `actions`, by name.
     pub actions: BTreeMap<String, ActionSpec>,
+    /// Other names `bar <name>` answers to (up to 4, `[a-z0-9-]`).
+    pub aliases: Vec<String>,
     /// Declared `inputs`: part of the cache key, sent in the render input.
     pub inputs: Inputs,
     /// Seconds a background render may run: `timeout` clamped to 1..=15,
@@ -239,6 +251,7 @@ impl ExtInfo {
             timeout: RENDER_TIMEOUT.as_secs(),
             inputs: Inputs::default(),
             actions: BTreeMap::new(),
+            aliases: Vec::new(),
             icon: None,
             declares_icon_option: false,
             declares_bg_option: false,
@@ -295,6 +308,9 @@ impl ExtInfo {
                 })
                 .collect();
             out["actions"] = Value::Object(a);
+        }
+        if !self.aliases.is_empty() {
+            out["aliases"] = json!(self.aliases);
         }
         if let Some(i) = self.inputs.to_json() {
             out["inputs"] = i;
@@ -432,6 +448,7 @@ pub fn parse_info(raw: &str) -> Option<ExtInfo> {
         timeout: timeout_of(&v["timeout"]),
         inputs: Inputs::parse(&v["inputs"]),
         actions: actions_of(&v["actions"]),
+        aliases: aliases_of(&v["aliases"]),
         icon: clean_str(&v["icon"]).filter(|i| !i.trim().is_empty()),
         declares_icon_option,
         declares_bg_option,
