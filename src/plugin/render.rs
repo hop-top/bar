@@ -155,8 +155,19 @@ pub struct Usage {
     pub seven_day: Option<Window>,
 }
 
+/// The account an output names, for `set account-source`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Account {
+    /// Stable identifier.
+    pub id: String,
+    /// What `#{account}` shows; sanitised.
+    pub label: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Output {
+    /// `account`, for `set account-source`.
+    pub account: Option<Account>,
     /// `usage` windows, for `set usage-source`.
     pub usage: Option<Usage>,
     /// With `items`, the output's own `text` is not drawn.
@@ -205,6 +216,16 @@ fn usage(v: &Value) -> Option<Usage> {
     (u.five_hour.is_some() || u.seven_day.is_some()).then_some(u)
 }
 
+/// `None` unless `id` and `label` are strings and `label` shows something.
+fn account(v: &Value) -> Option<Account> {
+    let id = v["id"].as_str().map(str::trim).filter(|i| !i.is_empty())?;
+    let label = sanitize(v["label"].as_str()?).trim().to_string();
+    (!label.is_empty()).then(|| Account {
+        id: id.chars().take(128).collect(),
+        label,
+    })
+}
+
 fn metric(v: &Value) -> Option<Metric> {
     Some(Metric {
         remaining: int(&v["remaining"])?,
@@ -244,6 +265,7 @@ fn parse_one(v: &Value) -> Option<Output> {
         text: v.get("text")?.as_str()?.to_string(),
         items: Vec::new(),
         usage: usage(&v["usage"]),
+        account: account(&v["account"]),
         alt: v["alt"]
             .as_str()
             .filter(|a| !sanitize(a).trim().is_empty())
@@ -405,6 +427,19 @@ fn toggled(mut out: Output, name: &str, opts: &Options, state: &Path) -> Output 
     if out.link.as_deref().is_none_or(str::is_empty) && linkable {
         out.link = Some(format!("bar://toggle/{name}"));
     }
+    out
+}
+
+/// [`cached_output`], read once per render however many placeholders ask.
+pub fn default_output(ctx: &Ctx, name: &str) -> Option<std::rc::Rc<Output>> {
+    if let Some(hit) = ctx.memo.outputs.borrow().get(name) {
+        return hit.clone();
+    }
+    let out = cached_output(ctx, name).map(std::rc::Rc::new);
+    ctx.memo
+        .outputs
+        .borrow_mut()
+        .insert(name.to_string(), out.clone());
     out
 }
 

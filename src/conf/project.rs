@@ -161,8 +161,13 @@ pub(super) fn guard(
     }
     // which plugin feeds a placeholder, and what a click runs, is the
     // user's choice, whatever the mode
-    if t[0] == "set" && matches!(t.get(1).map(String::as_str), Some("usage-source")) {
-        return Err("`usage-source` is read from the user config only".into());
+    if t[0] == "set"
+        && matches!(
+            t.get(1).map(String::as_str),
+            Some("usage-source" | "account-source")
+        )
+    {
+        return Err(format!("`{}` is read from the user config only", t[1]));
     }
     if mode == ProjectMode::Full {
         return Ok(());

@@ -63,8 +63,11 @@ pub struct Ctx<'a> {
 pub struct Memo {
     /// The repository's web address (`repo::cached_remote`).
     pub(crate) remote: std::cell::OnceCell<Option<String>>,
-    /// The plugin named by `set usage-source` and its `usage` windows.
-    pub(crate) usage: std::cell::OnceCell<Option<(String, crate::plugin::Usage)>>,
+    /// Cached default-options outputs of the plugins that feed `usage` and
+    /// `account` (`plugin::default_output`), read once per render.
+    pub(crate) outputs: std::cell::RefCell<
+        std::collections::HashMap<String, Option<std::rc::Rc<crate::plugin::Output>>>,
+    >,
 }
 
 pub trait Placeholder {

@@ -535,3 +535,97 @@ fn usage_source_is_user_config_only() {
         );
     }
 }
+
+// --- account source ---
+
+use hop_bar::placeholders::lookup;
+
+fn account_text(fx: &Fx, c: &hop_bar::conf::Config) -> String {
+    let (cache, dirs, s) = (fx.cache(), fx.dirs(), session());
+    let cx = ctx(&s, c, &cache, &dirs);
+    let out = lookup("account").unwrap().render(&cx, &opts(&[]));
+    strip_codes(&out.unwrap_or_default())
+}
+
+#[test]
+fn account_comes_from_the_source_plugin() {
+    let fx = Fx::new();
+    let claude = fx.root.join("claude");
+    std::fs::create_dir_all(&claude).unwrap();
+    std::fs::write(
+        claude.join(".claude.json"),
+        r#"{"oauthAccount":{"emailAddress":"local@example.test"}}"#,
+    )
+    .unwrap();
+    std::env::set_var("CLAUDE_CONFIG_DIR", &claude);
+    let src = "set account-source echo\naccount \"work-*\" Work 33\n";
+    let c = cfg(src);
+    // cold: today's behaviour
+    assert_eq!(account_text(&fx, &c), "local@example.test");
+    fx.put(
+        "out.json",
+        r#"{"text":"","account":{"id":"a1b2","label":"work-alice"}}"#,
+    );
+    fx.prime("echo", &c, &[]);
+    // the plugin's label, run through the account rules (label and colour)
+    assert_eq!(account_text(&fx, &c), "Work");
+    let raw = lookup("account")
+        .unwrap()
+        .render(&ctx(&session(), &c, &fx.cache(), &fx.dirs()), &opts(&[]))
+        .unwrap();
+    assert!(raw.contains(&hop_bar::style::fg(33u8, "Work")), "{raw:?}");
+    // without a matching rule the label shows as is
+    let plain = cfg("set account-source echo\n");
+    assert_eq!(account_text(&fx, &plain), "work-alice");
+    // no source configured: signed-in account
+    assert_eq!(account_text(&fx, &cfg("")), "local@example.test");
+    // output without an account: signed-in account
+    fx.put("out.json", r#"{"text":"x"}"#);
+    fx.prime("echo", &c, &[]);
+    assert_eq!(account_text(&fx, &c), "local@example.test");
+    std::env::remove_var("CLAUDE_CONFIG_DIR");
+}
+
+#[test]
+fn account_output_is_validated() {
+    let ok =
+        plugin::parse_output(r#"{"text":"","account":{"id":" a1 ","label":"x\u001by\u0007"}}"#)
+            .unwrap();
+    let a = ok.account.unwrap();
+    assert_eq!((a.id.as_str(), a.label.as_str()), ("a1", "xy"));
+    for bad in [
+        r#"{"id":"a"}"#,
+        r#"{"label":"b"}"#,
+        r#"{"id":"","label":"b"}"#,
+        r#"{"id":"a","label":" \u001b "}"#,
+        r#"{"id":1,"label":"b"}"#,
+        r#""x""#,
+    ] {
+        let raw = format!(r#"{{"text":"","account":{bad}}}"#);
+        assert!(
+            plugin::parse_output(&raw).unwrap().account.is_none(),
+            "{bad}"
+        );
+    }
+}
+
+#[test]
+fn account_source_is_user_config_only() {
+    for mode in ["safe", "full"] {
+        let user = format!("set project-config {mode}\n");
+        let l = hop_bar::conf::layers(Some(&user), |_| {
+            Some(Ok("set account-source evil\n".into()))
+        });
+        assert_eq!(l.config.unwrap().account_source, None, "{mode}");
+        assert!(
+            l.dropped[0].message.contains("user config"),
+            "{:?}",
+            l.dropped
+        );
+    }
+    assert_eq!(
+        cfg("set account-source x\nset account-source off\n").account_source,
+        None
+    );
+    assert!(hop_bar::conf::parse("set account-source \"a b\"\n").is_err());
+}

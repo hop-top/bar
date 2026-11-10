@@ -15,8 +15,8 @@ pub use info::{
     OptSpec, OptType, MAX_ENV_INPUTS, MAX_ENV_VALUE, RESERVED, SESSION_INPUTS,
 };
 pub use render::{
-    cached_output, paint, paint_with, parse_output, plan, render, render_found, render_found_with,
-    Metric, Output, Plan, Usage, MAX_ITEMS,
+    cached_output, default_output, paint, paint_with, parse_output, plan, render, render_found,
+    render_found_with, Account, Metric, Output, Plan, Usage, MAX_ITEMS,
 };
 
 pub const PREFIX: &str = "bar-";

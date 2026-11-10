@@ -43,9 +43,19 @@ fn email() -> Option<String> {
         .map(str::to_owned)
 }
 
+/// The label `set account-source` supplies: the plugin's cached
+/// default-options `account`. Absent or cold, `None`.
+pub fn source_account(ctx: &Ctx) -> Option<crate::plugin::Account> {
+    let name = ctx.config.account_source.as_deref()?;
+    crate::plugin::default_output(ctx, name)?.account.clone()
+}
+
 impl Placeholder for Account {
     fn render(&self, ctx: &Ctx, _opts: &Options) -> Option<String> {
-        let Some(email) = email() else {
+        // a plugin's account stands in for the signed-in one; the same
+        // `account "<glob>"` rules apply, matched against its label
+        let shown = source_account(ctx).map(|a| a.label).or_else(email);
+        let Some(email) = shown else {
             let key = std::env::var("ANTHROPIC_API_KEY")
                 .ok()
                 .filter(|k| !k.is_empty());
