@@ -71,7 +71,7 @@ fn core_parses_what_the_plugin_prints_and_renders_it() {
     std::env::set_var("ANTHROPIC_BASE_URL", server.origin());
 
     let dirs = plugin::plugin_dirs_with(None, Some(&bin.join("bar")));
-    assert_eq!(dirs, [bin.clone()]);
+    assert_eq!(dirs, std::slice::from_ref(&bin));
     let found = plugin::find(&dirs, "cliproxyapi").expect("discovered beside bar");
 
     // --ext-info

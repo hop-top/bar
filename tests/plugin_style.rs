@@ -176,6 +176,8 @@ fn plugin_list_and_info_cli() {
         .unwrap()
         .iter()
         .map(|p| p["name"].as_str().unwrap())
+        // a workspace build leaves bar-cliproxyapi beside bar: found too
+        .filter(|n| *n != "cliproxyapi")
         .collect();
     assert_eq!(names, ["echo", "plain", "slow"]);
     let out = cli(&fx)
