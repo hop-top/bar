@@ -105,7 +105,7 @@ impl Call<'_> {
             Ok(Some(it)) => it,
             Ok(None) => {
                 return refuse(format!(
-                    "the proxy has no `{}` provider entry; run `bar rl setup`",
+                    "the proxy has no `{}` provider entry; run `bar rtellm setup`",
                     inst.provider
                 ))
             }

@@ -1,6 +1,6 @@
 # bar-routellm
 
-The plugin is a `bar-routellm` program next to `bar`; its commands run through bar as `bar routellm …`, or with the alias `bar rl …`.
+The plugin is a `bar-routellm` program next to `bar`; its commands run through bar as `bar routellm …`, or with the alias `bar rtellm …`.
 
 `bar-routellm` shows, and switches, whether a [RouteLLM](https://github.com/lm-sys/RouteLLM) router behind a [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) proxy is routing, as the placeholder `#{routellm}`. It ships next to `bar` and is found like any [plugin](../plugins.md).
 
@@ -21,20 +21,20 @@ The proxy serves the model ids `route-auto`, `route-vision` and so on (the `rout
 | **ON** | RouteLLM. Its classifier picks a tier and a leaf: a local model, OpenRouter, or back to the proxy's own frontier accounts. |
 | **OFF** | The proxy's frontier accounts directly, as the model that `oauth-model-alias` maps the alias to (by default `claude-sonnet-5-5` for `route-auto` and `route-vision`). |
 
-Claude Code does not change: it keeps asking for the same model id and the proxy lists the same ids in both states. The switch takes effect per request, within a fraction of a second, with no restart; a stream already open finishes where it started. `bar rl on` and `bar rl off`, or a click, write that one flag (and the provider's priority on ON, when it is lower than configured). Nothing else in the proxy's configuration is changed.
+Claude Code does not change: it keeps asking for the same model id and the proxy lists the same ids in both states. The switch takes effect per request, within a fraction of a second, with no restart; a stream already open finishes where it started. `bar rtellm on` and `bar rtellm off`, or a click, write that one flag (and the provider's priority on ON, when it is lower than configured). Nothing else in the proxy's configuration is changed.
 
 `route-private` stays fail-closed. It has no frontier row, so with routing OFF a session that asked for it gets the proxy's `model_not_found` error (HTTP 400) instead of having its data sent to a cloud model. The segment shows it as blocked.
 
-The plugin has two jobs, kept apart: a render only reads, and only an explicit action (`bar rl on|off` or a bound click) writes.
+The plugin has two jobs, kept apart: a render only reads, and only an explicit action (`bar rtellm on|off` or a bound click) writes.
 
 ## Setup
 
 1. **Enable the proxy's management API** and keep its key in a separate owner-only file, exactly as for [`bar-cliproxyapi`](cliproxyapi.md#setup). If that plugin already reads the instance, there is nothing more to do for the key.
 
-2. **Add the provider and the aliases to the proxy.** `bar rl setup` prints the block; it never writes it. Paste it into the proxy's `config.yaml`, merging each section into the file's existing one:
+2. **Add the provider and the aliases to the proxy.** `bar rtellm setup` prints the block; it never writes it. Paste it into the proxy's `config.yaml`, merging each section into the file's existing one:
 
    ```
-   bar rl setup [--layout v8|legacy]
+   bar rtellm setup [--layout v8|legacy]
    ```
 
    `--layout` picks the file layout; the default is `v8`, the layout of the current CLIProxyAPI template (top-level `config-version: 8`). Use `legacy` for a flat file without it. Each layout prints a complete block with the field names that layout expects. The two differ in the section names and in the provider's key list (`keys` against `api-key-entries`); a block of one layout makes the proxy refuse to load a file of the other.
@@ -83,7 +83,7 @@ The plugin has two jobs, kept apart: a render only reads, and only an explicit a
          - {name: private, alias: route-private}
    ```
 
-   - `disabled: true` keeps the provider OFF: pasting the block never turns routing on. It stays OFF until `bar rl on`.
+   - `disabled: true` keeps the provider OFF: pasting the block never turns routing on. It stays OFF until `bar rtellm on`.
    - `api-key` is a placeholder; put the key RouteLLM expects there if it checks one.
    - `priority` must be higher than every frontier account's, so that ON wins when both providers serve a `route-*` id.
    - `disable-cooling: true` keeps the provider from being skipped for about a minute after an upstream error once it answers again.
@@ -99,7 +99,7 @@ The plugin has two jobs, kept apart: a render only reads, and only an explicit a
      key-from cliproxyapi
    ```
 
-4. **Add `#{routellm}`** to a layout and run `bar check`, then `bar rl status --probe`, which reads the proxy once and reports a missing provider entry, aliases without an OFF row, or a RouteLLM that does not answer.
+4. **Add `#{routellm}`** to a layout and run `bar check`, then `bar rtellm status --probe`, which reads the proxy once and reports a missing provider entry, aliases without an OFF row, or a RouteLLM that does not answer.
 
 `bar check` (the plugin's `--check`) makes no request. It reports, from the configuration file and the last cache: a missing, unreadable or malformed `routellm.conf` (with the line); a key source that is unreadable; a state directory that is not writable; a key the proxy refused; management off (404); no matching provider entry; an entry that points at another RouteLLM; aliases without an OFF row; a `private` alias that has an OFF row (which would send it to the frontier); a proxy not read yet; and an `on-priority` of 0 or less.
 
@@ -119,7 +119,7 @@ One `instance` block per proxy; lines start with a keyword, `#` starts a comment
 | `management <url>` | The management API base, ending in `/v0/management` (or `/v8/management`, which is rewritten to `/v0/management`). Default: `<instance origin>/v0/management`. |
 | `local-tiers <list>` | Tiers you declare to stay on this machine. Default `private,default,local_text`. |
 | `on-priority <n>` | Priority the provider gets when routing is switched ON and its own is lower. Default `1000`. |
-| `off-map <alias>=<model>` | The model an alias maps to when routing is OFF; repeatable. Used by `bar rl setup` and to label the OFF state. Default `route-auto=claude-sonnet-5-5` and `route-vision=claude-sonnet-5-5`. |
+| `off-map <alias>=<model>` | The model an alias maps to when routing is OFF; repeatable. Used by `bar rtellm setup` and to label the OFF state. Default `route-auto=claude-sonnet-5-5` and `route-vision=claude-sonnet-5-5`. |
 | `remote yes` | Allow a management or RouteLLM host that is not on this machine. Requires `https` for both. |
 
 A block with a mistake is ignored as a whole, and `bar check` says which line.
@@ -149,7 +149,7 @@ RL off │ private ✗
 - Capabilities come from the router's model list. A tier's capabilities are the union over every leaf it can reach, so `vis` reads "some leaf of this tier can".
 - ` ~` after the state text marks data older than two minutes; `stale=dim` draws every item dim instead, and `stale=hide` hides the segment. An unknown state (`RL ?`, `RL key?`) is never marked stale.
 - The state is what the proxy is configured to do. It says "routing is on", not "this request was routed".
-- An alias, tier or capability item needs the session's model to be an alias of the provider entry. A session on another model shows the state alone. Tiers without a client alias (`hard`, `light`, `codex`, `media` in a common setup) are listed only by `bar rl tiers --all`.
+- An alias, tier or capability item needs the session's model to be an alias of the provider entry. A session on another model shows the state alone. Tiers without a client alias (`hard`, `light`, `codex`, `media` in a common setup) are listed only by `bar rtellm tiers --all`.
 - The segment is hidden when the proxy has no `routellm` entry, when its entry points at another RouteLLM than the configured one, and when management is off.
 
 What the segment cannot show is a property of what the router exposes today: it has no view of which model served a request (RouteLLM reports the decision only in the body of a non-streamed reply, and Claude Code streams), no per-model health, and no OpenRouter limits or credits. The plugin does not read RouteLLM's log or trace files, and does not hold an OpenRouter key. `RL on` means the proxy routes to RouteLLM and RouteLLM's `/health` answers; it does not mean every model behind it is healthy.
@@ -171,11 +171,11 @@ The list option `show` is comma separated: `#{routellm[show=state,tier,caps]}`; 
 ## Switching
 
 ```
-bar rl status [--instance URL] [--probe] [--json]
-bar rl on  [--instance URL] [--dry-run] [--force]
-bar rl off [--instance URL] [--dry-run]
-bar rl tiers [--all] [--instance URL]
-bar rl setup [--layout v8|legacy] [--instance URL]
+bar rtellm status [--instance URL] [--probe] [--json]
+bar rtellm on  [--instance URL] [--dry-run] [--force]
+bar rtellm off [--instance URL] [--dry-run]
+bar rtellm tiers [--all] [--instance URL]
+bar rtellm setup [--layout v8|legacy] [--instance URL]
 ```
 
 - `status` prints the state, the provider's priority, each alias with its tier and OFF model, whether RouteLLM answers, and the last change. It answers from the plugin's cache; `--probe` makes the calls (once, ban-safe). `--json` prints the cache.
@@ -215,13 +215,13 @@ The proxy bans a client IP for 30 minutes after five failed management attempts,
 
 - **401 or 403** stops every call to that proxy, from both plugins. The segment shows `RL key?` until the key changes or 24 hours pass. The plugin compares a salted, truncated digest, never the key. Processes take turns under a lock in the state directory, so a refused key costs one failed attempt however many sessions render at once; a process that cannot take the lock, or cannot write the state directory, sends nothing.
 - **An empty key is never sent**; an unreadable key source shows `RL key?` without any request.
-- **404** on the management route means management is off, or the proxy is too old to have the route: the segment is hidden and the proxy is not asked again for an hour, and `bar check` says why. `bar rl on|off` and `bar rl status --probe` ask anyway, so a transient 404 never blocks the way out.
-- **No `routellm` entry, or an entry pointing at another RouteLLM**: the segment is hidden, switching is refused, and `bar rl setup` shows what to add. The plugin never toggles an unrelated provider of the same name.
-- **RouteLLM down while ON**: `RL on ✗`, with the session's tier marked `✗`. Whether a request falls through to the frontier accounts depends on the proxy; `route-private` fails. `bar rl off` is one command and never needs RouteLLM.
-- **RouteLLM down on `bar rl on`**: refused by the check; `--force` overrides it.
+- **404** on the management route means management is off, or the proxy is too old to have the route: the segment is hidden and the proxy is not asked again for an hour, and `bar check` says why. `bar rtellm on|off` and `bar rtellm status --probe` ask anyway, so a transient 404 never blocks the way out.
+- **No `routellm` entry, or an entry pointing at another RouteLLM**: the segment is hidden, switching is refused, and `bar rtellm setup` shows what to add. The plugin never toggles an unrelated provider of the same name.
+- **RouteLLM down while ON**: `RL on ✗`, with the session's tier marked `✗`. Whether a request falls through to the frontier accounts depends on the proxy; `route-private` fails. `bar rtellm off` is one command and never needs RouteLLM.
+- **RouteLLM down on `bar rtellm on`**: refused by the check; `--force` overrides it.
 - **Timeouts, 5xx**: back-off from one minute doubling to an hour, serving the last good state marked `~`. A RouteLLM that does not answer does not back off the management read.
-- **The proxy replies before it applies a change**: the plugin reads the entry back a few times over about a second and a half. When it still does not show the change, or the request itself timed out, the command says the state is unknown and the cached state is dropped, so the next `bar rl status` or render reads the proxy again. The change is never sent twice.
-- **A failed save of the proxy's configuration** is reported as an error; run the command again, or `bar rl off`.
+- **The proxy replies before it applies a change**: the plugin reads the entry back a few times over about a second and a half. When it still does not show the change, or the request itself timed out, the command says the state is unknown and the cached state is dropped, so the next `bar rtellm status` or render reads the proxy again. The change is never sent twice.
+- **A failed save of the proxy's configuration** is reported as an error; run the command again, or `bar rtellm off`.
 
 Responses are size-capped (128 KiB for a management read and for the model list, 4 KiB for `/health`, 64 KiB for the cache), and a loopback proxy is contacted directly even when `HTTP_PROXY` is set.
 
