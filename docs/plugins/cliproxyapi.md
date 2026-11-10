@@ -150,9 +150,45 @@ The proxy bans a client IP for 30 minutes after five failed management attempts,
 
 Responses are size-capped (256 KiB for the account list, 128 KiB for an upstream call, 64 KiB for the cache), and a loopback proxy is contacted directly even when `HTTP_PROXY` is set. Plain `http` is used only for `localhost`, `127.0.0.1` and `::1`.
 
+## Switching accounts
+
+`bar-cliproxyapi` can also prefer one account. The proxy serves the highest *available* priority tier of a provider (a cooling or disabled account drops out), so "use X" sets X's priority one above every other available account of its provider. Nothing is disabled and no other account is changed; the proxy keeps the priority with the credential, across restarts.
+
+```
+bar-cliproxyapi list [--provider P] [--instance URL]
+bar-cliproxyapi use <account> [--provider P] [--instance URL] [--dry-run]
+bar-cliproxyapi use --reset [<account>] [--instance URL] [--dry-run]
+```
+
+- `list` prints one line per account: label, provider, priority, status (`active`, `unavailable`, `disabled`) and the proxy's account index. Never an email.
+- `<account>` is an account index, a label (an alias, or the email's part before the `@`, any case) or a position (`3` or `#3`, as `label=index` draws). A name that fits several accounts (the same label under two providers) is refused and the candidates listed; narrow it with `--provider`. A disabled account is refused: bar never enables one.
+- `use` prints the change (`work (claude): priority 0 -> 3`). An account already above every other available one, or with no available rival, is left as it is. `--dry-run` prints the change and sends nothing.
+- `--reset` puts back the priorities this plugin changed (kept in the plugin's own state file, mode 0600, with account indexes and numbers only). An account whose priority was changed by someone else since is left alone. With an account, only that one is restored.
+- The instance is `--instance`, else the session's `ANTHROPIC_BASE_URL`, else the only configured instance.
+- Exit status: 0 done, 1 refused or failed (the reason on stderr), 2 bad usage.
+
+The change applies to new selections. With the proxy's `session-affinity` on, a running session stays on the account it is bound to until that account fails over, and new sessions follow the priority. The proxy's `routing.strategy` still decides between accounts of the same tier.
+
+### Clicking an account
+
+The plugin declares the action `use` with the tokens `account` and `provider`. Bind it in `bar.conf` for either placement:
+
+```
+# the account segment: a click runs `use` for the account it shows
+set account-source cliproxyapi
+action account cliproxyapi.use
+
+# the plugin's own segment: a click on an account's item runs it for that account
+action cliproxyapi cliproxyapi.use
+```
+
+Links need the click handler installed with action support: run `bar click install` (again after upgrading bar). A click runs `bar-cliproxyapi --action use` with the tokens on its standard input; the plugin checks that the token names an account of its current listing, performs `use`, and exits non-zero with a reason when it refuses. bar shows the outcome in `action-status` in its state directory and refreshes the segment at the next render. A click has no session environment, so the plugin finds the instance whose listing holds the account; when two instances list the same index it refuses.
+
+Management failures behave as for rendering: a 401 or 403, on the listing or on the change, stops every call until the key changes.
+
 ## Privacy
 
-- The placeholder reads accounts and quota only.
+- The plugin reads accounts and quota. The only change it ever makes is an account's routing priority, when you ask (`use`, `--reset` or a bound click); it never disables or enables an account.
 - Its output carries labels, the proxy's opaque account index and the provider name; bar's own cache of it (mode 0600) holds the same. `label=index` keeps even the local part of an email off the screen and out of that output.
 - Its cache (`plugins/cliproxyapi/<hash>.json` in bar's state directory, mode 0600 in a 0700 directory) holds the label shown, the local part of the account's email (for `label=local`), the proxy's opaque account index and routing priority, plan name, usage windows and failure timers. It holds no emails (a label derived from one is the part before the `@`, or your alias), no file paths, no tokens, no account ids and no keys.
 - Upstream addresses are compiled into the plugin. The proxy's `api-call` endpoint forwards an account's token to any URL it is given, so no configuration can choose where it goes.

@@ -190,7 +190,7 @@ fn upstream(client: &Client, key: &str, now: i64) -> Up {
     }
 }
 
-fn stop(path: &Path, c: &mut Cache, status: u16, fp: String, now: i64) {
+pub fn stop(path: &Path, c: &mut Cache, status: u16, fp: String, now: i64) {
     c.auth_fail = Some(AuthFail {
         status,
         at: now,

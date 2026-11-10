@@ -15,6 +15,10 @@ pub const CAP_CALL: usize = 128 * 1024;
 pub const T_LIST: u64 = 3;
 /// Time for an upstream call through the proxy.
 pub const T_CALL: u64 = 8;
+/// Largest reply to a field change read.
+pub const CAP_PATCH: usize = 8 * 1024;
+/// Time for a field change.
+pub const T_PATCH: u64 = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Api {
@@ -40,6 +44,12 @@ impl Api {
         match self {
             Api::V8 => "credentials",
             Api::V0 => "auth-files",
+        }
+    }
+    fn fields_path(self) -> &'static str {
+        match self {
+            Api::V8 => "credentials/fields",
+            Api::V0 => "auth-files/fields",
         }
     }
     fn call_path(self) -> &'static str {
@@ -123,6 +133,17 @@ impl<'a> Client<'a> {
         max_time: u64,
         cap: usize,
     ) -> Result<Value, MErr> {
+        self.send_as(post.map(|_| "POST"), path, post, max_time, cap)
+    }
+
+    fn send_as(
+        &self,
+        method: Option<&str>,
+        path: &str,
+        post: Option<&str>,
+        max_time: u64,
+        cap: usize,
+    ) -> Result<Value, MErr> {
         let mut cfg = CurlConfig::new();
         let mut bearer = Secret::with_capacity(self.key.as_bytes().len() + 8);
         bearer.push(b"Bearer ");
@@ -132,7 +153,7 @@ impl<'a> Client<'a> {
             .map_err(bad)?;
         let mut headers = vec!["Accept: application/json"];
         if let Some(body) = post {
-            cfg.method("POST").map_err(bad)?;
+            cfg.method(method.unwrap_or("POST")).map_err(bad)?;
             cfg.body(body.as_bytes()).map_err(bad)?;
             headers.push("Content-Type: application/json");
         }
@@ -152,6 +173,22 @@ impl<'a> Client<'a> {
     pub fn credentials(&self) -> Result<Value, MErr> {
         let api = Client::api_of(&self.base);
         self.send(api.list_path(), None, T_LIST, CAP_LIST)
+    }
+
+    /// Sets an account's routing priority (`name` is the proxy's own id of
+    /// the credential, as the listing gives it). The proxy persists it with
+    /// the credential; it changes only which account new selections prefer.
+    pub fn set_priority(&self, name: &str, priority: i64) -> Result<(), MErr> {
+        let body = serde_json::json!({ "name": name, "priority": priority }).to_string();
+        let api = Client::api_of(&self.base);
+        self.send_as(
+            Some("PATCH"),
+            api.fields_path(),
+            Some(&body),
+            T_PATCH,
+            CAP_PATCH,
+        )
+        .map(drop)
     }
 
     /// One call through the proxy with the account's own token
