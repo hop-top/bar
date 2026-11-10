@@ -259,7 +259,6 @@ pub const LABEL: &str = "RL";
 /// items. The first item carries the mark; every item carries the toggle's
 /// tokens, an item with a `link` keeps it. Hidden when the instance is not
 /// drivable.
-#[allow(clippy::cognitive_complexity)] // over the threshold; split when next touched
 pub fn output(s: &Snapshot, inst: &Instance, now: i64, o: &Opts, model_id: &str) -> Output {
     if s.cache.problem.is_some() || (s.status == Status::Off) {
         return Output::hidden();
@@ -312,92 +311,138 @@ pub fn output(s: &Snapshot, inst: &Instance, now: i64, o: &Opts, model_id: &str)
             ..Default::default()
         };
     }
-    let state_style = match w {
-        "on" => "good",
-        "off" => "dim",
-        _ => "bad",
-    };
-    let state_style = if dim { "dim" } else { state_style };
-    let state_text = match w {
-        "on" => "on",
-        "off" => "off",
-        _ => "on \u{2717}",
-    };
     let known = session_alias
         .as_deref()
         .and_then(|a| destination(s, a).map(|d| (a, d)));
     let mut items = Vec::new();
     if o.state || known.is_none() {
-        items.push(tokened(Output::styled(
-            &format!("{state_text}{mark}"),
-            state_style,
-        )));
+        items.push(tokened(state_item(w, dim, mark)));
     }
     if let Some((alias, dest)) = known {
-        let tier = s
-            .cache
-            .entry
-            .as_ref()
-            .and_then(|e| {
-                e.aliases
-                    .iter()
-                    .find(|a| a.alias.eq_ignore_ascii_case(alias))
-            })
-            .map(|a| a.tier.clone())
-            .unwrap_or_default();
-        let link = o.link.as_deref().map(|t| expand(t, inst, alias, &tier));
-        let named = o.alias && o.label && !o.compact;
-        let (text, style) = match (&dest, o.tier) {
-            (Dest::Router(_), true) if named => (format!("{alias}[{tier}]"), "good"),
-            (Dest::Router(_), true) => (tier.clone(), "good"),
-            (Dest::Down, true) if named => (format!("{alias}[{tier}]"), "bad"),
-            (Dest::Down, true) => (tier.clone(), "bad"),
-            (Dest::Frontier(m), true) => (format!("{tier}[{m}]"), "dim"),
-            (Dest::Blocked, true) => (format!("{tier}[\u{2717}]"), "bad"),
-            (d, false) => (
-                alias.to_string(),
-                match d {
-                    Dest::Router(_) => "good",
-                    Dest::Frontier(_) => "dim",
-                    _ => "bad",
-                },
-            ),
+        let at = Draw {
+            s,
+            inst,
+            o,
+            dim,
+            mark,
         };
-        if (o.alias && o.label && !o.compact) || o.tier {
-            let style = if dim { "dim" } else { style };
-            let mut it = tokened(Output::styled(&format!("{text}{mark}"), style));
-            it.link = link.clone();
-            items.push(it);
-        }
-        if o.marker {
-            if let Dest::Router(t) = &dest {
-                let m = if inst.local_tiers.iter().any(|l| l == t) {
-                    "\u{2302}"
-                } else {
-                    "\u{2601}"
-                };
-                let mut it = Output::text(m);
-                it.link = link.clone();
-                if dim {
-                    it.style = Some("dim".into());
-                }
-                items.push(it);
-            }
-        }
-        if o.caps {
-            let t = s.cache.tiers.iter().find(|t| t.id == tier);
-            if let Some(c) = t.map(caps_text).filter(|c| !c.is_empty()) {
-                let mut it = Output::styled(&c, "dim");
-                it.link = link;
-                items.push(it);
-            }
-        }
+        alias_items(&at, alias, &dest, &tokens, &mut items);
     }
     if items.is_empty() {
         // nothing selected to draw
         return Output::hidden();
     }
     finish(items)
+}
+
+/// The state word, coloured by state (`dim` while stale).
+fn state_item(w: &str, dim: bool, mark: &str) -> Output {
+    let style = match w {
+        "on" => "good",
+        "off" => "dim",
+        _ => "bad",
+    };
+    let style = if dim { "dim" } else { style };
+    let text = match w {
+        "on" => "on",
+        "off" => "off",
+        _ => "on \u{2717}",
+    };
+    Output::styled(&format!("{text}{mark}"), style)
+}
+
+/// What one render draws with: the snapshot, the instance, the options and
+/// the staleness already decided.
+struct Draw<'a> {
+    s: &'a Snapshot,
+    inst: &'a Instance,
+    o: &'a Opts,
+    dim: bool,
+    mark: &'a str,
+}
+
+/// The items for a session on a known alias: its text (with the toggle's
+/// tokens), the marker and the caps, each carrying the link.
+fn alias_items(
+    at: &Draw,
+    alias: &str,
+    dest: &Dest,
+    tokens: &BTreeMap<String, String>,
+    items: &mut Vec<Output>,
+) {
+    let (s, o) = (at.s, at.o);
+    let tier = s
+        .cache
+        .entry
+        .as_ref()
+        .and_then(|e| {
+            e.aliases
+                .iter()
+                .find(|a| a.alias.eq_ignore_ascii_case(alias))
+        })
+        .map(|a| a.tier.clone())
+        .unwrap_or_default();
+    let link = o.link.as_deref().map(|t| expand(t, at.inst, alias, &tier));
+    let named = o.alias && o.label && !o.compact;
+    if named || o.tier {
+        let (text, style) = alias_text(alias, &tier, dest, named, o.tier);
+        let style = if at.dim { "dim" } else { style };
+        let mut it = Output::styled(&format!("{text}{}", at.mark), style);
+        it.tokens = tokens.clone();
+        it.link = link.clone();
+        items.push(it);
+    }
+    if o.marker {
+        if let Dest::Router(t) = dest {
+            let m = if at.inst.local_tiers.iter().any(|l| l == t) {
+                "\u{2302}"
+            } else {
+                "\u{2601}"
+            };
+            let mut it = Output::text(m);
+            it.link = link.clone();
+            if at.dim {
+                it.style = Some("dim".into());
+            }
+            items.push(it);
+        }
+    }
+    if o.caps {
+        let t = s.cache.tiers.iter().find(|t| t.id == tier);
+        if let Some(c) = t.map(caps_text).filter(|c| !c.is_empty()) {
+            let mut it = Output::styled(&c, "dim");
+            it.link = link;
+            items.push(it);
+        }
+    }
+}
+
+/// `alias[tier]` (or the tier alone when the alias is not drawn) while
+/// routing is on, `tier[model]` while off, `tier[✗]` for a refused alias,
+/// the alias alone without `tier`; with the state colour.
+fn alias_text(
+    alias: &str,
+    tier: &str,
+    dest: &Dest,
+    named: bool,
+    show_tier: bool,
+) -> (String, &'static str) {
+    match (dest, show_tier) {
+        (Dest::Router(_), true) if named => (format!("{alias}[{tier}]"), "good"),
+        (Dest::Router(_), true) => (tier.to_string(), "good"),
+        (Dest::Down, true) if named => (format!("{alias}[{tier}]"), "bad"),
+        (Dest::Down, true) => (tier.to_string(), "bad"),
+        (Dest::Frontier(m), true) => (format!("{tier}[{m}]"), "dim"),
+        (Dest::Blocked, true) => (format!("{tier}[\u{2717}]"), "bad"),
+        (d, false) => (
+            alias.to_string(),
+            match d {
+                Dest::Router(_) => "good",
+                Dest::Frontier(_) => "dim",
+                _ => "bad",
+            },
+        ),
+    }
 }
 
 fn caps_text(t: &crate::cache::Tier) -> String {
