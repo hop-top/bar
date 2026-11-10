@@ -38,6 +38,7 @@ Any executable named `bar-<name>` on `PATH` (on Windows `bar-<name>.exe`, `.cmd`
 | `description` | Optional string, shown by `bar plugin list`. |
 | `options` | Allowed options; keys, choices and string defaults are sanitised like `text`. Types: `int` (sent as a JSON integer), `string`, `bool` (written `true`/`yes`/`on`/`1` or `false`/`no`/`off`/`0`, sent as JSON `true`/`false`), `enum` (with `enum` choices, sent as the string). `default` fills a missing option when it fits the type. Options of unknown type are dropped. `icon`, `bg`, `fg`, `bold`, `gradient` and `click` are reserved: declared, they are dropped and `bar check` warns. |
 | `icon` | Optional default segment icon, used when `set icons` is not `none`. Sanitised; at most 2 cells. |
+| `inputs` | Optional. What the output depends on besides options: `{"env": ["ANTHROPIC_BASE_URL"], "session": ["model_id"]}`. Each declared value is part of the cache key, and the declared environment variables are sent as `env` in the render input. `env`: up to 8 names of `[A-Z0-9_]`, at most 64 characters; a name containing `KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `CREDENTIAL` or `AUTH` is refused, since values go into the cache key and the refresh process's arguments (a plugin that needs a secret reads its own environment, which it inherits); values longer than 1 KiB count as unset. `session`: any of `cwd`, `model`, `model_id`, `effort`, `session_id`; the volatile fields (`context_used`, `five_hour`, `seven_day`) cannot be declared, they would split the cache on every render. |
 | `timeout` | Optional. Limit for the background render, a number of seconds or a duration (`8s`), clamped to 1 to 15 s. Default 3 s; zero or unparsable means the default. |
 | `ttl` | How long a render result stays fresh: seconds (`300`) or a duration (`90s`, `5m`, `1h`, `1d`). Default 60 s; zero or unparsable means the default. |
 | `cache` | Optional. `"session"`: the output depends on the Claude Code session, so results are cached per session id and the render input carries `session.record`. Any other value or none: shared across sessions. |
@@ -90,7 +91,8 @@ The web configurator runs bar's renderer in the browser, where no plugin can run
   },
   "columns": 160,
   "config": { "org": "…", "keychain": "entry-name" },
-  "toggles": { "scope": true }
+  "toggles": { "scope": true },
+  "env": { "ANTHROPIC_BASE_URL": "http://127.0.0.1:8317" }
 }
 ```
 
@@ -98,6 +100,7 @@ The web configurator runs bar's renderer in the browser, where no plugin can run
 - `session`: fields of the statusline JSON. `cwd` is `workspace.current_dir`, else `cwd`; `model` is `model.display_name`, else `model.id`; `model_id` is `model.id`; `effort` is `effort.level`; `context_used` is `context_window.used_percentage` (`null` when absent); `five_hour` / `seven_day` are `rate_limits.five_hour` / `rate_limits.seven_day` (`null` when absent). Missing strings are `""`.
 - `show`, `alt` and `checks` are list options for every placeholder, plugins included: a bare part after one continues its comma list, so `#{name[show=a,b]}` sends `show` as `a,b`, and `#{name[show=a,verbose]}` sends `show` as `a,verbose` rather than a separate `verbose` flag. Avoid those names for other kinds of option, or expect a comma list; put flags before them.
 - `config`: the plugin's own `plugin <name> k=v` line, as strings, without `ttl`. Nothing else from the config or the environment goes in; secrets stay in the keychain, and config holds only entry names.
+- `env`: only for plugins declaring `inputs.env`: the declared variables that are set, as strings; unset ones are absent. The key is absent without a declaration.
 - `columns`: `COLUMNS`, or `null`.
 - `toggles`: the plugin's named toggles that are on, from `bar toggle <name>.<toggle>` (see `label_toggle` below); an off toggle is absent, and only this plugin's keys are sent. They are part of the cache key, so a flip is a new entry: it shows at the next render once the plugin has run for it (the first render after a flip is empty until then, a flip back is immediate while the old entry is cached).
 - `session.record`: only for plugins declaring `"cache": "session"`, and only when the state directory holds `records/<name>/<session id>` (a JSON object, at most 4 KiB), written by `bar click hook`. Today the hook writes one for `tlc` only (see [Hooks](config.md#hooks)). Absent otherwise.
@@ -124,7 +127,7 @@ Stdout is one JSON object:
 
 ## Caching and failure
 
-- Results are cached per plugin, working directory (`session.cwd`), options and `plugin` line, plus session id and `session.record` for plugins declaring `"cache": "session"` (a new record is a new entry, so it shows at the next refresh); other session data does not split the cache. Results are refreshed in the background once older than `ttl`; `plugin <name> ttl=5m` overrides the plugin's value, and `set refresh` is the floor.
+- Results are cached per plugin, working directory (`session.cwd`), options and `plugin` line, plus session id and `session.record` for plugins declaring `"cache": "session"` (a new record is a new entry, so it shows at the next refresh), plus the values of declared `inputs`; other session data does not split the cache. Results are refreshed in the background once older than `ttl`; `plugin <name> ttl=5m` overrides the plugin's value, and `set refresh` is the floor.
 - A render never waits on a plugin. Timeouts kill the plugin's whole process group.
 - Non-zero exit, timeout or output that does not parse keeps the last good value and backs off for a minute; with nothing cached the segment is omitted.
 

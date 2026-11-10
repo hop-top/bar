@@ -92,17 +92,35 @@ pub fn plan(ctx: &Ctx, found: &Found, info: &ExtInfo, opts: &Options) -> Option<
         let rec = record.as_ref().map_or(String::new(), |r| r.to_string());
         scope = format!("{scope}:{}:{}", hash_hex(sid), hash_hex(&rec));
     }
+    // declared inputs: part of the key, so two base URLs or models in one
+    // directory do not share an entry
+    let session = session_json(ctx.session, record);
+    let env = info.inputs.env_values(&|n| std::env::var(n).ok());
+    let declared = if info.inputs.is_empty() {
+        String::new()
+    } else {
+        let picked: Map<String, Value> = info
+            .inputs
+            .session
+            .iter()
+            .map(|k| (k.clone(), session[k.as_str()].clone()))
+            .collect();
+        format!(":{}", json!({"env": env, "session": picked}))
+    };
     let key = format!(
-        "plugin:{}:{path}:{scope}:{options}:{config}:{toggles}",
+        "plugin:{}:{path}:{scope}:{options}:{config}:{toggles}{declared}",
         found.name
     );
-    let input = json!({
+    let mut input = json!({
         "options": options,
-        "session": session_json(ctx.session, record),
+        "session": session,
         "columns": ctx.columns,
         "config": config,
         "toggles": toggles,
     });
+    if !info.inputs.env.is_empty() {
+        input["env"] = Value::Object(env);
+    }
     Some(Plan {
         key,
         job: Job::PluginRender {

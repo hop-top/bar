@@ -11,8 +11,8 @@ use std::time::Duration;
 
 pub use discover::{discover, find, path_dirs, plugin_dirs, plugin_dirs_with, Found};
 pub use info::{
-    cached_info, info, info_job, info_now, parse_info, validate, ExtInfo, OptSpec, OptType,
-    RESERVED,
+    cached_info, env_secret, info, info_job, info_now, parse_info, validate, ExtInfo, Inputs,
+    OptSpec, OptType, MAX_ENV_INPUTS, MAX_ENV_VALUE, RESERVED, SESSION_INPUTS,
 };
 pub use render::{
     paint, paint_with, parse_output, plan, render, render_found, render_found_with, Metric, Output,
