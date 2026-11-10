@@ -98,7 +98,7 @@ pub fn plugin(info: Option<&ExtInfo>) -> Vec<Opt> {
         .map(|(k, spec)| {
             let kind = match spec.kind {
                 OptType::Int => Kind::Int { min: 0 },
-                OptType::String | OptType::List => Kind::Text,
+                OptType::String => Kind::Text,
                 OptType::Bool => Kind::Choice(owned(&["true", "false"])),
                 OptType::Enum => Kind::Choice(spec.choices.clone()),
             };
