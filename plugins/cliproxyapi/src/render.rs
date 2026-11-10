@@ -19,7 +19,9 @@ pub fn ext_info() -> ExtInfo {
     options.insert("label".into(), OptSpec::choice(&["name", "index"], "name"));
     ExtInfo {
         name: NAME.into(),
-        version: env!("CARGO_PKG_VERSION").into(),
+        version: option_env!("BAR_RELEASE_VERSION")
+            .unwrap_or(env!("CARGO_PKG_VERSION"))
+            .into(),
         description: "Per-account quota of a CLIProxyAPI proxy".into(),
         capabilities: vec!["discover".into(), "placeholder".into(), "check".into()],
         options,
