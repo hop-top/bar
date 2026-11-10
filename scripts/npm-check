@@ -27,16 +27,18 @@ printf '#!/bin/sh\necho "fake bar $*"\ncat\nexit 3\n' > "$tmp/fake/bar"
 cp "$tmp/fake/bar" "$tmp/fake/bar.exe"
 cp "$tmp/fake/bar" "$tmp/fake/bar-cliproxyapi"
 cp "$tmp/fake/bar" "$tmp/fake/bar-cliproxyapi.exe"
-chmod 755 "$tmp/fake/bar" "$tmp/fake/bar-cliproxyapi"
+cp "$tmp/fake/bar" "$tmp/fake/bar-routellm"
+cp "$tmp/fake/bar" "$tmp/fake/bar-routellm.exe"
+chmod 755 "$tmp/fake/bar" "$tmp/fake/bar-cliproxyapi" "$tmp/fake/bar-routellm"
 sha() { python3 -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest(), sys.argv[1].rsplit("/",1)[-1])' "$1"; }
 for t in aarch64-apple-darwin x86_64-apple-darwin aarch64-unknown-linux-musl x86_64-unknown-linux-musl; do
   a="$tmp/assets/bar-$version-$t.tar.gz"
-  tar -czf "$a" -C "$tmp/fake" bar bar-cliproxyapi
+  tar -czf "$a" -C "$tmp/fake" bar bar-cliproxyapi bar-routellm
   sha "$a" > "$a.sha256"
 done
 for t in aarch64-pc-windows-msvc x86_64-pc-windows-msvc; do
   a="$tmp/assets/bar-$version-$t.zip"
-  python3 -c 'import sys,zipfile;z=zipfile.ZipFile(sys.argv[1],"w");[z.write(sys.argv[2]+"/"+n,n) for n in ("bar.exe","bar-cliproxyapi.exe")];z.close()' "$a" "$tmp/fake"
+  python3 -c 'import sys,zipfile;z=zipfile.ZipFile(sys.argv[1],"w");[z.write(sys.argv[2]+"/"+n,n) for n in ("bar.exe","bar-cliproxyapi.exe","bar-routellm.exe")];z.close()' "$a" "$tmp/fake"
   sha "$a" > "$a.sha256"
 done
 
@@ -58,6 +60,14 @@ cp "$tmp/noplug/a.tar.gz" "$tmp/noplug/bar-$version-x86_64-unknown-linux-musl.ta
 sha "$tmp/noplug/bar-$version-x86_64-unknown-linux-musl.tar.gz" > "$tmp/noplug/bar-$version-x86_64-unknown-linux-musl.tar.gz.sha256"
 if "$root/scripts/npm-stage" "$version" "$tmp/noplug" "$tmp/noplug-stage" 2>/dev/null; then
   fail "an archive without bar-cliproxyapi was not refused"
+fi
+# An archive without bar-routellm is refused.
+mkdir -p "$tmp/norl"
+cp "$tmp/assets/"* "$tmp/norl/"
+tar -czf "$tmp/norl/bar-$version-x86_64-unknown-linux-musl.tar.gz" -C "$tmp/fake" bar bar-cliproxyapi
+sha "$tmp/norl/bar-$version-x86_64-unknown-linux-musl.tar.gz" > "$tmp/norl/bar-$version-x86_64-unknown-linux-musl.tar.gz.sha256"
+if "$root/scripts/npm-stage" "$version" "$tmp/norl" "$tmp/norl-stage" 2>/dev/null; then
+  fail "an archive without bar-routellm was not refused"
 fi
 # A version that differs from the package.json files is refused.
 if "$root/scripts/npm-stage" "0.0.0-x" "$tmp/assets" "$tmp/bad-stage2" 2>/dev/null; then
@@ -82,9 +92,13 @@ tar -tzvf "$tmp/packs/hop-top-bar-$host-$version.tgz" | grep -Eq '^-rwx.* packag
   || fail "bar-$host: bin/bar is not packed executable"
 tar -tzvf "$tmp/packs/hop-top-bar-$host-$version.tgz" | grep -Eq '^-rwx.* package/bin/bar-cliproxyapi$' \
   || fail "bar-$host: bin/bar-cliproxyapi is not packed executable"
+tar -tzvf "$tmp/packs/hop-top-bar-$host-$version.tgz" | grep -Eq '^-rwx.* package/bin/bar-routellm$' \
+  || fail "bar-$host: bin/bar-routellm is not packed executable"
 for p in win32-arm64 win32-x64; do
   tar -tzf "$tmp/packs/hop-top-bar-$p-$version.tgz" | grep -qx 'package/bin/bar-cliproxyapi.exe' \
     || fail "bar-$p: bin/bar-cliproxyapi.exe not packed"
+  tar -tzf "$tmp/packs/hop-top-bar-$p-$version.tgz" | grep -qx 'package/bin/bar-routellm.exe' \
+    || fail "bar-$p: bin/bar-routellm.exe not packed"
 done
 tar -tzf "$tmp/packs/hop-top-bar-$version.tgz" | grep -qx 'package/bin/bar.js' \
   || fail "launcher: bin/bar.js not packed"
