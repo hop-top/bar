@@ -64,7 +64,7 @@ pub fn ext_info() -> ExtInfo {
             session: vec!["model_id".into(), "model".into()],
         }),
         timeout: Some("15s".into()),
-        actions: Default::default(),
+        actions: crate::switch::actions(),
         web: Some(serde_json::json!({
             "category": "usage",
             "samples": [

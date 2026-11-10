@@ -141,3 +141,53 @@ fn serve(mut s: TcpStream, h: &Handler, log: &Mutex<Vec<Rec>>) {
     let _ = s.write_all(out.as_bytes());
     let _ = s.write_all(r.body.as_bytes());
 }
+
+/// A management server that keeps its credentials: `GET credentials`
+/// lists them, `PATCH credentials/fields` sets `priority` by `name` (and
+/// persists it for the next listing). `key` is the only accepted bearer.
+pub fn pool(files: serde_json::Value, key: &str) -> (Server, Arc<Mutex<serde_json::Value>>) {
+    let state = Arc::new(Mutex::new(files));
+    let (st, want) = (
+        state.clone(),
+        format!("bearer {}", key.to_ascii_lowercase()),
+    );
+    let server = Server::start(move |r| {
+        if r.auth != want {
+            return status(401);
+        }
+        let mut files = st.lock().unwrap();
+        match (r.method.as_str(), r.path.as_str()) {
+            ("GET", "/v8/management/credentials") => {
+                ok(serde_json::json!({"files": *files}).to_string())
+            }
+            ("PATCH", "/v8/management/credentials/fields") => {
+                let b: serde_json::Value = serde_json::from_str(&r.body).unwrap_or_default();
+                let hit = files
+                    .as_array_mut()
+                    .and_then(|a| a.iter_mut().find(|f| f["name"] == b["name"]));
+                match (hit, b["priority"].as_i64()) {
+                    (Some(f), Some(p)) => {
+                        f["priority"] = p.into();
+                        ok(r#"{"status":"ok"}"#)
+                    }
+                    _ => status(404),
+                }
+            }
+            _ => status(404),
+        }
+    });
+    (server, state)
+}
+
+impl Server {
+    /// Requests that changed something.
+    pub fn patches(&self) -> Vec<Rec> {
+        self.log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.method == "PATCH")
+            .cloned()
+            .collect()
+    }
+}

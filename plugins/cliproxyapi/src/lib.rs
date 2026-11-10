@@ -8,3 +8,4 @@ pub mod mgmt;
 pub mod model;
 pub mod pool;
 pub mod render;
+pub mod switch;
