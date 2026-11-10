@@ -423,3 +423,201 @@ fn a_hand_edit_between_switches_becomes_the_priority_a_reset_restores() {
     h.run(&conf, &["use", "--reset", "alice"], "");
     assert_eq!(prio(&st.lock().unwrap(), "a"), 1);
 }
+
+// --- next, next-soon, pick ---
+
+/// A claude account with a 7d window: `left` percent left, resetting in
+/// `resets_in` seconds from now (the listing's passive headers).
+fn quota(name: &str, left: u32, resets_in: i64, priority: Option<i64>) -> Value {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let mut v = cred(name, "claude", &format!("{name}@corp.test"), priority);
+    v["quota"] = json!({"signals":{
+        "Anthropic-Ratelimit-Unified-7d-Utilization": format!("{}", (100 - left) as f64 / 100.0),
+        "Anthropic-Ratelimit-Unified-7d-Reset": (now + resets_in).to_string()}});
+    v
+}
+
+fn quota_fleet() -> Value {
+    json!([
+        quota("a", 20, 100_000, Some(5)), // the proxy's preferred account
+        quota("b", 90, 500_000, None),
+        quota("c", 85, 3_000, None),
+        quota("d", 40, 1_000, None),
+        cred("e", "claude", "e@corp.test", None), // unread
+    ])
+}
+
+#[test]
+fn next_switches_to_the_account_with_the_most_left() {
+    let (s, st) = pool(quota_fleet(), KEY);
+    let h = Home::new("next");
+    let conf = h.conf(&[s.origin()]);
+    let o = h.run(&conf, &["use", "--next", "--provider", "claude"], "");
+    assert!(o.status.success(), "{}", err(&o));
+    assert!(
+        text(&o).starts_with("most-left: b (claude), 90% left"),
+        "{}",
+        text(&o)
+    );
+    assert_eq!(prio(&st.lock().unwrap(), "b"), 6);
+    assert_eq!(s.patches().len(), 1);
+}
+
+#[test]
+fn next_soon_prefers_the_sooner_reset_among_the_most_left() {
+    let (s, st) = pool(quota_fleet(), KEY);
+    let h = Home::new("nextsoon");
+    let conf = h.conf(&[s.origin()]);
+    // b has 90 left and c 85 (inside the 10-point band): c resets first
+    let o = h.run(
+        &conf,
+        &[
+            "use",
+            "--next",
+            "--strategy",
+            "soonest-reset",
+            "--provider",
+            "claude",
+        ],
+        "",
+    );
+    assert!(o.status.success(), "{}", err(&o));
+    assert!(
+        text(&o).starts_with("soonest-reset: c (claude), 85% left"),
+        "{}",
+        text(&o)
+    );
+    assert_eq!(prio(&st.lock().unwrap(), "c"), 6);
+}
+
+#[test]
+fn next_refuses_without_a_provider_when_two_are_read_and_without_quota() {
+    let (s, _st) = pool(fleet(), KEY);
+    let h = Home::new("nextrefuse");
+    let conf = h.conf(&[s.origin()]);
+    let o = h.run(&conf, &["use", "--next"], "");
+    assert_eq!(o.status.code(), Some(1));
+    assert!(err(&o).contains("--provider"), "{}", err(&o));
+    // accounts with no data are never picked blindly
+    let o = h.run(&conf, &["use", "--next", "--provider", "claude"], "");
+    assert_eq!(o.status.code(), Some(1));
+    assert!(err(&o).contains("quota left"), "{}", err(&o));
+    assert!(s.patches().is_empty());
+    let o = h.run(&conf, &["use", "--next", "--strategy", "nope"], "");
+    assert_eq!(o.status.code(), Some(2));
+}
+
+#[test]
+fn pick_without_a_terminal_lists_the_ranking_and_changes_nothing() {
+    let (s, _st) = pool(quota_fleet(), KEY);
+    let h = Home::new("picklist");
+    let conf = h.conf(&[s.origin()]);
+    let o = h.run(&conf, &["pick", "--provider", "claude"], "");
+    assert!(o.status.success(), "{}", err(&o));
+    let t = text(&o);
+    let lines: Vec<&str> = t.lines().collect();
+    assert_eq!(lines.len(), 5, "{t}");
+    // best first; the preferred account is marked; the unread one is last
+    assert!(
+        lines[0].contains(" b ") && lines[0].contains("90% left") && lines[0].contains("7d"),
+        "{t}"
+    );
+    assert!(lines[0].contains('\u{21BB}'), "{t}");
+    assert!(lines[1].contains(" c "), "{t}");
+    assert!(lines[3].contains('*') && lines[3].contains(" a "), "{t}");
+    assert!(
+        lines[4].contains(" e ") && lines[4].contains("no data"),
+        "{t}"
+    );
+    assert!(s.patches().is_empty());
+    assert!(!t.contains("corp.test"));
+    // the strategy changes the order
+    let o = h.run(
+        &conf,
+        &[
+            "pick",
+            "--provider",
+            "claude",
+            "--strategy",
+            "soonest-reset",
+        ],
+        "",
+    );
+    assert!(
+        text(&o).lines().next().unwrap().contains(" c "),
+        "{}",
+        text(&o)
+    );
+}
+
+#[test]
+fn pick_on_a_terminal_switches_to_the_number_asked_for() {
+    use bar_cliproxyapi::{config, rank::Strategy, switch};
+    use bar_plugin::secret::Secret;
+    let (s, st) = pool(quota_fleet(), KEY);
+    let h = Home::new("pickask");
+    let mut cfg = config::parse(&format!("instance {}\n key-file /k\n", s.origin()), None);
+    let inst = cfg.instances.remove(0);
+    let key = Secret::new(KEY.as_bytes().to_vec());
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let state = h.0.join("state");
+    let ask = |input: &str| {
+        let live = switch::connect(&inst, &key, &state, now).unwrap();
+        let mut reader = std::io::Cursor::new(input.to_string());
+        let mut out = Vec::new();
+        switch::run_pick(
+            &live,
+            Some("claude"),
+            Strategy::MostLeft,
+            Some(&mut reader),
+            &mut out,
+        )
+        .unwrap();
+        String::from_utf8(out).unwrap()
+    };
+    // quitting, an empty line and end of input change nothing
+    for quit in ["q\n", "\n", ""] {
+        ask(quit);
+    }
+    assert!(s.patches().is_empty());
+    // a bad answer asks again; 2 is the second row (c)
+    let out = ask("9\nx\n2\n");
+    assert!(out.contains("not a choice"), "{out}");
+    assert!(out.contains("c (claude): priority 0 -> 6"), "{out}");
+    assert_eq!(prio(&st.lock().unwrap(), "c"), 6);
+}
+
+#[test]
+fn the_next_actions_take_a_provider_and_an_instance() {
+    let (s, st) = pool(quota_fleet(), KEY);
+    let h = Home::new("nextact");
+    let conf = h.conf(&[s.origin()]);
+    let id = bar_cliproxyapi::switch::instance_id(&s.origin());
+    let call = |action: &str, tokens: Value| {
+        h.run(
+            &conf,
+            &["--action", action],
+            &json!({"action": action, "tokens": tokens}).to_string(),
+        )
+    };
+    let o = call("next-soon", json!({"provider":"claude","instance":id}));
+    assert!(o.status.success(), "{}", err(&o));
+    assert_eq!(prio(&st.lock().unwrap(), "c"), 6);
+    // a token naming no configured instance, or a malformed one, refuses
+    let o = call(
+        "next",
+        json!({"provider":"claude","instance":"0123456789abcdef"}),
+    );
+    assert_eq!(o.status.code(), Some(1));
+    let o = call("next", json!({"provider":"claude","instance":"x"}));
+    assert_eq!(o.status.code(), Some(1));
+    let o = call("next", json!({"provider":"claude"}));
+    assert_eq!(o.status.code(), Some(1));
+    assert_eq!(s.patches().len(), 1);
+}

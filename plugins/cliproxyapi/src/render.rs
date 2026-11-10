@@ -397,6 +397,11 @@ pub fn output(s: &Snapshot, provider: &str, o: &Opts, instance: &str, now: i64) 
             _ => cut(&a.label),
         }
     });
+    // what the `next` actions take, so a link can be drawn for `#{account}`
+    // even when the proxy has no single preferred account
+    out.tokens.insert("provider".into(), provider.into());
+    out.tokens
+        .insert("instance".into(), crate::switch::instance_id(instance));
     if out.items.is_empty() {
         out.text = Some(String::new());
     }

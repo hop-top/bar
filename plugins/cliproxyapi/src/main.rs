@@ -1,6 +1,6 @@
 //! `bar-cliproxyapi`: `--ext-info`, `--check`, or a render (JSON on stdin).
 
-use bar_cliproxyapi::{collect, config, render, switch};
+use bar_cliproxyapi::{collect, config, rank, render, switch};
 use bar_plugin::keysource;
 use bar_plugin::proto::{CheckReport, Output, RenderInput};
 use bar_plugin::url::Origin;
@@ -30,10 +30,12 @@ fn main() {
         ),
         Some("--action") => std::process::exit(action(std::env::args().nth(2).as_deref())),
         Some("list") => std::process::exit(cli(&std::env::args().skip(1).collect::<Vec<_>>())),
-        Some("use") => std::process::exit(cli(&std::env::args().skip(1).collect::<Vec<_>>())),
+        Some("use") | Some("pick") => {
+            std::process::exit(cli(&std::env::args().skip(1).collect::<Vec<_>>()))
+        }
         None => emit(run()),
         Some(other) => {
-            eprintln!("bar-cliproxyapi: unknown argument `{other}`");
+            eprintln!("bar cliproxyapi: unknown argument `{other}`");
             std::process::exit(2);
         }
     }
@@ -160,7 +162,7 @@ fn finish(r: Result<Vec<String>, switch::Refusal>) -> i32 {
             0
         }
         Err(e) => {
-            eprintln!("bar-cliproxyapi: {e}");
+            eprintln!("bar cliproxyapi: {e}");
             1
         }
     }
@@ -170,32 +172,36 @@ fn load_config() -> Result<config::Config, switch::Refusal> {
     config::load(&config::path()).map_err(|e| switch::Refusal(e.to_string()))
 }
 
-/// `list` and `use`: exit 0 done, 1 refused or failed, 2 bad usage.
+/// `list`, `use` and `pick`: exit 0 done, 1 refused or failed, 2 bad usage.
 fn cli(args: &[String]) -> i32 {
     let usage = |m: &str| {
-        eprintln!("bar-cliproxyapi: {m}");
-        eprintln!("usage: bar-cliproxyapi list [--provider P] [--instance URL]");
+        eprintln!("bar cliproxyapi: {m}");
+        eprintln!("usage: bar cliproxyapi list [--provider P] [--instance URL]");
         eprintln!(
-            "       bar-cliproxyapi use <account> [--provider P] [--instance URL] [--dry-run]"
+            "       bar cliproxyapi use <account> [--provider P] [--instance URL] [--dry-run]"
         );
-        eprintln!("       bar-cliproxyapi use --reset [<account>] [--instance URL] [--dry-run]");
+        eprintln!("       bar cliproxyapi use --next [--strategy most-left|soonest-reset] [--provider P] [--instance URL] [--dry-run]");
+        eprintln!("       bar cliproxyapi use --reset [<account>] [--instance URL] [--dry-run]");
+        eprintln!("       bar cliproxyapi pick [--strategy most-left|soonest-reset] [--provider P] [--instance URL]");
         2
     };
     let (mut provider, mut instance, mut reset, mut dry, mut account) =
         (None, None, false, false, None);
+    let (mut next, mut strategy) = (false, None);
     let mut it = args.iter().skip(1);
     while let Some(a) = it.next() {
         match a.as_str() {
             "--reset" => reset = true,
             "--dry-run" => dry = true,
-            "--provider" | "--instance" => {
+            "--next" => next = true,
+            "--provider" | "--instance" | "--strategy" => {
                 let Some(v) = it.next() else {
                     return usage(&format!("{a} needs a value"));
                 };
-                if a == "--provider" {
-                    provider = Some(v.clone());
-                } else {
-                    instance = Some(v.clone());
+                match a.as_str() {
+                    "--provider" => provider = Some(v.clone()),
+                    "--instance" => instance = Some(v.clone()),
+                    _ => strategy = Some(v.clone()),
                 }
             }
             s if s.starts_with("--") => return usage(&format!("unknown option `{s}`")),
@@ -203,20 +209,57 @@ fn cli(args: &[String]) -> i32 {
             _ => return usage("one account at a time"),
         }
     }
-    let is_use = args[0] == "use";
-    if !is_use && (reset || dry || account.is_some()) {
-        return usage("list takes only --provider and --instance");
+    let cmd = args[0].as_str();
+    let is_use = cmd == "use";
+    let is_pick = cmd == "pick";
+    if !is_use && (reset || dry || account.is_some() || next) {
+        return usage(&format!("{cmd} does not take that"));
     }
-    if is_use && account.is_none() && !reset {
+    if !is_use && !is_pick && strategy.is_some() {
+        return usage("list does not take --strategy");
+    }
+    if is_use && next && (reset || account.is_some()) {
+        return usage("--next takes no account and no --reset");
+    }
+    if is_use && account.is_none() && !reset && !next {
         return usage("name an account");
     }
+    if strategy.is_some() && !next && !is_pick {
+        return usage("--strategy goes with --next or pick");
+    }
+    if is_pick && account.is_some() {
+        return usage("pick takes no account");
+    }
+    let strat = match strategy
+        .as_deref()
+        .map_or(Some(rank::Strategy::MostLeft), rank::Strategy::parse)
+    {
+        Some(s) => s,
+        None => return usage("strategy is most-left or soonest-reset"),
+    };
     if let Some(p) = &provider {
         if !config::PROVIDERS.contains(&p.as_str()) {
             return usage("provider is claude or codex");
         }
     }
     finish(session(instance.as_deref(), None, |live| {
-        if is_use {
+        if is_pick {
+            use std::io::IsTerminal;
+            let tty = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+            let stdin = std::io::stdin();
+            let mut lock = stdin.lock();
+            let input: Option<&mut dyn std::io::BufRead> = tty.then_some(&mut lock);
+            switch::run_pick(
+                live,
+                provider.as_deref(),
+                strat,
+                input,
+                &mut std::io::stdout(),
+            )?;
+            Ok(vec![])
+        } else if next {
+            switch::run_next(live, provider.as_deref(), strat, dry)
+        } else if is_use {
             switch::run_use(live, account.as_deref(), provider.as_deref(), reset, dry)
         } else {
             Ok(switch::run_list(live, provider.as_deref()))
@@ -239,16 +282,38 @@ fn session(
     f(&live)
 }
 
-/// `--action use`: `{"action","tokens"}` on stdin, from a click. A token
-/// must name an account of the instance's current listing.
+/// `--action <use|next|next-soon>`: `{"action","tokens"}` on stdin, from a
+/// click. `use` names an account of the instance's current listing; the
+/// `next` actions name a provider and an instance (by its id).
 fn action(name: Option<&str>) -> i32 {
     let mut raw = String::new();
     let _ = std::io::stdin().take(1 << 16).read_to_string(&mut raw);
-    if name != Some("use") {
-        eprintln!("bar-cliproxyapi: unknown action");
-        return 2;
-    }
-    finish(switch::action_tokens(&raw).and_then(|(account, provider)| {
+    let strategy = match name {
+        Some("next") => rank::Strategy::MostLeft,
+        Some("next-soon") => rank::Strategy::SoonestReset,
+        Some("use") => return action_use(&raw),
+        _ => {
+            eprintln!("bar cliproxyapi: unknown action");
+            return 2;
+        }
+    };
+    let name = name.unwrap_or_default();
+    finish(switch::next_tokens(&raw, name).and_then(|(provider, id)| {
+        let cfg = load_config()?;
+        let inst = cfg
+            .instances
+            .iter()
+            .find(|i| switch::instance_id(&i.origin.to_string()) == id)
+            .ok_or_else(|| switch::Refusal("no such instance".into()))?;
+        let state = bar_plugin::dirs::bar_state();
+        let key = switch::key_for(inst)?;
+        let live = switch::connect(inst, &key, &state, now())?;
+        switch::run_next(&live, Some(&provider), strategy, false)
+    }))
+}
+
+fn action_use(raw: &str) -> i32 {
+    finish(switch::action_tokens(raw).and_then(|(account, provider)| {
         session(None, Some((&account, &provider)), |live| {
             // an `auth_index` only: the link carries nothing else
             let target = live
