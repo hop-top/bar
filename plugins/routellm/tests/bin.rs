@@ -98,20 +98,102 @@ impl TakeMut for Command {
     }
 }
 
+fn texts(v: &Value) -> Vec<String> {
+    v["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["text"].as_str().unwrap().to_string())
+        .collect()
+}
+
+fn render_for(h: &Home, e: &Env, model: &str, options: Value) -> Value {
+    let input = json!({"options":options,"session":{"model_id":model},
+        "env":{"ANTHROPIC_BASE_URL": e.proxy.server.origin()}})
+    .to_string();
+    out_json(&feed(h.cmd(), &input))
+}
+
 #[test]
 fn render_shows_the_state_and_what_a_click_does() {
     let e = Env::new("render", false, healthy(), 1000);
     let h = Home::new("render", &e);
     let input = json!({"env":{"ANTHROPIC_BASE_URL": e.proxy.server.origin()}}).to_string();
     let v = out_json(&feed(h.cmd(), &input));
-    assert_eq!(v["text"], "RL on");
-    assert_eq!(v["style"], "good");
+    assert_eq!(texts(&v), ["RL on"]);
+    assert_eq!(v["items"][0]["style"], "good");
+    assert_eq!(v["items"][0]["tokens"]["to"], "off");
     assert_eq!(v["tokens"]["to"], "off");
+    assert!(v["tokens"]["instance"].is_string());
     // a session on another base URL: hidden, no request
     let n = e.proxy.server.count();
     let other = json!({"env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:1"}}).to_string();
     assert_eq!(out_json(&feed(h.cmd(), &other))["text"], "");
     assert_eq!(e.proxy.server.count(), n);
+}
+
+#[test]
+fn a_routed_session_shows_alias_tier_and_where_off_sends_it() {
+    let e = Env::new("routed", false, healthy(), 1000);
+    let h = Home::new("routed", &e);
+    // ON: the alias, its tier, the declared marker, the tier's capabilities
+    let v = render_for(
+        &h,
+        &e,
+        "route-auto",
+        json!({"show":"state,alias,tier,caps"}),
+    );
+    assert_eq!(
+        texts(&v),
+        ["RL on", "route-auto", "auto \u{2601}", "vis tools 200k"]
+    );
+    let v = render_for(&h, &e, "route-private", json!({}));
+    assert_eq!(texts(&v), ["RL on", "route-private", "private \u{2302}"]);
+    // a model that is no alias: the state alone, and `routed` hides it
+    assert_eq!(
+        texts(&render_for(&h, &e, "claude-opus-4", json!({}))),
+        ["RL on"]
+    );
+    assert_eq!(
+        render_for(&h, &e, "claude-opus-4", json!({"routed":true}))["text"],
+        ""
+    );
+    // OFF: the frontier model the alias maps to, and a private alias with no row
+    let o = feed(h.cmd().arg("off").take_mut(), "");
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let v = render_for(&h, &e, "route-auto", json!({}));
+    assert_eq!(
+        texts(&v),
+        ["RL off", "route-auto", "auto \u{2192} sonnet-5-5"]
+    );
+    assert_eq!(v["items"][0]["tokens"]["to"], "on");
+    let v = render_for(&h, &e, "route-private", json!({}));
+    assert_eq!(texts(&v), ["RL off", "route-private", "private \u{2717}"]);
+    assert_eq!(v["items"][2]["style"], "bad");
+    // nothing secret in any output
+    for m in ["route-auto", "route-private"] {
+        let t = render_for(&h, &e, m, json!({"show":"state,alias,tier,caps"})).to_string();
+        for secret in [fake::SECRET, fake::HEADER_SECRET, KEY] {
+            assert!(!t.contains(secret));
+        }
+    }
+}
+
+#[test]
+fn the_action_timeout_and_samples_are_declared() {
+    let e = Env::new("decl", false, healthy(), 1000);
+    let h = Home::new("decl", &e);
+    let v = out_json(&feed(h.cmd().arg("--ext-info").take_mut(), ""));
+    for a in ["toggle", "on", "off"] {
+        assert_eq!(v["actions"][a]["timeout"], 30, "{a}");
+        assert_eq!(v["actions"][a]["tokens"], json!(["instance", "to"]));
+    }
+    for o in [
+        "show", "label", "compact", "stale", "link", "routed", "base-url",
+    ] {
+        assert!(v["options"][o].is_object(), "{o}");
+    }
+    assert_eq!(v["web"]["samples"].as_array().unwrap().len(), 3);
 }
 
 #[test]
