@@ -1,0 +1,64 @@
+name: Quality
+
+# `make quality`: known vulnerabilities, licenses, unused dependencies, a
+# coverage floor and copy-paste. Advisories land without a code change, so
+# it also runs weekly. `make mutation` runs weekly, report-only.
+on:
+  pull_request:
+  push:
+    branches: [main, next]
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Quality gates
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Toolchain
+        run: rustup toolchain install stable --profile minimal --component llvm-tools-preview && rustup default stable
+      - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
+        with:
+          install: true
+          cache: true
+      - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+      - name: Setup
+        run: mise exec -- make setup
+      - name: make quality
+        run: mise exec -- make quality
+
+  mutation:
+    name: Mutation testing (report-only)
+    # Too slow for every PR. A surviving mutant is a missing assertion to
+    # write, not a red build.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    continue-on-error: true
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Toolchain
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
+        with:
+          install: true
+          cache: true
+      - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+      - name: Setup
+        run: mise exec -- make setup
+      - name: make mutation
+        run: mise exec -- make mutation
+      - name: Report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mutants
+          path: mutants.out
