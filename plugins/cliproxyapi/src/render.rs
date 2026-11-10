@@ -30,7 +30,7 @@ pub fn ext_info() -> ExtInfo {
     o.insert("count".into(), OptSpec::choice(&["left", "used"], "left"));
     o.insert(
         "label".into(),
-        OptSpec::choice(&["alias", "local", "index", "none"], "alias"),
+        OptSpec::choice(&["alias", "index", "none"], "alias"),
     );
     o.insert(
         "sort".into(),
@@ -50,9 +50,7 @@ pub fn ext_info() -> ExtInfo {
     o.insert("base-url".into(), OptSpec::string());
     ExtInfo {
         name: NAME.into(),
-        version: option_env!("BAR_RELEASE_VERSION")
-            .unwrap_or(env!("CARGO_PKG_VERSION"))
-            .into(),
+        version: crate::VERSION.into(),
         description: "Per-account quota of a CLIProxyAPI proxy".into(),
         capabilities: vec!["discover".into(), "placeholder".into(), "check".into()],
         options: o,
@@ -102,7 +100,6 @@ pub fn countdown(secs: i64) -> String {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LabelMode {
     Alias,
-    Local,
     Index,
     Nothing,
 }
@@ -194,7 +191,6 @@ impl Opts {
         }
         o.used = i.opt_str("count") == Some("used");
         o.label = match i.opt_str("label") {
-            Some("local") => LabelMode::Local,
             Some("index") => LabelMode::Index,
             Some("none") => LabelMode::Nothing,
             _ => LabelMode::Alias,
@@ -228,24 +224,16 @@ fn cut(s: &str) -> String {
 fn label_of(a: &Acct, idx: usize, mode: LabelMode) -> Option<String> {
     match mode {
         LabelMode::Alias => Some(cut(&a.label)),
-        LabelMode::Local => Some(cut(if a.local.is_empty() {
-            &a.label
-        } else {
-            &a.local
-        })),
         LabelMode::Index => Some(format!("#{idx}")),
         LabelMode::Nothing => None,
     }
 }
 
 /// Does `a`, at position `idx`, match one entry of the `accounts` option:
-/// a position (`2` or `#2`), a label or local part (globs), or the index.
+/// a position (`2` or `#2`), a label (globs), or the index.
 fn wanted(a: &Acct, idx: usize, entry: &str) -> bool {
     let n = entry.strip_prefix('#').unwrap_or(entry);
-    n.parse::<usize>().ok() == Some(idx)
-        || glob(entry, &a.label)
-        || (!a.local.is_empty() && glob(entry, &a.local))
-        || entry == a.key
+    n.parse::<usize>().ok() == Some(idx) || glob(entry, &a.label) || entry == a.key
 }
 
 fn percent(w: &Win, used: bool) -> String {
@@ -435,7 +423,6 @@ mod tests {
             key: key.into(),
             provider: "claude".into(),
             label: label.into(),
-            local: format!("{label}-local"),
             priority: 0,
             plan: Some("max".into()),
             windows: wins,
@@ -444,6 +431,7 @@ mod tests {
             unavailable: false,
             upstream_auth: false,
             retry_at: 0,
+            fails: 0,
         }
     }
 
@@ -570,7 +558,6 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         assert_eq!(l(LabelMode::Alias), ["alice", "bob"]);
-        assert_eq!(l(LabelMode::Local), ["alice-local", "bob-local"]);
         assert_eq!(l(LabelMode::Index), ["#1", "#2"]);
         assert_eq!(l(LabelMode::Nothing), ["", ""]);
         let long = snap(vec![acct(
@@ -605,7 +592,7 @@ mod tests {
     }
 
     #[test]
-    fn the_accounts_option_picks_by_label_local_or_position() {
+    fn the_accounts_option_picks_by_label_or_position() {
         let pick = |e: &str| {
             texts(&run(
                 &two(),
@@ -620,7 +607,6 @@ mod tests {
         };
         assert_eq!(pick("alice"), ["alice"]);
         assert_eq!(pick("b*"), ["bob"]);
-        assert_eq!(pick("bob-local"), ["bob"]);
         assert_eq!(pick("2"), ["bob"]);
         assert_eq!(pick("#1"), ["alice"]);
         assert!(pick("nobody").is_empty());

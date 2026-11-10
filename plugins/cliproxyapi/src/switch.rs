@@ -12,12 +12,12 @@
 //! every call until the key changes.
 
 use crate::cache::{self, Cache};
-use crate::collect::{self, AUTH_HOLD};
+use crate::collect::{self, valid_index, AUTH_HOLD};
 use crate::config::{Config, Instance};
 use crate::mgmt::{Api, Client, MErr};
 use crate::model;
 use bar_plugin::fsio;
-use bar_plugin::keysource::{self, fingerprint};
+use bar_plugin::keysource;
 use bar_plugin::proto::ActionSpec;
 use bar_plugin::secret::Secret;
 use serde::{Deserialize, Serialize};
@@ -49,7 +49,8 @@ pub fn actions() -> BTreeMap<String, ActionSpec> {
 /// back to the proxy and is never printed.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Entry {
-    /// 1-based position in the listing (what `#n` labels count).
+    /// 1-based position among the provider's enabled accounts, as
+    /// `label=index` counts them; 0 for a disabled account.
     pub n: usize,
     pub index: String,
     pub name: String,
@@ -70,9 +71,6 @@ impl Entry {
             "active"
         }
     }
-    fn available(&self) -> bool {
-        !self.disabled && !self.unavailable
-    }
 }
 
 fn valid_name(s: &str) -> bool {
@@ -86,6 +84,7 @@ pub fn parse_entries(inst: &Instance, v: &Value) -> Vec<Entry> {
         .and_then(Value::as_array)
         .or_else(|| v.as_array());
     let mut out = Vec::new();
+    let mut count: BTreeMap<String, usize> = BTreeMap::new();
     for (i, f) in files.into_iter().flatten().enumerate() {
         let provider = f["type"]
             .as_str()
@@ -97,21 +96,29 @@ pub fn parse_entries(inst: &Instance, v: &Value) -> Vec<Entry> {
             .as_str()
             .or_else(|| f["id"].as_str())
             .unwrap_or("");
-        if !inst.providers.contains(&provider) || index.is_empty() || !valid_name(name) {
+        if !inst.providers.contains(&provider) || !valid_index(index) || !valid_name(name) {
             continue;
         }
+        let disabled = f["disabled"].as_bool().unwrap_or(false);
+        let n = if disabled {
+            0
+        } else {
+            let c = count.entry(provider.clone()).or_default();
+            *c += 1;
+            *c
+        };
         let email = ["email", "label", "account"]
             .iter()
             .find_map(|k| f[*k].as_str())
             .unwrap_or("");
         out.push(Entry {
-            n: i + 1,
+            n,
             index: index.into(),
             name: name.into(),
             provider,
             label: model::label_for(email, &inst.aliases, i + 1),
             priority: f["priority"].as_i64().unwrap_or(0),
-            disabled: f["disabled"].as_bool().unwrap_or(false),
+            disabled,
             unavailable: f["unavailable"].as_bool().unwrap_or(false),
         });
     }
@@ -133,8 +140,10 @@ fn refuse<T>(s: impl Into<String>) -> Result<T, Refusal> {
 }
 
 /// The one account `arg` names: an `auth_index`, a label (an alias or the
-/// email's local part, any case), or a position (`3` or `#3`). Several
-/// matches refuse, naming them by label and provider.
+/// email's local part, any case), or a position (`3` or `#3`) among the
+/// provider's enabled accounts, as `label=index` draws it (a position
+/// needs `provider` when the instance reads several). Several matches
+/// refuse, naming them by label and provider.
 pub fn resolve<'a>(
     list: &'a [Entry],
     arg: &str,
@@ -143,14 +152,30 @@ pub fn resolve<'a>(
     let of_provider = |e: &&Entry| provider.is_none_or(|p| e.provider == p);
     let pool: Vec<&Entry> = list.iter().filter(of_provider).collect();
     let exact: Vec<&Entry> = pool.iter().copied().filter(|e| e.index == arg).collect();
-    let found = if exact.is_empty() {
-        let pos = arg.strip_prefix('#').unwrap_or(arg).parse::<usize>().ok();
+    let pos = arg.strip_prefix('#').unwrap_or(arg).parse::<usize>().ok();
+    let found: Vec<&Entry> = if !exact.is_empty() {
+        exact
+    } else if let Some(n) = pos.filter(|n| *n > 0) {
+        let mut providers: Vec<&str> = pool
+            .iter()
+            .filter(|e| !e.disabled)
+            .map(|e| e.provider.as_str())
+            .collect();
+        providers.dedup();
+        providers.sort_unstable();
+        providers.dedup();
+        if providers.len() > 1 {
+            return refuse(format!(
+                "position {n} is per provider; add --provider ({})",
+                providers.join(" or ")
+            ));
+        }
+        pool.iter().copied().filter(|e| e.n == n).collect()
+    } else {
         pool.iter()
             .copied()
-            .filter(|e| e.label.eq_ignore_ascii_case(arg) || pos == Some(e.n))
+            .filter(|e| e.label.eq_ignore_ascii_case(arg))
             .collect()
-    } else {
-        exact
     };
     match found.as_slice() {
         [] => refuse(format!("no account `{arg}`")),
@@ -183,13 +208,15 @@ pub struct Change {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Plan {
     Set(Change),
-    /// Already above every other available account of its provider.
+    /// Already above every other enabled account of its provider.
     Already,
-    /// Nothing else of its provider is available to compete with.
+    /// Nothing else of its provider is enabled to compete with.
     Alone,
 }
 
-/// Priority one above every other available account of the provider.
+/// Priority one above every other enabled account of the provider: an
+/// account only cooling down returns after the cooldown, and must not
+/// outrank the one asked for.
 pub fn plan_use(list: &[Entry], target: &Entry) -> Result<Plan, Refusal> {
     if target.disabled {
         return refuse(format!(
@@ -199,7 +226,7 @@ pub fn plan_use(list: &[Entry], target: &Entry) -> Result<Plan, Refusal> {
     }
     let others: Vec<i64> = list
         .iter()
-        .filter(|e| e.provider == target.provider && e.index != target.index && e.available())
+        .filter(|e| e.provider == target.provider && e.index != target.index && !e.disabled)
         .map(|e| e.priority)
         .collect();
     let Some(top) = others.iter().max().copied() else {
@@ -312,6 +339,8 @@ pub struct Live<'a> {
     now: i64,
     client: Client<'a>,
     pub entries: Vec<Entry>,
+    /// Held while the instance is used: no other process calls it.
+    _lock: fsio::Lock,
 }
 
 /// Lists the instance's credentials. Makes no call when the cache says
@@ -327,15 +356,14 @@ pub fn connect<'a>(
         return refuse("no key");
     }
     let path = cache::file(state_dir, &inst.origin.to_string());
+    let Some(lock) = cache::lock(&path) else {
+        return refuse("the proxy is being used by another bar process, or the state directory is not writable; try again");
+    };
     let mut c: Cache = cache::load(&path);
-    let fp = fingerprint(key);
-    if let Some(f) = &c.auth_fail {
-        if f.fp == fp && now - f.at < AUTH_HOLD {
-            return refuse(format!(
-                "management refused the key ({}); no calls until the key changes",
-                f.status
-            ));
-        }
+    if let Some(st) = c.refusal(key, AUTH_HOLD, now) {
+        return refuse(format!(
+            "management refused the key ({st}); no calls until the key changes"
+        ));
     }
     if now < c.off_until {
         return refuse("management API is off (404); enable it in the proxy's config");
@@ -356,11 +384,12 @@ pub fn connect<'a>(
                     now,
                     client,
                     entries: parse_entries(inst, &v),
+                    _lock: lock,
                 })
             }
             Err(MErr::NotFound) => continue,
             Err(MErr::Auth(s)) => {
-                collect::stop(&path, &mut c, s, fp, now);
+                collect::stop(&path, &mut c, s, key, now);
                 return refuse(format!(
                     "management refused the key ({s}); no calls until the key changes"
                 ));
@@ -383,7 +412,7 @@ impl Live<'_> {
             Err(MErr::Auth(s)) => {
                 let path = cache::file(self.state_dir, &self.inst.origin.to_string());
                 let mut ch = cache::load(&path);
-                collect::stop(&path, &mut ch, s, fingerprint(self.key), self.now);
+                collect::stop(&path, &mut ch, s, self.key, self.now);
                 refuse(format!(
                     "management refused the key ({s}); no calls until the key changes"
                 ))
@@ -443,7 +472,9 @@ pub fn run_use(
             let mine = target.is_none_or(|o| o.index == b.index && o.provider == b.provider);
             !mine
         });
-        let _ = save_state(&path, &state);
+        if save_state(&path, &state).is_err() {
+            out.push("could not update the record of changes".into());
+        }
         return Ok(out);
     }
 
@@ -454,7 +485,7 @@ pub fn run_use(
             target.label, target.provider, target.priority
         )),
         Plan::Alone => out.push(format!(
-            "{} ({}): no other available {} account; nothing to change",
+            "{} ({}): no other enabled {} account; nothing to change",
             target.label, target.provider, target.provider
         )),
         Plan::Set(c) => {
@@ -467,27 +498,28 @@ pub fn run_use(
             }
             if !dry_run {
                 live.patch(&c)?;
-                // the oldest record of an account is what a reset restores
-                if !state
-                    .bumps
-                    .iter()
-                    .any(|b| b.index == c.index && b.provider == c.provider)
-                {
-                    state.bumps.push(Bump {
-                        index: c.index,
-                        provider: c.provider.clone(),
-                        prev: c.from,
-                        set: c.to,
-                    });
-                } else if let Some(b) = state
+                // the oldest record of an account is what a reset restores,
+                // unless the user changed the priority by hand since
+                match state
                     .bumps
                     .iter_mut()
                     .find(|b| b.index == c.index && b.provider == c.provider)
                 {
-                    b.set = c.to;
+                    Some(b) if b.set == c.from => b.set = c.to,
+                    Some(b) => (b.prev, b.set) = (c.from, c.to),
+                    None => state.bumps.push(Bump {
+                        index: c.index.clone(),
+                        provider: c.provider.clone(),
+                        prev: c.from,
+                        set: c.to,
+                    }),
                 }
                 state.bumps.truncate(MAX_BUMPS);
-                let _ = save_state(&path, &state);
+                if save_state(&path, &state).is_err() {
+                    out.push(
+                        "could not record the previous priority; --reset cannot restore it".into(),
+                    );
+                }
             }
         }
     }
@@ -605,7 +637,7 @@ mod tests {
     }
 
     #[test]
-    fn priority_beats_the_best_other_available_account() {
+    fn priority_beats_the_best_other_enabled_account() {
         let mut l = vec![
             e(1, "a", "claude", "alice", 0),
             e(2, "b", "claude", "bob", 2),
@@ -617,8 +649,14 @@ mod tests {
         };
         // another provider's priority is irrelevant
         assert_eq!((c.from, c.to), (0, 6));
-        // an unavailable or disabled rival is not competition
+        // a rival only cooling down still returns: it counts
         l[2].unavailable = true;
+        let Plan::Set(c) = plan_use(&l, &l[0]).unwrap() else {
+            panic!()
+        };
+        assert_eq!(c.to, 6);
+        // a disabled rival is not competition
+        l[2].disabled = true;
         let Plan::Set(c) = plan_use(&l, &l[0]).unwrap() else {
             panic!()
         };
@@ -661,19 +699,39 @@ mod tests {
     fn names_resolve_or_refuse() {
         let l = vec![
             e(1, "ix1", "claude", "work", 0),
-            e(2, "ix2", "codex", "work", 0),
-            e(3, "ix3", "claude", "home", 0),
+            e(1, "ix2", "codex", "work", 0),
+            e(2, "ix3", "claude", "home", 0),
         ];
         assert_eq!(resolve(&l, "ix3", None).unwrap().label, "home");
         assert_eq!(resolve(&l, "HOME", None).unwrap().index, "ix3");
-        assert_eq!(resolve(&l, "#3", None).unwrap().index, "ix3");
-        assert_eq!(resolve(&l, "2", None).unwrap().index, "ix2");
+        // positions count per provider: a bare one is refused when the
+        // instance reads two
+        let err = resolve(&l, "#2", None).unwrap_err().0;
+        assert!(err.contains("--provider"), "{err}");
+        assert_eq!(resolve(&l, "#2", Some("claude")).unwrap().index, "ix3");
+        assert_eq!(resolve(&l, "1", Some("codex")).unwrap().index, "ix2");
+        assert_eq!(resolve(&l, "#1", Some("claude")).unwrap().index, "ix1");
         // the same label under two providers is ambiguous until narrowed
         let err = resolve(&l, "work", None).unwrap_err().0;
         assert!(err.contains("ambiguous") && err.contains("codex"), "{err}");
         assert_eq!(resolve(&l, "work", Some("codex")).unwrap().index, "ix2");
         assert!(resolve(&l, "nobody", None).is_err());
         assert!(resolve(&l, "ix1", Some("codex")).is_err());
+    }
+
+    #[test]
+    fn positions_count_enabled_accounts_per_provider() {
+        let cfg = crate::config::parse("instance http://127.0.0.1:1\n key-file /k\n", None);
+        let v = serde_json::json!({"files":[
+            {"name":"a","auth_index":"a1","type":"claude","email":"a@x.test","disabled":true},
+            {"name":"b","auth_index":"b1","type":"codex","email":"b@x.test"},
+            {"name":"c","auth_index":"c1","type":"claude","email":"c@x.test"},
+            {"name":"d","auth_index":"d1","type":"claude","email":"d@x.test"}]});
+        let l = parse_entries(&cfg.instances[0], &v);
+        let n: Vec<(&str, usize)> = l.iter().map(|e| (e.index.as_str(), e.n)).collect();
+        assert_eq!(n, [("a1", 0), ("b1", 1), ("c1", 1), ("d1", 2)]);
+        assert_eq!(resolve(&l, "#2", Some("claude")).unwrap().index, "d1");
+        assert!(resolve(&l, "#1", None).is_err());
     }
 
     #[test]

@@ -132,7 +132,6 @@ mod tests {
             key: key.into(),
             provider: "claude".into(),
             label: key.into(),
-            local: String::new(),
             priority: prio,
             plan: None,
             windows: wins
@@ -149,6 +148,7 @@ mod tests {
             unavailable: false,
             upstream_auth: false,
             retry_at: 0,
+            fails: 0,
         }
     }
 

@@ -458,6 +458,101 @@ fn loopback_is_reached_directly_despite_proxy_variables() {
     assert_eq!(e.run(KEY, T0, &[]).status, Status::Ok);
 }
 
+fn many_codex(n: usize) -> Value {
+    let files: Vec<Value> = (0..n)
+        .map(|i| {
+            json!({"id":format!("c{i}.json"),"auth_index":format!("ix-codex-{i}"),
+                "type":"codex","email":format!("u{i}@other.test"),"quota":{"signals":{}}})
+        })
+        .collect();
+    json!({"files":files})
+}
+
+#[test]
+fn a_management_refusal_of_the_first_upstream_call_stops_the_rest() {
+    let l = many_codex(9);
+    let s = Server::start(move |r| match r.path.as_str() {
+        "/v8/management/credentials" => ok(l.to_string()),
+        _ => status(403),
+    });
+    let e = Env::new(&s, "mgmt-first");
+    assert_eq!(e.run(KEY, T0, &["codex"]).status, Status::AuthStopped(403));
+    let calls = s.paths().iter().filter(|p| p.ends_with("api-call")).count();
+    assert_eq!(calls, 1, "one failed attempt, not a batch");
+    assert!(cache::load(&e.cache_path()).auth_fail.is_some());
+}
+
+#[test]
+fn upstream_failures_back_off_per_account_and_grow() {
+    let l = many_codex(2);
+    let s = Server::start(move |r| match r.path.as_str() {
+        "/v8/management/credentials" => ok(l.to_string()),
+        _ => status(502),
+    });
+    let e = Env::new(&s, "up-backoff");
+    e.run(KEY, T0, &["codex"]);
+    let a = cache::load(&e.cache_path()).accounts;
+    assert_eq!((a[0].fails, a[0].retry_at), (1, T0 + 60));
+    e.run(KEY, T0 + 61, &["codex"]);
+    let a = cache::load(&e.cache_path()).accounts;
+    assert_eq!((a[0].fails, a[0].retry_at), (2, T0 + 61 + 120));
+    e.run(KEY, T0 + 61 + 120, &["codex"]);
+    let a = cache::load(&e.cache_path()).accounts;
+    assert_eq!((a[0].fails, a[0].retry_at), (3, T0 + 181 + 240));
+}
+
+#[test]
+fn the_listing_and_a_hold_are_saved_before_the_upstream_phase() {
+    use std::sync::{Arc, Mutex};
+    let at: Arc<Mutex<Option<PathBuf>>> = Arc::new(Mutex::new(None));
+    let seen: Arc<Mutex<Vec<(usize, i64)>>> = Arc::new(Mutex::new(vec![]));
+    let (at2, seen2) = (at.clone(), seen.clone());
+    let l = many_codex(2);
+    let s = Server::start(move |r| match r.path.as_str() {
+        "/v8/management/credentials" => ok(l.to_string()),
+        _ => {
+            if let Some(p) = at2.lock().unwrap().clone() {
+                let c = cache::load(&p);
+                seen2.lock().unwrap().push((c.accounts.len(), c.retry_at));
+            }
+            status(502)
+        }
+    });
+    let e = Env::new(&s, "progressive");
+    *at.lock().unwrap() = Some(e.cache_path());
+    e.run(KEY, T0, &["codex"]);
+    let seen = seen.lock().unwrap().clone();
+    assert!(!seen.is_empty());
+    assert!(
+        seen.iter().all(|&(n, r)| n == 2 && r == T0 + 60),
+        "{seen:?}"
+    );
+}
+
+#[test]
+fn nothing_is_sent_when_the_state_directory_cannot_be_written() {
+    let s = Server::start(std_handler);
+    let mut e = Env::new(&s, "readonly");
+    let f = e.dir.join("not-a-dir");
+    std::fs::write(&f, "x").unwrap();
+    e.dir = f;
+    let snap = e.run(KEY, T0, &["codex"]);
+    assert_ne!(snap.status, Status::Ok);
+    assert_eq!(s.count(), 0, "a refusal could not be remembered");
+}
+
+#[test]
+fn the_key_digest_is_salted_and_short() {
+    let s = Server::start(|_| status(401));
+    let e = Env::new(&s, "salt");
+    e.run(KEY, T0, &[]);
+    let text = std::fs::read_to_string(e.cache_path()).unwrap();
+    assert!(!text.contains(&bar_plugin::sha256::hex(KEY.as_bytes())));
+    let c = cache::load(&e.cache_path());
+    assert_eq!(c.auth_fail.unwrap().fp.len(), 32);
+    assert_eq!(c.salt.len(), 32);
+}
+
 /// A shared flag.
 #[derive(Clone)]
 struct Arc2(std::sync::Arc<std::sync::atomic::AtomicBool>);

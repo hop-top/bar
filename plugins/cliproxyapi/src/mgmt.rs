@@ -121,7 +121,7 @@ impl<'a> Client<'a> {
             // a loopback proxy is talked to directly, whatever the
             // environment's proxy settings say
             noproxy: self.loopback,
-            user_agent: concat!("bar-cliproxyapi/", env!("CARGO_PKG_VERSION")).into(),
+            user_agent: format!("bar-cliproxyapi/{}", crate::VERSION),
             ..Opts::new(max_time, cap)
         }
     }

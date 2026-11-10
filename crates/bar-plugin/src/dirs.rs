@@ -11,13 +11,15 @@ fn abs_env(name: &str) -> Option<PathBuf> {
     p.is_absolute().then_some(p)
 }
 
-fn home() -> PathBuf {
+/// The home directory (`USERPROFILE` on Windows, else `HOME`) when set
+/// and absolute.
+pub fn home() -> Option<PathBuf> {
     let var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
-    std::env::var_os(var).map(PathBuf::from).unwrap_or_default()
+    abs_env(var)
 }
 
 fn platform_home(unix: &[&str]) -> PathBuf {
-    let home = home();
+    let home = home().unwrap_or_default();
     if cfg!(target_os = "macos") {
         home.join("Library").join("Application Support")
     } else if cfg!(windows) {
