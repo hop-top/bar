@@ -7,7 +7,7 @@ mod fake;
 
 use fake::{ok, Server};
 use hop_bar::cache::{Cache, Job};
-use hop_bar::conf::parse;
+use hop_bar::conf::{self, parse};
 use hop_bar::options::Options;
 use hop_bar::placeholders::Ctx;
 use hop_bar::plugin;
@@ -16,6 +16,7 @@ use hop_bar::session::Session;
 use serde_json::json;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 const BIN: &str = env!("CARGO_BIN_EXE_bar-cliproxyapi");
@@ -35,9 +36,19 @@ fn run(path: impl AsRef<std::path::Path>, arg: Option<&str>, stdin: &str) -> Str
     String::from_utf8(out.stdout).unwrap()
 }
 
-#[test]
-#[allow(clippy::cognitive_complexity)] // over the threshold; split when next touched
-fn core_parses_what_the_plugin_prints_and_renders_it() {
+/// The plugin beside a fake `bar`, its config pointing at a fake proxy
+/// with two Claude accounts, and the core's state and cache. The plugin
+/// and bar run in this process's environment, so one test drives it all.
+struct Compat {
+    server: Server,
+    root: PathBuf,
+    dirs: Vec<PathBuf>,
+    found: plugin::Found,
+    cfg: conf::Config,
+    cache: Cache,
+}
+
+fn setup() -> Compat {
     let listing = json!({"files":[
         {"auth_index":"ix1","type":"claude","email":"a@corp.test",
          "priority":1,
@@ -70,7 +81,6 @@ fn core_parses_what_the_plugin_prints_and_renders_it() {
     )
     .unwrap();
     std::fs::set_permissions(&conf, std::fs::Permissions::from_mode(0o600)).unwrap();
-    // the plugin and bar run in this process's environment
     std::env::set_var("BAR_CLIPROXYAPI_CONFIG", &conf);
     std::env::set_var("BAR_STATE_DIR", &state);
     std::env::set_var("ANTHROPIC_BASE_URL", server.origin());
@@ -78,8 +88,28 @@ fn core_parses_what_the_plugin_prints_and_renders_it() {
     let dirs = plugin::plugin_dirs_with(None, Some(&bin.join("bar")));
     assert_eq!(dirs, std::slice::from_ref(&bin));
     let found = plugin::find(&dirs, "cliproxyapi").expect("discovered beside bar");
+    let cfg = parse("").unwrap();
+    let cache = Cache::with_exe(&state, "/nonexistent/bar".into());
+    let (ikey, ijob) = plugin::info_job(&found);
+    let Job::PluginInfo { path } = &ijob else {
+        panic!("info job")
+    };
+    cache
+        .store(&ikey, &run(path, Some("--ext-info"), ""))
+        .unwrap();
+    Compat {
+        server,
+        root,
+        dirs,
+        found,
+        cfg,
+        cache,
+    }
+}
 
-    // --ext-info
+/// `--ext-info` as the core parses it: the declared inputs, capabilities,
+/// options and web samples pass the core's validation.
+fn ext_info_checks(found: &plugin::Found) {
     let info = plugin::parse_info(&run(&found.path, Some("--ext-info"), "")).expect("ext-info");
     assert_eq!(info.version, env!("CARGO_PKG_VERSION"));
     assert_eq!(info.timeout, 15);
@@ -92,8 +122,6 @@ fn core_parses_what_the_plugin_prints_and_renders_it() {
         .capabilities
         .iter()
         .any(|c| c == plugin::check::CHECK_CAPABILITY));
-
-    // the declared options and web samples pass the core's validation
     assert_eq!(plugin::web::issues(&info), Vec::<String>::new());
     for o in [
         "provider", "windows", "show", "count", "label", "sort", "accounts", "compact", "stale",
@@ -101,47 +129,42 @@ fn core_parses_what_the_plugin_prints_and_renders_it() {
     ] {
         assert!(info.options.contains_key(o), "{o}");
     }
+}
 
-    // --check: the core reads what the plugin prints
-    let warns = plugin::check::parse_warnings(&run(&found.path, Some("--check"), ""));
-    assert!(warns.iter().all(|w| !w.is_empty()), "{warns:?}");
-
-    // a render through the core's own input, cache and painter
-    let cfg = parse("").unwrap();
-    let cache = Cache::with_exe(&state, "/nonexistent/bar".into());
-    let (ikey, ijob) = plugin::info_job(&found);
-    let Job::PluginInfo { path } = &ijob else {
-        panic!("info job")
-    };
-    cache
-        .store(&ikey, &run(path, Some("--ext-info"), ""))
-        .unwrap();
-    let session = Session {
-        model_id: "claude-opus-4".into(),
-        model: "Opus".into(),
-        cwd: "/tmp/work".into(),
-        ..Session::default()
-    };
-    let ctx = Ctx {
-        session: &session,
-        config: &cfg,
+fn ctx<'a>(c: &'a Compat, session: &'a Session) -> Ctx<'a> {
+    Ctx {
+        session,
+        config: &c.cfg,
         now: NOW,
         runner: &ColdRunner,
-        cache: Some(&cache),
+        cache: Some(&c.cache),
         columns: Some(120),
-        plugin_dirs: &dirs,
+        plugin_dirs: &c.dirs,
         memo: Default::default(),
-    };
-    let inf = plugin::cached_info(&cache, &found).expect("cached info");
-    let plan = plugin::plan(&ctx, &found, &inf, &Options::default()).expect("plan");
+    }
+}
+
+/// The plugin run on the core's plan, its output parsed by the core and
+/// cached for a render.
+fn render(c: &Compat, session: &Session, o: &Options) -> (String, plugin::Output) {
+    let ctx = ctx(c, session);
+    let inf = plugin::cached_info(&c.cache, &c.found).expect("cached info");
+    let plan = plugin::plan(&ctx, &c.found, &inf, o).expect("plan");
     let Job::PluginRender { path, input, .. } = &plan.job else {
         panic!("render job")
     };
     // the core hands the declared environment to the plugin
-    assert!(input.contains(&server.origin()), "{input}");
+    assert!(input.contains(&c.server.origin()), "{input}");
     let text = run(path, None, input);
     let out = plugin::parse_output(&text).expect("render output");
-    // one item per account, most used first, with the tokens an action takes
+    c.cache.store(&plan.key, &text).unwrap();
+    (text, out)
+}
+
+/// One item per account, most used first, with the tokens an action
+/// takes; the pool's usage (mean of 50 and 95, latest reset) and the
+/// account in the higher priority tier.
+fn output_checks(out: &plugin::Output, text: &str) {
     assert_eq!(out.items.len(), 2, "{text}");
     assert_eq!(out.items[0].label.as_deref(), Some("b"));
     assert!(out.items[0].text.starts_with("5%"), "{text}");
@@ -150,8 +173,6 @@ fn core_parses_what_the_plugin_prints_and_renders_it() {
     assert_eq!(out.items[1].score, Some(50.0));
     assert_eq!(out.items[1].tokens["account"], "ix1");
     assert_eq!(out.items[1].tokens["provider"], "claude");
-    // the pool's usage (mean of 50 and 95, latest reset) and the account
-    // in the higher priority tier
     let w = out
         .usage
         .as_ref()
@@ -161,12 +182,33 @@ fn core_parses_what_the_plugin_prints_and_renders_it() {
     assert!(out.usage.as_ref().unwrap().five_hour.is_none());
     let a = out.account.as_ref().expect("account");
     assert_eq!((a.id.as_str(), a.label.as_str()), ("ix1", "me"));
-    cache.store(&plan.key, &text).unwrap();
-    let shown = plugin::render(&ctx, "cliproxyapi", &Options::default()).unwrap_or_default();
+}
+
+#[test]
+fn core_parses_what_the_plugin_prints_and_renders_it() {
+    let c = setup();
+    ext_info_checks(&c.found);
+
+    // --check: the core reads what the plugin prints
+    let warns = plugin::check::parse_warnings(&run(&c.found.path, Some("--check"), ""));
+    assert!(warns.iter().all(|w| !w.is_empty()), "{warns:?}");
+
+    // a render through the core's own input, cache and painter
+    let session = Session {
+        model_id: "claude-opus-4".into(),
+        model: "Opus".into(),
+        cwd: "/tmp/work".into(),
+        ..Session::default()
+    };
+    let (text, out) = render(&c, &session, &Options::default());
+    output_checks(&out, &text);
+    let shown =
+        plugin::render(&ctx(&c, &session), "cliproxyapi", &Options::default()).unwrap_or_default();
     assert!(
         hop_bar::style::strip_codes(&shown).contains("me 50%"),
         "{shown:?}"
     );
+
     // options typed by the core's schema reach the plugin and shape the output
     let mut opts = Options::default();
     for (k, v) in [
@@ -177,13 +219,9 @@ fn core_parses_what_the_plugin_prints_and_renders_it() {
     ] {
         opts.set(k, v);
     }
-    let plan = plugin::plan(&ctx, &found, &inf, &opts).expect("plan with options");
-    let Job::PluginRender { path, input, .. } = &plan.job else {
-        panic!("render job")
-    };
-    let out = plugin::parse_output(&run(path, None, input)).expect("render output");
+    let (_, out) = render(&c, &session, &opts);
     assert_eq!(out.items[1].text.split('\u{B7}').next(), Some("50%"));
-    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&c.root);
 }
 
 #[test]
