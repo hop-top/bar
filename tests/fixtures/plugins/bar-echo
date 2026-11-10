@@ -1,7 +1,7 @@
 #!/bin/sh
 # Test plugin. Control files beside the script: out.json (stdout body),
 # exit (exit code), ext.json (replaces the default --ext-info), check.json
-# (stdout of --check), action-exit (exit code of --action). Logs every
+# (stdout of --check), action-exit (exit code of --action), action-out (stdout of --action). Logs every
 # --ext-info call to info.log, saves the render input to stdin.json and the
 # --action input to action.json.
 here=$(dirname "$0")
@@ -27,6 +27,7 @@ if [ "$1" = "--action" ]; then
   echo "$2" > "$here/action.name"
   cat > "$here/action.json"
   printf '%s' "$BAR_STATE_DIR" > "$here/action.state"
+  [ -f "$here/action-out" ] && cat "$here/action-out"
   [ -f "$here/action-exit" ] && exit "$(cat "$here/action-exit")"
   exit 0
 fi
