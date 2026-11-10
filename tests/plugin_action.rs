@@ -327,6 +327,35 @@ fn the_action_child_gets_the_state_dir_the_link_was_drawn_in() {
 }
 
 #[test]
+fn the_status_carries_the_first_line_the_action_printed() {
+    let (fx, c, url) = linked(ONE);
+    fx.put("action-out", "cancelled\u{1b}[31m\nsecond line\n");
+    run(&fx, &c, &url).unwrap();
+    let status = std::fs::read_to_string(fx.state.join(STATUS_FILE)).unwrap();
+    assert!(
+        status.trim_end().ends_with(" ok: cancelled[31m"),
+        "{status:?}"
+    );
+    assert_eq!(status.lines().count(), 1);
+    assert!(!status.contains('\u{1b}') && !status.contains("second"));
+}
+
+#[test]
+fn an_action_may_declare_a_longer_limit_up_to_a_cap() {
+    use std::time::Duration;
+    assert_eq!(action::limit(0), Duration::from_secs(10));
+    assert_eq!(action::limit(60), Duration::from_secs(60));
+    assert_eq!(action::limit(9999), action::MAX_ACTION_TIMEOUT);
+    assert_eq!(action::MAX_ACTION_TIMEOUT, Duration::from_secs(120));
+    let info = plugin::parse_info(&echo_info(json!({"actions": {
+        "a": {"timeout": 60}, "b": {"timeout": 9999}, "c": {}, "d": {"timeout": "x"},
+    }})))
+    .unwrap();
+    let t = |k: &str| info.actions[k].timeout;
+    assert_eq!((t("a"), t("b"), t("c"), t("d")), (60, 120, 0, 0));
+}
+
+#[test]
 fn handler_reports_a_failing_plugin() {
     let (fx, c, url) = linked(ONE);
     fx.put("action-exit", "3");

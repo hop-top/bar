@@ -44,7 +44,7 @@ jobs:
       - name: Clippy
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Test
-        run: cargo test --locked --workspace --no-fail-fast --features hop-bar/test-tools
+        run: cargo test --locked --workspace --no-fail-fast --features hop-bar/test-tools,bar-cliproxyapi/test-tools
       - name: Type-check arm64
         run: cargo check --locked --workspace --target aarch64-pc-windows-msvc
 

@@ -39,6 +39,10 @@ pub struct ActionSpec {
     /// Asks for confirmation first. Declared and kept; bar's handler runs
     /// without a prompt, so a plugin that needs one asks itself.
     pub confirm: bool,
+    /// Seconds the action may run, for one that waits on the user (a
+    /// chooser); 0 is the default limit. Capped at
+    /// [`crate::click::action::MAX_ACTION_TIMEOUT`] seconds.
+    pub timeout: u64,
 }
 
 /// Most tokens an action can take.
@@ -67,6 +71,9 @@ fn actions_of(v: &Value) -> BTreeMap<String, ActionSpec> {
                         description: clean_str(&a["description"]).unwrap_or_default(),
                         tokens,
                         confirm: a["confirm"].as_bool().unwrap_or(false),
+                        timeout: a["timeout"].as_u64().map_or(0, |t| {
+                            t.min(crate::click::action::MAX_ACTION_TIMEOUT.as_secs())
+                        }),
                     };
                     (k.clone(), spec)
                 })
@@ -280,7 +287,10 @@ impl ExtInfo {
                 .actions
                 .iter()
                 .map(|(k, s)| {
-                    let v = json!({"description": s.description, "tokens": s.tokens, "confirm": s.confirm});
+                    let mut v = json!({"description": s.description, "tokens": s.tokens, "confirm": s.confirm});
+                    if s.timeout > 0 {
+                        v["timeout"] = json!(s.timeout);
+                    }
                     (k.clone(), v)
                 })
                 .collect();

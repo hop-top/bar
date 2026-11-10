@@ -6,7 +6,7 @@ build:
 	cargo build --release --workspace
 
 test:
-	cargo test --locked --workspace --features hop-bar/test-tools
+	cargo test --locked --workspace --features hop-bar/test-tools,bar-cliproxyapi/test-tools
 
 lint:
 	cargo fmt --all -- --check

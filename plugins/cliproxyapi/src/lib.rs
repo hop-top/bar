@@ -1,7 +1,11 @@
 //! `bar-cliproxyapi`: per-account quota of a CLIProxyAPI proxy as a bar
 //! plugin. The binary is a thin shell over these modules.
 
+#[cfg(all(feature = "test-tools", not(debug_assertions)))]
+compile_error!("the `test-tools` feature is for tests only");
+
 pub mod cache;
+pub mod chooser;
 pub mod collect;
 pub mod config;
 pub mod mgmt;

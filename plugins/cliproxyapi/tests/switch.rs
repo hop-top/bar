@@ -38,8 +38,18 @@ impl Home {
         self.file("c.conf", &text)
     }
     fn run(&self, conf: &std::path::Path, args: &[&str], stdin: &str) -> Output {
+        self.run_env(conf, args, stdin, &[])
+    }
+    fn run_env(
+        &self,
+        conf: &std::path::Path,
+        args: &[&str],
+        stdin: &str,
+        env: &[(&str, String)],
+    ) -> Output {
         let mut ch = Command::new(BIN)
             .args(args)
+            .envs(env.iter().map(|(k, v)| (*k, v)))
             .env("BAR_CLIPROXYAPI_CONFIG", conf)
             .env("BAR_STATE_DIR", self.0.join("state"))
             .env_remove("ANTHROPIC_BASE_URL")
@@ -620,4 +630,164 @@ fn the_next_actions_take_a_provider_and_an_instance() {
     let o = call("next", json!({"provider":"claude"}));
     assert_eq!(o.status.code(), Some(1));
     assert_eq!(s.patches().len(), 1);
+}
+
+// --- the pick action (native chooser, stubbed) ---
+
+/// A chooser stand-in: logs its arguments, one per line, to `log`, and
+/// answers with `reply`: `cancel`, `item N` (the Nth item offered, from 1)
+/// or `raw TEXT`.
+fn chooser(h: &Home) -> (String, String, std::path::PathBuf) {
+    let log = h.0.join("chooser.log");
+    let prog = h.file(
+        "chooser.sh",
+        r#"#!/bin/sh
+for a in "$@"; do printf '%s\n' "$a"; done > "$FAKE_LOG"
+case "$FAKE_REPLY" in
+  cancel) exit 0 ;;
+  "item "*) n=${FAKE_REPLY#item }; shift 3; shift $((n-1)); printf '%s' "$1" ;;
+  "raw "*) printf '%s' "${FAKE_REPLY#raw }" ;;
+esac
+"#,
+    );
+    std::fs::set_permissions(&prog, std::fs::Permissions::from_mode(0o700)).unwrap();
+    (prog.display().to_string(), log.display().to_string(), log)
+}
+
+fn pick(h: &Home, conf: &std::path::Path, s: &Server, reply: &str) -> (Output, Vec<String>) {
+    let (prog, log, logp) = chooser(h);
+    let id = bar_cliproxyapi::switch::instance_id(&s.origin());
+    let a = json!({"action":"pick","tokens":{"provider":"claude","instance":id}});
+    let o = h.run_env(
+        conf,
+        &["--action", "pick"],
+        &a.to_string(),
+        &[
+            ("BAR_CLIPROXYAPI_CHOOSER", prog),
+            ("FAKE_LOG", log),
+            ("FAKE_REPLY", reply.to_string()),
+        ],
+    );
+    let argv = std::fs::read_to_string(logp)
+        .unwrap_or_default()
+        .lines()
+        .map(String::from)
+        .collect();
+    (o, argv)
+}
+
+#[test]
+fn pick_offers_the_ranking_with_the_top_recommendation_selected() {
+    let (s, _) = pool(quota_fleet(), KEY);
+    let h = Home::new("chooselist");
+    let conf = h.conf(&[s.origin()]);
+    let (o, argv) = pick(&h, &conf, &s, "cancel");
+    assert!(o.status.success(), "{}", err(&o));
+    // title, prompt, default, then the items: most left first, the
+    // proxy's preferred account marked, the unread one last
+    assert_eq!(argv.len(), 3 + 5, "{argv:?}");
+    let items = &argv[3..];
+    assert_eq!(argv[2], items[0]);
+    let labels: Vec<&str> = items.iter().map(|i| i.split(' ').nth(1).unwrap()).collect();
+    assert_eq!(labels, ["b", "c", "d", "a", "e"], "{items:?}");
+    assert!(
+        items[0].starts_with("1. b \u{2014} 7d 90% left \u{21BB}"),
+        "{}",
+        items[0]
+    );
+    assert!(items[3].contains("[current]") && !items[0].contains("[current]"));
+    assert!(items[4].contains("no data"), "{}", items[4]);
+    assert!(!argv.iter().any(|a| a.contains("corp.test")));
+}
+
+#[test]
+fn pick_cancel_changes_nothing() {
+    let (s, _) = pool(quota_fleet(), KEY);
+    let h = Home::new("choosecancel");
+    let conf = h.conf(&[s.origin()]);
+    for reply in ["cancel", "raw false"] {
+        let (o, _) = pick(&h, &conf, &s, reply);
+        assert!(o.status.success(), "{}", err(&o));
+        assert_eq!(text(&o).trim(), "cancelled");
+    }
+    assert!(s.patches().is_empty());
+}
+
+#[test]
+fn pick_applies_the_choice_as_use_does() {
+    let (s, st) = pool(quota_fleet(), KEY);
+    let h = Home::new("choosepick");
+    let conf = h.conf(&[s.origin()]);
+    // the third row is d
+    let (o, _) = pick(&h, &conf, &s, "item 3");
+    assert!(o.status.success(), "{}", err(&o));
+    assert!(
+        text(&o).contains("d (claude): priority 0 -> 6"),
+        "{}",
+        text(&o)
+    );
+    assert_eq!(prio(&st.lock().unwrap(), "d"), 6);
+    assert_eq!(s.patches().len(), 1);
+    // `use --reset` can undo it: the previous priority was recorded
+    let o = h.run(&conf, &["use", "--reset", "d"], "");
+    assert!(o.status.success(), "{}", err(&o));
+    assert_eq!(prio(&st.lock().unwrap(), "d"), 0);
+}
+
+#[test]
+fn pick_refuses_a_reply_that_was_not_offered() {
+    let (s, _) = pool(quota_fleet(), KEY);
+    let h = Home::new("choosebad");
+    let conf = h.conf(&[s.origin()]);
+    let (o, _) = pick(&h, &conf, &s, "raw 9. zed \u{2014} nothing");
+    assert_eq!(o.status.code(), Some(1));
+    assert!(err(&o).contains("not offered"), "{}", err(&o));
+    assert!(s.patches().is_empty());
+}
+
+#[test]
+fn pick_stops_on_a_refused_key() {
+    let (s, _) = pool(quota_fleet(), "another-key");
+    let h = Home::new("choose401");
+    let conf = h.conf(&[s.origin()]);
+    let (o, argv) = pick(&h, &conf, &s, "item 1");
+    assert_eq!(o.status.code(), Some(1));
+    assert!(err(&o).contains("401"), "{}", err(&o));
+    assert!(
+        argv.is_empty(),
+        "the chooser is not shown without a listing"
+    );
+    assert_eq!(s.count(), 1);
+    let (o, _) = pick(&h, &conf, &s, "item 1");
+    assert!(!o.status.success());
+    assert_eq!(s.count(), 1);
+}
+
+#[test]
+fn pick_validates_its_tokens() {
+    let (s, _) = pool(quota_fleet(), KEY);
+    let h = Home::new("choosetok");
+    let conf = h.conf(&[s.origin()]);
+    for t in [
+        json!({"provider":"claude"}),
+        json!({"provider":"nope","instance":"0123456789abcdef"}),
+        json!({"provider":"claude","instance":"0123456789abcdef"}),
+    ] {
+        let o = h.run(
+            &conf,
+            &["--action", "pick"],
+            &json!({"action":"pick","tokens":t}).to_string(),
+        );
+        assert_eq!(o.status.code(), Some(1));
+    }
+    assert_eq!(s.count(), 0);
+}
+
+#[test]
+fn labels_are_sanitized_and_never_reach_the_script() {
+    use bar_cliproxyapi::chooser;
+    assert_eq!(chooser::sanitize("a\u{1b}[31m\nb\"c", 40), "a [31m b\"c");
+    assert_eq!(chooser::sanitize(&"x".repeat(500), 40).chars().count(), 40);
+    // the script is fixed text: it names argv and holds no placeholder
+    assert!(chooser::SCRIPT.contains("on run argv"));
 }

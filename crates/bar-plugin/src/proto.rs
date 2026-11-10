@@ -98,6 +98,14 @@ pub struct ActionSpec {
     pub tokens: Vec<String>,
     #[serde(default)]
     pub confirm: bool,
+    /// Seconds the action may run (default 10, at most 120): for one that
+    /// waits on the user.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub timeout: u64,
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 /// What a render receives on stdin. Unknown fields are ignored.
@@ -331,6 +339,7 @@ mod tests {
                 description: "d".into(),
                 tokens: vec!["account".into()],
                 confirm: false,
+                timeout: 0,
             },
         );
         let v: Value = serde_json::from_str(&serde_json::to_string(&i).unwrap()).unwrap();

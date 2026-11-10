@@ -282,7 +282,7 @@ fn session(
     f(&live)
 }
 
-/// `--action <use|next|next-soon>`: `{"action","tokens"}` on stdin, from a
+/// `--action <use|next|next-soon|pick>`: `{"action","tokens"}` on stdin, from a
 /// click. `use` names an account of the instance's current listing; the
 /// `next` actions name a provider and an instance (by its id).
 fn action(name: Option<&str>) -> i32 {
@@ -292,6 +292,22 @@ fn action(name: Option<&str>) -> i32 {
         Some("next") => rank::Strategy::MostLeft,
         Some("next-soon") => rank::Strategy::SoonestReset,
         Some("use") => return action_use(&raw),
+        Some("pick") => {
+            return finish(
+                switch::next_tokens(&raw, "pick").and_then(|(provider, id)| {
+                    let cfg = load_config()?;
+                    let inst = cfg
+                        .instances
+                        .iter()
+                        .find(|i| switch::instance_id(&i.origin.to_string()) == id)
+                        .ok_or_else(|| switch::Refusal("no such instance".into()))?;
+                    let state = bar_plugin::dirs::bar_state();
+                    let key = switch::key_for(inst)?;
+                    let live = switch::connect(inst, &key, &state, now())?;
+                    switch::run_choose(&live, &provider, rank::Strategy::MostLeft)
+                }),
+            )
+        }
         _ => {
             eprintln!("bar cliproxyapi: unknown action");
             return 2;

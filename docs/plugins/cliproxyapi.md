@@ -170,7 +170,7 @@ bar cliproxyapi pick [--strategy most-left|soonest-reset] [--provider P] [--inst
 - `<account>` is an account index, a label (an alias, or the email's part before the `@`, any case) or a position (`3` or `#3`, as `label=index` draws: among the provider's enabled accounts; with several providers in the instance a position needs `--provider`). A name that fits several accounts (the same label under two providers) is refused and the candidates listed; narrow it with `--provider`. A disabled account is refused: bar never enables one.
 - `use` prints the change (`work (claude): priority 0 -> 3`). An account already above every other enabled one, or with no enabled rival, is left as it is. `--dry-run` prints the change and sends nothing.
 - `--reset` puts back the priorities this plugin changed (kept in the plugin's own state file, mode 0600, with account indexes and numbers only). An account whose priority was changed by someone else since is left alone; a hand edit made between two switches becomes the priority a reset restores. With an account, only that one is restored.
-- `--next` switches to the account a strategy recommends (see [Choosing the next account](#choosing-the-next-account)); with several providers in the instance it needs `--provider`. `pick` lists the accounts in the recommended order and, on a terminal, asks which to use.
+- `--next` switches to the account a strategy recommends (see [Choosing the next account](#choosing-the-next-account)); with several providers in the instance it needs `--provider`. `pick` lists the accounts in the recommended order and, on a terminal, asks which to use. The [`pick` action](#clicking-an-account) does the same in a native macOS chooser.
 - The instance is `--instance`, else the session's `ANTHROPIC_BASE_URL`, else the only configured instance.
 - Exit status: 0 done, 1 refused or failed (the reason on stderr), 2 bad usage.
 
@@ -200,7 +200,7 @@ On a terminal it then asks `use which? [1-4, q to quit]` and switches as `use` d
 
 ### Clicking an account
 
-The plugin declares the action `use` with the tokens `account` and `provider`, and the actions `next` (`most-left`) and `next-soon` (`soonest-reset`) with the tokens `provider` and `instance`, which its output always carries at the top level. Bind one in `bar.conf` for either placement:
+The plugin declares the action `use` with the tokens `account` and `provider`, and the actions `next` (`most-left`), `next-soon` (`soonest-reset`) and `pick` with the tokens `provider` and `instance`, which its output always carries at the top level. Bind one in `bar.conf` for either placement:
 
 ```
 # the account segment: a click runs `use` for the account it shows
@@ -213,6 +213,12 @@ action cliproxyapi cliproxyapi.use
 # a click on #{account} switches to the next account, whichever shows
 action account cliproxyapi.next
 action account cliproxyapi.next-soon   # or: among the most left, the soonest reset
+```
+
+`pick` (macOS only) opens a native chooser instead of switching at once: the provider's accounts in the `most-left` order, each with its windows' percent left and time to reset, the proxy's preferred account marked `[current]`, the top recommendation selected. OK switches to the account chosen exactly as `use` does (the previous priority is recorded for `use --reset`); Cancel changes nothing and the status reads `ok: cancelled`. The list is passed to `/usr/bin/osascript` as arguments of a fixed script, so no account name can alter the script. Waiting for you, the action may run up to 120 s instead of the usual 10. On other systems the plugin does not declare `pick`, so `bar check` reports a binding of it, and running it refuses.
+
+```
+action account cliproxyapi.pick
 ```
 
 `next` and `next-soon` are linked even when `#{account}` shows bar's own signed-in account (a round-robin pool has no single preferred account); `use` needs the account the plugin named.

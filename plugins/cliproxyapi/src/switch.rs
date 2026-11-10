@@ -42,6 +42,19 @@ pub fn actions() -> BTreeMap<String, ActionSpec> {
                 description: "Prefer this account".into(),
                 tokens: vec!["account".into(), "provider".into()],
                 confirm: false,
+                timeout: 0,
+            },
+        ),
+        // only where a chooser exists, so `bar check` flags a binding of
+        // it elsewhere
+        #[cfg(target_os = "macos")]
+        (
+            "pick".to_string(),
+            ActionSpec {
+                description: "Choose the account to prefer from a list (macOS only)".into(),
+                tokens: vec!["instance".into(), "provider".into()],
+                confirm: false,
+                timeout: 120,
             },
         ),
         (
@@ -50,6 +63,7 @@ pub fn actions() -> BTreeMap<String, ActionSpec> {
                 description: "Prefer the account with the most quota left".into(),
                 tokens: vec!["instance".into(), "provider".into()],
                 confirm: false,
+                timeout: 0,
             },
         ),
         (
@@ -60,6 +74,7 @@ pub fn actions() -> BTreeMap<String, ActionSpec> {
                         .into(),
                 tokens: vec!["instance".into(), "provider".into()],
                 confirm: false,
+                timeout: 0,
             },
         ),
     ])
@@ -666,7 +681,7 @@ pub fn run_next(
 
 /// One ranked row of `pick`: number, mark, label, provider, per-window
 /// percent left and time to reset.
-fn pick_row(n: usize, r: &rank::Ranked, preferred: bool, w: usize, now: i64) -> String {
+fn window_text(r: &rank::Ranked, now: i64) -> String {
     let wins: Vec<String> = r
         .entry
         .windows
@@ -692,11 +707,15 @@ fn pick_row(n: usize, r: &rank::Ranked, preferred: bool, w: usize, now: i64) -> 
             }
         })
         .collect();
-    let body = if wins.is_empty() {
+    if wins.is_empty() {
         "no data".to_string()
     } else {
         wins.join("  ")
-    };
+    }
+}
+
+fn pick_row(n: usize, r: &rank::Ranked, preferred: bool, w: usize, now: i64) -> String {
+    let body = window_text(r, now);
     let note = if r.entry.unavailable {
         "  (unavailable)"
     } else {
@@ -790,13 +809,61 @@ pub fn run_pick(
     }
 }
 
+/// The `pick` action: `provider`'s accounts in the order `strategy`
+/// recommends, in the native chooser (the proxy's preferred one marked,
+/// the top recommendation selected). The choice is applied as `use`
+/// would; Cancel changes nothing.
+pub fn run_choose(live: &Live, provider: &str, strategy: Strategy) -> Result<Vec<String>, Refusal> {
+    if !crate::chooser::available() {
+        return refuse("the account chooser is macOS only");
+    }
+    let pref = rank::preferred(&live.entries, provider).map(|e| e.index.clone());
+    let ranked = rank::rank(&live.entries, provider, strategy, live.now, None);
+    if ranked.is_empty() {
+        return refuse("no account to pick from");
+    }
+    let items: Vec<String> = ranked
+        .iter()
+        .enumerate()
+        .map(|(i, r)| {
+            let cur = if pref.as_deref() == Some(r.entry.index.as_str()) {
+                "  [current]"
+            } else {
+                ""
+            };
+            let un = if r.entry.unavailable {
+                "  (unavailable)"
+            } else {
+                ""
+            };
+            crate::chooser::sanitize(
+                &format!(
+                    "{}. {} \u{2014} {}{un}{cur}",
+                    i + 1,
+                    crate::chooser::sanitize(&r.entry.label, 40),
+                    window_text(r, live.now)
+                ),
+                crate::chooser::MAX_ITEM,
+            )
+        })
+        .collect();
+    let prompt = format!("Prefer which {provider} account? ({})", strategy.name());
+    match crate::chooser::choose("bar: account", &prompt, &items, 0)? {
+        None => Ok(vec!["cancelled".into()]),
+        Some(i) => {
+            let e = ranked[i].entry;
+            run_use(live, Some(&e.index), Some(&e.provider), false, false)
+        }
+    }
+}
+
 /// The short stable id of an instance, as the `instance` token carries it:
 /// a token cannot hold a URL.
 pub fn instance_id(origin: &str) -> String {
     bar_plugin::sha256::hex(origin.as_bytes())[..16].to_string()
 }
 
-/// Validates the `--action next` / `next-soon` input and returns
+/// Validates the `--action next` / `next-soon` / `pick` input and returns
 /// `(provider, instance id)`.
 pub fn next_tokens(stdin: &str, action: &str) -> Result<(String, String), Refusal> {
     let v: Value = serde_json::from_str(stdin).map_err(|_| Refusal("bad input".into()))?;

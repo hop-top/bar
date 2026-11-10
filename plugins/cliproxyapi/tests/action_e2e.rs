@@ -138,6 +138,11 @@ fn a_click_switches_the_account_through_the_core_handler() {
     action::run(&state, &url, &cfg, &dirs).unwrap();
     assert_eq!(st.lock().unwrap()[0]["priority"], 3);
     let status = std::fs::read_to_string(state.join(STATUS_FILE)).unwrap();
-    assert!(status.trim_end().ends_with(" ok"), "{status:?}");
+    assert!(
+        status
+            .trim_end()
+            .ends_with(" ok: alice (claude): priority 0 -> 3"),
+        "{status:?}"
+    );
     let _ = std::fs::remove_dir_all(&root);
 }

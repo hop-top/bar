@@ -15,6 +15,11 @@ path = "src/lib.rs"
 name = "bar-cliproxyapi"
 path = "src/main.rs"
 
+[features]
+# tests only: `BAR_CLIPROXYAPI_CHOOSER` names a program that stands in for
+# the macOS chooser. Refused in release builds.
+test-tools = []
+
 [dependencies]
 bar-plugin = { path = "../../crates/bar-plugin" }
 serde = { version = "1", features = ["derive"] }

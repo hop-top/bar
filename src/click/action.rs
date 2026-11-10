@@ -21,6 +21,30 @@ pub const STATUS_FILE: &str = "action-status";
 const PREFIX: &str = "bar://action/";
 /// Limit for a plugin's `--action` run.
 pub const ACTION_TIMEOUT: Duration = Duration::from_secs(10);
+/// Longest limit an action can ask for with `timeout` in its declaration.
+pub const MAX_ACTION_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// The limit for an action that declares `timeout` seconds (0: none).
+pub fn limit(declared: u64) -> Duration {
+    match declared {
+        0 => ACTION_TIMEOUT,
+        t => Duration::from_secs(t).min(MAX_ACTION_TIMEOUT),
+    }
+}
+
+/// The first line the action printed, for the status line: printable
+/// characters only, at most 80.
+fn note(out: &str) -> String {
+    out.lines()
+        .next()
+        .unwrap_or("")
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(80)
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
 
 /// Token names: `[a-z0-9_-]`, 1 to 32.
 pub fn valid_token_name(s: &str) -> bool {
@@ -160,28 +184,35 @@ pub fn parse(url: &str) -> Result<ActionUrl, String> {
 }
 
 /// Checks the link, then runs `bar-<plugin> --action <action>` with
-/// `{"action": .., "tokens": {..}}` on stdin (10 s, no shell, in the state
-/// dir). Records the outcome in [`STATUS_FILE`] and ages the cache entry
+/// `{"action": .., "tokens": {..}}` on stdin (10 s unless the action
+/// declares a longer `timeout`; no shell, in the state dir). Records the outcome in [`STATUS_FILE`] and ages the cache entry
 /// the link came from, so the change shows at the next render. `Err` says
 /// why nothing ran, or that the plugin failed.
 pub fn run(state: &Path, url: &str, config: &Config, dirs: &[PathBuf]) -> Result<(), String> {
-    let r = checked(state, url, config, dirs).and_then(|(u, found, cache)| {
+    let mut said = String::new();
+    let r = checked(state, url, config, dirs).and_then(|(u, found, cache, declared)| {
         let input = serde_json::json!({"action": u.action, "tokens": u.tokens}).to_string();
         let mut c = std::process::Command::new(&found.path);
         c.arg("--action")
             .arg(&u.action)
             .env("BAR_STATE_DIR", state)
             .current_dir(crate::cache::outside_project(state));
-        let ran = run_child(c, Some(input.into_bytes()), ACTION_TIMEOUT);
+        let ran = run_child(c, Some(input.into_bytes()), limit(declared));
         cache.age_entry(&u.entry);
-        ran.map(drop)
-            .ok_or_else(|| format!("{}.{} failed", u.plugin, u.action))
+        match ran {
+            Some(out) => {
+                said = note(&out);
+                Ok(())
+            }
+            None => Err(format!("{}.{} failed", u.plugin, u.action)),
+        }
     });
     let at = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
     let line = match &r {
-        Ok(()) => format!("{at} ok"),
+        Ok(()) if said.is_empty() => format!("{at} ok"),
+        Ok(()) => format!("{at} ok: {said}"),
         Err(e) => format!("{at} refused: {e}"),
     };
     let _ = super::write_atomic(&state.join(STATUS_FILE), &format!("{line}\n"));
@@ -193,7 +224,7 @@ fn checked(
     url: &str,
     config: &Config,
     dirs: &[PathBuf],
-) -> Result<(ActionUrl, plugin::Found, Cache), String> {
+) -> Result<(ActionUrl, plugin::Found, Cache, u64), String> {
     let u = parse(url)?;
     if nonce(state).as_deref() != Some(u.nonce.as_str()) {
         return Err("link was not made by this install".into());
@@ -212,6 +243,7 @@ fn checked(
         .actions
         .get(&u.action)
         .ok_or("the plugin does not declare that action")?;
+    let declared = spec.timeout;
     let given: Vec<&String> = u.tokens.keys().collect();
     if given != spec.tokens.iter().collect::<Vec<_>>() {
         return Err("tokens do not match the action's declaration".into());
@@ -223,5 +255,5 @@ fn checked(
     if !cached.offers_tokens(&u.tokens) {
         return Err("token values are not in the plugin's current output".into());
     }
-    Ok((u, found, cache))
+    Ok((u, found, cache, declared))
 }
