@@ -7,8 +7,12 @@
 //! management 401 or 403 stops every further call (from every plugin of
 //! that proxy) until the key changes; a 404 waits an hour; other failures
 //! back off from a minute to an hour while the last good data is served.
-//! Processes take turns under a lock, and nothing is sent when the lock or
-//! the cache cannot be had. RouteLLM being down never backs off the proxy.
+//! Processes take turns under a lock while the proxy is called, and nothing
+//! is sent when the lock or the cache cannot be had. RouteLLM is asked
+//! after that lock is released, so a RouteLLM that hangs never holds up
+//! another process's call to the proxy; it being down never backs off the
+//! proxy. An explicit command (`force`) goes past the 404 hold and the
+//! backoff, never past a refused key.
 
 use crate::cache::{self, Cache, Entry, Problem, Tier};
 use crate::config::Instance;
@@ -34,6 +38,10 @@ pub const DEADLINE: u64 = 6;
 pub const CAP_HEALTH: usize = 4 * 1024;
 pub const CAP_MODELS: usize = 128 * 1024;
 pub const T_PROBE: u64 = 3;
+/// How long the instance's lock is waited for to record what RouteLLM said.
+const SAVE_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+/// Without a record of the refusal, the proxy is left alone this long.
+const UNRECORDED_HOLD: i64 = 3600;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Status {
@@ -62,7 +70,8 @@ pub struct Ctx<'a> {
     pub now: i64,
     /// Ask RouteLLM for its tiers even while routing is off.
     pub want_tiers: bool,
-    /// Ignore the freshness windows (an explicit `status --probe`).
+    /// Ignore the freshness windows, the 404 hold and the backoff (an
+    /// explicit `status --probe` or `tiers`). A refused key still stops.
     pub force: bool,
 }
 
@@ -81,9 +90,9 @@ impl Ctx<'_> {
 fn status_of(ctx: &Ctx, c: &Cache) -> Status {
     if let Some(st) = ctx.guard().refusal(ctx.key, ctx.now) {
         Status::AuthStopped(st)
-    } else if ctx.now < c.off_until {
+    } else if !ctx.force && ctx.now < c.off_until {
         Status::Off
-    } else if ctx.now < c.retry_at {
+    } else if !ctx.force && ctx.now < c.retry_at {
         Status::Backoff
     } else {
         Status::Ok
@@ -167,6 +176,19 @@ pub fn armed(c: &Cache) -> bool {
         .all(|a| c.rows.iter().any(|r| r.alias == a.alias))
 }
 
+/// `private` aliases that also have a claude row: OFF would serve them
+/// from the frontier, which is what `private` is meant to prevent.
+pub fn private_with_row(c: &Cache) -> Vec<&str> {
+    let Some(e) = &c.entry else {
+        return Vec::new();
+    };
+    e.aliases
+        .iter()
+        .filter(|a| a.tier == "private" && c.rows.iter().any(|r| r.alias == a.alias))
+        .map(|a| a.alias.as_str())
+        .collect()
+}
+
 /// Reads, updates the cache. Makes no management call when the cache says
 /// one would be refused, disabled, too soon or unneeded, or when another
 /// process holds the proxy (its result is served instead).
@@ -182,98 +204,144 @@ pub fn collect(ctx: &Ctx) -> Snapshot {
     if known.status != Status::Ok {
         return known;
     }
-    let fresh = !ctx.force && ctx.now - known.cache.at < MGMT_FRESH && known.cache.entry.is_some();
-    let on = known.cache.entry.as_ref().is_some_and(|e| !e.disabled);
-    let probe_due =
-        (on || ctx.want_tiers) && (ctx.force || ctx.now - known.cache.up_at >= PROBE_FRESH);
-    if fresh && !probe_due {
+    let started = Instant::now();
+    let fresh = |c: &Cache| !ctx.force && ctx.now - c.at < MGMT_FRESH && c.entry.is_some();
+    let probe_due = |c: &Cache| {
+        let on = c.entry.as_ref().is_some_and(|e| !e.disabled);
+        (on || ctx.want_tiers) && (ctx.force || ctx.now - c.up_at >= PROBE_FRESH)
+    };
+    if fresh(&known.cache) && !probe_due(&known.cache) {
         return known;
     }
     let path = ctx.path();
-    let Some(_lock) = cache::lock(&ctx.guard(), &path) else {
-        return Snapshot {
-            status: Status::Backoff,
-            ..known
+    let mut c = known.cache;
+    if !fresh(&c) {
+        // the proxy is read under the locks, and only then
+        let Some(lock) = cache::lock(&ctx.guard(), &path) else {
+            return Snapshot {
+                status: Status::Backoff,
+                cache: c,
+            };
         };
-    };
-    // what another process learned while this one waited
-    let known = cached(ctx);
-    if known.status != Status::Ok {
-        return known;
-    }
-    run(ctx, &path, known.cache)
-}
-
-fn run(ctx: &Ctx, path: &Path, mut c: Cache) -> Snapshot {
-    let now = ctx.now;
-    let started = Instant::now();
-    let snap = |status, c: Cache| Snapshot { status, cache: c };
-    let stop = |s: u16, c: Cache| {
-        ctx.guard().stop(s, ctx.key, now);
-        snap(Status::AuthStopped(s), c)
-    };
-    let mgmt_fresh = !ctx.force && now - c.at < MGMT_FRESH && c.entry.is_some();
-    if !mgmt_fresh {
-        let Ok(client) = Client::new(&ctx.inst.management, ctx.key) else {
-            return snap(Status::Backoff, c);
-        };
-        match client.entry(&ctx.inst.provider) {
-            Ok(Some(it)) => {
-                c.problem = same_target(&it.base_url, &ctx.inst.routellm)
-                    .then_some(())
-                    .map_or(Some(Problem::Mismatch), |()| None);
-                c.entry = Some(Entry {
-                    disabled: it.disabled,
-                    priority: it.priority,
-                    aliases: it.aliases,
-                });
-            }
-            Ok(None) => {
-                c.entry = None;
-                c.problem = Some(Problem::Unconfigured);
-            }
-            Err(MErr::Auth(s)) => return stop(s, c),
-            Err(MErr::NotFound) => {
-                c.off_until = now + OFF_HOLD;
-                let _ = cache::save_state(path, &c);
-                return snap(Status::Off, c);
-            }
-            Err(MErr::Transient(_)) => {
-                c.fails += 1;
-                c.retry_at = now + backoff(c.fails);
-                let _ = cache::save_state(path, &c);
-                return snap(Status::Backoff, c);
+        // what another process learned while this one waited
+        let known = cached(ctx);
+        if known.status != Status::Ok {
+            return known;
+        }
+        c = known.cache;
+        if !fresh(&c) {
+            if let Err(snap) = read_proxy(ctx, &path, &mut c, &started) {
+                return *snap;
             }
         }
-        if started.elapsed().as_secs() < DEADLINE {
-            match client.claude_rows() {
-                Ok(r) => c.rows = r,
-                Err(MErr::Auth(s)) => return stop(s, c),
-                // the rows are secondary: keep what was last seen
-                Err(_) => {}
-            }
-        }
-        c.at = now;
-        c.fails = 0;
-        c.retry_at = 0;
-        c.off_until = 0;
-        let _ = cache::save_state(path, &c);
+        drop(lock);
     }
-    // RouteLLM: only while routing is on (or tiers were asked for); its
-    // answers never back off the proxy
+    // RouteLLM: only while routing is on (or tiers were asked for), with
+    // no lock held; its answers never back off the proxy
     let on = c.entry.as_ref().is_some_and(|e| !e.disabled);
     if (on || ctx.want_tiers) && c.problem.is_none() && started.elapsed().as_secs() < DEADLINE {
-        let up = health(&ctx.inst.routellm);
-        c.up = Some(up);
-        c.up_at = now;
-        if up && started.elapsed().as_secs() < DEADLINE {
-            if let Some(t) = tiers(&ctx.inst.routellm) {
-                c.tiers = t;
-            }
+        if ctx.force || ctx.now - c.up_at >= PROBE_FRESH {
+            probe(ctx, &path, &mut c, &started);
         }
-        let _ = cache::save_state(path, &c);
     } else if !on && !ctx.want_tiers {
         c.up = None;
     }
-    snap(Status::Ok, c)
+    Snapshot {
+        status: Status::Ok,
+        cache: c,
+    }
+}
+
+/// Asks RouteLLM and records the answer: into the saved cache as it is now
+/// (another process may have changed it), when this instance's lock is free.
+fn probe(ctx: &Ctx, path: &Path, c: &mut Cache, started: &Instant) {
+    let up = health(&ctx.inst.routellm);
+    let mut tiers_now = None;
+    if up && started.elapsed().as_secs() < DEADLINE {
+        tiers_now = tiers(&ctx.inst.routellm);
+    }
+    c.up = Some(up);
+    c.up_at = ctx.now;
+    if let Some(t) = &tiers_now {
+        c.tiers.clone_from(t);
+    }
+    if let Some(_own) = cache::lock_own(path, SAVE_WAIT) {
+        let mut disk = cache::load(path);
+        disk.up = c.up;
+        disk.up_at = c.up_at;
+        if let Some(t) = tiers_now {
+            disk.tiers = t;
+        }
+        let _ = cache::save_state(path, &disk);
+    }
+}
+
+/// The management reads, under the locks. `Err`: the run ends with that
+/// snapshot (refused, off, failing).
+fn read_proxy(
+    ctx: &Ctx,
+    path: &Path,
+    c: &mut Cache,
+    started: &Instant,
+) -> Result<(), Box<Snapshot>> {
+    let now = ctx.now;
+    let snap = |status, c: &Cache| {
+        Box::new(Snapshot {
+            status,
+            cache: c.clone(),
+        })
+    };
+    let stop = |s: u16, c: &mut Cache| {
+        if !ctx.guard().stop(s, ctx.key, now) {
+            // no record of the refusal: hold this instance's calls instead
+            c.retry_at = now + UNRECORDED_HOLD;
+            let _ = cache::save_state(path, c);
+        }
+        snap(Status::AuthStopped(s), c)
+    };
+    let Ok(client) = Client::new(&ctx.inst.management, ctx.key) else {
+        return Err(snap(Status::Backoff, c));
+    };
+    match client.entry(&ctx.inst.provider) {
+        Ok(Some(it)) => {
+            c.problem = same_target(&it.base_url, &ctx.inst.routellm)
+                .then_some(())
+                .map_or(Some(Problem::Mismatch), |()| None);
+            c.entry = Some(Entry {
+                disabled: it.disabled,
+                priority: it.priority,
+                aliases: it.aliases,
+            });
+        }
+        Ok(None) => {
+            c.entry = None;
+            c.problem = Some(Problem::Unconfigured);
+        }
+        Err(MErr::Auth(s)) => return Err(stop(s, c)),
+        Err(MErr::NotFound) => {
+            c.off_until = now + OFF_HOLD;
+            let _ = cache::save_state(path, c);
+            return Err(snap(Status::Off, c));
+        }
+        Err(MErr::Transient(_)) => {
+            c.fails += 1;
+            c.retry_at = now + backoff(c.fails);
+            let _ = cache::save_state(path, c);
+            return Err(snap(Status::Backoff, c));
+        }
+    }
+    if started.elapsed().as_secs() < DEADLINE {
+        match client.claude_rows() {
+            Ok(r) => c.rows = r,
+            Err(MErr::Auth(s)) => return Err(stop(s, c)),
+            // the rows are secondary: keep what was last seen
+            Err(_) => {}
+        }
+    }
+    c.at = now;
+    c.fails = 0;
+    c.retry_at = 0;
+    c.off_until = 0;
+    let _ = cache::save_state(path, c);
+    Ok(())
 }

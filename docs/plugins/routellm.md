@@ -71,7 +71,7 @@ The plugin has two jobs, kept apart: a render only reads, and only an explicit a
 
 4. **Add `#{routellm}`** to a layout and run `bar check`, then `bar rl status --probe`, which reads the proxy once and reports a missing provider entry, aliases without an OFF row, or a RouteLLM that does not answer.
 
-`bar check` (the plugin's `--check`) makes no request. It reports, from the configuration file and the last cache: a missing, unreadable or malformed `routellm.conf` (with the line); a key source that is unreadable; a state directory that is not writable; a key the proxy refused; management off (404); no matching provider entry; an entry that points at another RouteLLM; aliases without an OFF row; a proxy not read yet; and an `on-priority` of 0 or less.
+`bar check` (the plugin's `--check`) makes no request. It reports, from the configuration file and the last cache: a missing, unreadable or malformed `routellm.conf` (with the line); a key source that is unreadable; a state directory that is not writable; a key the proxy refused; management off (404); no matching provider entry; an entry that points at another RouteLLM; aliases without an OFF row; a `private` alias that has an OFF row (which would send it to the frontier); a proxy not read yet; and an `on-priority` of 0 or less.
 
 The first time the plugin switches routing, the proxy re-saves its configuration file. A file in the legacy flat layout gets one line, `disabled: true`, which switching ON removes again; comments stay. A file in the v8 layout is re-serialised on the first write, which drops its comments. The proxy answers before it has applied the change; the plugin reads the entry again and reports what it finds. Keep this in mind for a configuration kept under version control: the switch shows up as a diff.
 
@@ -112,7 +112,7 @@ RL off │ private ✗
 |---|---|---|
 | state | `RL on` (`good`), `RL off` (`dim`), `RL on ✗` (`bad`: on, but RouteLLM does not answer), `RL key?` (`bad`), `RL ?` | always, once the instance matches |
 | alias | the session's `route-*` alias, such as `route-auto` | `show` has `alias` and the session's model is an alias of the provider entry |
-| tier | the tier behind the alias and a marker: `auto ☁`, `private ⌂`. With routing OFF, the model the alias maps to, without its `claude-` prefix: `auto → sonnet-5-5`. With routing OFF and no row for the alias: `private ✗` in `bad` | `show` has `tier` |
+| tier | the tier behind the alias and a marker: `auto ☁`, `private ⌂`. With routing OFF, the model the alias maps to, without its `claude-` prefix: `auto → sonnet-5-5`. With routing OFF and no row for the alias, or with routing on and RouteLLM not answering: `private ✗` in `bad` | `show` has `tier` |
 | capabilities | `vis tools 200k`, in `dim` | `show` has `caps` |
 
 - `⌂` marks a tier you declared local with `local-tiers`, `☁` any other: it may leave this host. The marker is **declared, not derived**: it says what `local-tiers` says, and RouteLLM does not report where a tier runs.
@@ -136,7 +136,7 @@ What the segment cannot show is a property of what the router exposes today: it 
 | `routed` | off | Hide the whole segment unless the session's model is a `route-*` alias. Off, the state shows for every session on the proxy. |
 | `base-url` | none | Base URL to use when `ANTHROPIC_BASE_URL` is not in the environment bar passes. |
 
-The list option `show` is comma separated: `#{routellm[show=state,tier,caps]}`; a list that names none of `state`, `alias`, `tier`, `caps` keeps the default, and a segment with nothing selected is hidden. The plugin's `ttl` is 15 s and its time limit 8 s; an action may run for 30 s. It emits no `usage` and no `account`; those stay with [`bar-cliproxyapi`](cliproxyapi.md).
+The list option `show` is comma separated: `#{routellm[show=state,tier,caps]}`; a list that names none of `state`, `alias`, `tier`, `caps` keeps the default, and a segment with nothing selected is hidden. The plugin's `ttl` is 15 s and its time limit 8 s; an action may run for 78 s. It emits no `usage` and no `account`; those stay with [`bar-cliproxyapi`](cliproxyapi.md).
 
 ## Switching
 
@@ -149,7 +149,7 @@ bar rl setup [--instance URL]
 ```
 
 - `status` prints the state, the provider's priority, each alias with its tier and OFF model, whether RouteLLM answers, and the last change. It answers from the plugin's cache; `--probe` makes the calls (once, ban-safe). `--json` prints the cache.
-- `on` and `off` read the entry, change nothing when it already is in the target state (`already on`), then write the one flag and read it back. `on` first checks that RouteLLM answers and serves every aliased tier, and refuses otherwise; `--force` overrides the check. `off` is never gated: it works with RouteLLM down and never contacts it, so it is always the safe way out. `--dry-run` prints the change and sends nothing.
+- `on` and `off` read the entry, change nothing when it already is in the target state (`already on`), then write the one flag and read it back, a few times if the proxy is slow to apply it. `on` first checks that RouteLLM answers and serves every aliased tier, and refuses otherwise; `--force` overrides the check. `off` is never gated: it works with RouteLLM down and never contacts it, so it is always the safe way out. `--dry-run` prints the change and sends nothing.
 - `tiers` lists the aliased tiers with their capabilities and marker; `--all` adds the tiers without a client alias.
 - `setup` prints the proxy configuration block; it never writes it.
 - The instance is `--instance`, else the session's `ANTHROPIC_BASE_URL`, else the only configured instance.
@@ -165,7 +165,7 @@ The plugin declares the actions `toggle`, `on` and `off`, with the tokens `insta
 action routellm routellm.toggle
 ```
 
-The action times out after 30 s. A click re-reads the state before it writes and does nothing when `to` already holds, so a stale link cannot flip routing back. Links need the click handler installed with action support (macOS): run `bar click install`, again after upgrading bar. bar shows the outcome in `action-status` in its state directory and refreshes the segment at the next render. `on` and `off` bind separate links, for a layout with two clicks.
+The action times out after 78 s. A click re-reads the state before it writes and does nothing when `to` already holds, so a stale link cannot flip routing back. Links need the click handler installed with action support (macOS): run `bar click install`, again after upgrading bar. bar shows the outcome in `action-status` in its state directory and refreshes the segment at the next render. `on` and `off` bind separate links, for a layout with two clicks.
 
 ## With bar-cliproxyapi
 
@@ -185,12 +185,12 @@ The proxy bans a client IP for 30 minutes after five failed management attempts,
 
 - **401 or 403** stops every call to that proxy, from both plugins. The segment shows `RL key?` until the key changes or 24 hours pass. The plugin compares a salted, truncated digest, never the key. Processes take turns under a lock in the state directory, so a refused key costs one failed attempt however many sessions render at once; a process that cannot take the lock, or cannot write the state directory, sends nothing.
 - **An empty key is never sent**; an unreadable key source shows `RL key?` without any request.
-- **404** on the management route means management is off, or the proxy is too old to have the route: the segment is hidden and the proxy is not asked again for an hour, `bar rl on|off` refuses, and `bar check` says why.
+- **404** on the management route means management is off, or the proxy is too old to have the route: the segment is hidden and the proxy is not asked again for an hour, and `bar check` says why. `bar rl on|off` and `bar rl status --probe` ask anyway, so a transient 404 never blocks the way out.
 - **No `routellm` entry, or an entry pointing at another RouteLLM**: the segment is hidden, switching is refused, and `bar rl setup` shows what to add. The plugin never toggles an unrelated provider of the same name.
-- **RouteLLM down while ON**: `RL on ✗`. Requests for aliases that have an OFF row fall through to the frontier accounts; `route-private` fails. `bar rl off` is one command and never needs RouteLLM.
+- **RouteLLM down while ON**: `RL on ✗`, with the session's tier marked `✗`. Whether a request falls through to the frontier accounts depends on the proxy; `route-private` fails. `bar rl off` is one command and never needs RouteLLM.
 - **RouteLLM down on `bar rl on`**: refused by the check; `--force` overrides it.
 - **Timeouts, 5xx**: back-off from one minute doubling to an hour, serving the last good state marked `~`. A RouteLLM that does not answer does not back off the management read.
-- **The proxy replies before it applies a change**: the plugin reads the entry again, reports what it finds, and does not loop. Run `bar rl status --probe`.
+- **The proxy replies before it applies a change**: the plugin reads the entry back a few times over about a second and a half. When it still does not show the change, or the request itself timed out, the command says the state is unknown and the cached state is dropped, so the next `bar rl status` or render reads the proxy again. The change is never sent twice.
 - **A failed save of the proxy's configuration** is reported as an error; run the command again, or `bar rl off`.
 
 Responses are size-capped (128 KiB for a management read and for the model list, 4 KiB for `/health`, 64 KiB for the cache), and a loopback proxy is contacted directly even when `HTTP_PROXY` is set.

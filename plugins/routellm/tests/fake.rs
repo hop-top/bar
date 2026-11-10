@@ -4,7 +4,7 @@
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone)]
@@ -166,14 +166,36 @@ pub struct Cpa {
     pub server: Server,
     pub entries: Arc<Mutex<Value>>,
     pub apply: Arc<AtomicBool>,
+    /// Milliseconds until a `PATCH` takes effect (0: at once).
+    pub lag: Arc<AtomicU64>,
+    /// A status to answer `PATCH` with (0: ok). 404 changes nothing; any
+    /// other still applies the change (a reply that was lost or failed).
+    pub patch_status: Arc<AtomicU16>,
+}
+
+impl Cpa {
+    /// A stand-in around a hand-made server (no entries).
+    pub fn bare(server: Server) -> Cpa {
+        Cpa {
+            server,
+            entries: Default::default(),
+            apply: Default::default(),
+            lag: Default::default(),
+            patch_status: Default::default(),
+        }
+    }
 }
 
 pub fn cpa(entries: Value, key: &str) -> Cpa {
     let state = Arc::new(Mutex::new(entries));
     let apply = Arc::new(AtomicBool::new(true));
-    let (st, ap, want) = (
+    let lag = Arc::new(AtomicU64::new(0));
+    let patch_status = Arc::new(AtomicU16::new(0));
+    let (st, ap, lg, ps, want) = (
         state.clone(),
         apply.clone(),
+        lag.clone(),
+        patch_status.clone(),
         format!("bearer {}", key.to_ascii_lowercase()),
     );
     let server = Server::start(move |r| {
@@ -197,14 +219,41 @@ pub fn cpa(entries: Value, key: &str) -> Cpa {
                         body: r#"{"error":"item not found"}"#.into(),
                     };
                 };
+                let forced = ps.load(Ordering::SeqCst);
+                if forced == 404 {
+                    return status(404);
+                }
                 if b["value"]["base-url"] == "" {
                     arr.remove(pos);
                 } else if ap.load(Ordering::SeqCst) {
-                    for f in ["disabled", "priority"] {
-                        if !b["value"][f].is_null() {
-                            arr[pos][f] = b["value"][f].clone();
+                    let name = b["name"].clone();
+                    let value = b["value"].clone();
+                    let delay = lg.load(Ordering::SeqCst);
+                    let apply = move |es: &mut Value| {
+                        let Some(e) = es
+                            .as_array_mut()
+                            .and_then(|a| a.iter_mut().find(|e| e["name"] == name))
+                        else {
+                            return;
+                        };
+                        for f in ["disabled", "priority"] {
+                            if !value[f].is_null() {
+                                e[f] = value[f].clone();
+                            }
                         }
+                    };
+                    if delay == 0 {
+                        apply(&mut es);
+                    } else {
+                        let st = st.clone();
+                        std::thread::spawn(move || {
+                            std::thread::sleep(std::time::Duration::from_millis(delay));
+                            apply(&mut st.lock().unwrap());
+                        });
                     }
+                }
+                if forced != 0 {
+                    return status(forced);
                 }
                 ok(r#"{"status":"ok"}"#)
             }
@@ -215,6 +264,8 @@ pub fn cpa(entries: Value, key: &str) -> Cpa {
         server,
         entries: state,
         apply,
+        lag,
+        patch_status,
     }
 }
 

@@ -145,15 +145,7 @@ fn an_entry_that_is_missing_or_points_elsewhere_is_not_touched() {
 fn a_refused_key_costs_one_attempt_across_every_call() {
     for code in [401u16, 403] {
         let s = Server::start(move |_| status(code));
-        let e = Env::with(
-            &format!("ban{code}"),
-            fake::Cpa {
-                server: s,
-                entries: Default::default(),
-                apply: Default::default(),
-            },
-            healthy(),
-        );
+        let e = Env::with(&format!("ban{code}"), fake::Cpa::bare(s), healthy());
         for _ in 0..4 {
             assert!(go(&e, KEY, false, false, false).is_err());
         }
@@ -206,4 +198,146 @@ fn nothing_is_sent_without_a_writable_state_directory() {
     e.dir = f;
     assert!(go(&e, KEY, false, false, false).is_err());
     assert_eq!(e.proxy.server.count(), 0);
+}
+
+fn cache_of(e: &Env) -> bar_routellm::cache::Cache {
+    bar_routellm::cache::load(&e.cache_path())
+}
+
+#[test]
+fn an_explicit_toggle_goes_past_the_holds() {
+    for (off_until, retry_at) in [(T0 + 3000, 0), (0, T0 + 3000)] {
+        let e = Env::new("toggle-hold", false, healthy(), 1000);
+        let c = bar_routellm::cache::Cache {
+            off_until,
+            retry_at,
+            fails: 4,
+            ..Default::default()
+        };
+        bar_routellm::cache::save(&e.cache_path(), &c).unwrap();
+        let out = go(&e, KEY, false, false, false).unwrap();
+        assert!(out.iter().any(|l| l == "routing off"), "{out:?}");
+        let c = cache_of(&e);
+        assert_eq!((c.off_until, c.retry_at, c.fails), (0, 0, 0));
+    }
+}
+
+#[test]
+fn a_refused_key_still_stops_a_toggle_under_a_hold() {
+    let e = Env::new("toggle-hold-auth", false, healthy(), 1000);
+    bar_plugin::keyguard::Guard {
+        state_dir: &e.dir,
+        mgmt: &e.inst.management,
+    }
+    .stop(401, &Secret::new(KEY.as_bytes().to_vec()), T0);
+    assert!(go(&e, KEY, false, false, false)
+        .unwrap_err()
+        .contains("refused"));
+    assert_eq!(e.proxy.server.count(), 0);
+}
+
+#[test]
+fn the_on_gate_probes_routellm_with_no_lock_held() {
+    let cell = Default::default();
+    let (rl, seen) = rl_watching_locks(std::sync::Arc::clone(&cell));
+    let e = Env::new("gate-unlocked", true, rl, 1000);
+    *cell.lock().unwrap() = Some(lock_paths(&e));
+    go(&e, KEY, true, false, false).unwrap();
+    assert_eq!(*seen.lock().unwrap(), [false], "locks held while probing");
+    assert_eq!(state(&e)["disabled"], false);
+    assert_eq!(e.proxy.server.patches().len(), 1);
+}
+
+#[test]
+fn a_change_that_lands_late_is_confirmed_by_re_reading() {
+    let e = Env::new("late", false, healthy(), 1000);
+    e.proxy.lag.store(300, Ordering::SeqCst);
+    let out = go(&e, KEY, false, false, false).unwrap();
+    assert!(out.iter().any(|l| l == "routing off"), "{out:?}");
+    assert_eq!(e.proxy.server.patches().len(), 1);
+    assert_eq!(cache_of(&e).last.unwrap().to, "off");
+}
+
+#[test]
+fn a_change_that_never_lands_leaves_the_state_open_and_the_cache_stale() {
+    let e = Env::new("never", false, healthy(), 1000);
+    // a fresh cache that says "on"
+    let _ = bar_routellm::collect::collect(&bar_routellm::collect::Ctx {
+        inst: &e.inst,
+        key: &Secret::new(KEY.as_bytes().to_vec()),
+        state_dir: &e.dir,
+        now: T0,
+        want_tiers: false,
+        force: false,
+    });
+    assert_eq!(cache_of(&e).at, T0);
+    e.proxy.apply.store(false, Ordering::SeqCst);
+    let err = go(&e, KEY, false, false, false).unwrap_err();
+    assert!(err.contains("still reports"), "{err}");
+    assert!(err.contains("re-check"), "{err}");
+    assert_eq!(cache_of(&e).at, 0, "the next render must read the proxy");
+    // it was read back more than once
+    let gets = e
+        .proxy
+        .server
+        .log
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|r| r.method == "GET" && r.path.ends_with("openai-compatibility"))
+        .count();
+    assert!(gets >= 4, "{gets}");
+}
+
+#[test]
+fn a_failed_change_request_that_did_apply_is_a_success_with_a_note() {
+    let e = Env::new("lost-reply", false, healthy(), 1000);
+    e.proxy.patch_status.store(500, Ordering::SeqCst);
+    let out = go(&e, KEY, false, false, false).unwrap();
+    assert!(out.iter().any(|l| l == "routing off"), "{out:?}");
+    assert!(out.iter().any(|l| l.contains("was applied")), "{out:?}");
+    assert_eq!(e.proxy.server.patches().len(), 1, "no retry");
+}
+
+#[test]
+fn a_failed_change_request_that_did_not_apply_says_the_state_is_unknown() {
+    let e = Env::new("failed", false, healthy(), 1000);
+    e.proxy.patch_status.store(500, Ordering::SeqCst);
+    e.proxy.apply.store(false, Ordering::SeqCst);
+    let err = go(&e, KEY, false, false, false).unwrap_err();
+    assert!(err.contains("state unknown"), "{err}");
+    assert!(!err.contains("sent, but"), "{err}");
+    assert_eq!(cache_of(&e).at, 0);
+    assert_eq!(e.proxy.server.patches().len(), 1);
+}
+
+#[test]
+fn a_missing_item_on_write_has_its_own_message() {
+    let e = Env::new("patch404", false, healthy(), 1000);
+    e.proxy.patch_status.store(404, Ordering::SeqCst);
+    let err = go(&e, KEY, false, false, false).unwrap_err();
+    assert!(err.contains("since it was read"), "{err}");
+    assert!(!err.contains("management off"), "{err}");
+}
+
+#[test]
+fn a_refusal_that_cannot_be_remembered_is_said() {
+    let cell: std::sync::Arc<std::sync::Mutex<Option<std::path::PathBuf>>> = Default::default();
+    let c2 = cell.clone();
+    let s = Server::start(move |_| {
+        if let Some(f) = c2.lock().unwrap().clone() {
+            let _ = std::fs::create_dir_all(f.join("x"));
+        }
+        status(401)
+    });
+    let e = Env::with("unrecorded-toggle", fake::Cpa::bare(s), healthy());
+    *cell.lock().unwrap() = Some(
+        bar_plugin::keyguard::Guard {
+            state_dir: &e.dir,
+            mgmt: &e.inst.management,
+        }
+        .file(),
+    );
+    let err = go(&e, KEY, false, false, false).unwrap_err();
+    assert!(err.contains("could not be recorded"), "{err}");
 }

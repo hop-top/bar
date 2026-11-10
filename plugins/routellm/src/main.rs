@@ -162,6 +162,12 @@ fn check_instance(i: &Instance, state: &std::path::Path, w: &mut Vec<String>) {
         )),
         _ => {}
     }
+    for a in collect::private_with_row(&c) {
+        w.push(format!(
+            "{}: `{a}` is a private tier but has a claude row, so OFF sends it to the frontier",
+            i.origin
+        ));
+    }
     if i.on_priority <= 0 {
         w.push(format!(
             "{}: on-priority {} does not outrank a frontier account",
