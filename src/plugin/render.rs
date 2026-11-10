@@ -14,7 +14,7 @@ use crate::options::Options;
 use crate::pace::metric_score;
 use crate::placeholders::Ctx;
 use crate::session::{Session, Window};
-use crate::style::{dim, fg, link, ramp, sanitize};
+use crate::style::{dim, fg, link, ramp, sanitize, ITEM_BREAK};
 
 fn window_json(w: &Option<Window>) -> Value {
     w.as_ref().map_or(
@@ -144,9 +144,16 @@ pub struct Metric {
     pub granted_at: Option<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+/// Most items one output can carry.
+pub const MAX_ITEMS: usize = 16;
+
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Output {
+    /// With `items`, the output's own `text` is not drawn.
     pub text: String,
+    /// `items`: each drawn like an output of its own, joined by a space,
+    /// with a wrap point between them. Items carry no items.
+    pub items: Vec<Output>,
     /// Shown instead of `text` while the placeholder's toggle is on.
     pub alt: Option<String>,
     pub label: Option<String>,
@@ -180,12 +187,35 @@ fn metric(v: &Value) -> Option<Metric> {
     })
 }
 
-/// `None` unless a JSON object with string `text`; optional fields of the
-/// wrong type are ignored.
+/// `None` unless a JSON object with string `text` or an `items` array;
+/// optional fields of the wrong type are ignored, and an item without
+/// string `text` is left out.
 pub fn parse_output(raw: &str) -> Option<Output> {
     let v: Value = serde_json::from_str(raw.trim()).ok()?;
+    let items = v["items"].as_array();
+    let mut out = match v.get("text").and_then(Value::as_str) {
+        Some(_) => parse_one(&v)?,
+        None if items.is_some() => parse_one(&{
+            let mut w = v.clone();
+            w["text"] = Value::from("");
+            w
+        })?,
+        None => return None,
+    };
+    out.items = items
+        .into_iter()
+        .flatten()
+        .filter_map(parse_one)
+        .take(MAX_ITEMS)
+        .collect();
+    Some(out)
+}
+
+fn parse_one(v: &Value) -> Option<Output> {
+    let v = v.as_object().map(|_| v)?;
     Some(Output {
         text: v.get("text")?.as_str()?.to_string(),
+        items: Vec::new(),
         alt: v["alt"]
             .as_str()
             .filter(|a| !sanitize(a).trim().is_empty())
@@ -212,7 +242,28 @@ pub fn paint(out: &Output, name: &str, config: &Config, now: i64) -> Option<Stri
 
 /// As `paint`; the icon (explicit `pick`, else the output's, else the
 /// plugin's default `info_icon` when an icon set is chosen) replaces `label`.
+/// An output with `items` draws each item this way, joined by
+/// [`ITEM_BREAK`] and a space; `None` when none shows.
 pub fn paint_with(
+    out: &Output,
+    name: &str,
+    config: &Config,
+    now: i64,
+    pick: &Pick,
+    info_icon: Option<&str>,
+) -> Option<String> {
+    if out.items.is_empty() {
+        return paint_one(out, name, config, now, pick, info_icon);
+    }
+    let drawn: Vec<String> = out
+        .items
+        .iter()
+        .filter_map(|i| paint_one(i, name, config, now, pick, info_icon))
+        .collect();
+    (!drawn.is_empty()).then(|| drawn.join(&format!("{ITEM_BREAK} ")))
+}
+
+fn paint_one(
     out: &Output,
     name: &str,
     config: &Config,
@@ -290,7 +341,13 @@ pub fn render_found_with(ctx: &Ctx, found: &Found, opts: &Options, pick: &Pick) 
     let info = cached_info(cache, found)?;
     let plan = plan(ctx, found, &info, opts)?;
     let raw = cache.read_or_refresh(&plan.key, plan.ttl, &plan.job)?;
-    let out = toggled(parse_output(&raw)?, &found.name, opts, cache.state_dir());
+    let mut out = parse_output(&raw)?;
+    let state = cache.state_dir();
+    out.items = std::mem::take(&mut out.items)
+        .into_iter()
+        .map(|i| toggled(i, &found.name, opts, state))
+        .collect();
+    let out = toggled(out, &found.name, opts, state);
     paint_with(
         &out,
         &found.name,

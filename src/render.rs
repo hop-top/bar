@@ -15,7 +15,29 @@ use crate::placeholders::{lookup_in, Ctx};
 use crate::plugin;
 use crate::session::Session;
 use crate::skin::{self, Paint, Seg, Side};
-use crate::style::{self, dim, visible_width_with};
+use crate::style::{self, dim, visible_width_with, ITEM_BREAK};
+
+/// A segment's text cut at its [`ITEM_BREAK`]s, each cut dropping the
+/// space after it (colour codes may sit between the two); one piece when
+/// there is no break.
+fn item_pieces(text: &str) -> Vec<String> {
+    let mut parts = text.split(ITEM_BREAK);
+    let mut out: Vec<String> = parts.next().map(String::from).into_iter().collect();
+    for part in parts {
+        // only SGR codes (a gradient's colour) can sit before the space
+        let mut head = 0;
+        let bytes = part.as_bytes();
+        while bytes[head..].starts_with(b"\x1b[") {
+            match part[head..].find('m') {
+                Some(n) => head += n + 1,
+                None => break,
+            }
+        }
+        let rest = part[head..].strip_prefix(' ').unwrap_or(&part[head..]);
+        out.push(format!("{}{rest}", &part[..head]));
+    }
+    out
+}
 use std::path::PathBuf;
 
 /// Cold cache: every `%command%` expands to nothing.
@@ -310,6 +332,11 @@ fn render_impl(
         rows.extend(line_rows(config, paint, groups, columns, budget));
     }
     let out = rows.join("\n");
+    let out = if out.contains(ITEM_BREAK) {
+        out.replace(ITEM_BREAK, "")
+    } else {
+        out
+    };
     if depth == Depth::None {
         style::strip_colors(&out)
     } else {
@@ -343,11 +370,36 @@ fn line_rows(
     match columns {
         Some(cols) if config.wrap == Wrap::On && !placed.fits => {
             let all: Vec<Seg> = [l, c, r].into_iter().flatten().collect();
-            flow(all.len(), cols, budget, |rg| {
-                group(&all[rg], Side::Left).width
+            // a segment with plugin items may also break between them
+            let units: Vec<(usize, String)> = all
+                .iter()
+                .enumerate()
+                .flat_map(|(i, s)| item_pieces(&s.text).into_iter().map(move |p| (i, p)))
+                .collect();
+            let rebuilt = |rg: std::ops::Range<usize>| -> Vec<Seg> {
+                let mut segs: Vec<Seg> = Vec::new();
+                let mut last = usize::MAX;
+                for (i, piece) in units[rg].iter().map(|(i, p)| (*i, p)) {
+                    match segs.last_mut().filter(|_| last == i) {
+                        Some(s) => s.text = format!("{} {piece}", s.text),
+                        None => segs.push(Seg {
+                            text: piece.clone(),
+                            width: 0,
+                            bg: all[i].bg,
+                        }),
+                    }
+                    last = i;
+                }
+                for s in &mut segs {
+                    s.width = visible_width_with(&s.text, config.icon_width);
+                }
+                segs
+            };
+            flow(units.len(), cols, budget, |rg| {
+                group(&rebuilt(rg), Side::Left).width
             })
             .into_iter()
-            .map(|rg| group(&all[rg], Side::Left).text)
+            .map(|rg| group(&rebuilt(rg), Side::Left).text)
             .collect()
         }
         _ if placed.text.is_empty() => Vec::new(),

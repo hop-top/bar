@@ -201,6 +201,10 @@ fn dropped_format(c: char) -> bool {
 }
 
 /// Cells the text occupies once SGR and OSC 8 sequences are removed.
+/// Marks, followed by one space, where a plugin's output may wrap between
+/// its items; zero cells wide, removed before anything is printed.
+pub const ITEM_BREAK: char = '\u{1f}';
+
 pub fn visible_width(text: &str) -> usize {
     visible_width_with(text, 1)
 }

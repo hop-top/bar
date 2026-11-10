@@ -241,3 +241,115 @@ fn inputs_are_bounded_and_secret_names_refused() {
     assert_eq!(vals.len(), 2, "over 1 KiB counts as unset: {vals:?}");
     assert!(vals.contains_key("BAR_T_V00") && vals.contains_key("BAR_T_V02"));
 }
+
+// --- items ---
+
+use hop_bar::render::{render_in, ColdRunner};
+use hop_bar::style::{strip_codes, ITEM_BREAK};
+
+fn items_json(n: usize) -> String {
+    let items: Vec<_> = (0..n)
+        .map(|i| json!({"label": format!("a{i}"), "text": format!("{}%", 10 + i), "style": "good"}))
+        .collect();
+    json!({"items": items}).to_string()
+}
+
+#[test]
+fn parse_items_keeps_valid_ones_and_caps_at_16() {
+    let o = plugin::parse_output(&items_json(20)).unwrap();
+    assert_eq!(o.items.len(), 16);
+    assert_eq!(o.items[0].text, "10%");
+    let raw = r#"{"items":[{"text":"a"},{"nope":1},"x",{"text":5},{"text":"b","items":[{"text":"deep"}]}]}"#;
+    let o = plugin::parse_output(raw).unwrap();
+    let texts: Vec<&str> = o.items.iter().map(|i| i.text.as_str()).collect();
+    assert_eq!(texts, ["a", "b"]);
+    assert!(o.items[1].items.is_empty(), "items do not nest");
+    assert_eq!(o.text, "");
+    assert!(plugin::parse_output(r#"{"items":[]}"#).is_some());
+    assert!(plugin::parse_output(r#"{"items":"x"}"#).is_none());
+    assert!(plugin::parse_output(r#"{"label":"x"}"#).is_none());
+    assert!(plugin::parse_output(r#"{"text":"t","items":[{"text":"i"}]}"#).is_some());
+}
+
+#[test]
+fn items_are_painted_individually() {
+    let fx = Fx::new();
+    let c = cfg("");
+    fx.put(
+        "out.json",
+        r#"{"items":[{"label":"x","text":"1","style":"good"},{"text":"2","style":"bad"},{"text":"","style":"bad"},{"text":"3","score":0}]}"#,
+    );
+    fx.prime("echo", &c, &[]);
+    let shown = fx.show("echo", &c, &[]);
+    let good = hop_bar::style::fg(c.colors.good, "1");
+    let bad = hop_bar::style::fg(c.colors.bad, "2");
+    assert!(shown.contains(&good), "{shown:?}");
+    assert!(shown.contains(&bad), "{shown:?}");
+    let plain = strip_codes(&shown);
+    assert_eq!(
+        plain,
+        format!("x 1{ITEM_BREAK} 2{ITEM_BREAK} 3"),
+        "empty item skipped"
+    );
+}
+
+#[test]
+fn items_join_by_one_space_and_wrap_only_between_items() {
+    let fx = Fx::new();
+    let c = cfg("set wrap on\nset left \"#{echo}\"\nset right \"#{echo}\"\n");
+    fx.put(
+        "out.json",
+        r#"{"items":[{"text":"aaaa 11%"},{"text":"bbbb 22%"},{"text":"cccc 33%"}]}"#,
+    );
+    fx.prime("echo", &c, &[]);
+    let (s, cache, dirs) = (session(), fx.cache(), fx.dirs());
+    let draw = |cols| render_in(&s, &c, Some(cols), &ColdRunner, Some(&cache), &dirs);
+    // wide: one row, a single space between items, no marker left
+    let wide = draw(200);
+    assert!(!wide.contains(ITEM_BREAK));
+    let plain = strip_codes(&wide);
+    assert_eq!(plain.lines().count(), 1, "{plain:?}");
+    assert!(plain.contains("aaaa 11% bbbb 22% cccc 33%"), "{plain:?}");
+    // narrow: rows break between items, never inside one
+    let rows = strip_codes(&draw(24));
+    assert_eq!(
+        rows.lines().collect::<Vec<_>>(),
+        [
+            "aaaa 11% bbbb 22%",
+            "cccc 33% │ aaaa 11%",
+            "bbbb 22% cccc 33%"
+        ],
+        "{rows:?}"
+    );
+}
+
+#[test]
+fn wrap_off_keeps_items_on_the_rows_as_before() {
+    let fx = Fx::new();
+    let c = cfg("set left \"#{echo}\"\n");
+    fx.put("out.json", r#"{"items":[{"text":"aaaa"},{"text":"bbbb"}]}"#);
+    fx.prime("echo", &c, &[]);
+    let (s, cache, dirs) = (session(), fx.cache(), fx.dirs());
+    let out = render_in(&s, &c, Some(8), &ColdRunner, Some(&cache), &dirs);
+    assert_eq!(out, "aaaa bbbb");
+}
+
+#[test]
+fn items_survive_a_gradient() {
+    let fx = Fx::new();
+    let c = cfg("set wrap on\nset gradient ember\nset left \"#{echo}\"\n");
+    fx.put(
+        "out.json",
+        r#"{"items":[{"text":"aaaa 11%"},{"text":"bbbb 22%"}]}"#,
+    );
+    fx.prime("echo", &c, &[]);
+    let (s, cache, dirs) = (session(), fx.cache(), fx.dirs());
+    let out = render_in(&s, &c, Some(14), &ColdRunner, Some(&cache), &dirs);
+    let plain = strip_codes(&out);
+    assert!(!plain.contains(ITEM_BREAK));
+    assert_eq!(
+        plain.lines().collect::<Vec<_>>(),
+        ["aaaa 11%", "bbbb 22%"],
+        "{plain:?}"
+    );
+}
