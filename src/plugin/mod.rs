@@ -18,10 +18,14 @@ pub use info::{
     Inputs, OptSpec, OptType, MAX_ENV_INPUTS, MAX_ENV_VALUE, MAX_TOKENS, RESERVED, SESSION_INPUTS,
 };
 pub use render::{
-    cached_output, default_output, link_account, paint, paint_with, parse_output, plan, render,
-    render_found, render_found_with, Account, Metric, Output, Plan, Usage, MAX_ITEMS,
+    account_rules, cached_output, default_output, link_account, load_account_rules, paint,
+    paint_with, parse_output, plan, render, render_found, render_found_with, with_accounts,
+    Account, Metric, Output, Plan, Usage, MAX_ITEMS,
 };
 
+/// Environment variable `bar <name>` sets for a plugin that declared
+/// `inputs.accounts`: the user's account rules as JSON.
+pub const ACCOUNTS_ENV: &str = "BAR_ACCOUNTS";
 pub const PREFIX: &str = "bar-";
 /// Capability a plugin must declare to be rendered.
 pub const CAPABILITY: &str = "placeholder";

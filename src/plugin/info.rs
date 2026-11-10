@@ -112,6 +112,9 @@ pub struct Inputs {
     pub session: Vec<String>,
     /// Declared environment names bar refuses: `env_secret` ones.
     pub refused: Vec<String>,
+    /// The plugin wants the user's `account` rules (`accounts`), handed
+    /// over at render, action and `bar <name>` time, never in argv.
+    pub accounts: bool,
 }
 
 /// Names that hold credentials: their values would land in the key, the
@@ -170,15 +173,22 @@ impl Inputs {
             env,
             session,
             refused,
+            accounts: v["accounts"].as_bool().unwrap_or(false),
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.env.is_empty() && self.session.is_empty()
+        self.env.is_empty() && self.session.is_empty() && !self.accounts
     }
 
     fn to_json(&self) -> Option<Value> {
-        (!self.is_empty()).then(|| json!({"env": self.env, "session": self.session}))
+        (!self.is_empty()).then(|| {
+            let mut v = json!({"env": self.env, "session": self.session});
+            if self.accounts {
+                v["accounts"] = Value::Bool(true);
+            }
+            v
+        })
     }
 
     /// Values of the declared environment variables: only those set to

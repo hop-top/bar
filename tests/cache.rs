@@ -426,6 +426,7 @@ fn backoff_floor_holds_for_plugin_jobs() {
         path: "/nonexistent/bar-x".into(),
         input: "{}".into(),
         timeout: 3,
+        accounts: false,
     };
     let fail = c.fail_path("p");
     std::fs::create_dir_all(fail.parent().unwrap()).unwrap();

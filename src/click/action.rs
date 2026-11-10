@@ -190,8 +190,13 @@ pub fn parse(url: &str) -> Result<ActionUrl, String> {
 /// why nothing ran, or that the plugin failed.
 pub fn run(state: &Path, url: &str, config: &Config, dirs: &[PathBuf]) -> Result<(), String> {
     let mut said = String::new();
-    let r = checked(state, url, config, dirs).and_then(|(u, found, cache, declared)| {
-        let input = serde_json::json!({"action": u.action, "tokens": u.tokens}).to_string();
+    let r = checked(state, url, config, dirs).and_then(|(u, found, cache, declared, wants)| {
+        let mut input = serde_json::json!({"action": u.action, "tokens": u.tokens});
+        // the user's `account` rules, for a plugin that declared it wants them
+        if wants && !config.accounts.is_empty() {
+            input["accounts"] = plugin::account_rules(config);
+        }
+        let input = input.to_string();
         let mut c = std::process::Command::new(&found.path);
         c.arg("--action")
             .arg(&u.action)
@@ -224,7 +229,7 @@ fn checked(
     url: &str,
     config: &Config,
     dirs: &[PathBuf],
-) -> Result<(ActionUrl, plugin::Found, Cache, u64), String> {
+) -> Result<(ActionUrl, plugin::Found, Cache, u64, bool), String> {
     let u = parse(url)?;
     if nonce(state).as_deref() != Some(u.nonce.as_str()) {
         return Err("link was not made by this install".into());
@@ -255,5 +260,6 @@ fn checked(
     if !cached.offers_tokens(&u.tokens) {
         return Err("token values are not in the plugin's current output".into());
     }
-    Ok((u, found, cache, declared))
+    let wants = info.inputs.accounts;
+    Ok((u, found, cache, declared, wants))
 }

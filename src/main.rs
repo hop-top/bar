@@ -281,6 +281,13 @@ fn external(name: &str, args: &[OsString]) -> ! {
     };
     let mut c = std::process::Command::new(&found.path);
     c.args(args);
+    // the user's `account` rules, for a plugin that declared it wants them
+    if plugin::info_now(&cache, &found).inputs.accounts {
+        let rules = plugin::load_account_rules(None);
+        if rules.as_array().is_some_and(|a| !a.is_empty()) {
+            c.env(plugin::ACCOUNTS_ENV, rules.to_string());
+        }
+    }
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
