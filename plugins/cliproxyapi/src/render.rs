@@ -168,7 +168,7 @@ mod tests {
     fn text_marks_stale_and_picks_a_style() {
         let s = Snapshot {
             status: Status::Ok,
-            accounts: vec![acct("work", 95.4, 1000), acct("home", 10.0, 0)],
+            accounts: vec![acct("work", 95.4, 1000), acct("home", 10.0, 1)],
         };
         let o = output(&s, "claude", false, 1000);
         assert_eq!(
