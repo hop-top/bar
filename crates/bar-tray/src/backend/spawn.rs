@@ -1,8 +1,10 @@
 //! Children of the tray: `bar tray state --json` (output captured) and
-//! `bar tray run <id>` / `bar toggle <key>` (output dropped). Argument
-//! arrays only, never a shell; `bar` is found beside the tray binary,
-//! never on `PATH`. A tray built for the Windows GUI subsystem has no
-//! console, so every child gets null stdio and no console window.
+//! `bar tray run <id>` / `bar toggle <key>` (output dropped, first line
+//! of stderr kept as the failure note). Argument arrays only, never a
+//! shell; `bar` is found beside the tray binary (or where `--bar` says),
+//! never on `PATH`. Every child gets null stdin, a scrubbed
+//! environment (only the names the `bar://` handler bakes, with the
+//! tray's own values), a time limit and, past it, a kill.
 
 use std::ffi::OsString;
 use std::io::Read;
@@ -16,9 +18,73 @@ pub const MAX_CAPTURE: u64 = 1 << 20;
 /// File name of the `bar` binary on this OS.
 pub const BAR_NAME: &str = if cfg!(windows) { "bar.exe" } else { "bar" };
 
+/// Every variable that moves a dir `bar` reads, the same set the
+/// `bar://` handler bakes: the state dir, the XDG bases, Claude Code's
+/// config dir, tmux's socket dir, and `PATH`, where an action finds its
+/// plugin. Nothing else reaches a child.
+pub const HANDLER_ENV: [&str; 7] = [
+    "BAR_STATE_DIR",
+    "XDG_STATE_HOME",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "CLAUDE_CONFIG_DIR",
+    "TMUX_TMPDIR",
+    "PATH",
+];
+
+/// The longest `bar tray run` lets an action run.
+pub const MAX_LIMIT: Duration = Duration::from_secs(120);
+/// What `bar` gets on top of an action's limit before the tray kills it.
+pub const GRACE: Duration = Duration::from_secs(5);
+/// How long `bar tray state --json` or `bar toggle` may take: plugins
+/// answer `--menu` within 3 s each, in parallel.
+pub const QUICK: Duration = Duration::from_secs(15);
+/// Longest failure note kept from stderr.
+const MAX_NOTE: usize = 80;
+
+/// The deadline for an action: its limit (`None` or 0: the longest
+/// `bar` allows) plus [`GRACE`].
+pub fn deadline(limit: Option<u64>) -> Duration {
+    let limit = match limit {
+        Some(s) if s > 0 => Duration::from_secs(s).min(MAX_LIMIT),
+        _ => MAX_LIMIT,
+    };
+    limit + GRACE
+}
+
 /// `bar` next to the tray binary at `tray_exe` (an absolute path).
 pub fn bar_path(tray_exe: &Path) -> PathBuf {
     tray_exe.with_file_name(BAR_NAME)
+}
+
+/// Where `bar` is, resolved once: `explicit` when given (made
+/// absolute), else beside this executable. Never `PATH`: a writable
+/// entry there could swap in another `bar` for every click.
+pub fn locate(explicit: Option<&Path>) -> Result<PathBuf, String> {
+    match explicit {
+        Some(p) => absolute(p),
+        None => beside_exe(std::env::current_exe().ok().as_deref()),
+    }
+}
+
+/// `bar` beside the tray at `exe`, when there is one.
+fn beside_exe(exe: Option<&Path>) -> Result<PathBuf, String> {
+    exe.map(bar_path)
+        .filter(|p| p.is_file())
+        .ok_or_else(|| "no `bar` beside bar-tray; pass --bar <path>".to_string())
+}
+
+fn absolute(p: &Path) -> Result<PathBuf, String> {
+    let abs = if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        std::env::current_dir().map_err(|e| e.to_string())?.join(p)
+    };
+    if abs.is_file() {
+        Ok(abs)
+    } else {
+        Err(format!("{}: not a file", abs.display()))
+    }
 }
 
 pub fn state_args() -> Vec<OsString> {
@@ -42,16 +108,25 @@ pub fn toggle_args(key: &str) -> Vec<OsString> {
     vec!["toggle".into(), key.into()]
 }
 
+/// The [`HANDLER_ENV`] subset of `env`; empty values count as unset.
+pub fn scrub(env: impl IntoIterator<Item = (OsString, OsString)>) -> Vec<(OsString, OsString)> {
+    env.into_iter()
+        .filter(|(k, v)| k.to_str().is_some_and(|k| HANDLER_ENV.contains(&k)) && !v.is_empty())
+        .collect()
+}
+
 fn command(bar: &Path, args: &[OsString], capture: bool) -> Command {
     let mut c = Command::new(bar);
     c.args(args)
+        .env_clear()
+        .envs(scrub(std::env::vars_os()))
         .stdin(Stdio::null())
         .stdout(if capture {
             Stdio::piped()
         } else {
             Stdio::null()
         })
-        .stderr(Stdio::null());
+        .stderr(Stdio::piped());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -61,8 +136,28 @@ fn command(bar: &Path, args: &[OsString], capture: bool) -> Command {
     c
 }
 
+/// Reads a pipe to its end on its own thread, keeping at most `cap`
+/// bytes plus one (so the caller can tell an overflow).
+fn reader<R: Read + Send + 'static>(
+    pipe: Option<R>,
+    cap: u64,
+) -> Option<std::thread::JoinHandle<Vec<u8>>> {
+    pipe.map(|p| {
+        std::thread::spawn(move || {
+            let mut s = Vec::new();
+            let _ = p.take(cap + 1).read_to_end(&mut s);
+            s
+        })
+    })
+}
+
+fn joined(h: Option<std::thread::JoinHandle<Vec<u8>>>) -> Vec<u8> {
+    h.map_or_else(Vec::new, |h| h.join().unwrap_or_default())
+}
+
 /// Runs `bar args`, waits at most `limit` (then kills and reaps it) and
-/// returns what it printed when `capture` is set (empty otherwise).
+/// returns what it printed when `capture` is set (empty otherwise). A
+/// failure's message is the first line of stderr when there is one.
 pub fn run(
     bar: &Path,
     args: &[OsString],
@@ -72,13 +167,8 @@ pub fn run(
     let mut child = command(bar, args, capture)
         .spawn()
         .map_err(|e| format!("{}: {e}", bar.display()))?;
-    let reader = child.stdout.take().map(|out| {
-        std::thread::spawn(move || {
-            let mut s = Vec::new();
-            let _ = out.take(MAX_CAPTURE + 1).read_to_end(&mut s);
-            s
-        })
-    });
+    let out = reader(child.stdout.take(), MAX_CAPTURE);
+    let err = reader(child.stderr.take(), 4096);
     let start = Instant::now();
     let status = loop {
         match child.try_wait() {
@@ -92,113 +182,34 @@ pub fn run(
             Err(e) => break Err(e.to_string()),
         }
     };
-    let bytes = reader.map_or_else(Vec::new, |h| h.join().unwrap_or_default());
+    let bytes = joined(out);
+    let stderr = note(&String::from_utf8_lossy(&joined(err)));
     if bytes.len() as u64 > MAX_CAPTURE {
         return Err("output too large".to_string());
     }
     let status = status?;
     if !status.success() {
-        return Err(format!("exit {}", status.code().unwrap_or(-1)));
+        return Err(if stderr.is_empty() {
+            format!("exit {}", status.code().unwrap_or(-1))
+        } else {
+            stderr
+        });
     }
     String::from_utf8(bytes).map_err(|_| "output not UTF-8".to_string())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn strs(a: Vec<OsString>) -> Vec<String> {
-        a.into_iter()
-            .map(|s| s.to_string_lossy().into_owned())
-            .collect()
-    }
-
-    #[test]
-    fn argv() {
-        assert_eq!(strs(state_args()), ["tray", "state", "--json"]);
-        assert_eq!(strs(toggle_args("5h")), ["toggle", "5h"]);
-        assert_eq!(strs(run_args("p.g.i", false, "")), ["tray", "run", "p.g.i"]);
-        assert_eq!(
-            strs(run_args("p.g.i", true, "ab12")),
-            [
-                "tray",
-                "run",
-                "p.g.i",
-                "--confirmed",
-                "--generation",
-                "ab12"
-            ]
-        );
-    }
-
-    #[test]
-    fn id_stays_one_argument() {
-        let a = run_args("a b; rm -rf /", false, "g");
-        assert_eq!(a[2], "a b; rm -rf /");
-        assert_eq!(a.len(), 5);
-    }
-
-    #[test]
-    fn bar_beside_tray() {
-        let p = bar_path(Path::new("/opt/x/bar-tray"));
-        assert_eq!(p.parent(), Some(Path::new("/opt/x")));
-        assert_eq!(p.file_name().unwrap(), BAR_NAME);
-    }
-
-    #[cfg(unix)]
-    mod unix {
-        use super::*;
-        const SH: &str = "/bin/sh";
-        fn sh(script: &str) -> Vec<OsString> {
-            vec!["-c".into(), script.into()]
-        }
-
-        #[test]
-        fn captures_stdout() {
-            let out = run(
-                Path::new(SH),
-                &sh("printf hi"),
-                true,
-                Duration::from_secs(5),
-            );
-            assert_eq!(out.unwrap(), "hi");
-        }
-
-        #[test]
-        fn nonzero_exit_is_error() {
-            let e = run(Path::new(SH), &sh("exit 3"), false, Duration::from_secs(5));
-            assert_eq!(e.unwrap_err(), "exit 3");
-        }
-
-        #[test]
-        fn limit_kills() {
-            let t = Instant::now();
-            let e = run(
-                Path::new(SH),
-                &sh("sleep 30"),
-                false,
-                Duration::from_millis(100),
-            );
-            assert_eq!(e.unwrap_err(), "timed out");
-            assert!(t.elapsed() < Duration::from_secs(5));
-        }
-
-        #[test]
-        fn oversize_refused() {
-            let s = format!("head -c {} /dev/zero", MAX_CAPTURE + 10);
-            let e = run(Path::new(SH), &sh(&s), true, Duration::from_secs(10));
-            assert_eq!(e.unwrap_err(), "output too large");
-        }
-
-        #[test]
-        fn missing_binary() {
-            assert!(run(
-                Path::new("/nonexistent/bar"),
-                &[],
-                false,
-                Duration::from_secs(1)
-            )
-            .is_err());
-        }
-    }
+/// The first line, printable characters only, at most [`MAX_NOTE`].
+fn note(out: &str) -> String {
+    out.lines()
+        .next()
+        .unwrap_or("")
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(MAX_NOTE)
+        .collect::<String>()
+        .trim()
+        .to_string()
 }
+
+#[cfg(test)]
+mod tests;

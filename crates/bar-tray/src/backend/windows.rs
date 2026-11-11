@@ -2,24 +2,29 @@
 //! (`tray-icon` over `muda`), driven by a plain message pump.
 //!
 //! Threads: the main thread owns the icon, the menu and every handle and
-//! runs the pump; workers (state polls, action runs, a one-second ticker)
-//! only send a [`Msg`] over a channel and wake the pump. Explorer
-//! restarts are handled by `tray-icon` itself, which re-adds the icon on
+//! runs the pump; workers (snapshot fetches, `bar` runs, the ticker and
+//! the idle poll) only send an [`Event`] over a channel and wake the
+//! pump. [`App`] decides, this module carries out. Explorer restarts are
+//! handled by `tray-icon` itself, which re-adds the icon on
 //! `TaskbarCreated`.
 //!
-//! The menu is refreshed on every open and every 30 s, but Windows keeps
-//! the message loop of an open popup to itself, so a snapshot that lands
-//! while the menu is open shows from the next open.
+//! The menu is refreshed on every open and every idle poll, but Windows
+//! keeps the message loop of an open popup to itself, so a snapshot that
+//! lands while the menu is open shows from the next open. The icon has
+//! no `bad` variant here: a refusal shows in the tooltip.
 
 #[path = "windows/win32.rs"]
 mod win32;
 
+use super::app::{App, Effect, Event, TOOLTIP};
 use super::icon::{self, Variant};
-use super::rows::{self, Row, RowKind};
+use super::menu;
+use super::source::Source;
 use super::spawn;
-use crate::model::{self, Click, Diff, Menu, Snapshot, State};
-use muda::{CheckMenuItem, IsMenuItem, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
-use std::collections::HashMap;
+use super::Options;
+use muda::MenuEvent;
+use std::ffi::OsString;
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::{Duration, Instant};
@@ -30,280 +35,185 @@ use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, 
 const ICON_GUID: u128 = 0x6b1f_2c4e_8a3d_4d57_9c0e_5f7a_2b9d_1e43;
 /// Per logon session; a second copy exits at once.
 const MUTEX_NAME: &str = r"Local\bar-tray";
-const POLL_EVERY: Duration = Duration::from_secs(30);
-const STATE_LIMIT: Duration = Duration::from_secs(15);
-/// `bar` caps an action at 120 s itself; this only reaps a hung child.
-const RUN_LIMIT: Duration = Duration::from_secs(150);
-const TOOLTIP: &str = "bar";
-
-enum Msg {
-    /// The user opened the menu.
-    Open,
-    Clicked(String),
-    Snapshot(Result<Snapshot, String>),
-    Finished,
-    Tick,
-}
 
 /// Runs the tray until `Quit`. Nothing can be printed (no console), so a
 /// failure is only an exit code.
-pub fn run() -> ExitCode {
+pub fn run(opts: Options) -> ExitCode {
     let Some(_instance) = win32::single_instance(MUTEX_NAME) else {
         return ExitCode::SUCCESS;
     };
-    match App::start() {
-        Ok((mut app, rx)) => {
-            app.poll();
-            win32::pump(|| app.drain(&rx));
+    match Tray::start(opts) {
+        Ok((mut tray, rx)) => {
+            tray.handle(Event::Poll);
+            win32::pump(|| tray.drain(&rx));
             ExitCode::SUCCESS
         }
         Err(_) => ExitCode::FAILURE,
     }
 }
 
-enum Handle {
-    Check(CheckMenuItem),
-    Normal(MenuItem),
-    Sub(Submenu),
-}
-
-impl Handle {
-    fn set(&self, text: &str, checked: bool, enabled: bool) {
-        match self {
-            Handle::Check(i) => {
-                i.set_text(text);
-                i.set_checked(checked);
-                i.set_enabled(enabled);
-            }
-            Handle::Normal(i) => {
-                i.set_text(text);
-                i.set_enabled(enabled);
-            }
-            Handle::Sub(i) => {
-                i.set_text(text);
-                i.set_enabled(enabled);
-            }
-        }
-    }
-
-    fn set_checked(&self, checked: bool) {
-        if let Handle::Check(i) = self {
-            i.set_checked(checked);
-        }
-    }
-}
-
-struct App {
-    tray: TrayIcon,
-    handles: HashMap<String, Handle>,
-    state: State,
-    generation: String,
-    bar: std::path::PathBuf,
-    tx: Sender<Msg>,
+/// A worker's way back to the pump: the channel plus the thread to wake.
+#[derive(Clone)]
+struct Post {
+    tx: Sender<Event>,
     tid: u32,
-    variant: Variant,
-    last_poll: Instant,
-    polling: bool,
 }
 
-type Boxed = Box<dyn IsMenuItem>;
+impl Post {
+    fn send(&self, ev: Event) {
+        let _ = self.tx.send(ev);
+        win32::wake(self.tid);
+    }
 
-impl App {
-    fn start() -> Result<(App, Receiver<Msg>), String> {
-        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    /// Sends `ev` every `period` until the process ends.
+    fn every(&self, period: Duration, ev: Event) {
+        let post = self.clone();
+        std::thread::spawn(move || loop {
+            std::thread::sleep(period);
+            post.send(ev.clone());
+        });
+    }
+}
+
+/// The tray on the main thread: the app's decisions, the native menu
+/// and icon, where snapshots and runs come from.
+struct Tray {
+    app: App,
+    icon: TrayIcon,
+    menu: menu::Native,
+    source: Source,
+    bar: Option<PathBuf>,
+    post: Post,
+    variant: Variant,
+}
+
+impl Tray {
+    fn start(opts: Options) -> Result<(Tray, Receiver<Event>), String> {
         let (tx, rx) = channel();
-        let tid = win32::thread_id();
-        forward_events(&tx, tid);
+        let post = Post {
+            tx,
+            tid: win32::thread_id(),
+        };
+        forward_events(&post);
         let variant = Variant::for_taskbar(win32::taskbar_is_light().unwrap_or(false));
-        let state = State::new(Menu::build(&Snapshot::default(), 0));
-        let tray = TrayIconBuilder::new()
+        let app = App::new();
+        let native = menu::build(app.view()).map_err(|e| e.to_string())?;
+        let icon = TrayIconBuilder::new()
             .with_guid(ICON_GUID)
             .with_icon(icon_of(variant)?)
+            .with_menu(Box::new(native.menu.clone()))
             .with_tooltip(TOOLTIP)
             .with_menu_on_left_click(true)
             .build()
             .map_err(|e| e.to_string())?;
-        let mut app = App {
-            tray,
-            handles: HashMap::new(),
-            state,
-            generation: String::new(),
-            bar: spawn::bar_path(&exe),
-            tx: tx.clone(),
-            tid,
+        post.every(Duration::from_secs(1), Event::Tick);
+        post.every(opts.poll, Event::Poll);
+        let tray = Tray {
+            app,
+            icon,
+            menu: native,
+            source: opts.source,
+            bar: opts.bar,
+            post,
             variant,
-            last_poll: Instant::now(),
-            polling: false,
         };
-        let first = app.state.view().clone();
-        app.rebuild(&first)?;
-        std::thread::spawn(move || loop {
-            std::thread::sleep(Duration::from_secs(1));
-            if tx.send(Msg::Tick).is_err() {
-                break;
-            }
-            win32::wake(tid);
-        });
-        Ok((app, rx))
+        Ok((tray, rx))
     }
 
     /// Handles everything queued; `false` ends the pump.
-    fn drain(&mut self, rx: &Receiver<Msg>) -> bool {
-        while let Ok(m) = rx.try_recv() {
-            match m {
-                Msg::Open => self.poll(),
-                Msg::Clicked(id) => {
-                    if !self.click(&id) {
-                        return false;
-                    }
-                }
-                Msg::Snapshot(r) => self.snapshot(r),
-                Msg::Finished => {
-                    let d = self.state.finished(Instant::now());
-                    self.apply(d);
-                    self.poll();
-                }
-                Msg::Tick => self.tick(),
+    fn drain(&mut self, rx: &Receiver<Event>) -> bool {
+        while let Ok(ev) = rx.try_recv() {
+            if !self.handle(ev) {
+                return false;
             }
         }
         true
     }
 
-    fn tick(&mut self) {
-        let d = self.state.tick(Instant::now());
-        self.apply(d);
-        if self.last_poll.elapsed() >= POLL_EVERY {
-            self.poll();
+    /// Lets the app decide, then carries its effects out; `false` for
+    /// `Quit`.
+    fn handle(&mut self, ev: Event) -> bool {
+        if ev == Event::Tick {
+            self.follow_theme();
         }
-        if let Some(light) = win32::taskbar_is_light() {
-            let v = Variant::for_taskbar(light);
-            if v != self.variant {
-                self.variant = v;
-                if let Ok(i) = icon_of(v) {
-                    let _ = self.tray.set_icon(Some(i));
-                }
-            }
+        let clicked = match &ev {
+            Event::Click(id) => Some(id.clone()),
+            _ => None,
+        };
+        let mut quit = false;
+        for e in self.app.handle(ev, Instant::now()) {
+            quit |= self.apply(e);
         }
+        if let Some(id) = clicked {
+            self.menu.sync_checked(&id, self.app.view());
+        }
+        !quit
     }
 
-    /// Starts a state poll unless one is running.
-    fn poll(&mut self) {
-        if self.polling {
+    /// Swaps the glyph when the taskbar theme flips.
+    fn follow_theme(&mut self) {
+        let Some(light) = win32::taskbar_is_light() else {
             return;
-        }
-        self.polling = true;
-        self.last_poll = Instant::now();
-        let (bar, tx, tid) = (self.bar.clone(), self.tx.clone(), self.tid);
-        std::thread::spawn(move || {
-            let r = spawn::run(&bar, &spawn::state_args(), true, STATE_LIMIT)
-                .and_then(|t| model::parse(&t).map_err(|e| e.to_string()));
-            let _ = tx.send(Msg::Snapshot(r));
-            win32::wake(tid);
-        });
-    }
-
-    fn snapshot(&mut self, r: Result<Snapshot, String>) {
-        self.polling = false;
-        match r {
-            Ok(s) => {
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map_or(0, |d| d.as_secs());
-                let d = self.state.replace(Menu::build(&s, now), Instant::now());
-                self.generation = s.generation;
-                let _ = self.tray.set_tooltip(Some(TOOLTIP));
-                self.apply(d);
-            }
-            Err(e) => {
-                let _ = self.tray.set_tooltip(Some(format!("{TOOLTIP}: {e}")));
+        };
+        let v = Variant::for_taskbar(light);
+        if v != self.variant {
+            self.variant = v;
+            if let Ok(i) = icon_of(v) {
+                let _ = self.icon.set_icon(Some(i));
             }
         }
     }
 
-    /// `false` when the click was `Quit`.
-    fn click(&mut self, id: &str) -> bool {
-        let (click, d) = self.state.click(id, Instant::now());
-        // the native item flipped its own check mark: put the model's back
-        if let (Some(h), Some(m)) = (self.handles.get(id), self.state.view().find(id)) {
-            h.set_checked(m.checked);
-        }
-        self.apply(d);
-        match click {
-            Click::Quit => return false,
-            Click::Run { id, confirmed } => {
-                self.spawn(spawn::run_args(&id, confirmed, &self.generation));
+    /// Carries one effect out; true for `Quit`.
+    fn apply(&mut self, e: Effect) -> bool {
+        match e {
+            Effect::Apply(d) => self.apply_diff(d),
+            Effect::Fetch => {
+                let (source, post) = (self.source.clone(), self.post.clone());
+                std::thread::spawn(move || post.send(Event::Snapshot(source.fetch())));
             }
-            Click::ViewToggle(key) => self.spawn(spawn::toggle_args(&key)),
-            Click::Armed(_) | Click::Busy | Click::Ignored => {}
+            Effect::Spawn(args, limit) => self.spawn(args, limit),
+            // the tooltip carries the note; the glyph follows the theme only
+            Effect::Tint(_) => {}
+            Effect::Tooltip(s) => {
+                let _ = self.icon.set_tooltip(Some(s));
+            }
+            Effect::Quit => return true,
         }
-        true
+        false
     }
 
-    fn spawn(&self, args: Vec<std::ffi::OsString>) {
-        let (bar, tx, tid) = (self.bar.clone(), self.tx.clone(), self.tid);
-        std::thread::spawn(move || {
-            let _ = spawn::run(&bar, &args, false, RUN_LIMIT);
-            let _ = tx.send(Msg::Finished);
-            win32::wake(tid);
-        });
-    }
-
-    fn apply(&mut self, d: Diff) {
+    fn apply_diff(&mut self, d: crate::model::Diff) {
+        use crate::model::Diff;
         match d {
             Diff::Same => {}
             Diff::Update(changes) => {
-                for c in changes {
-                    if let Some(h) = self.handles.get(&c.id) {
-                        h.set(
-                            &rows::text(&c.label, c.detail.as_deref()),
-                            c.checked,
-                            c.enabled,
-                        );
-                    }
+                for c in &changes {
+                    self.menu.update(c);
                 }
             }
             Diff::Rebuild(m) => {
-                let _ = self.rebuild(&m);
+                if let Ok(native) = menu::build(&m) {
+                    self.icon.set_menu(Some(Box::new(native.menu.clone())));
+                    self.menu = native;
+                }
             }
         }
     }
 
-    fn rebuild(&mut self, m: &Menu) -> Result<(), String> {
-        let menu = muda::Menu::new();
-        let mut handles = HashMap::new();
-        for r in rows::rows(m) {
-            let item = build(&r, &mut handles).map_err(|e| e.to_string())?;
-            menu.append(&*item).map_err(|e| e.to_string())?;
-        }
-        self.handles = handles;
-        self.tray.set_menu(Some(Box::new(menu)));
-        Ok(())
+    fn spawn(&self, args: Vec<OsString>, limit: Duration) {
+        let Some(bar) = self.bar.clone() else {
+            self.post.send(Event::Finished(
+                Err("no bar to run: --snapshot mode".into()),
+            ));
+            return;
+        };
+        let post = self.post.clone();
+        std::thread::spawn(move || {
+            let r = spawn::run(&bar, &args, false, limit).map(|_| ());
+            post.send(Event::Finished(r));
+        });
     }
-}
-
-fn build(r: &Row, handles: &mut HashMap<String, Handle>) -> muda::Result<Boxed> {
-    let id = r.id.as_str();
-    Ok(match &r.kind {
-        RowKind::Separator => Box::new(PredefinedMenuItem::separator()),
-        RowKind::Normal => {
-            let i = MenuItem::with_id(id, &r.text, r.enabled, None);
-            handles.insert(r.id.clone(), Handle::Normal(i.clone()));
-            Box::new(i)
-        }
-        RowKind::Check => {
-            let i = CheckMenuItem::with_id(id, &r.text, r.enabled, r.checked, None);
-            handles.insert(r.id.clone(), Handle::Check(i.clone()));
-            Box::new(i)
-        }
-        RowKind::Submenu(children) => {
-            let s = Submenu::with_id(id, &r.text, r.enabled);
-            for c in children {
-                s.append(&*build(c, handles)?)?;
-            }
-            handles.insert(r.id.clone(), Handle::Sub(s.clone()));
-            Box::new(s)
-        }
-    })
 }
 
 fn icon_of(v: Variant) -> Result<Icon, String> {
@@ -312,8 +222,8 @@ fn icon_of(v: Variant) -> Result<Icon, String> {
 
 /// Icon and menu events reach the pump as messages: the handlers run
 /// inside the window procedure, so they only queue and wake.
-fn forward_events(tx: &Sender<Msg>, tid: u32) {
-    let t = tx.clone();
+fn forward_events(post: &Post) {
+    let p = post.clone();
     TrayIconEvent::set_event_handler(Some(move |e: TrayIconEvent| {
         if let TrayIconEvent::Click {
             button: MouseButton::Left | MouseButton::Right,
@@ -321,13 +231,9 @@ fn forward_events(tx: &Sender<Msg>, tid: u32) {
             ..
         } = e
         {
-            let _ = t.send(Msg::Open);
-            win32::wake(tid);
+            p.send(Event::Opened);
         }
     }));
-    let t = tx.clone();
-    MenuEvent::set_event_handler(Some(move |e: MenuEvent| {
-        let _ = t.send(Msg::Clicked(e.id.0));
-        win32::wake(tid);
-    }));
+    let p = post.clone();
+    MenuEvent::set_event_handler(Some(move |e: MenuEvent| p.send(Event::Click(e.id.0))));
 }

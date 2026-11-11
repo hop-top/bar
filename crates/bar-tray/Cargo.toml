@@ -29,9 +29,17 @@ linux-sni = ["dep:ksni"]
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 
-[target.'cfg(windows)'.dependencies]
+# never the default features: they pull GTK and libappindicator on Linux
+[target.'cfg(any(target_os = "macos", windows))'.dependencies]
 tray-icon = { version = "=0.26.1", default-features = false }
 muda = { version = "=0.21.2", default-features = false }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+dispatch2 = { version = "=0.3.1", default-features = false, features = ["std"] }
+objc2 = "=0.6.5"
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSApplication", "NSResponder", "NSRunningApplication"] }
+
+[target.'cfg(windows)'.dependencies]
 windows-sys = { version = "=0.61.2", features = [
     "Win32_Foundation",
     "Win32_Security",
