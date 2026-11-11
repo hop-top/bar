@@ -1,2 +1,2 @@
-load: 2.03 1.90 1.63  ( 11:08:16 up  4:57,  0 users,  load average: 2.03, 1.90, 1.63)
-load: 2.17 1.94 1.65  ( 11:08:24 up  4:57,  0 users,  load average: 2.17, 1.94, 1.65)
+load: 3.56 1.79 1.50  ( 17:09:46 up 1 day, 10:58,  0 users,  load average: 3.56, 1.79, 1.50)
+load: 3.70 1.88 1.54  ( 17:09:54 up 1 day, 10:58,  0 users,  load average: 3.70, 1.88, 1.54)
