@@ -181,7 +181,7 @@ fn lists_every_instance_and_provider_from_the_caches() {
     assert_eq!(items[0]["action"], "use");
     assert_eq!(
         items[0]["tokens"],
-        json!({"account":"ix1","provider":"claude"})
+        json!({"account":"ix1","instance":ia,"provider":"claude"})
     );
     assert!(items[0]["detail"]
         .as_str()
