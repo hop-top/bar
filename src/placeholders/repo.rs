@@ -97,7 +97,7 @@ pub(crate) fn cached_remote_raw(ctx: &Ctx, name: &str) -> Option<String> {
         },
         Found::Unsupported => dir,
     };
-    let top = top.canonicalize().unwrap_or(top);
+    let top = crate::platform::canonicalize(&top).unwrap_or(top);
     let job = Job::GitRemote {
         dir: top.to_str()?.to_string(),
         name: name.to_string(),
@@ -160,7 +160,7 @@ fn hop_root(dir: &Path) -> Option<&Path> {
 fn toplevel(dir: &Path, spawn: bool) -> Option<PathBuf> {
     match gitfs::discover(dir) {
         Found::NotRepo => None,
-        Found::Repo(r) => Some(r.top.canonicalize().unwrap_or(r.top)),
+        Found::Repo(r) => Some(crate::platform::canonicalize(&r.top).unwrap_or(r.top)),
         Found::Unsupported => git_if(spawn, dir, &["rev-parse", "--show-toplevel"])
             .filter(|t| !t.is_empty())
             .map(PathBuf::from),

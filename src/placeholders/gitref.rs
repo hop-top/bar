@@ -103,7 +103,7 @@ impl Placeholder for Tag {
         let tags = match scan {
             Ok(s) if !s.unknown => s.at,
             _ => {
-                let top = repo.top.canonicalize().unwrap_or(repo.top.clone());
+                let top = crate::platform::canonicalize(&repo.top).unwrap_or(repo.top.clone());
                 let job = Job::GitTags {
                     dir: top.to_str()?.to_string(),
                     commit: commit.clone(),

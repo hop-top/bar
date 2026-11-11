@@ -104,7 +104,7 @@ pub(crate) fn status(ctx: &Ctx, opts: &Options) -> Option<Status> {
     let Found::Repo(repo) = gitfs::discover(&work_dir(ctx)) else {
         return None;
     };
-    let top = repo.top.canonicalize().unwrap_or(repo.top);
+    let top = crate::platform::canonicalize(&repo.top).unwrap_or(repo.top);
     let job = Job::GitStatus {
         dir: top.to_str()?.to_string(),
     };

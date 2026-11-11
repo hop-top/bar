@@ -137,6 +137,30 @@ fn write(dir: &std::path::Path, body: &str) {
     fs::write(dir.join("bar/bar.conf"), body).unwrap();
 }
 
+/// The candidate paths are built a component at a time, so `bar check`
+/// and `bar export` name them with the platform's separator throughout
+/// (never `C:\x\bar/bar.conf`).
+#[test]
+fn search_paths_use_native_separators() {
+    use std::path::MAIN_SEPARATOR;
+    let t = common::tmp::Dir::new(&format!("bar-conf-paths-{}", std::process::id()));
+    let (xdg, home, kit) = (t.join("xdg"), t.join("home"), t.join("kit"));
+    let found = conf::search_paths(&lookup(xdg.to_str()), &home, &kit);
+    let other = if MAIN_SEPARATOR == '/' { '\\' } else { '/' };
+    for p in &found {
+        let shown = p.to_string_lossy();
+        assert!(!shown.contains(other), "{shown}");
+    }
+    assert_eq!(
+        found,
+        [
+            xdg.join("bar").join("bar.conf"),
+            home.join(".config").join("bar").join("bar.conf"),
+            kit.join("bar.conf"),
+        ]
+    );
+}
+
 #[test]
 fn config_search_order() {
     let t = common::tmp::Dir::new(&format!("bar-conf-{}", std::process::id()));

@@ -31,7 +31,9 @@ pub fn path_dirs(path: Option<&OsStr>) -> Vec<PathBuf> {
 /// resolved), last: plugins shipped beside `bar` are found without being
 /// on `PATH`, and a copy on `PATH` wins.
 pub fn plugin_dirs(path: Option<&OsStr>) -> Vec<PathBuf> {
-    let exe = std::env::current_exe().and_then(std::fs::canonicalize).ok();
+    let exe = std::env::current_exe()
+        .and_then(|e| crate::platform::canonicalize(&e))
+        .ok();
     plugin_dirs_with(path, exe.as_deref())
 }
 

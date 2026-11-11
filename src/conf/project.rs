@@ -103,8 +103,8 @@ pub fn read_as(path: &Path, uid: Option<u32>) -> Result<String, String> {
     let shown = path.display();
     let link = std::fs::symlink_metadata(path).map_err(|e| format!("{shown}: {e}"))?;
     if link.file_type().is_symlink() {
-        let real = std::fs::canonicalize(path).map_err(|e| format!("{shown}: {e}"))?;
-        let root = root_of(path).and_then(|r| std::fs::canonicalize(r).ok());
+        let real = crate::platform::canonicalize(path).map_err(|e| format!("{shown}: {e}"))?;
+        let root = root_of(path).and_then(|r| crate::platform::canonicalize(r).ok());
         if !root.is_some_and(|r| real.starts_with(r)) {
             return Err(format!(
                 "{shown}: a symlink to a file outside the repository"

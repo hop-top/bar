@@ -50,6 +50,20 @@ pub mod dirs {
     }
 }
 
+/// `std::fs::canonicalize` for a path that is shown, hashed or handed to
+/// another program: on Windows without the verbatim prefix (`\\?\`) the
+/// standard call adds (see [`crate::rewrite::plain_path`]), so the user
+/// sees `C:\Users\me\src`, as the rest of the system writes it.
+/// Elsewhere exactly `std::fs::canonicalize`.
+pub fn canonicalize(p: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
+    let c = std::fs::canonicalize(p)?;
+    if cfg!(windows) {
+        Ok(crate::rewrite::plain_path(&c))
+    } else {
+        Ok(c)
+    }
+}
+
 #[cfg(all(feature = "test-tools", not(debug_assertions)))]
 compile_error!("the `test-tools` feature is for tests only");
 
@@ -140,5 +154,19 @@ mod tests {
         assert_eq!(split_exec_name("bar-foo.ps1", &exts), None);
         assert_eq!(split_exec_name("bar-foo", &exts), None);
         assert_eq!(split_exec_name(".exe", &exts), None);
+    }
+
+    #[test]
+    fn canonical_paths_carry_no_verbatim_prefix() {
+        let d = std::env::temp_dir().join(format!("bar-platform-canon-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let c = canonicalize(&d).unwrap();
+        assert!(c.is_absolute());
+        assert!(!c.to_string_lossy().starts_with(r"\\?\"), "{c:?}");
+        if cfg!(not(windows)) {
+            assert_eq!(c, std::fs::canonicalize(&d).unwrap());
+        }
+        assert!(canonicalize(&d.join("missing")).is_err());
+        let _ = std::fs::remove_dir_all(&d);
     }
 }
