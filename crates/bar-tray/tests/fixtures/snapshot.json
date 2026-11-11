@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "generation": "7c1f0a9e3b2d4f60",
+  "at": 1762800000,
+  "last_action": {"at": 1762799988, "ok": true, "note": "preferred alice"},
+  "sessions": {"waiting": 1, "done": 2},
+  "views": [
+    {"key": "5h", "label": "5h usage", "on": true},
+    {"key": "7d", "label": "7d usage", "on": false}
+  ],
+  "plugins": [
+    {
+      "name": "cliproxyapi",
+      "label": "CLIProxyAPI",
+      "groups": [
+        {
+          "id": "claude@8317",
+          "label": "Claude · :8317",
+          "kind": "radio",
+          "items": [
+            {"id": "3", "label": "alice", "detail": "5h 59% ↻2h10m · 7d 71%", "checked": true,
+             "enabled": true, "style": "good", "action": "use", "confirm": false,
+             "tokens": {"account": "3", "provider": "claude"}},
+            {"id": "4", "label": "bob", "detail": "5h 12% · 7d 40%", "checked": false,
+             "enabled": true, "action": "use", "confirm": false,
+             "tokens": {"account": "4", "provider": "claude"}},
+            {"id": "7", "label": "carol", "detail": "backoff 9 m", "checked": false,
+             "enabled": true, "style": "warn", "action": "use", "confirm": false,
+             "tokens": {"account": "7", "provider": "claude"}}
+          ]
+        },
+        {
+          "id": "next@8317",
+          "kind": "buttons",
+          "items": [
+            {"id": "next", "label": "Use most quota left", "action": "next", "confirm": false,
+             "tokens": {"provider": "claude", "instance": "9f2c"}},
+            {"id": "next-soon", "label": "Use soonest reset", "action": "next-soon", "confirm": true,
+             "tokens": {"provider": "claude", "instance": "9f2c"}}
+          ]
+        },
+        {
+          "id": "info",
+          "kind": "info",
+          "items": [
+            {"id": "auth", "label": "management refused the key", "style": "bad"}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "routellm",
+      "groups": [
+        {
+          "id": "rtellm@8317",
+          "label": "Routing (RouteLLM)",
+          "kind": "check",
+          "items": [
+            {"id": "toggle", "label": "Routing", "checked": true, "enabled": true,
+             "action": "toggle", "confirm": false,
+             "tokens": {"instance": "9f2c", "to": "off"}},
+            {"id": "toggle@8318", "label": "Routing :8318", "checked": false, "enabled": false,
+             "detail": "not enabled: tray routellm.toggle", "action": "toggle", "confirm": false,
+             "tokens": {"instance": "a01b", "to": "on"}}
+          ]
+        }
+      ]
+    }
+  ]
+}

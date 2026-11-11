@@ -48,9 +48,14 @@ pub fn plugin_dirs_with(path: Option<&OsStr>, exe: Option<&std::path::Path>) -> 
     dirs
 }
 
+/// Companion binaries shipped beside `bar` under the plugin prefix that
+/// are not plugins: `bar-tray` is the desktop tray.
+const COMPANIONS: &[&str] = &["tray"];
+
 fn valid_name(name: &str) -> bool {
     !name.is_empty()
         && lookup(name).is_none()
+        && !COMPANIONS.contains(&name)
         && name
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')

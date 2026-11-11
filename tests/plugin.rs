@@ -80,6 +80,14 @@ fn core_name_wins_over_plugin() {
 }
 
 #[test]
+fn tray_companion_is_not_a_plugin() {
+    let fx = Fx::new();
+    install(&fx.bin.join("bar-echo"), &fx.bin.join("bar-tray"));
+    assert!(!discover(&fx.dirs()).iter().any(|f| f.name == "tray"));
+    assert!(find(&fx.dirs(), "tray").is_none());
+}
+
+#[test]
 fn cache_key_includes_cwd() {
     let fx = Fx::new();
     let c = cfg("");

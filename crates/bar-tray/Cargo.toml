@@ -1,0 +1,24 @@
+[package]
+name = "bar-tray"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.90"
+publish = false
+license = "Apache-2.0"
+description = "Desktop menu bar / tray companion for bar: its toggles and plugin actions as a native menu"
+authors = ["Jad Bitar <jadb@users.noreply.github.com>"]
+
+[lib]
+name = "bar_tray"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bar-tray"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
