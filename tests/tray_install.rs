@@ -53,6 +53,7 @@ fn layout(t: &Tmp) -> Layout {
         state_dir: t.path().join("state"),
         agents: Some(t.path().join("home/Library/LaunchAgents")),
         uid: Some(501),
+        xdg: None,
     }
 }
 
@@ -76,6 +77,7 @@ fn opts() -> InstallOpts {
         dry_run: false,
         autostart: true,
         hooks: true,
+        systemd: false,
     }
 }
 

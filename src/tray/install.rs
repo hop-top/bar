@@ -2,12 +2,13 @@
 //! the variables the tray runs with (`tray-dirs.json`), writes the
 //! `tray-installed` marker, registers the Claude Code hooks the session
 //! rows read, prints `tray` lines to consider (the config is left alone)
-//! and sets up autostart: on macOS a LaunchAgent, loaded at once.
+//! and sets up autostart: on macOS a LaunchAgent, loaded at once; on
+//! Linux an autostart entry or a systemd user unit (`linux`).
 //! Independent of `bar click install`: either works without the other,
 //! and uninstalling one keeps the hooks while the other is installed.
 
 use super::process::{self, Layout, Sys};
-use super::{agent, SNAPSHOT_FILE};
+use super::{agent, linux, SNAPSHOT_FILE};
 use crate::click::pointer::TRAY_MARKER;
 use crate::click::{settings, EnvVar, HandlerDirs};
 use crate::conf::Config;
@@ -53,7 +54,9 @@ impl InstallCfg {
             "HOME must be an absolute path (or CLAUDE_CONFIG_DIR, when set, must be absolute)",
         )?;
         let layout = Layout::from_env();
-        if cfg!(target_os = "macos") && layout.agents.is_none() {
+        if cfg!(target_os = "macos") && layout.agents.is_none()
+            || cfg!(target_os = "linux") && layout.xdg.is_none()
+        {
             return Err("HOME must be an absolute path".into());
         }
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
@@ -136,6 +139,8 @@ pub struct InstallOpts {
     pub autostart: bool,
     /// Register the Claude Code hooks.
     pub hooks: bool,
+    /// Linux: autostart through a systemd user unit, not an autostart entry.
+    pub systemd: bool,
 }
 
 /// Error from `install`; the CLI exits 2 on `Unsupported`, 1 otherwise.
@@ -215,6 +220,10 @@ pub fn install(
     out: &mut dyn Write,
 ) -> Result<(), InstallError> {
     let io = |e: std::io::Error| e.to_string();
+    let xdg = cfg.layout.xdg.as_ref().filter(|_| !macos);
+    if o.systemd && (xdg.is_none() || !o.autostart) {
+        return Err("--systemd is for autostart on Linux".to_string().into());
+    }
     let agent = match (o.autostart, macos, cfg.layout.plist()) {
         (false, ..) => None,
         (true, true, Some(p)) => Some((
@@ -223,12 +232,22 @@ pub fn install(
                 .uid
                 .ok_or_else(|| "no user id for launchctl".to_string())?,
         )),
+        (true, false, _) if xdg.is_some() => None,
         (true, ..) => return Err(InstallError::Unsupported),
     };
     if !cfg.tray.is_file() {
         let msg = format!("no bar-tray at {}", cfg.tray.display());
         if !o.dry_run {
             return Err(InstallError::Failed(msg));
+        }
+        writeln!(out, "warning: {msg}").map_err(io)?;
+    } else if xdg.is_some() && !linux::has_backend(&cfg.tray, sys) {
+        // autostarting a tray that cannot show would only fail at login
+        let msg = linux::no_backend(&cfg.tray);
+        if o.autostart && !o.dry_run {
+            return Err(InstallError::Failed(format!(
+                "{msg}; --no-autostart installs without it"
+            )));
         }
         writeln!(out, "warning: {msg}").map_err(io)?;
     }
@@ -277,10 +296,22 @@ pub fn install(
             writeln!(out, "installed {}", path.display()).map_err(io)?;
         }
     }
+    if let Some(dirs) = xdg {
+        let env = cfg.baked_env();
+        let s = linux::Setup {
+            dirs,
+            argv: &cfg.argv(),
+            env: &env,
+            autostart: o.autostart,
+            systemd: o.systemd,
+            dry_run: o.dry_run,
+        };
+        linux::install(&s, &cfg.layout, sys, out)?;
+    }
     print_suggestions(config, out).map_err(io)?;
     if !o.dry_run {
         writeln!(out, "state dir {}", state.display()).map_err(io)?;
-        if agent.is_none() {
+        if !o.autostart {
             writeln!(out, "start it with: bar tray start").map_err(io)?;
         }
     }
@@ -323,8 +354,9 @@ fn remove_hooks(path: &Path, state: &Path, out: &mut dyn Write) -> Result<(), St
     .map_err(io)
 }
 
-/// Stops the tray, removes the LaunchAgent, the snapshot, the record,
-/// the lock and the marker, and the hooks when this install added them,
+/// Stops the tray, removes the LaunchAgent (macOS) or the unit, the
+/// autostart entry and the icon (Linux), the snapshot, the record, the
+/// lock and the marker, and the hooks when this install added them,
 /// `bar click install` is not installed and `keep_hooks` is off.
 pub fn uninstall(
     l: &Layout,
@@ -338,6 +370,9 @@ pub fn uninstall(
     process::stop(l, sys, out)?;
     if let Some(p) = l.plist() {
         remove(&p, out)?;
+    }
+    if let Some(x) = &l.xdg {
+        linux::uninstall(x, sys, out)?;
     }
     for f in [SNAPSHOT_FILE, DIRS_FILE, process::LOCK_FILE, TRAY_MARKER] {
         remove(&state.join(f), out)?;
