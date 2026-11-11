@@ -26,6 +26,17 @@ steps:
       Read the same report as YAML, for a tool that prefers it to JSON.
     invoke: ["bar", "check", "--format", "yaml"]
     capture: [exit_code, stdout]
+  - id: init_dry_run
+    intent: |
+      Ask init for a dry run as JSON before any config exists: the file it
+      would create, with nothing written.
+    invoke: ["bar", "init", "--preset", "minimal", "--dry-run", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: check_after_init_dry_run
+    intent: |
+      Read the report after the dry run: still no config file.
+    invoke: ["bar", "check", "--format", "json"]
+    capture: [exit_code, stdout]
   - id: init
     intent: |
       Write the minimal preset as the config.
@@ -130,12 +141,6 @@ steps:
       List the plugins bar finds on PATH as JSON.
     invoke: ["bar", "plugin", "list", "--format", "json"]
     capture: [exit_code, stdout]
-  - id: init_again_json
-    intent: |
-      Run the first init once more asking for JSON, after the import
-      replaced the config: bar refuses with a structured error.
-    invoke: ["bar", "init", "--preset", "minimal", "--format", "json"]
-    capture: [exit_code, stdout, stderr]
   - id: unknown_command_json
     intent: |
       Mistype a command while asking for JSON, expecting the error class
@@ -147,6 +152,13 @@ steps:
       Repeat the project install asking for JSON, to read from a field
       that the settings were already up to date.
     invoke: ["bar", "install", "--project", "--yes", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: install_dry_run_json
+    intent: |
+      Ask the local-settings install for a dry run as JSON, --yes given
+      too: the settings file it would create and the diff, and nothing
+      written even with --yes.
+    invoke: ["bar", "install", "--local", "--yes", "--dry-run", "--format", "json"]
     capture: [exit_code, stdout, stderr]
   - id: install_local_preview_json
     intent: |
@@ -160,12 +172,38 @@ steps:
       write would do without the confirmation prompt.
     invoke: ["bar", "config", "import", "-", "--replace", "--dry-run"]
     capture: [exit_code, stdout, stderr]
+  - id: import_dry_run_json
+    intent: |
+      Ask for the same dry run as JSON, --yes given too: the file the
+      import would update and the diff, as fields, and nothing written
+      even with --yes.
+    invoke: ["bar", "config", "import", "-", "--replace", "--yes", "--dry-run", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: import_after_dry_run
+    intent: |
+      Import the config already in place once more as JSON. The dry runs
+      changed nothing, so there is nothing to write.
+    invoke: ["bar", "config", "import", "-", "--replace", "--yes", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
   - id: toggle_dry_run
     intent: |
       Ask a usage view toggle for a dry run before flipping it, to see the
       view it would switch to.
     invoke: ["bar", "toggle", "5h", "--dry-run"]
     capture: [exit_code, stdout, stderr]
+  - id: toggle_dry_run_json
+    intent: |
+      Ask for a dry run of setting the 5-hour view to percentage, as
+      JSON: the view now, the view after and the state file it would
+      create.
+    invoke: ["bar", "toggle", "5h", "pct", "--dry-run", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: check_after_toggle_dry_run
+    intent: |
+      Read the report after the dry runs: the 5-hour view is still the
+      bar.
+    invoke: ["bar", "check", "--format", "json"]
+    capture: [exit_code, stdout]
   - id: toggle_set
     intent: |
       Set the 5-hour usage view to percentage directly, so running the same
@@ -208,3 +246,38 @@ steps:
       not-found error.
     invoke: ["bar", "plugin", "info", "no-such-plugin"]
     capture: [exit_code, stderr]
+  - id: prices_dry_run
+    intent: |
+      Ask the price update for a dry run as JSON: the file it would write,
+      with nothing fetched.
+    invoke: ["bar", "prices", "update", "--dry-run", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: check_after_prices_dry_run
+    intent: |
+      Read the report after the dry run: no price data was fetched.
+    invoke: ["bar", "check", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: export_file_dry_run
+    intent: |
+      Ask the export to a file for a dry run as JSON: the file it would
+      create.
+    invoke: ["bar", "config", "export", "exported.conf", "--dry-run", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: export_file_after_dry_run
+    intent: |
+      Export to that file for real. The dry run left no file there, so
+      the export is not refused.
+    invoke: ["bar", "config", "export", "exported.conf", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: web_plugins_dry_run
+    intent: |
+      Ask the web configurator's plugin list for a dry run with -o: the
+      file it would create.
+    invoke: ["bar", "web", "plugins", "-o", "plugins.json", "--dry-run", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: web_plugins_after_dry_run
+    intent: |
+      Write that file for real. The dry run left no file there, so it is
+      not refused.
+    invoke: ["bar", "web", "plugins", "-o", "plugins.json"]
+    capture: [exit_code, stdout, stderr]
