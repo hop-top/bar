@@ -2,8 +2,8 @@
 //! (`tray-icon` over `muda`), driven by a plain message pump.
 //!
 //! Threads: the main thread owns the icon, the menu and every handle and
-//! runs the pump; workers (snapshot fetches, `bar` runs, the ticker and
-//! the idle poll) only send an [`Event`] over a channel and wake the
+//! runs the pump; workers (snapshot fetches, `bar` runs, the ticker)
+//! only send an [`Event`] over a channel and wake the
 //! pump. [`App`] decides, this module carries out. Explorer restarts are
 //! handled by `tray-icon` itself, which re-adds the icon on
 //! `TaskbarCreated`.
@@ -96,7 +96,7 @@ impl Tray {
         };
         forward_events(&post);
         let variant = Variant::for_taskbar(win32::taskbar_is_light().unwrap_or(false));
-        let app = App::new();
+        let app = App::new().poll(opts.poll);
         let native = menu::build(app.view()).map_err(|e| e.to_string())?;
         let icon = TrayIconBuilder::new()
             .with_guid(ICON_GUID)
@@ -107,7 +107,6 @@ impl Tray {
             .build()
             .map_err(|e| e.to_string())?;
         post.every(Duration::from_secs(1), Event::Tick);
-        post.every(opts.poll, Event::Poll);
         let tray = Tray {
             app,
             icon,

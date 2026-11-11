@@ -11,6 +11,7 @@
 //!   "version": 1,
 //!   "generation": "7c1f0a9e",
 //!   "at": 1762800000,
+//!   "poll": 30,
 //!   "last_action": {"at": 1762799988, "ok": true, "note": "preferred alice"},
 //!   "sessions": {"waiting": 1, "done": 2},
 //!   "views": [{"key": "5h", "label": "5h usage", "on": true}],
@@ -31,6 +32,7 @@
 //! | `version` | integer | must be `1`; anything else is refused |
 //! | `generation` | string | id of this snapshot, `[A-Za-z0-9]` 1..=64; echoed back to `bar tray run --generation` |
 //! | `at` | integer | Unix seconds when the snapshot was written |
+//! | `poll` | integer or absent | seconds between the tray's idle polls, 10..=600 (`set tray-poll`); out of range or not an integer is dropped with a warning. `bar-tray --poll` wins over it |
 //! | `last_action` | object or absent | `{at, ok, note}` from the last action: `at` Unix seconds, `ok` bool, `note` text (may be empty) |
 //! | `sessions` | object or absent | `{waiting, done}` counts of Claude Code sessions |
 //! | `views` | array | status-line view toggles the tray may flip with `bar toggle <key>`; empty unless the user set `tray-views on`. `key` `[a-z0-9._-]` 1..=32, `label`, `on` |
@@ -68,6 +70,8 @@ pub const MAX_ITEMS: usize = 16;
 pub const MAX_LABEL: usize = 80;
 /// Longest dispatch id `<plugin>.<group>.<item>`.
 pub const MAX_ID: usize = 96;
+/// Idle poll seconds a snapshot may ask for.
+pub const POLL_RANGE: std::ops::RangeInclusive<u64> = 10..=600;
 
 /// Why a snapshot was refused: where and what.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,6 +100,8 @@ fn err<T>(path: impl Into<String>, why: impl Into<String>) -> Result<T, Error> {
 pub struct Snapshot {
     pub generation: String,
     pub at: u64,
+    /// Seconds between idle polls, when the producer says.
+    pub poll: Option<u64>,
     pub last_action: Option<LastAction>,
     pub sessions: Option<Sessions>,
     pub views: Vec<View>,
@@ -208,6 +214,8 @@ struct RawSnapshot {
     generation: String,
     #[serde(default)]
     at: u64,
+    #[serde(default)]
+    poll: Option<Value>,
     #[serde(default)]
     last_action: Option<LastAction>,
     #[serde(default)]
@@ -349,6 +357,13 @@ pub fn parse(text: &str) -> Result<Snapshot, Error> {
         return err("generation", "expected [A-Za-z0-9], 1 to 64");
     }
     let mut warnings = Vec::new();
+    let poll = raw.poll.and_then(|p| {
+        let ok = p.as_u64().filter(|s| POLL_RANGE.contains(s));
+        if ok.is_none() {
+            warnings.push(format!("poll: dropped {p}"));
+        }
+        ok
+    });
     let views = raw
         .views
         .into_iter()
@@ -379,6 +394,7 @@ pub fn parse(text: &str) -> Result<Snapshot, Error> {
     Ok(Snapshot {
         generation: raw.generation,
         at: raw.at,
+        poll,
         last_action: raw.last_action.map(|a| LastAction {
             note: clean(&a.note),
             ..a
