@@ -85,7 +85,17 @@ mod tests {
         assert_eq!(held(&mut first), format!("{}\n", std::process::id()));
         assert_eq!(std::fs::read_to_string(&pid).unwrap(), "1\n");
         drop(first);
-        assert!(acquire(&p).unwrap().is_some(), "free again once dropped");
+        // a child another test is starting holds a copy of the handle, and
+        // with it the lock, until it execs: a moment, a bounded wait
+        let end = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let again = loop {
+            match acquire(&p).unwrap() {
+                Some(f) => break Some(f),
+                None if std::time::Instant::now() >= end => break None,
+                None => std::thread::sleep(std::time::Duration::from_millis(10)),
+            }
+        };
+        assert!(again.is_some(), "free again once dropped");
         let _ = std::fs::remove_dir_all(p.parent().unwrap().parent().unwrap());
     }
 
