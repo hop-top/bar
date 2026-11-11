@@ -432,3 +432,86 @@ fn check_warns_about_a_handler_on_another_dir() {
     );
     assert!(out.contains("bar click install"), "{out}");
 }
+
+#[test]
+fn a_tray_marker_alone_publishes_the_pointer() {
+    let t = Tmp::new();
+    let default = t.path().join("default");
+    let state = t.path().join("xdg/bar");
+    std::fs::create_dir_all(&state).unwrap();
+    assert!(!pointer::sync(&state, &default, SystemTime::now()));
+    std::fs::write(state.join("tray-installed"), "").unwrap();
+    assert!(pointer::sync(&state, &default, SystemTime::now()));
+    assert_eq!(pointer::read(&default), Some(state.clone()));
+    std::fs::remove_file(state.join("tray-installed")).unwrap();
+    assert_eq!(pointer::read(&default), None);
+}
+
+#[test]
+fn a_plain_file_pointer_is_read_and_replaced() {
+    let t = Tmp::new();
+    let default = t.path().join("default");
+    let (a, b) = (t.path().join("a"), t.path().join("b"));
+    marked(&a);
+    marked(&b);
+    std::fs::create_dir_all(&default).unwrap();
+    // what a platform without symlinks publishes
+    std::fs::write(default.join(pointer::LINK), format!("{}\n", a.display())).unwrap();
+    assert_eq!(pointer::read(&default), Some(a.clone()));
+    assert_eq!(pointer::follow(default.clone(), &default), a);
+    // unchanged: no write
+    assert!(!pointer::sync(
+        &a,
+        &default,
+        SystemTime::now() + Duration::from_secs(3600)
+    ));
+    assert!(pointer::sync(
+        &b,
+        &default,
+        SystemTime::now() + Duration::from_secs(3600)
+    ));
+    assert_eq!(pointer::read(&default), Some(b));
+    // garbage and relative targets are ignored
+    std::fs::remove_file(default.join(pointer::LINK)).unwrap();
+    std::fs::write(default.join(pointer::LINK), "relative/dir").unwrap();
+    assert_eq!(pointer::read(&default), None);
+    std::fs::write(default.join(pointer::LINK), "").unwrap();
+    assert_eq!(pointer::read(&default), None);
+}
+
+/// The render path calls `sync` on every render; an unchanged pointer, a
+/// missing pointer and the default dir must each stay far under 1 ms.
+#[test]
+fn render_path_pointer_check_stays_under_a_millisecond() {
+    const N: u32 = 2000;
+    let t = Tmp::new();
+    let default = t.path().join("default");
+    let state = t.path().join("xdg/bar");
+    let unmarked = t.path().join("other");
+    std::fs::create_dir_all(&unmarked).unwrap();
+    marked(&state);
+    let now = SystemTime::now();
+    let time = |dir: &Path| {
+        let start = std::time::Instant::now();
+        for _ in 0..N {
+            std::hint::black_box(pointer::sync(dir, &default, now));
+        }
+        start.elapsed() / N
+    };
+    assert!(pointer::sync(&state, &default, now));
+    // the render dir is the default: nothing to do
+    let on_default = time(&default);
+    // unchanged pointer
+    let unchanged = time(&state);
+    // not installed, no pointer
+    std::fs::remove_file(default.join(pointer::LINK)).unwrap();
+    let uninstalled = time(&unmarked);
+    // best-of-N average, generous bound: a loaded CI box still passes
+    for (what, d) in [
+        ("default", on_default),
+        ("unchanged", unchanged),
+        ("uninstalled", uninstalled),
+    ] {
+        assert!(d < Duration::from_millis(1), "{what}: {d:?} per call");
+    }
+}

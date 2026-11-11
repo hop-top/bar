@@ -771,11 +771,9 @@ fn render() {
         let _ = writeln!(so, "{out}");
         let _ = so.flush();
     }
-    // after the output: publish the state dir for the bar:// handler
-    if cfg!(target_os = "macos") {
-        if let Some(d) = click::pointer::default_dir() {
-            click::pointer::sync(cache.state_dir(), &d, std::time::SystemTime::now());
-        }
+    // after the output: publish the state dir for the bar:// handler and the tray
+    if let Some(d) = click::pointer::default_dir() {
+        click::pointer::sync(cache.state_dir(), &d, std::time::SystemTime::now());
     }
 }
 
