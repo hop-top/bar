@@ -3,7 +3,10 @@
 //! Any page or app can open a `bar://` URL, so every check here fails
 //! closed: the per-install nonce, the user's `action` line, the plugin's
 //! own declaration, and token values that are in the cached output the
-//! link was drawn from.
+//! link was drawn from. The link is one of two doors to the same checks
+//! and the same run; the other is a tray item (`crate::tray::run`), whose
+//! gate is the menu snapshot and a `tray` line instead of the nonce, the
+//! cache entry and an `action` line.
 
 use super::hook::valid_plugin_name;
 use crate::cache::{run_child, Cache};
@@ -189,47 +192,26 @@ pub fn parse(url: &str) -> Result<ActionUrl, String> {
 /// the link came from, so the change shows at the next render. `Err` says
 /// why nothing ran, or that the plugin failed.
 pub fn run(state: &Path, url: &str, config: &Config, dirs: &[PathBuf]) -> Result<(), String> {
-    let mut said = String::new();
-    let r = checked(state, url, config, dirs).and_then(|(u, found, cache, declared, wants)| {
-        let mut input = serde_json::json!({"action": u.action, "tokens": u.tokens});
-        // the user's `account` rules, for a plugin that declared it wants them
-        if wants && !config.accounts.is_empty() {
-            input["accounts"] = plugin::account_rules(config);
-        }
-        let input = input.to_string();
-        let mut c = std::process::Command::new(&found.path);
-        c.arg("--action")
-            .arg(&u.action)
-            .env("BAR_STATE_DIR", state)
-            .current_dir(crate::cache::outside_project(state));
-        let ran = run_child(c, Some(input.into_bytes()), limit(declared));
-        cache.age_entry(&u.entry);
-        match ran {
-            Some(out) => {
-                said = note(&out);
-                Ok(())
-            }
-            None => Err(format!("{}.{} failed", u.plugin, u.action)),
-        }
-    });
-    let at = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
-    let line = match &r {
-        Ok(()) if said.is_empty() => format!("{at} ok"),
-        Ok(()) => format!("{at} ok: {said}"),
-        Err(e) => format!("{at} refused: {e}"),
-    };
-    let _ = super::write_atomic(&state.join(STATUS_FILE), &format!("{line}\n"));
-    r
+    let cache = Cache::new(state);
+    let r = checked(state, url, config, dirs, &cache);
+    finish(
+        state,
+        config,
+        r.map(|(v, entry)| (v, move || cache.age_entry(&entry))),
+    )
+    .map(|_| ())
 }
 
+/// The URL door: the link parses, carries this install's nonce, names an
+/// action the user bound with an `action` line, passes the shared checks,
+/// and its token values are in the cached output it was drawn from.
 fn checked(
     state: &Path,
     url: &str,
     config: &Config,
     dirs: &[PathBuf],
-) -> Result<(ActionUrl, plugin::Found, Cache, u64, bool), String> {
+    cache: &Cache,
+) -> Result<(Verified, String), String> {
     let u = parse(url)?;
     if nonce(state).as_deref() != Some(u.nonce.as_str()) {
         return Err("link was not made by this install".into());
@@ -241,25 +223,111 @@ fn checked(
     if !bound {
         return Err(format!("no `action` line for {}.{}", u.plugin, u.action));
     }
-    let found = plugin::find(dirs, &u.plugin).ok_or("plugin not found")?;
-    let cache = Cache::new(state);
-    let info = plugin::info_now(&cache, &found);
-    let spec = info
-        .actions
-        .get(&u.action)
-        .ok_or("the plugin does not declare that action")?;
-    let declared = spec.timeout;
-    let given: Vec<&String> = u.tokens.keys().collect();
-    if given != spec.tokens.iter().collect::<Vec<_>>() {
-        return Err("tokens do not match the action's declaration".into());
-    }
+    let req = Request {
+        plugin: u.plugin,
+        action: u.action,
+        tokens: u.tokens,
+    };
+    let v = verify(cache, dirs, req)?;
     let cached = cache
         .read_entry(&u.entry)
         .and_then(|raw| parse_output(&raw))
         .ok_or("the output the link came from is gone")?;
-    if !cached.offers_tokens(&u.tokens) {
+    if !cached.offers_tokens(&v.req.tokens) {
         return Err("token values are not in the plugin's current output".into());
     }
-    let wants = info.inputs.accounts;
-    Ok((u, found, cache, declared, wants))
+    Ok((v, u.entry))
+}
+
+/// What one of the two doors asks to run: a `bar://action` link or a
+/// tray item, reduced to the plugin, the action and the token values.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Request {
+    pub plugin: String,
+    pub action: String,
+    pub tokens: BTreeMap<String, String>,
+}
+
+/// A request past the shared checks: where the plugin is and what it
+/// declares for the action.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Verified {
+    pub req: Request,
+    pub found: plugin::Found,
+    pub spec: plugin::ActionSpec,
+    /// The plugin declared it wants the user's `account` rules.
+    pub wants_accounts: bool,
+}
+
+/// The checks both doors share, once the door's own gate has passed
+/// (nonce and `action` line; snapshot and `tray` line): the plugin is
+/// found in `dirs` and its `--ext-info` declares the action with exactly
+/// the token names given. Token values are the door's own business: the
+/// link's must be in the cached output it came from, the tray's come from
+/// the snapshot itself.
+pub fn verify(cache: &Cache, dirs: &[PathBuf], req: Request) -> Result<Verified, String> {
+    let found = plugin::find(dirs, &req.plugin).ok_or("plugin not found")?;
+    let info = plugin::info_now(cache, &found);
+    let spec = info
+        .actions
+        .get(&req.action)
+        .ok_or("the plugin does not declare that action")?
+        .clone();
+    let given: Vec<&String> = req.tokens.keys().collect();
+    if given != spec.tokens.iter().collect::<Vec<_>>() {
+        return Err("tokens do not match the action's declaration".into());
+    }
+    Ok(Verified {
+        req,
+        found,
+        spec,
+        wants_accounts: info.inputs.accounts,
+    })
+}
+
+/// Runs a verified request, or records why there was none to run: the
+/// outcome goes to [`STATUS_FILE`] either way, as `<at> ok[: <note>]` or
+/// `<at> refused: <why>`. `after` runs once the child has ended, whatever
+/// the outcome, before the status is written: the URL door ages the cache
+/// entry its link came from, the tray door spends its snapshot. `Ok`
+/// carries the note (the first line the action printed).
+pub fn finish<F: FnOnce()>(
+    state: &Path,
+    config: &Config,
+    r: Result<(Verified, F), String>,
+) -> Result<String, String> {
+    let r = r.and_then(|(v, after)| {
+        let ran = spawn(state, config, &v);
+        after();
+        ran.map(|out| note(&out))
+            .ok_or_else(|| format!("{}.{} failed", v.req.plugin, v.req.action))
+    });
+    let at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let line = match &r {
+        Ok(said) if said.is_empty() => format!("{at} ok"),
+        Ok(said) => format!("{at} ok: {said}"),
+        Err(e) => format!("{at} refused: {e}"),
+    };
+    let _ = super::write_atomic(&state.join(STATUS_FILE), &format!("{line}\n"));
+    r
+}
+
+/// `bar-<plugin> --action <action>` with `{"action", "tokens"[,
+/// "accounts"]}` on stdin, `BAR_STATE_DIR` set, outside any project,
+/// within the declared limit; its stdout when it exits 0.
+fn spawn(state: &Path, config: &Config, v: &Verified) -> Option<String> {
+    let mut input = serde_json::json!({"action": v.req.action, "tokens": v.req.tokens});
+    // the user's `account` rules, for a plugin that declared it wants them
+    if v.wants_accounts && !config.accounts.is_empty() {
+        input["accounts"] = plugin::account_rules(config);
+    }
+    let input = input.to_string();
+    let mut c = std::process::Command::new(&v.found.path);
+    c.arg("--action")
+        .arg(&v.req.action)
+        .env("BAR_STATE_DIR", state)
+        .current_dir(crate::cache::outside_project(state));
+    run_child(c, Some(input.into_bytes()), limit(v.spec.timeout))
 }

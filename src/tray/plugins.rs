@@ -39,7 +39,7 @@ pub fn granted_names(config: &Config) -> Vec<String> {
 }
 
 /// A `tray <plugin>` or `tray <plugin>.<action>` line covers the action.
-fn granted(grants: &[TrayGrant], plugin: &str, action: &str) -> bool {
+pub(super) fn granted(grants: &[TrayGrant], plugin: &str, action: &str) -> bool {
     grants
         .iter()
         .any(|g| g.plugin == plugin && g.action.as_deref().is_none_or(|a| a == action))
