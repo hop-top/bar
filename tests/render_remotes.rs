@@ -28,6 +28,17 @@ fn no_git(t: &Tmp) -> (String, PathBuf) {
     (bin.display().to_string(), log)
 }
 
+/// Waits (at most 10 s) until no background refresh of `keys` is in
+/// flight: its lock goes once its result is stored, so a value written
+/// after this is not overwritten by a refresh the render started.
+fn settled(cache: &Cache, keys: &[String]) {
+    let end = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while keys.iter().any(|k| cache.lock_path(k).exists()) {
+        assert!(std::time::Instant::now() < end, "refresh still running");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
 fn one(s: &str) -> String {
     s.lines().next().unwrap_or("").trim().to_string()
 }
@@ -186,6 +197,9 @@ fn rewritten_config_reads_cached_git() {
     let o = render(&t, &d, conf, &path);
     assert_eq!(one(&o.plain), "origin/main");
     let cache = Cache::new(&t.path().join("state"));
+    // the cold render's refresh (git fails: upstream stored as absent)
+    // must not land on top of the values stored below
+    settled(&cache, &[remote_key(&d), remote_key_named(&d, "upstream")]);
     cache
         .store(&remote_key(&d), "https://mirror.io/me/proj.git\n")
         .unwrap();
