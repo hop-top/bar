@@ -3,6 +3,7 @@
 mod common;
 
 use common::tmp::{self, Dir};
+#[cfg(unix)]
 use std::time::{Duration, SystemTime};
 
 #[test]
