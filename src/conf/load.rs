@@ -12,9 +12,9 @@ pub fn search_paths(
     let mut v = Vec::new();
     // the XDG spec says relative values are to be ignored
     if let Some(x) = env("XDG_CONFIG_HOME").filter(|s| Path::new(s).is_absolute()) {
-        v.push(PathBuf::from(x).join("bar/bar.conf"));
+        v.push(PathBuf::from(x).join("bar").join("bar.conf"));
     }
-    v.push(home.join(".config/bar/bar.conf"));
+    v.push(home.join(".config").join("bar").join("bar.conf"));
     v.push(kit_dir.join("bar.conf"));
     v
 }

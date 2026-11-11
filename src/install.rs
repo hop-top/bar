@@ -37,10 +37,10 @@ pub fn settings_path(scope: Scope, claude: Option<PathBuf>, cwd: &Path) -> Resul
 /// (`<prefix>/Cellar/bar/<version>/bin/bar`) `<prefix>/bin/bar` when it is
 /// the same file, else `exe`.
 pub fn stable_exe(exe: &Path, path: Option<&std::ffi::OsStr>) -> PathBuf {
-    let Ok(real) = std::fs::canonicalize(exe) else {
+    let Ok(real) = crate::platform::canonicalize(exe) else {
         return exe.to_path_buf();
     };
-    let same = |p: &Path| std::fs::canonicalize(p).is_ok_and(|c| c == real);
+    let same = |p: &Path| crate::platform::canonicalize(p).is_ok_and(|c| c == real);
     let name = exe.file_name().unwrap_or_default();
     let on_path = crate::plugin::path_dirs(path)
         .into_iter()

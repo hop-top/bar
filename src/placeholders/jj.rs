@@ -78,7 +78,7 @@ pub fn discover(dir: &Path) -> Option<PathBuf> {
 pub fn nearer_than(dir: &Path, git_top: Option<&Path>) -> Option<PathBuf> {
     let root = discover(dir)?;
     // either side may be reached through a symlink
-    let canon = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+    let canon = |p: &Path| crate::platform::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
     match git_top {
         Some(top) if canon(top).starts_with(canon(&root)) => None,
         _ => Some(root),
@@ -239,7 +239,7 @@ impl Placeholder for Jj {
         };
         let cache: &Cache = ctx.cache?;
         let root = discover(&work_dir(ctx))?;
-        let root = root.canonicalize().unwrap_or(root);
+        let root = crate::platform::canonicalize(&root).unwrap_or(root);
         let job = Job::Jj {
             dir: root.to_str()?.to_string(),
         };

@@ -178,7 +178,7 @@ impl Placeholder for Diff {
             return None;
         };
         let stamp = stamp(&repo);
-        let top = repo.top.canonicalize().unwrap_or(repo.top);
+        let top = crate::platform::canonicalize(&repo.top).unwrap_or(repo.top);
         let job = Job::GitDiff {
             dir: top.to_str()?.to_string(),
             scope: scope.to_string(),
