@@ -1,4 +1,5 @@
 use super::{Ctx, Placeholder};
+use crate::color::Color;
 use crate::options::Options;
 use crate::style::{bold, fg, neutral, sanitize};
 use serde_json::Value;
@@ -29,7 +30,8 @@ pub fn glob_match(pattern: &str, text: &str) -> bool {
     p[pi..].iter().all(|&c| c == '*')
 }
 
-fn email() -> Option<String> {
+/// The signed-in account's email, from Claude Code's `.claude.json`.
+pub fn email() -> Option<String> {
     let dir = match std::env::var_os("CLAUDE_CONFIG_DIR").filter(|v| !v.is_empty()) {
         Some(d) => PathBuf::from(d),
         None => crate::platform::home()?,
@@ -50,30 +52,69 @@ pub fn source_account(ctx: &Ctx) -> Option<crate::plugin::Account> {
     crate::plugin::default_output(ctx, name)?.account.clone()
 }
 
+/// The session's effective account, as `#{account}` resolves it: the
+/// `set account-source` plugin's account, else the signed-in one.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Resolved {
+    /// The signed-in account's email; `None` when a plugin names the
+    /// account (it hands over a label, not an address).
+    pub email: Option<String>,
+    /// What `#{account}` shows: the matching rule's label, a plugin's
+    /// coloured label, else what the account was named by.
+    pub shown: String,
+    /// The label of the first matching `account` line, or a plugin's
+    /// label that came with a colour (it matched the rules itself).
+    pub label: Option<String>,
+    pub color: Color,
+}
+
+fn signed_in(ctx: &Ctx) -> Option<String> {
+    ctx.memo.email.get_or_init(email).clone()
+}
+
+/// `None` when bar knows no account (an API key, or nothing signed in).
+pub fn resolve(ctx: &Ctx) -> Option<Resolved> {
+    // a plugin's account stands in for the signed-in one; the same
+    // `account "<glob>"` rules apply, matched against its label
+    let source = source_account(ctx);
+    // a plugin that matched the rules itself names the colour: its
+    // label is drawn as is
+    if let Some((label, color)) = source.as_ref().and_then(|a| Some((&a.label, a.color?))) {
+        return Some(Resolved {
+            email: None,
+            shown: label.clone(),
+            label: Some(label.clone()),
+            color,
+        });
+    }
+    let (email, name) = match source {
+        Some(a) => (None, a.label),
+        None => {
+            let e = signed_in(ctx)?;
+            (Some(e.clone()), e)
+        }
+    };
+    let rule = ctx
+        .config
+        .accounts
+        .iter()
+        .find(|r| glob_match(&r.glob, &name));
+    Some(Resolved {
+        email,
+        shown: rule.map_or_else(|| name.clone(), |r| r.label.clone()),
+        label: rule.map(|r| r.label.clone()),
+        color: rule.map_or_else(neutral, |r| r.color),
+    })
+}
+
 impl Placeholder for Account {
     fn render(&self, ctx: &Ctx, _opts: &Options) -> Option<String> {
-        // a plugin's account stands in for the signed-in one; the same
-        // `account "<glob>"` rules apply, matched against its label
-        let source = source_account(ctx);
-        // a plugin that matched the rules itself names the colour: its
-        // label is drawn as is
-        if let Some((label, color)) = source.as_ref().and_then(|a| Some((&a.label, a.color?))) {
-            return Some(bold(&fg(color, &sanitize(label))));
-        }
-        let shown = source.map(|a| a.label).or_else(email);
-        let Some(email) = shown else {
+        let Some(a) = resolve(ctx) else {
             let key = std::env::var("ANTHROPIC_API_KEY")
                 .ok()
                 .filter(|k| !k.is_empty());
             return key.map(|_| bold(&fg(neutral(), "api-key")));
         };
-        let (label, color) = ctx
-            .config
-            .accounts
-            .iter()
-            .find(|r| glob_match(&r.glob, &email))
-            .map(|r| (r.label.clone(), r.color))
-            .unwrap_or((email, neutral()));
-        Some(bold(&fg(color, &sanitize(&label))))
+        Some(bold(&fg(a.color, &sanitize(&a.shown))))
     }
 }

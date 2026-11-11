@@ -44,7 +44,7 @@ Any executable named `bar-<name>` on `PATH` (on Windows `bar-<name>.exe`, `.cmd`
 | `icon` | Optional default segment icon, used when `set icons` is not `none`. Sanitised; at most 2 cells. |
 | `aliases` | Optional. Other names `bar <name> <args>` answers to: up to 4 of `[a-z0-9-]`, at most 16 characters each, e.g. `["cpa"]`. They apply to that command only, not to placeholders or config. A built-in command of bar and a plugin of the same name win over an alias. Looked up only when no plugin is named so; the answer is cached like the rest of `--ext-info` |
 | `actions` | Optional. Actions a click can run: `{"use": {"description": "Prefer this account", "tokens": ["account", "provider"], "confirm": false, "timeout": 120}}`. Names are letters, digits, `-` and `_`; tokens are up to 8 names of `[a-z0-9_-]`. See [Actions](#actions). `confirm` is kept for the plugin's own use: bar runs the action without asking. `timeout` (seconds, at most 120) lifts the 10 s limit for an action that waits on the user, such as a chooser |
-| `inputs` | Optional. What the output depends on besides options: `{"env": ["ANTHROPIC_BASE_URL"], "session": ["model_id"]}`. Each declared value is part of the cache key, and the declared environment variables are sent as `env` in the render input. `env`: up to 8 names of `[A-Z0-9_]`, at most 64 characters; a name containing `KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `CREDENTIAL` or `AUTH` is refused, since values go into the cache key and the refresh process's arguments (a plugin that needs a secret reads its own environment, which it inherits); values longer than 1 KiB count as unset. `session`: any of `cwd`, `model`, `model_id`, `effort`, `session_id`; the volatile fields (`context_used`, `five_hour`, `seven_day`) cannot be declared, they would split the cache on every render. `accounts`: `true` asks for the user's `account "<glob>" <label> <color>` lines, see [Account rules](#account-rules). |
+| `inputs` | Optional. What the output depends on besides options: `{"env": ["ANTHROPIC_BASE_URL"], "session": ["model_id"]}`. Each declared value is part of the cache key, and the declared environment variables are sent as `env` in the render input. `env`: up to 8 names of `[A-Z0-9_]`, at most 64 characters; a name containing `KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `CREDENTIAL` or `AUTH` is refused, since values go into the cache key and the refresh process's arguments (a plugin that needs a secret reads its own environment, which it inherits); values longer than 1 KiB count as unset. `session`: any of `cwd`, `model`, `model_id`, `effort`, `session_id`; the volatile fields (`context_used`, `five_hour`, `seven_day`) cannot be declared, they would split the cache on every render. `accounts`: `true` asks for the user's `account "<glob>" <label> <color>` lines, see [Account rules](#account-rules). `account`: `true` asks for the session's account, see [Session account](#session-account). |
 | `timeout` | Optional. Limit for the background render, a number of seconds or a duration (`8s`), clamped to 1 to 15 s. Default 3 s; zero or unparsable means the default. |
 | `ttl` | How long a render result stays fresh: seconds (`300`) or a duration (`90s`, `5m`, `1h`, `1d`). Default 60 s; zero or unparsable means the default. |
 | `cache` | Optional. `"session"`: the output depends on the Claude Code session, so results are cached per session id and the render input carries `session.record`. Any other value or none: shared across sessions. |
@@ -109,6 +109,7 @@ The web configurator runs bar's renderer in the browser, where no plugin can run
 - `env`: only for plugins declaring `inputs.env`: the declared variables that are set, as strings; unset ones are absent. The key is absent without a declaration.
 - `columns`: `COLUMNS`, or `null`.
 - `accounts`: only for plugins declaring `inputs.accounts`, and only when the user has `account` lines: see [Account rules](#account-rules).
+- `account`: only for plugins declaring `inputs.account`, and only when bar knows the session's account: see [Session account](#session-account).
 - `toggles`: the plugin's named toggles that are on in this session, from `bar toggle <name>.<toggle>` (see `label_toggle` below): the session's own state, else the global default ([toggles](config.md#usage)); an off toggle is absent, and only this plugin's keys are sent. They are part of the cache key, so a flip is a new entry (sessions that see the same toggles share one): it shows at the next render once the plugin has run for it (the first render after a flip is empty until then, a flip back is immediate while the old entry is cached).
 - `session.record`: only for plugins declaring `"cache": "session"`, and only when the state directory holds `records/<name>/<session id>` (a JSON object, at most 4 KiB), written by `bar click hook`. Today the hook writes one for `tlc` only (see [Hooks](config.md#hooks)). Absent otherwise.
 
@@ -181,6 +182,22 @@ A plugin that names accounts (a proxy's, say) can label and colour them the way 
 - `bar <name> <args>`: the environment variable `BAR_ACCOUNTS`, the same JSON array, from the user's config alone (a project `.bar.conf` is not read); absent without lines. A plugin started directly, not through `bar <name>`, has no rules.
 
 Globs can hold email addresses. A plugin matches them where it sees the address and keeps only the label and colour it settles on: nothing from `accounts` belongs in its output (other than that label and colour), its cache or its logs. Without the declaration none of this is sent, and the cache key is unchanged.
+
+### Session account
+
+A plugin whose output belongs to one account (a balance, a quota) can follow the session's account. It declares `"inputs": {"account": true}` in `--ext-info` and gets, in the render input,
+
+```json
+"account": {"email": "alice@example.test", "label": "work"}
+```
+
+the account `#{account}` resolves: the account of the `set account-source` plugin when it names one, else the one Claude Code is signed in with.
+
+- `label`: the label of the user's first `account "<glob>"` line that matches, or the source plugin's label when it came with a `color` (the plugin matched the rules itself). Absent when no line matches.
+- `email`: the signed-in account's address. Absent when the source plugin names the account: it hands over a label, not an address.
+- `account` is absent when bar knows no account (an API key, nobody signed in).
+
+Each value is part of the cache key as a hash, so every account has its own entry and a switch never shows another account's result. The address is not in the refresh process's arguments: that process reads it itself and adds it only while the same account is signed in. Nothing secret is sent. Without the declaration none of this is sent, and the cache key is unchanged.
 
 ### Proxy plugins
 
@@ -268,6 +285,7 @@ set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3;a
 
 - Store the Console `sessionKey` cookie in a keychain entry, then name it and the organisation id in config: `plugin claude-credits org=<org-id> keychain=<entry-name>`.
 - Option `account` (string) names the keychain entry too and wins over `keychain=`: `#{claude-credits[account=<entry-name>]}`, for a second Console account next to the configured one. Same character rules as `keychain=`.
+- Every Console account has its own credit. The plugin follows the session's account (`inputs.account`, see [Session account](#session-account)): `org.<label>=<org-id> keychain.<label>=<entry-name>` apply when the account's label (from the user's `account` lines) is `<label>`, letters, digits, `-` and `_`. The plain `org=` / `keychain=` are the fallback for any other account, or when bar knows none. An account with no pair of its own and no fallback shows nothing, never another account's balance; so does a label with `org.<label>` but no `keychain.<label>` (unless the option `account` names the entry). All pairs go on the one `plugin claude-credits` line.
 - The cookie is passed to `curl` on stdin only, never in arguments or environment.
 - Requests time out after 2 s. HTTP 401 or 403 shows `?`; network errors and any other status exit non-zero without output, keeping the cached value. A missing tool, keychain entry or `org` also exits non-zero (segment omitted while nothing is cached).
 - `ttl` 5 m.
@@ -278,6 +296,14 @@ plugin claude-credits org=00000000-0000-0000-0000-000000000000 keychain=claude-c
 rule claude-credits early pace final=3d bad=$50
 set left "#{model}#{effort} │ #{ctx} │ #{repo}:#{branch} │ #{prs[limit=3;author=@me]} │ #{tlc}"
 set center "#{usage[type=5h]} │ #{usage[type=7d]} │ #{claude-credits}"
+```
+
+One balance per account, labelled by the `account` lines:
+
+```
+account "*@work.example.test" work 33
+account "*@home.example.test" home 34
+plugin claude-credits org.work=11111111-1111-1111-1111-111111111111 keychain.work=claude-console-work org.home=22222222-2222-2222-2222-222222222222 keychain.home=claude-console-home
 ```
 
 ### `bar-ci`, `bar-mem`, `bar-health`

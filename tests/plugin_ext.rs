@@ -59,6 +59,7 @@ fn job_timeout_bounds_the_run_and_survives_the_request_round_trip() {
         input: "{}".into(),
         timeout: 1,
         accounts: false,
+        email: None,
     };
     let req = hop_bar::cache::Request {
         key: "k".into(),

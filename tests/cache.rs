@@ -427,6 +427,7 @@ fn backoff_floor_holds_for_plugin_jobs() {
         input: "{}".into(),
         timeout: 3,
         accounts: false,
+        email: None,
     };
     let fail = c.fail_path("p");
     std::fs::create_dir_all(fail.parent().unwrap()).unwrap();

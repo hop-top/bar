@@ -3,10 +3,13 @@
 # Needs sh, jq, curl and macOS `security`. It reads the Console browser session
 # cookie from the keychain entry named by option `account`, else by
 # `plugin claude-credits keychain=...`, and calls an undocumented Console
-# endpoint for organisation `org=...`.
+# endpoint for organisation `org=...`. Each account has its own credit:
+# `org.<label>=` / `keychain.<label>=` apply when the session's account has
+# that label (bar's `account` lines, via `inputs.account`); the plain pair is
+# the fallback for any other account.
 # The cookie reaches curl only on stdin, never in argv or the environment.
 if [ "$1" = "--ext-info" ]; then
-  printf '%s\n' '{"name":"claude-credits","version":"0.1.0","description":"Claude Console prepaid credit balance","capabilities":["discover","placeholder"],"options":{"account":{"type":"string"}},"ttl":"5m","web":{"category":"usage","samples":[{"output":{"text":"$149.07","label":"14d"}}],"options":{"account":{"label":"Keychain entry","help":"Keychain entry holding the Console session cookie; else plugin claude-credits keychain=...","placeholder":"claude-console"}}}}'
+  printf '%s\n' '{"name":"claude-credits","version":"0.1.0","description":"Claude Console prepaid credit balance","capabilities":["discover","placeholder"],"options":{"account":{"type":"string"}},"inputs":{"account":true},"ttl":"5m","web":{"category":"usage","samples":[{"output":{"text":"$149.07","label":"14d"}}],"options":{"account":{"label":"Keychain entry","help":"Keychain entry holding the Console session cookie; else plugin claude-credits keychain=...","placeholder":"claude-console"}}}}'
   exit 0
 fi
 
@@ -14,7 +17,16 @@ fi
 unset cookie
 for t in jq curl security; do command -v "$t" >/dev/null 2>&1 || exit 1; done
 
-conf=$(jq -r '[.config.org // "", (.options.account | select(. != null and . != "")) // .config.keychain // ""] | join("\u001f")' 2>/dev/null) || exit 1
+# The session's label picks its own pair when one is configured; else the
+# plain pair. A label with neither gets nothing, never another account's.
+conf=$(jq -r '
+  (.config // {}) as $c
+  | ((.account | objects | .label | strings | select(test("^[A-Za-z0-9_-]{1,64}$"))) // "") as $l
+  | (if $l != "" and (($c["org." + $l] // "") != "")
+     then [$c["org." + $l], $c["keychain." + $l] // ""]
+     else [$c.org // "", $c.keychain // ""] end) as $p
+  | [$p[0], ((.options.account | select(. != null and . != "")) // $p[1])]
+  | join("\u001f")' 2>/dev/null) || exit 1
 org=${conf%%"$(printf '\037')"*}
 entry=${conf#*"$(printf '\037')"}
 case "$org" in ''|*[!A-Za-z0-9-]*) exit 1 ;; esac

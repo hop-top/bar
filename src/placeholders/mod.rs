@@ -68,6 +68,8 @@ pub struct Memo {
     pub(crate) outputs: std::cell::RefCell<
         std::collections::HashMap<String, Option<std::rc::Rc<crate::plugin::Output>>>,
     >,
+    /// The signed-in account's email (`account::email`).
+    pub(crate) email: std::cell::OnceCell<Option<String>>,
 }
 
 pub trait Placeholder {

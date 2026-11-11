@@ -78,6 +78,15 @@ pub fn with_accounts(input: &str, rules: Value) -> String {
     v.to_string()
 }
 
+/// The session's account for `inputs.account`: what travels in the input
+/// (the label, when a rule matched) and the email, which the job adds
+/// itself. `None` when bar knows no account.
+fn account_input(ctx: &Ctx) -> Option<(Value, Option<String>)> {
+    let a = crate::placeholders::account::resolve(ctx)?;
+    let v = a.label.map_or_else(|| json!({}), |l| json!({"label": l}));
+    (a.email.is_some() || !v.as_object().is_some_and(Map::is_empty)).then_some((v, a.email))
+}
+
 /// What one placeholder fetches: cached per option set, fresh for `ttl`.
 pub struct Plan {
     pub key: String,
@@ -154,6 +163,14 @@ pub fn plan(ctx: &Ctx, found: &Found, info: &ExtInfo, opts: &Options) -> Option<
         Some(h) => format!("{declared}:accounts={h}"),
         None => declared,
     };
+    let account = info.inputs.account.then(|| account_input(ctx)).flatten();
+    let declared = match &account {
+        Some((v, email)) => format!(
+            "{declared}:account={}",
+            hash_hex(&json!([v, email]).to_string())
+        ),
+        None => declared,
+    };
     let key = format!(
         "plugin:{}:{path}:{scope}:{options}:{config}:{toggles}{declared}",
         found.name
@@ -168,6 +185,9 @@ pub fn plan(ctx: &Ctx, found: &Found, info: &ExtInfo, opts: &Options) -> Option<
     if !info.inputs.env.is_empty() {
         input["env"] = Value::Object(env);
     }
+    if let Some((v, _)) = &account {
+        input["account"] = v.clone();
+    }
     Some(Plan {
         key,
         job: Job::PluginRender {
@@ -175,6 +195,7 @@ pub fn plan(ctx: &Ctx, found: &Found, info: &ExtInfo, opts: &Options) -> Option<
             input: input.to_string(),
             timeout: info.timeout,
             accounts: rules.is_some(),
+            email: account.and_then(|(_, e)| e.map(|e| hash_hex(&e))),
         },
         ttl: ttl.max(ctx.config.refresh),
     })
