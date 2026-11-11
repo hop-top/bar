@@ -110,7 +110,7 @@ cargo build
 scripts/conformance-grade
 ```
 
-It starts a grading service on 127.0.0.1 with a token for that run, records every step against `target/debug/bar` in throwaway HOME, XDG and state dirs, prints the result as JSON and exits 0 on pass, 68 on fail. The 12fc workflow does the same with `--serve` and hands the cassette to the Action.
+It starts a grading service on 127.0.0.1 with a token for that run, records every step against `target/debug/bar` in throwaway HOME, XDG and state dirs, prints the result as JSON and exits 0 on pass, 68 on fail. The 12fc workflow does the same with `--serve` on every PR into `next` and every push to it, hands the cassette to the Action, and fails on any failed assertion.
 
 ## Docs
 
