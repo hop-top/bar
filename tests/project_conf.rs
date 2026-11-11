@@ -352,7 +352,13 @@ fn check_names_the_file_of_each_issue() {
         .iter()
         .map(|i| i["file"].as_str().unwrap().to_string())
         .collect();
-    let user = t.path().join("xdg/bar/bar.conf").display().to_string();
+    let user = t
+        .path()
+        .join("xdg")
+        .join("bar")
+        .join("bar.conf")
+        .display()
+        .to_string();
     let proj = dir.join(".bar.conf").display().to_string();
     assert_eq!(files, [user, proj.clone(), proj]);
 }

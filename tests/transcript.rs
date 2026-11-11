@@ -29,7 +29,7 @@ impl Tmp {
             N.fetch_add(1, Ordering::SeqCst)
         ));
         std::fs::create_dir_all(&p).unwrap();
-        Tmp(p.canonicalize().unwrap())
+        Tmp(hop_bar::platform::canonicalize(&p).unwrap())
     }
     fn state(&self) -> PathBuf {
         self.0.join("state")

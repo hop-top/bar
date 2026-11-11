@@ -51,7 +51,7 @@ fn backups(t: &Tmp, dir: &Path) -> usize {
         })
     };
     assert_eq!(count(dir), 0, "backup beside {}", dir.display());
-    count(&t.path().join("state/backups"))
+    count(&t.path().join("state").join("backups"))
 }
 
 const EXISTING: &str = r#"{
@@ -331,7 +331,7 @@ fn local_scope_backup_stays_out_of_the_project() {
     let (r, out) = run(&e, &opts(), false, "");
     r.unwrap();
     assert_eq!(backups(&t, &dir), 1);
-    let store = t.path().join("state/backups");
+    let store = t.path().join("state").join("backups");
     assert!(
         out.contains(&format!("backup {}", store.display())),
         "{out}"

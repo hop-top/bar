@@ -82,7 +82,10 @@ fn without_open_the_output_is_unchanged() {
         .cwd(&d)
         .unset("GIT_CONFIG_NOSYSTEM")
         .go();
-    assert_eq!(plain.plain.trim(), "~/proj proj proj");
+    assert_eq!(
+        plain.plain.trim(),
+        format!("~{}proj proj proj", std::path::MAIN_SEPARATOR)
+    );
     assert_eq!(plain.raw, none.raw);
     assert!(!plain.raw.contains("\x1b]8"), "{:?}", plain.raw);
 }
