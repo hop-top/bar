@@ -26,6 +26,7 @@ default = []
 linux-sni = ["dep:ksni"]
 
 [dependencies]
+bar-plugin = { path = "../bar-plugin" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 
