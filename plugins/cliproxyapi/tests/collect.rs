@@ -20,14 +20,24 @@ struct Env {
     inst: Instance,
 }
 
+/// A key file path that is absolute on this platform (`/k` is not on Windows).
+fn key_file() -> &'static str {
+    if cfg!(windows) {
+        "C:/k"
+    } else {
+        "/k"
+    }
+}
+
 impl Env {
     fn new(s: &Server, name: &str) -> Env {
         let dir = std::env::temp_dir().join(format!("cpa-collect-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let text = format!(
-            "instance {}\n key-file /k\n alias \"*@corp.test\" corp\n",
-            s.origin()
+            "instance {}\n key-file {}\n alias \"*@corp.test\" corp\n",
+            s.origin(),
+            key_file()
         );
         let mut cfg = config::parse(&text, None);
         assert!(cfg.errors.is_empty(), "{:?}", cfg.errors);

@@ -16,6 +16,16 @@ pub fn workspace_json(dir: &Path) -> String {
     serde_json::json!({"workspace": {"current_dir": dir}}).to_string()
 }
 
+/// A `/`-rooted path made absolute on this platform too: `/r` is
+/// relative on Windows, `C:/r` is not.
+pub fn abs(p: &str) -> String {
+    if cfg!(windows) {
+        format!("C:{p}")
+    } else {
+        p.to_string()
+    }
+}
+
 /// Where the fake `gh` logs each call.
 pub fn gh_log(root: &Path) -> PathBuf {
     root.join("fake-gh.log")

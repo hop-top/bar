@@ -367,6 +367,17 @@ pub fn instance_id(origin: &Origin) -> String {
     bar_plugin::sha256::hex(origin.to_string().as_bytes())[..16].to_string()
 }
 
+/// Tests only: a `/`-rooted path made absolute on this platform too
+/// (`/k` is relative on Windows; `C:/k` is not).
+#[cfg(test)]
+fn abs(p: &str) -> String {
+    if cfg!(windows) {
+        format!("C:{p}")
+    } else {
+        p.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -375,7 +386,8 @@ mod tests {
 
     #[test]
     fn parses_instances_with_defaults() {
-        let c = parse(GOOD, Some(Path::new("/h")));
+        let home = abs("/h");
+        let c = parse(GOOD, Some(Path::new(&home)));
         assert!(c.errors.is_empty(), "{:?}", c.errors);
         let a = &c.instances[0];
         assert_eq!(a.origin.to_string(), "http://127.0.0.1:8318");
@@ -391,7 +403,7 @@ mod tests {
         let b = &c.instances[1];
         // a v8 base is turned into the v0 one: field changes live there
         assert_eq!(b.management, "http://127.0.0.1:9/v0/management");
-        assert_eq!(b.key, KeyRef::Own(KeySource::File("/h/k".into())));
+        assert_eq!(b.key, KeyRef::Own(KeySource::File(abs("/h/k").into())));
         assert_eq!(b.provider, "rl2");
         assert_eq!(b.on_priority, 1000);
         assert_eq!(b.off_map.len(), 2);
@@ -400,6 +412,10 @@ mod tests {
 
     #[test]
     fn refuses_unsafe_or_incomplete_instances() {
+        let two_keys = format!(
+            "instance http://127.0.0.1:1\n routellm http://127.0.0.1:2\n key-file {}\n key-keychain s\n",
+            abs("/k")
+        );
         let cases = [
             ("instance http://127.0.0.1:1\n", "no `routellm`"),
             (
@@ -414,10 +430,7 @@ mod tests {
                 "instance http://127.0.0.1:1\n routellm http://127.0.0.1:2\n remote yes\n management http://proxy.example/v0/management\n",
                 "remote yes",
             ),
-            (
-                "instance http://127.0.0.1:1\n routellm http://127.0.0.1:2\n key-file /k\n key-keychain s\n",
-                "more than one",
-            ),
+            (two_keys.as_str(), "more than one"),
             (
                 "instance http://127.0.0.1:1\n routellm http://127.0.0.1:2\n key-command bin/x\n",
                 "absolute",

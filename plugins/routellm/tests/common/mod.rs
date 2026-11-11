@@ -27,8 +27,10 @@ impl Env {
         let dir = std::env::temp_dir().join(format!("rl-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
+        // a key file path that is absolute on this platform (`/k` is not on Windows)
+        let key_file = if cfg!(windows) { "C:/k" } else { "/k" };
         let text = format!(
-            "instance {}\n routellm {}\n key-file /k\n",
+            "instance {}\n routellm {}\n key-file {key_file}\n",
             proxy.server.origin(),
             rl.origin()
         );

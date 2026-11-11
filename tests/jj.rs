@@ -142,9 +142,10 @@ fn nearer_than_git() {
 
 #[test]
 fn job_roundtrips_and_needs_absolute_dir() {
+    let r = common::abs("/r");
     let req = Request {
-        key: cache_key(Path::new("/r")),
-        job: Job::Jj { dir: "/r".into() },
+        key: cache_key(Path::new(&r)),
+        job: Job::Jj { dir: r },
         lock: "t".into(),
     };
     assert_eq!(Request::from_json(&req.to_json()).unwrap(), req);

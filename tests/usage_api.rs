@@ -407,17 +407,20 @@ fn parses_the_endpoint_json() {
 #[test]
 fn job_round_trips() {
     let req = Request {
-        key: "usage-api:/x".into(),
+        key: format!("usage-api:{}", common::abs("/x")),
         job: Job::UsageApi {
-            dir: "/x/.claude".into(),
+            dir: common::abs("/x/.claude"),
             hashed: true,
-            prev: "/x/cache/abc".into(),
+            prev: common::abs("/x/cache/abc"),
         },
         lock: "l".into(),
     };
     assert_eq!(Request::from_json(&req.to_json()).unwrap(), req);
-    let rel = r#"{"key":"k","job":{"kind":"usage-api","dir":"rel","prev":"/p"},"lock":""}"#;
-    assert!(Request::from_json(rel).is_err());
+    let rel = format!(
+        r#"{{"key":"k","job":{{"kind":"usage-api","dir":"rel","prev":"{}"}},"lock":""}}"#,
+        common::abs("/p")
+    );
+    assert!(Request::from_json(&rel).is_err());
 }
 
 // ---- the background job, end to end through `bar refresh` ----
