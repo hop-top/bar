@@ -34,8 +34,7 @@ printf '%s' "$input" | jq -c '{{text: "\(.session.session_id[-1:])\(.session.rec
 "#
         );
         let p = fx.bin.join(format!("bar-{name}"));
-        std::fs::write(&p, body).unwrap();
-        std::fs::set_permissions(&p, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        common::exe::write(&p, body);
     }
 }
 
@@ -163,8 +162,7 @@ printf '%s' "$input" | jq -c '{{label: "L", icon: "I", label_toggle: "{toggle}",
 "#
     );
     let p = fx.bin.join("bar-mark");
-    std::fs::write(&p, body).unwrap();
-    std::fs::set_permissions(&p, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    common::exe::write(&p, body);
 }
 
 /// Drops SGR sequences.

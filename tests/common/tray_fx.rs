@@ -132,8 +132,7 @@ impl T {
             assert_cmd::cargo::cargo_bin("bar").display()
         ));
         let p = dir.join("bar");
-        std::fs::write(&p, s).unwrap();
-        std::fs::set_permissions(&p, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        crate::common::exe::write(&p, s);
         p
     }
 

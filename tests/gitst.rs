@@ -219,8 +219,7 @@ fn failing_jobs_back_off_at_least_a_minute() {
     use std::time::SystemTime;
     let root = tmp();
     let exe = root.join("fake-bar");
-    std::fs::write(&exe, "#!/bin/sh\nexit 0\n").unwrap();
-    std::fs::set_permissions(&exe, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    common::exe::write(&exe, "#!/bin/sh\nexit 0\n");
     let cache = Cache::with_exe(&root.join("state"), exe);
     let ago = |p: &Path, secs| {
         let f = std::fs::OpenOptions::new().write(true).open(p).unwrap();

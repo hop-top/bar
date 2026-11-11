@@ -64,17 +64,14 @@ fn command_links_never_probe_the_terminal_in_a_row() {
 #[cfg(unix)]
 #[test]
 fn git_is_never_run_in_the_foreground_for_a_row() {
-    use std::os::unix::fs::PermissionsExt;
     let t = Tmp::new();
     let (iso, cwd) = common::isolation(t.path());
     let log = t.path().join("fake-git.log");
     let git = t.path().join("fake-bin/git");
-    std::fs::write(
+    common::exe::write(
         &git,
         format!("#!/bin/sh\necho \"$*\" >> '{}'\necho main\n", log.display()),
-    )
-    .unwrap();
-    std::fs::set_permissions(&git, std::fs::Permissions::from_mode(0o755)).unwrap();
+    );
     t.write("repo/.git/HEAD", "ref: refs/heads/main\n");
     t.write(
         "repo/.git/config",

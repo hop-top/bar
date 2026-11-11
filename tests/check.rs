@@ -46,8 +46,7 @@ impl Fx {
 
     fn exe(&self, name: &str, body: &str) -> &Fx {
         let p = self.root.join("bin").join(name);
-        std::fs::write(&p, body).unwrap();
-        std::fs::set_permissions(&p, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        common::exe::write(&p, body);
         self
     }
 

@@ -30,8 +30,7 @@ pub fn script(name: &str) -> PathBuf {
 }
 
 pub fn exe(path: &Path, body: &str) {
-    std::fs::write(path, body).unwrap();
-    std::fs::set_permissions(path, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    crate::common::exe::write(path, body);
 }
 
 impl Fx {

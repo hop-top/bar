@@ -33,9 +33,13 @@ impl Fx {
         std::fs::create_dir_all(&bin).unwrap();
         std::fs::create_dir_all(&state).unwrap();
         let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/plugins");
-        for e in std::fs::read_dir(src).unwrap().flatten() {
-            install(&e.path(), &bin.join(e.file_name()));
-        }
+        let fixtures: Vec<PathBuf> = std::fs::read_dir(src)
+            .unwrap()
+            .flatten()
+            .map(|e| e.path())
+            .collect();
+        let fixtures: Vec<&Path> = fixtures.iter().map(PathBuf::as_path).collect();
+        crate::common::exe::copy_into(&fixtures, &bin);
         Fx { root, bin, state }
     }
 
@@ -115,8 +119,7 @@ impl Drop for Fx {
 }
 
 pub fn install(from: &Path, to: &Path) {
-    std::fs::copy(from, to).unwrap();
-    std::fs::set_permissions(to, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    crate::common::exe::copy(from, to);
 }
 
 /// Runs a spawn, retrying while the binary is "text file busy": a test

@@ -165,15 +165,13 @@ fn script(dir: &std::path::Path, name: &str, accounts: bool) {
     } else {
         ""
     };
-    std::fs::write(
+    common::exe::write(
         &p,
         format!(
             "#!/bin/sh\nif [ \"$1\" = \"--ext-info\" ]; then\n  echo '{{\"name\":\"{n}\",\"version\":\"1\",\"capabilities\":[\"placeholder\"]{inputs}}}'\n  exit 0\nfi\nprintf '%s' \"$BAR_ACCOUNTS\"\n",
             n = name.trim_start_matches("bar-"),
         ),
-    )
-    .unwrap();
-    std::fs::set_permissions(&p, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    );
 }
 
 #[test]

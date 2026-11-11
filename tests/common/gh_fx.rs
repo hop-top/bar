@@ -81,16 +81,9 @@ impl Fx {
             root.join("repo"),
         );
         let gh = bin.join("gh");
-        std::fs::write(&gh, FAKE_GH).unwrap();
-        std::os::unix::fs::PermissionsExt::set_mode(
-            &mut std::fs::metadata(&gh).unwrap().permissions(),
-            0o755,
-        );
-        std::fs::set_permissions(&gh, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        crate::common::exe::write(&gh, FAKE_GH);
         let glab = bin.join("glab");
-        std::fs::write(&glab, FAKE_GLAB).unwrap();
-        std::fs::set_permissions(&glab, std::os::unix::fs::PermissionsExt::from_mode(0o755))
-            .unwrap();
+        crate::common::exe::write(&glab, FAKE_GLAB);
         git(&repo, &["init", "-q"]);
         if let Some(r) = remote {
             git(&repo, &["remote", "add", "origin", r]);

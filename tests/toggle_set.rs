@@ -31,10 +31,8 @@ impl Tmp {
     }
     /// An executable `bar-<name>` in the test's PATH dir; never run here.
     fn plugin(&self, name: &str) {
-        use std::os::unix::fs::PermissionsExt;
         let f = self.0.join("bin").join(format!("bar-{name}"));
-        std::fs::write(&f, "#!/bin/sh\nexit 1\n").unwrap();
-        std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o755)).unwrap();
+        common::exe::write(&f, "#!/bin/sh\nexit 1\n");
     }
     fn bar(&self, args: &[&str]) -> Command {
         let mut c = Command::cargo_bin("bar").unwrap();

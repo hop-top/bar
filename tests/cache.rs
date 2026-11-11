@@ -3,6 +3,7 @@
 
 mod common;
 
+use common::{wait_until, BG_WAIT};
 use hop_bar::cache::{Cache, CachedRunner, Job, Request};
 use hop_bar::expand::CommandRunner;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
@@ -66,21 +67,6 @@ fn age(path: &Path, secs: u64) {
     let f = std::fs::File::options().write(true).open(path).unwrap();
     f.set_modified(SystemTime::now() - Duration::from_secs(secs))
         .unwrap();
-}
-
-/// Generous poll bound for detached refreshes: a loaded host delays
-/// process spawn by seconds; success returns at once, so it costs nothing.
-const BG_WAIT: Duration = Duration::from_secs(150);
-
-fn wait_until(limit: Duration, mut f: impl FnMut() -> bool) -> bool {
-    let start = Instant::now();
-    while start.elapsed() < limit {
-        if f() {
-            return true;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    f()
 }
 
 fn lock_gone(c: &Cache, key: &str) -> bool {
@@ -551,15 +537,13 @@ fn wait_line(p: &Path) -> String {
 fn refresh_runs_outside_the_working_directory() {
     let t = Tmp::new();
     let exe = t.path().join("fake-bar");
-    std::fs::write(
+    common::exe::write(
         &exe,
         format!(
             "#!/bin/sh\npwd -P > '{}/cwd.tmp' && mv '{0}/cwd.tmp' '{0}/cwd'\n",
             t.path().display()
         ),
-    )
-    .unwrap();
-    std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+    );
     let state = t.path().join("state");
     let cache = Cache::with_exe(&state, exe);
     cache.read_or_refresh("status:summary", 300, &Job::Status { strip: false });

@@ -5,10 +5,29 @@
 //! `root`.
 #![allow(dead_code)]
 
+pub mod exe;
 pub mod tmp;
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
+
+/// Bound for waiting on detached work (a background `bar refresh`): a
+/// loaded host delays a spawn by seconds; a wait that succeeds returns
+/// at once, so a generous bound costs nothing.
+pub const BG_WAIT: Duration = Duration::from_secs(150);
+
+/// Polls `f` until it holds or `limit` passes; whether it held.
+pub fn wait_until(limit: Duration, mut f: impl FnMut() -> bool) -> bool {
+    let start = Instant::now();
+    while start.elapsed() < limit {
+        if f() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    f()
+}
 
 /// Status-line JSON whose `workspace.current_dir` is `dir`, escaped so
 /// Windows paths survive.
@@ -83,13 +102,10 @@ const NULL_DEVICE: &str = "NUL";
 /// A `gh` that logs its arguments and fails.
 #[cfg(unix)]
 fn fake_gh(bin: &Path, log: &Path) {
-    let gh = bin.join("gh");
-    std::fs::write(
-        &gh,
+    exe::write(
+        &bin.join("gh"),
         format!("#!/bin/sh\necho \"$*\" >> '{}'\nexit 1\n", log.display()),
-    )
-    .unwrap();
-    std::fs::set_permissions(&gh, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    );
 }
 
 /// A `gh.cmd` that logs its arguments and fails.
@@ -109,17 +125,13 @@ fn fake_gh(bin: &Path, log: &Path) {
 /// reaches the network.
 #[cfg(unix)]
 fn fake_curl(bin: &Path) {
-    let curl = bin.join("curl");
-    std::fs::write(&curl, "#!/bin/sh\nexit 7\n").unwrap();
-    std::fs::set_permissions(&curl, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    exe::write(&bin.join("curl"), "#!/bin/sh\nexit 7\n");
 }
 
 /// A `security` that fails: nothing reads the real keychain.
 #[cfg(unix)]
 fn fake_security(bin: &Path) {
-    let s = bin.join("security");
-    std::fs::write(&s, "#!/bin/sh\nexit 44\n").unwrap();
-    std::fs::set_permissions(&s, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    exe::write(&bin.join("security"), "#!/bin/sh\nexit 44\n");
 }
 
 #[cfg(windows)]

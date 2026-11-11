@@ -110,11 +110,7 @@ fn toggle_lands_in_the_baked_xdg_state_home() {
     let bin = t.path().join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     let plugin = bin.join("bar-tlc");
-    std::fs::write(&plugin, "#!/bin/sh\nexit 1\n").unwrap();
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&plugin, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
+    common::exe::write(&plugin, "#!/bin/sh\nexit 1\n");
     let env = env_of(&[
         ("XDG_STATE_HOME", xdg.to_str().unwrap()),
         ("PATH", bin.to_str().unwrap()),

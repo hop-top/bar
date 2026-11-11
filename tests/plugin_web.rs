@@ -326,12 +326,10 @@ fn bar_check_warns_about_a_bad_web_object() {
     let bin = r.join("plugins");
     std::fs::create_dir_all(&bin).unwrap();
     let p = bin.join("bar-demo");
-    std::fs::write(
+    common::exe::write(
         &p,
         "#!/bin/sh\necho '{\"name\":\"demo\",\"version\":\"1\",\"capabilities\":[\"placeholder\"],\"web\":{\"samples\":[{\"output\":{}}]}}'\n",
-    )
-    .unwrap();
-    std::fs::set_permissions(&p, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    );
     let report = hop_bar::check::check_text("set left \"#{demo}\"", None, &[bin]);
     let msgs: Vec<&str> = report.issues.iter().map(|i| i.message.as_str()).collect();
     assert!(

@@ -436,9 +436,7 @@ mod job {
     const TOKEN: &str = "sk-ant-oat01-SYNTHETIC-test-token-0000";
 
     fn exe(path: &Path, body: &str) {
-        std::fs::write(path, body).unwrap();
-        std::fs::set_permissions(path, std::os::unix::fs::PermissionsExt::from_mode(0o755))
-            .unwrap();
+        common::exe::write(path, body);
     }
 
     fn creds(exp_ms: i64) -> String {

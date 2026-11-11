@@ -19,15 +19,13 @@ fn fx(name: &str, curl_body: &str) -> (Dir, PathBuf) {
     let bin = root.join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     let fake = bin.join("curl");
-    std::fs::write(
+    common::exe::write(
         &fake,
         format!(
             "#!/bin/sh\necho \"$@\" >> \"{}/argv\"\n{curl_body}\n",
             root.display()
         ),
-    )
-    .unwrap();
-    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    );
     std::fs::write(root.join("api.json"), API).unwrap();
     (root, bin)
 }
