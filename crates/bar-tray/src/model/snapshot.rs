@@ -47,6 +47,7 @@
 //! | `items[].style` | string or absent | `good`, `warn`, `bad` or `dim`; anything else is ignored |
 //! | `items[].action` | string or absent | `[a-z0-9_-]` 1..=32; the plugin action a click runs. Without one the item is not clickable |
 //! | `items[].confirm` | bool, default false | the action asks for confirmation: first click arms the row, second click runs with `--confirmed` |
+//! | `items[].limit` | integer or absent | seconds `bar tray run` lets the action run (its declared limit, capped); the tray gives the run 5 s more, then kills it. Absent or 0: the tray waits the longest limit `bar` allows |
 //! | `items[].tokens` | object | the action's token values; read by `bar tray run`, never by the tray |
 //!
 //! Duplicate plugin names, group ids or item ids are refused: a click
@@ -194,6 +195,8 @@ pub struct Item {
     pub style: Option<Style>,
     pub action: Option<String>,
     pub confirm: bool,
+    /// Seconds the action may run, when the producer knows.
+    pub limit: Option<u64>,
 }
 
 // Raw shapes: everything optional, validated below.
@@ -265,6 +268,8 @@ struct RawItem {
     action: Option<String>,
     #[serde(default)]
     confirm: bool,
+    #[serde(default)]
+    limit: u64,
 }
 
 fn yes() -> bool {
@@ -476,6 +481,7 @@ fn items(
             style: it.style.as_deref().and_then(Style::parse),
             action: it.action,
             confirm: it.confirm,
+            limit: (it.limit > 0).then_some(it.limit),
         });
     }
     Ok(out)

@@ -198,7 +198,9 @@ fn labels_are_cleaned_and_empty_rows_dropped() {
 fn defaults_and_styles() {
     let s = parse_value(&with_groups(json!([{"id": "g", "kind": "check", "items": [
         {"id": "a", "label": "a", "style": "neon"},
-        {"id": "b", "label": "b", "style": "dim", "enabled": false, "checked": true, "confirm": true}
+        {"id": "b", "label": "b", "style": "dim", "enabled": false, "checked": true, "confirm": true,
+         "limit": 90},
+        {"id": "c", "label": "c", "limit": 0}
     ]}])))
     .unwrap();
     let g = &s.plugins[0].groups[0];
@@ -209,15 +211,17 @@ fn defaults_and_styles() {
             a.checked,
             a.confirm,
             a.style,
-            a.action.as_deref()
+            a.action.as_deref(),
+            a.limit
         ),
-        (true, false, false, None, None)
+        (true, false, false, None, None, None)
     );
     let b = &g.items[1];
     assert_eq!(
-        (b.enabled, b.checked, b.confirm, b.style),
-        (false, true, true, Some(Style::Dim))
+        (b.enabled, b.checked, b.confirm, b.style, b.limit),
+        (false, true, true, Some(Style::Dim), Some(90))
     );
+    assert_eq!(g.items[2].limit, None, "0 means unknown");
 }
 
 #[test]

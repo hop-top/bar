@@ -1,43 +1,113 @@
-//! `bar-tray <snapshot.json>`: reads a tray snapshot, refuses an invalid
-//! one and prints the menu it would show. No backend yet: nothing is
-//! spawned, nothing is drawn. On Windows it is the tray itself.
+//! `bar-tray [--snapshot <file>] [--bar <path>] [--poll <seconds>] [--print]`
+//!
+//! Shows bar's menu in the menu bar or notification area. The menu comes
+//! from `bar tray state --json` (`bar` beside this binary, or `--bar`),
+//! or from a snapshot file with `--snapshot`, for showing a menu without
+//! `bar`. `--print` prints the menu once instead of showing it.
 
 // A tray has no console: the GUI subsystem keeps one from flashing up.
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
-use bar_tray::model::{self, Kind, Menu, MenuItem};
+use bar_tray::backend::source::Source;
+use bar_tray::backend::spawn;
+use bar_tray::model::{Kind, Menu, MenuItem};
+use std::path::PathBuf;
 use std::process::ExitCode;
+use std::time::Duration;
 
-fn main() -> ExitCode {
-    #[cfg(windows)]
-    {
-        bar_tray::backend::windows::run()
-    }
-    #[cfg(not(windows))]
-    {
-        preview()
-    }
+const USAGE: &str =
+    "usage: bar-tray [--snapshot <file>] [--bar <path>] [--poll <seconds>] [--print]";
+/// Seconds between idle polls unless `--poll` says otherwise.
+const DEFAULT_POLL: u64 = 30;
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Args {
+    snapshot: Option<PathBuf>,
+    bar: Option<PathBuf>,
+    poll: Option<u64>,
+    print: bool,
 }
 
-#[cfg_attr(windows, allow(dead_code))]
-fn preview() -> ExitCode {
-    let mut args = std::env::args_os().skip(1);
-    let (Some(path), None) = (args.next(), args.next()) else {
-        eprintln!("usage: bar-tray <snapshot.json>");
-        return ExitCode::from(2);
-    };
-    let text = match std::fs::read_to_string(&path) {
-        Ok(t) => t,
+fn parse(argv: impl IntoIterator<Item = String>) -> Result<Args, String> {
+    let mut a = Args::default();
+    let mut it = argv.into_iter();
+    while let Some(arg) = it.next() {
+        let mut value = |flag: &str| it.next().ok_or_else(|| format!("{flag} needs a value"));
+        match arg.as_str() {
+            "--snapshot" => a.snapshot = Some(PathBuf::from(value("--snapshot")?)),
+            "--bar" => a.bar = Some(PathBuf::from(value("--bar")?)),
+            "--poll" => {
+                let v = value("--poll")?;
+                a.poll = Some(
+                    v.parse()
+                        .ok()
+                        .filter(|s| (10..=600).contains(s))
+                        .ok_or_else(|| format!("invalid --poll `{v}` (10..600 seconds)"))?,
+                );
+            }
+            "--print" => a.print = true,
+            other => return Err(format!("unknown argument `{other}`")),
+        }
+    }
+    Ok(a)
+}
+
+fn main() -> ExitCode {
+    let args = match parse(std::env::args().skip(1)) {
+        Ok(a) => a,
         Err(e) => {
-            eprintln!("bar-tray: {}: {e}", path.to_string_lossy());
-            return ExitCode::from(1);
+            eprintln!("bar-tray: {e}\n{USAGE}");
+            return ExitCode::from(2);
         }
     };
-    let snapshot = match model::parse(&text) {
+    // `bar` is needed for clicks, and for the snapshot without `--snapshot`
+    let bar = match (&args.snapshot, &args.bar) {
+        (Some(_), None) => None,
+        (_, explicit) => match spawn::locate(explicit.as_deref()) {
+            Ok(p) => Some(p),
+            Err(e) => {
+                eprintln!("bar-tray: {e}");
+                return ExitCode::FAILURE;
+            }
+        },
+    };
+    let source = match (&args.snapshot, &bar) {
+        (Some(p), _) => Source::File(p.clone()),
+        (None, Some(b)) => Source::Bar(b.clone()),
+        (None, None) => unreachable!("no snapshot means a located bar"),
+    };
+    if args.print {
+        return print(&source);
+    }
+    show(
+        source,
+        bar,
+        Duration::from_secs(args.poll.unwrap_or(DEFAULT_POLL)),
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn show(source: Source, bar: Option<PathBuf>, poll: Duration) -> ExitCode {
+    bar_tray::backend::macos::run(bar_tray::backend::Options { source, bar, poll })
+}
+
+#[cfg(windows)]
+fn show(source: Source, bar: Option<PathBuf>, poll: Duration) -> ExitCode {
+    bar_tray::backend::windows::run(bar_tray::backend::Options { source, bar, poll })
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+fn show(_source: Source, _bar: Option<PathBuf>, _poll: Duration) -> ExitCode {
+    eprintln!("bar-tray: no tray backend for this platform yet; --print shows the menu");
+    ExitCode::FAILURE
+}
+
+fn print(source: &Source) -> ExitCode {
+    let snapshot = match source.fetch() {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("bar-tray: invalid snapshot: {e}");
-            return ExitCode::from(1);
+            eprintln!("bar-tray: {e}");
+            return ExitCode::FAILURE;
         }
     };
     for w in &snapshot.warnings {
@@ -52,7 +122,6 @@ fn preview() -> ExitCode {
 
 /// One line per row: `[x]`/`[ ]` for toggles and choices, `>` for a
 /// submenu, `---` for a separator, then the label, detail and flags.
-#[cfg_attr(windows, allow(dead_code))]
 fn tree(m: &Menu) -> String {
     let mut out = String::new();
     for (row, depth) in m.flatten() {
@@ -63,7 +132,6 @@ fn tree(m: &Menu) -> String {
     out
 }
 
-#[cfg_attr(windows, allow(dead_code))]
 fn line(row: &MenuItem) -> String {
     let mark = match row.kind {
         Kind::Separator => return "---".to_string(),
@@ -95,6 +163,42 @@ fn line(row: &MenuItem) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bar_tray::model;
+
+    fn args(a: &[&str]) -> Result<Args, String> {
+        parse(a.iter().map(|s| s.to_string()))
+    }
+
+    #[test]
+    fn flags() {
+        assert_eq!(args(&[]).unwrap(), Args::default());
+        let a = args(&[
+            "--snapshot",
+            "s.json",
+            "--bar",
+            "/x/bar",
+            "--poll",
+            "45",
+            "--print",
+        ])
+        .unwrap();
+        assert_eq!(
+            a,
+            Args {
+                snapshot: Some("s.json".into()),
+                bar: Some("/x/bar".into()),
+                poll: Some(45),
+                print: true
+            }
+        );
+        assert_eq!(args(&["--poll"]).unwrap_err(), "--poll needs a value");
+        assert_eq!(
+            args(&["--poll", "5"]).unwrap_err(),
+            "invalid --poll `5` (10..600 seconds)"
+        );
+        assert!(args(&["--poll", "x"]).is_err());
+        assert_eq!(args(&["s.json"]).unwrap_err(), "unknown argument `s.json`");
+    }
 
     #[test]
     fn tree_lines() {
