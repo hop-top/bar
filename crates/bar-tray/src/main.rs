@@ -1,11 +1,26 @@
 //! `bar-tray <snapshot.json>`: reads a tray snapshot, refuses an invalid
 //! one and prints the menu it would show. No backend yet: nothing is
-//! spawned, nothing is drawn.
+//! spawned, nothing is drawn. On Windows it is the tray itself.
+
+// A tray has no console: the GUI subsystem keeps one from flashing up.
+#![cfg_attr(windows, windows_subsystem = "windows")]
 
 use bar_tray::model::{self, Kind, Menu, MenuItem};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
+    #[cfg(windows)]
+    {
+        bar_tray::backend::windows::run()
+    }
+    #[cfg(not(windows))]
+    {
+        preview()
+    }
+}
+
+#[cfg_attr(windows, allow(dead_code))]
+fn preview() -> ExitCode {
     let mut args = std::env::args_os().skip(1);
     let (Some(path), None) = (args.next(), args.next()) else {
         eprintln!("usage: bar-tray <snapshot.json>");
@@ -37,6 +52,7 @@ fn main() -> ExitCode {
 
 /// One line per row: `[x]`/`[ ]` for toggles and choices, `>` for a
 /// submenu, `---` for a separator, then the label, detail and flags.
+#[cfg_attr(windows, allow(dead_code))]
 fn tree(m: &Menu) -> String {
     let mut out = String::new();
     for (row, depth) in m.flatten() {
@@ -47,6 +63,7 @@ fn tree(m: &Menu) -> String {
     out
 }
 
+#[cfg_attr(windows, allow(dead_code))]
 fn line(row: &MenuItem) -> String {
     let mark = match row.kind {
         Kind::Separator => return "---".to_string(),
