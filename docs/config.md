@@ -1090,6 +1090,7 @@ Each row is laid out like the status line, with the same skin, palette, icons an
 | `bar web plugins [--dir <dir>]... [-o <file>] [--force]` | `plugins.json` for the [web configurator](web.md): `--ext-info` of every plugin on `PATH` or in the `--dir`s ([metadata](plugins.md#web-configurator-metadata)); `-o` writes the file atomically and refuses an existing one unless `--force` | 0, 4 when the file exists, 1 when it cannot be written |
 | `bar prices update [--out <file>]` | Fetches models.dev prices ([snapshot fetch](#spendhist)); `--out` writes that file instead of the data dir's `models.json` | 0, 2 on failure |
 | `bar --version`, `bar --help`, `bar <command> --help` | Version, help | 0 |
+| `bar [<command>] --help --format json\|yaml` | The commands as data ([command contracts](#command-contracts)) | 0 |
 
 `--format csv|json|table|text|yaml` is accepted by every command (default `table`, the text shown above). It changes the output of `bar check`, `bar plugin list`, `bar plugin info`, `bar init`, `bar install`, `bar config export`, `bar config import`, `bar toggle` and `bar update`: stdout then carries one document in that format, the command's result, and text meant for a person (a diff, a prompt, notes) goes to stderr. For these commands any other format is a usage error before the command does anything. A usage error (unknown command or flag) exits 2.
 
@@ -1098,6 +1099,17 @@ Exit codes follow one table for every command: 0 success (also when nothing need
 With `--format json` or `yaml` an error is reported on stdout as that document instead, with the fields `code` (`USAGE`, `NOT_FOUND`, `CONFLICT`, `CONSENT_REFUSED` or `GENERIC`, matching the exit code), `message`, `cause` (the lint report of an invalid file, clap's message of a usage error; absent when there is none), `suggested_fix` (what to run or change; absent when there is none), `exit_code` and `transience` (`transient` when rerunning differently can clear it, as `CONSENT_REFUSED`; else `permanent`); stderr holds only text meant for a person, such as the diff of a refused write. Under any other format an error is a line on stderr, `bar <command>: <message>`, the fix on the next line.
 
 Results under `--format json`: `bar init` `{path, preset}`; `bar install` `{settings, written, backup}` (`written` is false when the file already said the same, `backup` the copy of the old file or `null`); `bar config import` `{path, written, backup}`; `bar config export` `{user, project, config}` (the two source paths or `null`, and the exported text), or `{path, written}` when it writes a file; `bar toggle` `{key, view}`; `bar update` `{check, status, current, channel, latest, age_secs, stale, newer, dev, upgrade}`, where `check` says whether the update check is on, `status` is `off`, `pending` (no result yet), `failed` or `ok`, `latest` the tag the check found, `age_secs` the age of that result, `stale` whether it is older than a day and `newer` the newer version; `latest`, `age_secs` and `newer` are `null` when there is none. `bar refresh <request>` is internal: render spawns it to fill the cache in the background.
+
+### Command contracts
+
+`bar --help --format json` (or `yaml`) prints the command tree as data instead of the help text; `bar <command> --help --format json` only the commands under `<command>`. The object has `tool`, `version`, `schema_version` and `commands`, one entry per runnable command:
+
+- `path`: `["bar", "config", "import"]`; `short`: the one-line help.
+- `side_effect`: `read` (changes nothing but bar's own cache), `write-local` (writes files on this machine: your config, Claude Code's settings, the state dir, a file you name), `write-shared` (acts outside bar: types into a Claude Code session, runs a plugin's action) or `interactive` (a full-screen terminal UI).
+- `idempotent`: `yes` when running it again with the same arguments changes nothing more (a second `bar init` refuses and leaves the file as it is), `no` when each run changes state again (`bar toggle` flips).
+- `args` (`name`, `required`, `variadic`), `flags` (`name`, `short`, `type`, `description`, `default`, `required`, `choices`), `dry_run_supported` (it has `--dry-run`) and `hidden` (not listed in `--help`).
+
+The entries come from the command definitions, so the list cannot leave a command out. The vocabulary is that of the [12-Factor AI-CLI](https://github.com/hop-top/spec-12fc) conformance checks. `bar <name>` plugins are not listed; `bar plugin list` shows them.
 
 ### bar install
 
