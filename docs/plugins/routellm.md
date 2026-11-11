@@ -197,6 +197,10 @@ bar rtellm setup [--layout v8|legacy] [--instance URL]
 
 The last change (time, from, to) is kept in the plugin's own cache, and `status` shows it. No command prints a key, an `api-key` entry, a header or an email.
 
+### Menu
+
+The plugin declares the `menu` capability, so a tray lists one check item per configured instance: checked when routing is on, unchecked when off. A click runs `toggle` with `instance` and `to`, the opposite of the state shown. The menu is built from the plugin's cache only and makes no request. An instance whose state is unknown (key refused, no key, management off, no provider entry, not read yet) is shown disabled with a row saying why; a cache older than two minutes is dimmed and marked `stale`. A key the proxy refused is not used again until it changes, and no menu text holds a key.
+
 ### Clicking the segment
 
 The plugin declares the actions `toggle`, `on` and `off`, with the tokens `instance` and `to`, where `to` is the state a click would switch to. Bind one in `bar.conf`:

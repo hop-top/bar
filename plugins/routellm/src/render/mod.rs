@@ -46,7 +46,12 @@ pub fn ext_info() -> ExtInfo {
         name: NAME.into(),
         version: crate::VERSION.into(),
         description: "Routing state and toggle of a RouteLLM behind a CLIProxyAPI proxy".into(),
-        capabilities: vec!["discover".into(), "placeholder".into(), "check".into()],
+        capabilities: vec![
+            "discover".into(),
+            "placeholder".into(),
+            "check".into(),
+            bar_plugin::menu::MENU_CAPABILITY.into(),
+        ],
         options: o,
         ttl: "15s".into(),
         icon: None,
