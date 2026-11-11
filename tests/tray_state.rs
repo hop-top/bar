@@ -7,8 +7,6 @@ mod common;
 mod plugin_fx;
 #[path = "common/tray_fx.rs"]
 mod tray_fx;
-#[path = "common/tray_probe.rs"]
-mod tray_probe;
 #[allow(unused_imports)]
 use plugin_fx::*;
 use tray_fx::*;
@@ -285,6 +283,11 @@ fn a_refused_action_shows_as_not_ok() {
 /// the host (sibling tests run alongside) passes.
 const RUNS: usize = 15;
 
+/// Best of `n` runs of `f`.
+fn best(n: usize, mut f: impl FnMut() -> Duration) -> Duration {
+    (0..n).map(|_| f()).min().unwrap()
+}
+
 /// What a plugin costs bar on its own: `--ext-info`, then `--menu`.
 fn interrogate(plugin: &Path) {
     for arg in ["--ext-info", "--menu"] {
@@ -294,61 +297,9 @@ fn interrogate(plugin: &Path) {
     }
 }
 
-/// The parts of a run, timed apart, `RUNS` rounds: bar's start, bar
-/// with one plugin, with two missing ones, the snapshot built in this
-/// process, one plugin's two calls by bar's runner and by the variants
-/// of it, the host's sleep and a fresh plugin's first exec.
-fn probe_parts(t: &T, p: &mut tray_probe::Probe) {
-    use hop_bar::plugin::{self as plug, menu};
-    use tray_probe::*;
-    let two = "set tray-views on\ntray echo\ntray quick\n";
-    let dirs = [t.fx.bin.clone(), t.bin2.clone()];
-    let echo = t.fx.bin.join("bar-echo");
-    let found = plug::find(&dirs, "echo").unwrap();
-    let fresh = t.fx.root.join("fresh");
-    std::fs::create_dir_all(&fresh).unwrap();
-    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/plugins/bar-echo");
-    for n in 0..RUNS {
-        let mut c = t.bar();
-        c.arg("--version");
-        p.time("bar --version", || busy_retry(|| c.output()));
-        t.config("set tray-views on\ntray echo\n");
-        p.time("bar 1 plugin", || assert!(t.run().status.success()));
-        t.config("set tray-views on\ntray nope-a\ntray nope-b\n");
-        p.time("bar 2 missing plugins", || {
-            assert!(t.run().status.success())
-        });
-        t.config(two);
-        let conf = cfg(two);
-        p.time("in-process snapshot 2", || {
-            state::snapshot(t.state(), &conf, &dirs, 0)
-        });
-        p.time("chain bar runner", || {
-            plug::info(&found);
-            menu::run(&found, "{}", t.state())
-        });
-        p.time("chain output()", || interrogate(&echo));
-        p.time("chain process group", || chain(&echo, grouped));
-        p.time("chain pgroup + 10ms poll", || chain(&echo, polled));
-        p.add("sleep 10ms", slept(Duration::from_millis(10)));
-        p.add("sleep 1ms", slept(Duration::from_millis(1)));
-        first_exec(p, &src, &fresh.join(format!("bar-fresh{n}")));
-    }
-    // the two plugins without a menu: one call each, not two
-    let ext = menu_ext(json!({"capabilities": ["placeholder"]}));
-    t.fx.put("ext.json", &ext);
-    std::fs::write(t.bin2.join("ext.json"), &ext).unwrap();
-    for _ in 0..RUNS {
-        p.time("bar 2 plugins, no menu", || {
-            assert!(t.run().status.success())
-        });
-    }
-}
-
 #[test]
 fn a_warm_run_fits_the_budget() {
     let budget = Duration::from_millis(50);
-    let mut p = tray_probe::Probe::default();
     let t = T::new("set tray-views on\n");
     std::fs::write(t.state().join(STATUS_FILE), "7 ok: x\n").unwrap();
     std::fs::create_dir_all(t.state().join("sessions")).unwrap();
@@ -359,14 +310,8 @@ fn a_warm_run_fits_the_budget() {
         start.elapsed()
     };
     time();
-    let files_only = (0..RUNS)
-        .map(|_| {
-            let d = time();
-            p.add("bar files only", d);
-            d
-        })
-        .min()
-        .unwrap();
+    let files_only = best(RUNS, time);
+    assert!(files_only < budget, "{files_only:?} without plugins");
     // two fast plugins: what they cost themselves is taken out of the
     // measure, run as bar runs them (each interrogated then asked for
     // its menu, the two side by side), so the contention of two plugins
@@ -389,26 +334,13 @@ fn a_warm_run_fits_the_budget() {
     // in turns, so a busy moment weighs on both measures alike
     let (mut with_plugins, mut cost) = (Duration::MAX, Duration::MAX);
     for _ in 0..RUNS {
-        let c = plugin_cost();
-        let w = time();
-        p.add("plugins side by side", c);
-        p.add("bar 2 plugins", w);
-        cost = cost.min(c);
-        with_plugins = with_plugins.min(w);
+        cost = cost.min(plugin_cost());
+        with_plugins = with_plugins.min(time());
     }
     let own = with_plugins.saturating_sub(cost);
-    probe_parts(&t, &mut p);
-    let report = p.report();
-    // straight to stderr: the test harness captures `eprintln!` of a
-    // passing test, so the breakdown would only show on a failure
-    let _ = std::io::Write::write_all(&mut std::io::stderr(), report.as_bytes());
-    assert!(
-        files_only < budget,
-        "{files_only:?} without plugins\n{report}"
-    );
     assert!(
         own < budget,
-        "{own:?} of bar's own ({with_plugins:?} in all, plugins {cost:?})\n{report}"
+        "{own:?} of bar's own ({with_plugins:?} in all, plugins {cost:?})"
     );
 }
 
