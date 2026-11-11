@@ -59,7 +59,7 @@ Full feature comparison: [docs/comparison.md](docs/comparison.md).
 
 ## Install
 
-Download an archive from [Releases](https://github.com/hop-top/bar/releases) and put `bar`, `bar-cliproxyapi` and `bar-routellm` on your `PATH` (on Linux, the `-musl` archives are static and run on any distribution; the `-gnu` ones need glibc 2.35 or newer), or build from source with a [Rust toolchain](https://rustup.rs):
+Download an archive from [Releases](https://github.com/hop-top/bar/releases) and put `bar`, `bar-cliproxyapi` and `bar-routellm` on your `PATH` (on Linux, the `-musl` archives are static and run on any distribution; the `-gnu` ones need glibc 2.35 or newer). The macOS and Windows archives also hold `bar-tray`, the menu bar / tray app; keep it in the same directory as `bar` ([tray](docs/tray.md)). Or build from source with a [Rust toolchain](https://rustup.rs):
 
 ```sh
 git clone https://github.com/hop-top/bar.git
@@ -74,6 +74,14 @@ With Node or Bun, from npm (prebuilt binary, no install script):
 npx @hop-top/bar preview --preset   # or: bunx @hop-top/bar preview --preset
 npm install -g @hop-top/bar         # then `bar install`; the status line runs the binary, not Node
 ```
+
+The binaries are not signed. On macOS, an archive downloaded with a browser is quarantined and Gatekeeper refuses to run what it unpacks; clear the flag once, in the directory you unpacked to:
+
+```sh
+xattr -d com.apple.quarantine bar bar-cliproxyapi bar-routellm bar-tray
+```
+
+Homebrew, npm and `curl` downloads are not quarantined. On Windows, SmartScreen may stop the first run of `bar.exe` or `bar-tray.exe`: **More info**, then **Run anyway**.
 
 Guided setup inside Claude Code: `/plugin marketplace add hop-top/bar`, then `/plugin install bar@hop-top` and `/bar` ([docs](docs/claude-plugin.md)).
 
