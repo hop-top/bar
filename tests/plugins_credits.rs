@@ -233,3 +233,62 @@ fn credits_account_overrides_keychain_label() {
         assert!(!o.status.success() && o.stdout.is_empty(), "{bad}");
     }
 }
+
+#[test]
+fn credits_ext_info_declares_the_account_input() {
+    let o = Command::new(script("bar-claude-credits"))
+        .arg("--ext-info")
+        .output()
+        .unwrap();
+    assert_eq!(out_json(&o)["inputs"], json!({"account": true}));
+}
+
+fn credits_for(fx: &Fx, account: serde_json::Value, options: serde_json::Value) -> String {
+    let _ = std::fs::remove_file(fx.root.join("fake-data/security.log"));
+    let _ = std::fs::remove_file(fx.root.join("fake-data/curl.log"));
+    let cfg = json!({"org":"org-f","keychain":"kc-f",
+        "org.work":"org-w","keychain.work":"kc-w","org.home":"org-h"});
+    let o = fx.run(
+        "bar-claude-credits",
+        &json!({"options":options,"session":{},"columns":null,"config":cfg,"account":account}),
+    );
+    if !o.status.success() {
+        return String::new();
+    }
+    format!("{} {}", fx.log("curl.log"), fx.log("security.log"))
+}
+
+#[test]
+fn credits_follow_the_session_account_label() {
+    let fx = Fx::new();
+    let exp = now() + 14 * DAY + 3600;
+    fx.credits_fakes(&credits_body(exp, exp - 30 * DAY), "200");
+    let org = |s: &str, o: &str| s.contains(&format!("/organizations/{o}/"));
+    let got = credits_for(
+        &fx,
+        json!({"label":"work","email":"a@corp.test"}),
+        json!({}),
+    );
+    assert!(org(&got, "org-w") && got.contains("-s kc-w"), "{got}");
+    // the option still names the keychain entry, for the label's org
+    let got = credits_for(&fx, json!({"label":"work"}), json!({"account":"kc-opt"}));
+    assert!(org(&got, "org-w") && got.contains("-s kc-opt"), "{got}");
+    // no pair for the label, a bad label, no account: the plain pair
+    for acc in [
+        json!({"label":"other"}),
+        json!({"label":"a b"}),
+        json!({"label":"x;y"}),
+        json!({"email":"a@corp.test"}),
+        json!(null),
+        json!("work"),
+    ] {
+        let got = credits_for(&fx, acc.clone(), json!({}));
+        assert!(
+            org(&got, "org-f") && got.contains("-s kc-f"),
+            "{acc}: {got}"
+        );
+    }
+    // an org without its keychain entry: nothing, not the plain cookie
+    assert_eq!(credits_for(&fx, json!({"label":"home"}), json!({})), "");
+    assert!(fx.log("security.log").is_empty());
+}

@@ -270,6 +270,7 @@ fn the_refresh_process_adds_the_rules_from_the_config_to_stdin() {
                 input: input.clone(),
                 timeout: 5,
                 accounts,
+                email: None,
             },
             lock: String::new(),
         }

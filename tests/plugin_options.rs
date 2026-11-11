@@ -117,6 +117,7 @@ fn render_timeout_kills_plugin() {
         input: "{}".into(),
         timeout: 3,
         accounts: false,
+        email: None,
     };
     let t = Instant::now();
     assert!(job.execute(Duration::from_secs(20)).is_none());

@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
-use crate::cache::{run_child, run_command, COMMAND_TIMEOUT};
+use crate::cache::{hash_hex, run_child, run_command, COMMAND_TIMEOUT};
 use crate::plugin;
 use crate::tz::Tz;
 
@@ -57,12 +57,16 @@ pub enum Job {
     /// (1..=15); stdout when it parses as plugin output.
     /// With `accounts`, the user's `account` rules are read here, in the
     /// job's own process, and added to `input` as `accounts`: they never
-    /// travel in the request (argv).
+    /// travel in the request (argv). With `email`, the hash of the
+    /// signed-in account's email at plan time: the job reads the address
+    /// itself and adds it to `input` as `account.email` when it still
+    /// hashes the same, so no address travels in the request either.
     PluginRender {
         path: String,
         input: String,
         timeout: u64,
         accounts: bool,
+        email: Option<String>,
     },
     /// `tmux display-message -p '#S:#I' -t <pane>`, no shell; `pane` is
     /// `%` and digits.
@@ -98,15 +102,36 @@ pub enum Job {
 
 /// The render input as the plugin gets it: with `accounts`, plus the
 /// user's account rules (read from the config of the session's directory).
-fn render_stdin(input: &str, accounts: bool) -> String {
+fn render_stdin(input: &str, accounts: bool, email: Option<&str>) -> String {
+    let input = match email {
+        Some(h) => with_email(input, h),
+        None => input.to_string(),
+    };
     if !accounts {
-        return input.to_string();
+        return input;
     }
+    let input = input.as_str();
     let cwd = serde_json::from_str::<Value>(input)
         .ok()
         .and_then(|v| v["session"]["cwd"].as_str().map(std::path::PathBuf::from))
         .filter(|p| p.is_absolute());
     plugin::with_accounts(input, plugin::load_account_rules(cwd.as_deref()))
+}
+
+/// `input` with `account.email` set to the signed-in account's email
+/// when that hashes to `hash`; unchanged otherwise.
+fn with_email(input: &str, hash: &str) -> String {
+    let Some(email) = crate::placeholders::account::email().filter(|e| hash_hex(e) == hash) else {
+        return input.to_string();
+    };
+    let Ok(mut v) = serde_json::from_str::<Value>(input) else {
+        return input.to_string();
+    };
+    if !v["account"].is_object() {
+        v["account"] = Value::Object(Default::default());
+    }
+    v["account"]["email"] = Value::String(email);
+    v.to_string()
 }
 
 impl Job {
@@ -139,8 +164,9 @@ impl Job {
                 input,
                 timeout,
                 accounts,
+                email,
             } => {
-                json!({"kind": "plugin-render", "path": path, "input": input, "timeout": timeout, "accounts": accounts})
+                json!({"kind": "plugin-render", "path": path, "input": input, "timeout": timeout, "accounts": accounts, "email": email})
             }
             Job::Tmux { pane } => json!({"kind": "tmux", "pane": pane}),
             Job::Transcript { path, state } => {
@@ -241,6 +267,10 @@ impl Job {
                         t.clamp(1, plugin::MAX_RENDER_TIMEOUT.as_secs())
                     }),
                 accounts: v["accounts"].as_bool().unwrap_or(false),
+                email: v["email"]
+                    .as_str()
+                    .filter(|h| !h.is_empty() && h.bytes().all(|b| b.is_ascii_hexdigit()))
+                    .map(String::from),
             }),
             Some("tmux") => Ok(Job::Tmux {
                 pane: v["pane"]
@@ -343,9 +373,10 @@ impl Job {
                 input,
                 timeout,
                 accounts,
+                email,
             } => run_child(
                 Command::new(path),
-                Some(render_stdin(input, *accounts).into_bytes()),
+                Some(render_stdin(input, *accounts, email.as_deref()).into_bytes()),
                 limit.min(Duration::from_secs(*timeout)),
             )
             .filter(|o| plugin::parse_output(o).is_some()),

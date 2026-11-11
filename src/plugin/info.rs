@@ -115,6 +115,9 @@ pub struct Inputs {
     /// The plugin wants the user's `account` rules (`accounts`), handed
     /// over at render, action and `bar <name>` time, never in argv.
     pub accounts: bool,
+    /// The plugin wants the session's account (`account`): its email and
+    /// the label of the user's matching `account` line.
+    pub account: bool,
 }
 
 /// Names that hold credentials: their values would land in the key, the
@@ -174,11 +177,12 @@ impl Inputs {
             session,
             refused,
             accounts: v["accounts"].as_bool().unwrap_or(false),
+            account: v["account"].as_bool().unwrap_or(false),
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.env.is_empty() && self.session.is_empty() && !self.accounts
+        self.env.is_empty() && self.session.is_empty() && !self.accounts && !self.account
     }
 
     fn to_json(&self) -> Option<Value> {
@@ -186,6 +190,9 @@ impl Inputs {
             let mut v = json!({"env": self.env, "session": self.session});
             if self.accounts {
                 v["accounts"] = Value::Bool(true);
+            }
+            if self.account {
+                v["account"] = Value::Bool(true);
             }
             v
         })
