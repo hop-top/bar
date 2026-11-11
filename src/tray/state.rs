@@ -1,6 +1,7 @@
 //! The tray snapshot, version 1: one JSON object with `generation` (an id
 //! of the runnable items, which the tray echoes back when it runs one;
-//! see [`generation`]), `at`, `last_action` (from
+//! see [`generation`]), `at`, `poll` (`set tray-poll`, seconds),
+//! `last_action` (from
 //! `action-status`), `sessions` (counts of the hook's markers), `views`
 //! (the toggles, only with `set tray-views on`) and `plugins` (one entry
 //! per `tray` line, its menu from `--menu`). Written to `tray-menu.json`
@@ -119,7 +120,12 @@ pub fn generation(plugins: &[Value]) -> String {
 /// plugin's `--menu` in parallel.
 pub fn snapshot(state: &Path, config: &Config, dirs: &[PathBuf], now: u64) -> Value {
     let plugins = plugins::menus(state, config, dirs);
-    let mut v = json!({"version": VERSION, "generation": generation(&plugins), "at": now});
+    let mut v = json!({
+        "version": VERSION,
+        "generation": generation(&plugins),
+        "at": now,
+        "poll": config.tray_poll,
+    });
     if let Some(a) = last_action(state) {
         v["last_action"] = a;
     }

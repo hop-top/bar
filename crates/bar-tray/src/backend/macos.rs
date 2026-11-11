@@ -6,7 +6,7 @@
 //! Everything that touches the menu runs on the main thread. Clicks
 //! arrive there from AppKit; fetches and `bar` runs happen on their own
 //! threads and come back through the main dispatch queue, as do the
-//! ticks and polls. [`App`] decides, this module carries out.
+//! ticks. [`App`] decides, this module carries out.
 
 use super::app::{App, Effect, Event, Tint, TOOLTIP};
 use super::icon::{self, Variant};
@@ -60,7 +60,7 @@ fn start(opts: Options) -> Result<objc2::rc::Retained<NSApplication>, String> {
     let mtm = MainThreadMarker::new().ok_or("the tray must start on the main thread")?;
     let ns = NSApplication::sharedApplication(mtm);
     ns.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
-    let app = App::new();
+    let app = App::new().poll(opts.poll);
     let native = menu::build(app.view()).map_err(|e| e.to_string())?;
     let icon = TrayIconBuilder::new()
         .with_icon_templated(icon_of(Variant::Template)?)
@@ -89,7 +89,6 @@ fn start(opts: Options) -> Result<objc2::rc::Retained<NSApplication>, String> {
         }
     }));
     every(Duration::from_secs(1), Event::Tick);
-    every(opts.poll, Event::Poll);
     post(Event::Poll);
     Ok(ns)
 }

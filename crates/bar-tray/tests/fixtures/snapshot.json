@@ -2,6 +2,7 @@
   "version": 1,
   "generation": "7c1f0a9e3b2d4f60",
   "at": 1762800000,
+  "poll": 30,
   "last_action": {"at": 1762799988, "ok": true, "note": "preferred alice"},
   "sessions": {"waiting": 1, "done": 2},
   "views": [

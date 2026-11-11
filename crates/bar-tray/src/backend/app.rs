@@ -2,7 +2,10 @@
 //! reports becomes the [`Effect`]s it must carry out. The backend owns
 //! the native menu, the threads and the icon; this owns the decisions:
 //! one snapshot fetch at a time, one action in flight (through
-//! [`State`]), the `bad` tint after a refusal, the poll on open.
+//! [`State`]), the `bad` tint after a refusal, the poll on open, and the
+//! idle poll: due on a [`Event::Tick`] once the interval has passed since
+//! the last fetch ended, the interval being `--poll`, else the
+//! snapshot's `poll`, else [`DEFAULT_POLL`].
 
 use super::spawn::{self, deadline};
 use crate::model::{Diff, Menu, Snapshot, State};
@@ -14,13 +17,15 @@ use std::time::{Duration, Instant};
 pub const BAD_WINDOW: Duration = Duration::from_secs(10);
 /// The tooltip when nothing is wrong.
 pub const TOOLTIP: &str = "bar";
+/// Idle poll when neither `--poll` nor the snapshot says.
+pub const DEFAULT_POLL: Duration = Duration::from_secs(30);
 
 /// What a backend reports.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
     /// The menu is about to show (a click on the icon).
     Opened,
-    /// The idle poll fired.
+    /// Fetch now (the backend's first event).
     Poll,
     /// A second passed.
     Tick,
@@ -61,6 +66,10 @@ pub struct App {
     /// Action limits by row id, from the last snapshot.
     limits: HashMap<String, u64>,
     fetching: bool,
+    /// `--poll`: wins over the snapshot's.
+    poll_flag: Option<Duration>,
+    /// When the idle poll is due; `None` until the first fetch ends.
+    next_poll: Option<Instant>,
     bad_until: Option<Instant>,
     /// Unix seconds now, for `Last: … ago`.
     clock: fn() -> u64,
@@ -78,9 +87,30 @@ impl App {
             snapshot: None,
             limits: HashMap::new(),
             fetching: false,
+            poll_flag: None,
+            next_poll: None,
             bad_until: None,
             clock,
         }
+    }
+
+    /// Polls every `flag` while idle, whatever the snapshot says; `None`
+    /// follows the snapshot.
+    pub fn poll(mut self, flag: Option<Duration>) -> App {
+        self.poll_flag = flag;
+        self
+    }
+
+    /// The idle poll interval now.
+    fn interval(&self) -> Duration {
+        self.poll_flag
+            .or_else(|| {
+                self.snapshot
+                    .as_ref()
+                    .and_then(|s| s.poll)
+                    .map(Duration::from_secs)
+            })
+            .unwrap_or(DEFAULT_POLL)
     }
 
     /// The menu as it should be shown.
@@ -120,6 +150,9 @@ impl App {
             out.push(Effect::Tint(Tint::Normal));
             out.push(Effect::Tooltip(TOOLTIP.into()));
         }
+        if self.next_poll.is_some_and(|t| now >= t) {
+            out.extend(self.fetch());
+        }
         out
     }
 
@@ -147,6 +180,7 @@ impl App {
                 out.push(Effect::Tooltip(e));
             }
         }
+        self.next_poll = Some(now + self.interval());
         out
     }
 

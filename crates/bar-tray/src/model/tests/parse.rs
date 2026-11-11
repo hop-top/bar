@@ -5,6 +5,7 @@ fn fixture_is_the_contract() {
     let s = fixture();
     assert_eq!(s.generation, "7c1f0a9e3b2d4f60");
     assert_eq!(s.at, NOW);
+    assert_eq!(s.poll, Some(30));
     assert_eq!(
         s.last_action.as_ref().map(|a| a.note.as_str()),
         Some("preferred alice")
@@ -269,4 +270,32 @@ fn error_display() {
         why: "duplicate group id".into(),
     };
     assert_eq!(e.to_string(), "plugins[p].g: duplicate group id");
+}
+
+#[test]
+fn poll_is_read_within_range() {
+    let poll = |p: Value| {
+        let s = parse_value(&json!({"version": 1, "generation": "g", "at": 0, "poll": p})).unwrap();
+        (s.poll, s.warnings.len())
+    };
+    assert_eq!(poll(json!(90)), (Some(90), 0));
+    assert_eq!(poll(json!(10)), (Some(10), 0));
+    assert_eq!(poll(json!(600)), (Some(600), 0));
+    for bad in [
+        json!(9),
+        json!(601),
+        json!(0),
+        json!(-1),
+        json!("30"),
+        json!(1.5),
+    ] {
+        assert_eq!(poll(bad.clone()), (None, 1), "{bad}");
+    }
+    assert_eq!(minimal_poll(), None);
+}
+
+fn minimal_poll() -> Option<u64> {
+    parse(r#"{"version":1,"generation":"a","at":0}"#)
+        .unwrap()
+        .poll
 }

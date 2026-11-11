@@ -16,8 +16,8 @@ pub struct Options {
     /// `bar` to run for clicks; `None` shows the menu only (`--snapshot`
     /// without `--bar`).
     pub bar: Option<std::path::PathBuf>,
-    /// Idle poll interval.
-    pub poll: std::time::Duration,
+    /// `--poll`: the idle poll, whatever the snapshot says.
+    pub poll: Option<std::time::Duration>,
 }
 
 #[cfg(any(target_os = "macos", windows))]

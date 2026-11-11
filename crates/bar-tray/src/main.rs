@@ -24,8 +24,6 @@ use std::time::Duration;
 
 const USAGE: &str =
     "usage: bar-tray [--snapshot <file>] [--bar <path>] [--poll <seconds>] [--lock <file>] [--dirs <file>] [--print] [--backend]";
-/// Seconds between idle polls unless `--poll` says otherwise.
-const DEFAULT_POLL: u64 = 30;
 
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Args {
@@ -51,7 +49,7 @@ fn parse(argv: impl IntoIterator<Item = String>) -> Result<Args, String> {
                 a.poll = Some(
                     v.parse()
                         .ok()
-                        .filter(|s| (10..=600).contains(s))
+                        .filter(|s| bar_tray::model::snapshot::POLL_RANGE.contains(s))
                         .ok_or_else(|| format!("invalid --poll `{v}` (10..600 seconds)"))?,
                 );
             }
@@ -129,25 +127,21 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    show(
-        source,
-        bar,
-        Duration::from_secs(args.poll.unwrap_or(DEFAULT_POLL)),
-    )
+    show(source, bar, args.poll.map(Duration::from_secs))
 }
 
 #[cfg(target_os = "macos")]
-fn show(source: Source, bar: Option<PathBuf>, poll: Duration) -> ExitCode {
+fn show(source: Source, bar: Option<PathBuf>, poll: Option<Duration>) -> ExitCode {
     bar_tray::backend::macos::run(bar_tray::backend::Options { source, bar, poll })
 }
 
 #[cfg(windows)]
-fn show(source: Source, bar: Option<PathBuf>, poll: Duration) -> ExitCode {
+fn show(source: Source, bar: Option<PathBuf>, poll: Option<Duration>) -> ExitCode {
     bar_tray::backend::windows::run(bar_tray::backend::Options { source, bar, poll })
 }
 
 #[cfg(all(target_os = "linux", feature = "linux-sni"))]
-fn show(source: Source, bar: Option<PathBuf>, poll: Duration) -> ExitCode {
+fn show(source: Source, bar: Option<PathBuf>, poll: Option<Duration>) -> ExitCode {
     bar_tray::backend::linux::run(bar_tray::backend::Options { source, bar, poll })
 }
 
@@ -156,7 +150,7 @@ fn show(source: Source, bar: Option<PathBuf>, poll: Duration) -> ExitCode {
     windows,
     all(target_os = "linux", feature = "linux-sni")
 )))]
-fn show(_source: Source, _bar: Option<PathBuf>, _poll: Duration) -> ExitCode {
+fn show(_source: Source, _bar: Option<PathBuf>, _poll: Option<Duration>) -> ExitCode {
     eprintln!("bar-tray: no tray backend for this platform yet; --print shows the menu");
     ExitCode::FAILURE
 }

@@ -97,7 +97,7 @@ Quote values with spaces (double quotes; a value is one token). `#` outside quot
 | `budget-session`, `budget-today`, `budget-month`, `budget-block` | Dollar budget for [budget](#budget): `$20`, `20` or `12.50` (more than zero, at most two decimals); `off` clears it. Unset by default |
 | `budget-warn` | Percent of a budget from which spend takes the warn colour, `1%`-`100%`, default `80%`. See [budget](#budget) |
 | `tray-views` | `off` (default) or `on`: the [tray](tray.md) menu also lists the view toggles |
-| `tray-poll` | The [tray](tray.md)'s idle poll, `10s` to `10m`, default `30s`; checked, but the running tray does not read it (it polls every 30 s unless started with `bar-tray --poll`) |
+| `tray-poll` | The [tray](tray.md)'s idle poll, `10s` to `10m`, default `30s`; the running tray picks a change up with its next refresh. `bar-tray --poll` wins over it |
 | `gitlab-hosts` | Self-hosted GitLab hosts, comma-separated (`git.example.com,gitlab.corp.example`), whose remotes [prs and issues](#prs-and-issues) read with `glab`; gitlab.com always counts. `""` clears it. Default none |
 | `color.good`, `color.warn`, `color.bad`, `ramp` | State colours (one colour) and usage ramp (exactly 11 colours, quoted, worst score first). See [Colours](#colours) |
 | `price` | Model price override for [spendhist](#spendhist) |

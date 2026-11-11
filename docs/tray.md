@@ -16,6 +16,7 @@
 tray myproxy                     # every menu action of the plugin
 tray myproxy.use                 # one action only
 set tray-views on                # also list the view toggles (default off)
+set tray-poll 2m                 # idle poll (default 30s)
 ```
 
 - `tray <plugin>[.<action>]` names a plugin whose menu the tray may show, and optionally one of its declared actions. Names are letters, digits, `-` and `_`. Repeating a line changes nothing.
@@ -23,7 +24,7 @@ set tray-views on                # also list the view toggles (default off)
 - `action` lines do not imply `tray`: binding a click in the status line does not put the action in the tray menu. `bar tray install` prints a suggested `tray` line for every `action` line no `tray` line covers yet, and leaves your config alone.
 - With `tray <plugin>.<action>` only, the plugin's other items are still shown, disabled, each with the line that would enable it.
 - `set tray-views` takes `on` or `off`.
-- `set tray-poll` takes a duration with a unit (`s`, `m`), from `10s` to `10m` (default `30s`), and is checked like any other option. The running tray does not read it: its idle poll is 30 s unless `bar-tray` is started with [`--poll`](#bar-tray-command-line).
+- `set tray-poll` takes a duration with a unit (`s`, `m`), from `10s` to `10m` (default `30s`), and is checked like any other option. It is the time the tray waits after a refresh before the next idle one. The running tray picks a change up with its next refresh, with nothing to reinstall or restart; [`bar-tray --poll`](#bar-tray-command-line), when given, wins over it.
 
 `bar check` warns about a `tray` line whose plugin is not on `PATH`, does not declare the `menu` capability, or does not declare the named action, and reports invalid option values.
 
@@ -51,7 +52,7 @@ Choosing an item:
 - for an action declared with `confirm`, the first choice only turns the row into `Confirm: <label>`; choosing it again within 10 s runs it;
 - a refusal or failure marks the icon (see the table below) and puts the reason in the tooltip for 10 s; the `Last:` row shows the outcome from the next refresh.
 
-The tray asks `bar tray state --json` for a fresh menu every time the menu opens, after every action, and every 30 s while idle (`--poll`). It watches no files and opens no socket. When `bar` cannot be run or gives no snapshot, the menu keeps the last one, and the icon stays marked with the error in the tooltip until a snapshot arrives. Until the first snapshot the menu holds only `Quit`.
+The tray asks `bar tray state --json` for a fresh menu every time the menu opens, after every action, and while idle once `set tray-poll` (30 s by default) has passed since the last refresh. It watches no files and opens no socket. When `bar` cannot be run or gives no snapshot, the menu keeps the last one, and the icon stays marked with the error in the tooltip until a snapshot arrives. Until the first snapshot the menu holds only `Quit`.
 
 ## Platforms
 
@@ -157,7 +158,7 @@ bar-tray --backend
 - `--bar <path>`: the `bar` to run. Without it, the `bar` in the same directory as `bar-tray`; `PATH` is never searched.
 - `--lock <file>`: hold a lock on this file while running; a second tray given the same file exits at once (with status 0). Install passes `<state>/tray.lock`.
 - `--dirs <file>`: read the `tray-dirs.json` install wrote and take its `bar`, its lock and its variables, unless `--bar` or `--lock` say otherwise. The Windows logon command passes it, since a `Run` value cannot set variables.
-- `--poll <seconds>`: the idle poll, 10 to 600, default 30.
+- `--poll <seconds>`: the idle poll, 10 to 600, whatever `set tray-poll` says. Without it the tray follows `set tray-poll` (30 s by default). Install does not pass it.
 - `--snapshot <file>`: show a snapshot file instead of asking `bar`, for trying a menu out. Choosing an item then fails with `no bar to run` unless `--bar` is given too.
 - `--print`: print the menu once as text (`[x]` checked, `>` submenu, `---` separator, flags and row ids) and exit, without showing anything.
 - `--backend`: print the tray backend of this build (`macos`, `windows`, `sni`) and exit; exit 1 when there is none.
@@ -169,7 +170,7 @@ The tray passes its children only the variables that move a directory `bar` read
 `bar tray state` builds what the tray shows and writes it to `tray-menu.json` in the state directory (mode 0600, replaced atomically); `--json` prints the same object. It reads the toggle files, `action-status` and the session markers, then runs `bar-<plugin> --menu` for every plugin with a `tray` line, all at once, each within 3 s. A plugin that is not on `PATH`, does not declare the `menu` capability or gives no menu gets one disabled row saying so. Items whose action the plugin does not declare are dropped; an item whose action has no `tray` line is shown disabled, with the line that would enable it. The render cache is never touched.
 
 ```json
-{"version": 1, "generation": "7c1f0a9e…", "at": 1762800000,
+{"version": 1, "generation": "7c1f0a9e…", "at": 1762800000, "poll": 30,
  "last_action": {"at": 1762799988, "ok": true, "note": "preferred alice"},
  "sessions": {"waiting": 1, "done": 2},
  "views": [{"key": "5h", "label": "5h usage", "on": true}],
@@ -180,6 +181,7 @@ The tray passes its children only the variables that move a directory `bar` read
 ```
 
 - `generation` identifies the runnable items: each item's id, action, token values, `enabled` and `confirm`, in order. The tray hands it back when it runs an item, so a choice made on a menu whose items have since moved is refused. Labels, details, the checked row, styles, the view toggles and the last action do not change it: a run that merely refreshes them (an idle poll, `bar waybar`) keeps the generation a tray holds.
+- `poll` is `set tray-poll` in seconds: how long the tray waits before its next idle refresh.
 - `views` is empty unless `set tray-views on`: the usage views (`5h`, `7d`) and the alternate text of every plugin with a `tray` line, each flipped with `bar toggle <key>`.
 - `plugins` lists the plugins in `tray` line order, each with the groups and items of its [menu](plugins.md#menu); `confirm` and `limit` (seconds the action may run: 10, or its declared `timeout` up to 120) come from the action's declaration.
 

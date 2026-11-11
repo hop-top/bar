@@ -3,7 +3,7 @@
 //!
 //! Threads: the main thread owns the [`Tray`] and runs the loop; `ksni`
 //! has its own thread for D-Bus; a forwarder turns host events into loop
-//! messages; the ticker, the idle poll, snapshot fetches and `bar` runs
+//! messages; the ticker, snapshot fetches and `bar` runs
 //! are short workers that only send a message. There is no async runtime
 //! beyond the one `ksni`'s blocking API hides.
 //!
@@ -32,7 +32,7 @@ pub fn run(opts: Options) -> ExitCode {
         return ExitCode::SUCCESS;
     };
     let (tx, rx) = channel();
-    let mut app = App::new();
+    let mut app = App::new().poll(opts.poll);
     let (htx, hrx) = channel();
     let tray = match Tray::start(app.view(), htx) {
         Ok(t) => t,
@@ -43,7 +43,6 @@ pub fn run(opts: Options) -> ExitCode {
     };
     forward(hrx, tx.clone());
     every(&tx, Duration::from_secs(1), Event::Tick);
-    every(&tx, opts.poll, Event::Poll);
     let _ = tx.send(Msg::App(Event::Poll));
     let lp = Loop {
         tray,

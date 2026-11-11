@@ -75,6 +75,16 @@ fn the_snapshot_header_is_what_the_tray_reads() {
 }
 
 #[test]
+fn the_snapshot_carries_the_configured_poll() {
+    let t = T::new("");
+    assert_eq!(t.snapshot().0.poll, Some(30));
+    t.config("set tray-poll 2m\n");
+    let (s, raw) = t.snapshot();
+    assert_eq!(raw["poll"], 120);
+    assert_eq!(s.poll, Some(120));
+}
+
+#[test]
 fn the_plugin_menus_are_what_the_tray_reads() {
     let t = seeded();
     let (s, raw) = t.snapshot();

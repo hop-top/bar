@@ -74,8 +74,11 @@ fn failed_fetch_tints_until_the_next_snapshot() {
     );
     // the menu is kept
     assert!(a.view().find("cliproxyapi.claude@8317.4").is_some());
-    // a minute later still bad
-    assert_eq!(a.handle(Event::Tick, t + Duration::from_secs(60)), []);
+    // a minute later still bad (the tick only polls again)
+    assert_eq!(
+        a.handle(Event::Tick, t + Duration::from_secs(60)),
+        [Effect::Fetch]
+    );
     let _ = a.handle(Event::Poll, t);
     let fx = a.handle(Event::Snapshot(Ok(snapshot())), t + Duration::from_secs(61));
     // same menu again: nothing to apply, and the tint is cleared by a tick
@@ -231,5 +234,73 @@ fn kinds_survive() {
     assert!(matches!(
         m.find("cliproxyapi.claude@8317").unwrap().kind,
         Kind::Submenu(_)
+    ));
+}
+
+/// Whether `fx` asks for a fetch.
+fn fetches(fx: &[Effect]) -> bool {
+    fx.contains(&Effect::Fetch)
+}
+
+/// An app given `flag` (`--poll`) that has a snapshot asking for `poll`.
+fn polled(flag: Option<u64>, poll: Option<u64>) -> (App, Instant) {
+    let mut a = App::with_clock(clock).poll(flag.map(Duration::from_secs));
+    let t = Instant::now();
+    assert_eq!(a.handle(Event::Poll, t), [Effect::Fetch]);
+    let mut s = snapshot();
+    s.poll = poll;
+    let _ = a.handle(Event::Snapshot(Ok(s)), t);
+    (a, t)
+}
+
+#[test]
+fn the_idle_poll_follows_the_snapshot() {
+    let (mut a, t) = polled(None, Some(90));
+    assert!(!fetches(
+        &a.handle(Event::Tick, t + Duration::from_secs(89))
+    ));
+    assert!(fetches(&a.handle(Event::Tick, t + Duration::from_secs(90))));
+}
+
+#[test]
+fn the_idle_poll_defaults_to_30_s() {
+    let (mut a, t) = polled(None, None);
+    assert!(!fetches(
+        &a.handle(Event::Tick, t + Duration::from_secs(29))
+    ));
+    assert!(fetches(&a.handle(Event::Tick, t + DEFAULT_POLL)));
+}
+
+#[test]
+fn an_explicit_poll_wins_over_the_snapshot() {
+    let (mut a, t) = polled(Some(15), Some(90));
+    assert!(!fetches(
+        &a.handle(Event::Tick, t + Duration::from_secs(14))
+    ));
+    assert!(fetches(&a.handle(Event::Tick, t + Duration::from_secs(15))));
+}
+
+#[test]
+fn the_idle_poll_restarts_after_every_fetch() {
+    let (mut a, t) = polled(None, Some(60));
+    // a fetch on open resets the wait
+    assert_eq!(
+        a.handle(Event::Opened, t + Duration::from_secs(50)),
+        [Effect::Fetch]
+    );
+    let _ = a.handle(
+        Event::Snapshot(Err("x".into())),
+        t + Duration::from_secs(50),
+    );
+    assert!(!fetches(
+        &a.handle(Event::Tick, t + Duration::from_secs(109))
+    ));
+    // a failed fetch keeps the last snapshot's interval
+    assert!(fetches(
+        &a.handle(Event::Tick, t + Duration::from_secs(110))
+    ));
+    // one fetch at a time: ticks while it runs ask for nothing more
+    assert!(!fetches(
+        &a.handle(Event::Tick, t + Duration::from_secs(111))
     ));
 }
