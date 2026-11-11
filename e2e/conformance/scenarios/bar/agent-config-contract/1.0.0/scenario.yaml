@@ -1,0 +1,237 @@
+schema_version: "1"
+scenario_id: agent-config-contract
+binary: bar
+description: |
+  Graded against the steps of the story e2e/stories/agent-config-contract.yaml.
+  scripts/conformance-grade records it in throwaway HOME, XDG and state dirs
+  and a fresh working directory, so every step starts from no config and no
+  .claude directory.
+factor_coverage: [3, 4, 5, 6, 7, 8, 11]
+tier: 3
+story_ref:
+  story_id: bar.agent.config-contract
+  story_path: e2e/stories/agent-config-contract.yaml
+  content_hash: "sha256:e22e5762159d80097c192a03c57dc29d1c3a854175403ca6aac2d7898f625443"
+steps:
+  - id: check_none
+    invoke: ["bar", "check", "--format", "json"]
+  - id: check_yaml
+    invoke: ["bar", "check", "--format", "yaml"]
+  - id: init
+    invoke: ["bar", "init", "--preset", "minimal"]
+  - id: init_again
+    invoke: ["bar", "init", "--preset", "minimal"]
+  - id: check_config
+    invoke: ["bar", "check", "--format", "json"]
+  - id: import_broken
+    invoke: ["bar", "config", "import", "-", "--replace", "--yes"]
+    stdin: |
+      set left "#{model}"
+      set no-such-key 1
+  - id: check_after_broken
+    invoke: ["bar", "check", "--format", "json"]
+  - id: import_preview
+    invoke: ["bar", "config", "import", "-", "--replace"]
+    stdin: |
+      set left "#{model} | #{ctx}"
+      set right "#{usage[type=7d]}"
+  - id: import_apply
+    invoke: ["bar", "config", "import", "-", "--replace", "--yes"]
+    stdin: |
+      set left "#{model} | #{ctx}"
+      set right "#{usage[type=7d]}"
+  - id: import_repeat
+    invoke: ["bar", "config", "import", "-", "--replace", "--yes"]
+    stdin: |
+      set left "#{model} | #{ctx}"
+      set right "#{usage[type=7d]}"
+  - id: check_imported
+    invoke: ["bar", "check", "--format", "json"]
+  - id: install_preview
+    invoke: ["bar", "install", "--project"]
+  - id: install_apply
+    invoke: ["bar", "install", "--project", "--yes"]
+  - id: install_repeat
+    invoke: ["bar", "install", "--project", "--yes"]
+  - id: unknown_command
+    invoke: ["bar", "frobnicate"]
+  - id: bad_format
+    invoke: ["bar", "check", "--format", "xml"]
+  - id: import_no_mode
+    invoke: ["bar", "config", "import", "-"]
+  - id: plugin_list
+    invoke: ["bar", "plugin", "list", "--format", "json"]
+assertions:
+  # F3 structured I/O: reports parse as JSON or YAML; data on stdout,
+  # diagnostics on stderr
+  - id: check-json-stream
+    kind: stream_discipline_pass
+    on: check_none
+    factor: 3
+  - id: check-json-ok
+    kind: output_field_equals
+    on: check_none
+    factor: 3
+    path: ok
+    value: true
+    parse: json
+  - id: check-yaml-ok
+    kind: output_field_equals
+    on: check_yaml
+    factor: 3
+    path: ok
+    value: true
+    parse: yaml
+  - id: plugin-list-stream
+    kind: stream_discipline_pass
+    on: plugin_list
+    factor: 3
+
+  # F4 corrective errors: each refusal names the cause and the fix
+  - id: unknown-command-hint
+    kind: stderr_contains
+    on: unknown_command
+    factor: 4
+    value: "see `bar --help`"
+  - id: bad-format-lists-formats
+    kind: stderr_contains
+    on: bad_format
+    factor: 4
+    value: "valid: csv, json, table, text, yaml"
+  - id: import-no-mode-names-flag
+    kind: stderr_contains
+    on: import_no_mode
+    factor: 4
+    value: "required arguments were not provided"
+  - id: import-no-mode-points-at-help
+    kind: stderr_contains
+    on: import_no_mode
+    factor: 4
+    value: "--help"
+  - id: import-broken-says-why
+    kind: stderr_contains
+    on: import_broken
+    factor: 4
+    value: "stdin has errors"
+
+  # F5 explicit contracts: no silent overwrite, no partial write
+  - id: init-never-overwrites
+    kind: stderr_contains
+    on: init_again
+    factor: 5
+    value: "exists; not overwritten"
+  - id: import-broken-writes-nothing
+    kind: stderr_contains
+    on: import_broken
+    factor: 5
+    value: "nothing written"
+  - id: import-broken-config-intact
+    kind: output_field_count
+    on: check_after_broken
+    factor: 5
+    path: issues
+    equals: 0
+    parse: json
+
+  # F6 previewability: without --yes a write is shown, not applied
+  - id: import-preview-asks
+    kind: stderr_contains
+    on: import_preview
+    factor: 6
+    value: "needs --yes"
+  - id: install-preview-asks
+    kind: stderr_contains
+    on: install_preview
+    factor: 6
+    value: "rerun with --yes to write"
+
+  # F7 idempotency: a repeated write succeeds and changes nothing
+  - id: import-repeat-ok
+    kind: exit_code_class
+    on: import_repeat
+    factor: 7
+    classes: [OK]
+  - id: import-repeat-quiet
+    kind: stderr_does_not_contain
+    on: import_repeat
+    factor: 7
+    value: "error"
+  - id: install-repeat-ok
+    kind: exit_code_class
+    on: install_repeat
+    factor: 7
+    classes: [OK]
+  - id: install-repeat-quiet
+    kind: stderr_does_not_contain
+    on: install_repeat
+    factor: 7
+    value: "bar install:"
+
+  # F8 state transparency: the report names the files bar reads
+  - id: check-names-config-slot
+    kind: output_field_present
+    on: check_none
+    factor: 8
+    path: path
+    parse: json
+  - id: check-names-price-data
+    kind: output_field_present
+    on: check_none
+    factor: 8
+    path: prices.path
+    parse: json
+  - id: check-names-project-slot
+    kind: output_field_present
+    on: check_config
+    factor: 8
+    path: project
+    parse: json
+  - id: check-after-import-clean
+    kind: output_field_equals
+    on: check_imported
+    factor: 8
+    path: ok
+    value: true
+    parse: json
+
+  # F11 exit codes: 0 on success, 2 on a usage or input error
+  - id: check-exit-ok
+    kind: exit_code_class
+    on: check_none
+    factor: 11
+    classes: [OK]
+  - id: init-exit-ok
+    kind: exit_code_class
+    on: init
+    factor: 11
+    classes: [OK]
+  - id: import-apply-exit-ok
+    kind: exit_code_class
+    on: import_apply
+    factor: 11
+    classes: [OK]
+  - id: install-apply-exit-ok
+    kind: exit_code_class
+    on: install_apply
+    factor: 11
+    classes: [OK]
+  - id: import-broken-exit-usage
+    kind: exit_code_class
+    on: import_broken
+    factor: 11
+    classes: [USAGE]
+  - id: unknown-command-exit-usage
+    kind: exit_code_class
+    on: unknown_command
+    factor: 11
+    classes: [USAGE]
+  - id: bad-format-exit-usage
+    kind: exit_code_class
+    on: bad_format
+    factor: 11
+    classes: [USAGE]
+  - id: import-no-mode-exit-usage
+    kind: exit_code_class
+    on: import_no_mode
+    factor: 11
+    classes: [USAGE]

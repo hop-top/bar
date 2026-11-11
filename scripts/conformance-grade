@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# Grades bar against its 12-factor conformance scenario
+# (e2e/conformance/scenarios/) with a grading service of its own: starts
+# `kit conformance svc serve` on 127.0.0.1, mints a token for this run,
+# records the scenario's steps against bar, then grades the cassette.
+#
+#   scripts/conformance-grade [BAR]          record, grade, print the result,
+#                                            stop the service
+#   scripts/conformance-grade --serve [BAR]  record and leave the service
+#                                            running; print service=, token=
+#                                            and cassette= lines, also appended
+#                                            to $GITHUB_OUTPUT when set, for the
+#                                            spec-12fc Action's grade leaf
+#
+# BAR defaults to target/debug/bar; kit comes from $KIT or PATH. bar runs
+# with an empty environment apart from PATH=/usr/bin:/bin and HOME, XDG and
+# state dirs inside a new temp dir, from an empty working directory there,
+# so it never reads or writes the real config, state or Claude settings.
+# The token and the claims database live in that temp dir too.
+set -euo pipefail
+
+serve=false
+if [ "${1:-}" = "--serve" ]; then
+  serve=true
+  shift
+fi
+root="$(cd "$(dirname "$0")/.." && pwd)"
+bar="${1:-$root/target/debug/bar}"
+kit="${KIT:-$(command -v kit || true)}"
+fail() { echo "conformance-grade: $*" >&2; exit 1; }
+[ -x "$bar" ] || fail "bar binary not found at $bar (cargo build first)"
+[ -n "$kit" ] && [ -x "$kit" ] || fail "kit not found (set KIT or put kit on PATH)"
+bar="$(cd "$(dirname "$bar")" && pwd)/$(basename "$bar")"
+
+scenarios="$root/e2e/conformance"
+scenario="$scenarios/scenarios/bar/agent-config-contract/1.0.0/scenario.yaml"
+tmp="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/bar-conformance.XXXXXX")"
+pid=""
+cleanup() {
+  if [ -n "$pid" ]; then
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+  fi
+  rm -rf "$tmp"
+}
+$serve || trap cleanup EXIT
+
+# grading service on a free loopback port; its first stdout line is JSON
+# with the port
+"$kit" conformance svc serve --scenarios-root "$scenarios" \
+  --claims-db "$tmp/claims.db" --addr 127.0.0.1 --port 0 \
+  >"$tmp/svc.out" 2>"$tmp/svc.err" &
+pid=$!
+port=""
+for _ in $(seq 1 100); do
+  port="$(sed -n 's/.*"port":\([0-9][0-9]*\).*/\1/p' "$tmp/svc.out" 2>/dev/null | head -n 1)"
+  [ -n "$port" ] && break
+  kill -0 "$pid" 2>/dev/null || { cat "$tmp/svc.err" >&2; fail "grading service exited"; }
+  sleep 0.1
+done
+[ -n "$port" ] || fail "grading service did not report a port"
+service="http://127.0.0.1:$port"
+
+token="$("$kit" conformance svc token mint --claims-db "$tmp/claims.db" \
+  --scope grade:bar --tier-max 3 --description "bar conformance run" |
+  grep -o 'kit-conf-[A-Za-z0-9_-]*' | head -n 1)"
+[ -n "$token" ] || fail "token mint printed no token"
+[ -n "${GITHUB_ACTIONS:-}" ] && echo "::add-mask::$token"
+
+sandbox="$tmp/sandbox"
+mkdir -p "$sandbox/home" "$sandbox/config" "$sandbox/state" "$sandbox/cache" \
+  "$sandbox/data" "$sandbox/work"
+cassette="$tmp/cassette"
+env -i PATH=/usr/bin:/bin HOME="$sandbox/home" \
+  XDG_CONFIG_HOME="$sandbox/config" XDG_STATE_HOME="$sandbox/state" \
+  XDG_CACHE_HOME="$sandbox/cache" XDG_DATA_HOME="$sandbox/data" \
+  BAR_STATE_DIR="$sandbox/state/bar" \
+  "$kit" conformance harness record --scenario "$scenario" --binary "$bar" \
+  --binary-version "$("$bar" --version | awk '{print $2}')" \
+  --workdir "$sandbox/work" --out "$cassette" >&2
+
+if $serve; then
+  out="service=$service
+token=$token
+cassette=$cassette"
+  echo "$out"
+  [ -n "${GITHUB_OUTPUT:-}" ] && echo "$out" >>"$GITHUB_OUTPUT"
+  exit 0
+fi
+
+KIT_CONFORMANCE_TOKEN="$token" "$kit" conformance grade "$cassette" \
+  --service "$service" --tier 3 --format json

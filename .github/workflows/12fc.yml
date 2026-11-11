@@ -2,9 +2,11 @@ name: 12fc
 
 # 12-Factor AI-CLI conformance (hop-top/spec-12fc). Runs on pushes to the
 # default branch and commits the shields.io endpoint badge `.12fc.json`.
-# The Action grades Go CLIs built on hop.top/kit; for this Rust CLI every
-# factor is `skip`, so the verdict is `ungradable` (grey badge) until a
-# Rust grader or a self-emitted report exists.
+# Stories (F1, F2, F9, F12) and the leak gate (F10) are checked from the
+# source tree. F3-F8 and F11 come from the `grade` leaf: the job builds bar
+# and kit, starts kit's grading service on 127.0.0.1, records the scenario
+# in e2e/conformance/ against bar (scripts/conformance-grade), and the
+# Action grades that cassette with the same kit build.
 on:
   push:
     branches: [next]
@@ -15,14 +17,37 @@ permissions:
 jobs:
   conformance:
     runs-on: ubuntu-24.04
+    env:
+      # hop.top/kit v0.5.0-beta.1 (2026-10-20), built from source: its
+      # releases ship no binaries and `go install` refuses the module
+      KIT_COMMIT: 95a3f13bb9cf8bbeae5c095c281575e61cd508d3
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
-      - uses: hop-top/spec-12fc@4ea62e76d2583a3e59054472aecb75b7bc88af4e # main 2026-11-11
+      - name: Toolchain
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - name: Build bar
+        run: cargo build --locked
+      - name: Build kit
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/kit-src"
+          git clone --quiet --filter=blob:none https://github.com/hop-top/kit.git "$src"
+          git -C "$src" checkout --quiet --detach "$KIT_COMMIT"
+          (cd "$src" && go build -trimpath -o "$RUNNER_TEMP/kit-bin/kit" ./cmd/kit)
+          echo "$RUNNER_TEMP/kit-bin" >>"$GITHUB_PATH"
+      - name: Record conformance cassette
+        id: record
+        run: scripts/conformance-grade --serve
+      - uses: hop-top/spec-12fc@e2f1248aec40a12a83a2a6290c390e5202abe7e6 # feat/kit-preinstalled 2026-11-11
         with:
           command: all
-          kit-version: v0.5.0-alpha.1
+          kit-version: preinstalled
+          cassette-dir: ${{ steps.record.outputs.cassette }}
+          grade-service: ${{ steps.record.outputs.service }}
+          grade-token: ${{ steps.record.outputs.token }}
+          grade-tier: '3'
           upload-sarif: 'false'
           sarif-path: ''
           pr-comment: 'false'
