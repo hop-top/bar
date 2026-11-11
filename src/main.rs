@@ -5,6 +5,7 @@ mod config_cmd;
 mod dry_run;
 mod help_json;
 mod tray_cmd;
+mod waybar_cmd;
 
 use std::ffi::OsString;
 
@@ -120,6 +121,8 @@ enum SubCmd {
         #[command(subcommand)]
         cmd: tray_cmd::TrayCmd,
     },
+    /// One line of waybar custom-module JSON ({text, tooltip, class, alt}) from the tray snapshot.
+    Waybar,
     /// Discovered `bar-<name>` plugins (`bar <name> <args>` runs one).
     Plugin {
         #[command(subcommand)]
@@ -269,6 +272,7 @@ fn main() {
         }
         Some(("click", m)) => click_cmd(m),
         Some(("tray", m)) => tray_cmd::run(m),
+        Some(("waybar", _)) => waybar_cmd::run(),
         Some(("plugin", m)) => plugin_cmd(m),
         Some(("prices", m)) => prices_cmd(m),
         Some(("web", m)) => web_cmd(m),
