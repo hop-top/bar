@@ -117,3 +117,81 @@ steps:
       List the plugins bar finds on PATH as JSON.
     invoke: ["bar", "plugin", "list", "--format", "json"]
     capture: [exit_code, stdout]
+  - id: init_again_json
+    intent: |
+      Run init once more asking for JSON, so a script can read why it was
+      refused from a structured error instead of parsing a sentence.
+    invoke: ["bar", "init", "--preset", "minimal", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: unknown_command_json
+    intent: |
+      Mistype a command while asking for JSON, expecting the error class
+      and the suggested fix as fields.
+    invoke: ["bar", "frobnicate", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: install_repeat_json
+    intent: |
+      Repeat the project install asking for JSON, to read from a field
+      that the settings were already up to date.
+    invoke: ["bar", "install", "--project", "--yes", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: install_local_preview_json
+    intent: |
+      Preview adding bar to the local settings file as JSON, to read the
+      planned change before deciding to write it.
+    invoke: ["bar", "install", "--local", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: import_dry_run
+    intent: |
+      Ask the config import for a dry run, the usual way to see what a
+      write would do without the confirmation prompt.
+    invoke: ["bar", "config", "import", "-", "--replace", "--dry-run"]
+    capture: [exit_code, stdout, stderr]
+  - id: toggle_dry_run
+    intent: |
+      Ask a usage view toggle for a dry run before flipping it, to see the
+      view it would switch to.
+    invoke: ["bar", "toggle", "5h", "--dry-run"]
+    capture: [exit_code, stdout, stderr]
+  - id: toggle_set
+    intent: |
+      Set the 5-hour usage view to percentage directly, so running the same
+      command twice leaves the same view instead of flipping it back.
+    invoke: ["bar", "toggle", "5h", "pct"]
+    capture: [exit_code, stdout, stderr]
+  - id: toggle_json
+    intent: |
+      Flip the 7-day usage view asking for JSON, to read the new view from
+      a field.
+    invoke: ["bar", "toggle", "7d", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
+  - id: toggle_unknown
+    intent: |
+      Toggle a view name that is neither a usage window nor an installed
+      plugin, expecting bar to reject the typo.
+    invoke: ["bar", "toggle", "no-such-view"]
+    capture: [exit_code, stdout, stderr]
+  - id: help_json
+    intent: |
+      Ask for the command list as JSON, with each command's flags and
+      whether it reads, writes or deletes.
+    invoke: ["bar", "--help", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: update_json
+    intent: |
+      Read the version and update-check state as JSON.
+      The check is off in this config, so nothing is fetched.
+    invoke: ["bar", "update", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: export_json
+    intent: |
+      Read the effective config as JSON, the state every render starts
+      from.
+    invoke: ["bar", "config", "export", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: plugin_missing
+    intent: |
+      Ask for the details of a plugin that is not installed, expecting a
+      not-found error.
+    invoke: ["bar", "plugin", "info", "no-such-plugin"]
+    capture: [exit_code, stderr]

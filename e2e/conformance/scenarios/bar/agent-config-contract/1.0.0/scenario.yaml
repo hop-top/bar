@@ -6,12 +6,12 @@ description: |
   scripts/conformance-grade records it in throwaway HOME, XDG and state dirs
   and a fresh working directory, so every step starts from no config and no
   .claude directory.
-factor_coverage: [3, 4, 5, 6, 7, 8, 11]
+factor_coverage: [1, 3, 4, 5, 6, 7, 8, 11]
 tier: 3
 story_ref:
   story_id: bar.agent.config-contract
   story_path: e2e/stories/agent-config-contract.yaml
-  content_hash: "sha256:e22e5762159d80097c192a03c57dc29d1c3a854175403ca6aac2d7898f625443"
+  content_hash: "sha256:aa0978f0687fa0e9283c961d227917194c03e5e9fb85b5ec468b0b649389e8e0"
 steps:
   - id: check_none
     invoke: ["bar", "check", "--format", "json"]
@@ -61,6 +61,34 @@ steps:
     invoke: ["bar", "config", "import", "-"]
   - id: plugin_list
     invoke: ["bar", "plugin", "list", "--format", "json"]
+  - id: init_again_json
+    invoke: ["bar", "init", "--preset", "minimal", "--format", "json"]
+  - id: unknown_command_json
+    invoke: ["bar", "frobnicate", "--format", "json"]
+  - id: install_repeat_json
+    invoke: ["bar", "install", "--project", "--yes", "--format", "json"]
+  - id: install_local_preview_json
+    invoke: ["bar", "install", "--local", "--format", "json"]
+  - id: import_dry_run
+    invoke: ["bar", "config", "import", "-", "--replace", "--dry-run"]
+    stdin: |
+      set left "#{model}"
+  - id: toggle_dry_run
+    invoke: ["bar", "toggle", "5h", "--dry-run"]
+  - id: toggle_set
+    invoke: ["bar", "toggle", "5h", "pct"]
+  - id: toggle_json
+    invoke: ["bar", "toggle", "7d", "--format", "json"]
+  - id: toggle_unknown
+    invoke: ["bar", "toggle", "no-such-view"]
+  - id: help_json
+    invoke: ["bar", "--help", "--format", "json"]
+  - id: update_json
+    invoke: ["bar", "update", "--format", "json"]
+  - id: export_json
+    invoke: ["bar", "config", "export", "--format", "json"]
+  - id: plugin_missing
+    invoke: ["bar", "plugin", "info", "no-such-plugin"]
 assertions:
   # F3 structured I/O: reports parse as JSON or YAML; data on stdout,
   # diagnostics on stderr
@@ -235,3 +263,123 @@ assertions:
     on: import_no_mode
     factor: 11
     classes: [USAGE]
+
+  # Requirements bar does not meet yet. Each asserts what the factor asks
+  # for; a failure here is a real gap, not a broken check.
+
+  # F1/F5: the command tree, with each command's side-effect class, is
+  # readable by a program
+  - id: help-json-is-json
+    kind: stream_discipline_pass
+    on: help_json
+    factor: 1
+  - id: help-json-lists-commands
+    kind: output_field_present
+    on: help_json
+    factor: 1
+    path: commands
+    parse: json
+  - id: help-json-declares-side-effects
+    kind: output_field_present
+    on: help_json
+    factor: 5
+    path: commands.0.side_effect
+    parse: json
+
+  # F3: --format json is honoured by every command, errors included
+  - id: init-error-json
+    kind: output_field_present
+    on: init_again_json
+    factor: 3
+    path: code
+    parse: json
+  - id: install-repeat-json
+    kind: stream_discipline_pass
+    on: install_repeat_json
+    factor: 3
+  - id: toggle-json
+    kind: stream_discipline_pass
+    on: toggle_json
+    factor: 3
+
+  # F4: errors carry a class and a suggested fix as fields; a typo is
+  # rejected, not accepted
+  - id: unknown-command-error-class
+    kind: output_field_present
+    on: unknown_command_json
+    factor: 4
+    path: code
+    parse: json
+  - id: unknown-command-suggested-fix
+    kind: output_field_present
+    on: unknown_command_json
+    factor: 4
+    path: suggested_fix
+    parse: json
+  - id: toggle-unknown-rejected
+    kind: exit_code_class
+    on: toggle_unknown
+    factor: 4
+    classes: [USAGE]
+
+  # F6: mutating commands take --dry-run; a preview is machine-readable
+  - id: import-dry-run-supported
+    kind: exit_code_class
+    on: import_dry_run
+    factor: 6
+    classes: [OK]
+  - id: toggle-dry-run-supported
+    kind: exit_code_class
+    on: toggle_dry_run
+    factor: 6
+    classes: [OK]
+  - id: install-preview-json
+    kind: stream_discipline_pass
+    on: install_local_preview_json
+    factor: 6
+
+  # F7: repeating init with the same preset is a no-op success; a view
+  # can be set, not only flipped
+  - id: init-repeat-ok
+    kind: exit_code_class
+    on: init_again
+    factor: 7
+    classes: [OK]
+  - id: toggle-set-form
+    kind: exit_code_class
+    on: toggle_set
+    factor: 7
+    classes: [OK]
+
+  # F8: version, update-check state and the effective config are
+  # readable as data
+  - id: update-state-json
+    kind: stream_discipline_pass
+    on: update_json
+    factor: 8
+  - id: export-config-json
+    kind: stream_discipline_pass
+    on: export_json
+    factor: 8
+
+  # F11: kit's exit-code classes, not 2 for every refusal
+  - id: init-exists-conflict
+    kind: exit_code_class
+    on: init_again
+    factor: 11
+    classes: [CONFLICT]
+  - id: import-preview-consent-refused
+    kind: exit_code_class
+    on: import_preview
+    factor: 11
+    classes: [CONSENT_REFUSED]
+  - id: install-preview-consent-refused
+    kind: exit_code_class
+    on: install_preview
+    factor: 11
+    classes: [CONSENT_REFUSED]
+  - id: plugin-missing-not-found
+    kind: exit_code_class
+    on: plugin_missing
+    factor: 11
+    classes: [NOT_FOUND]

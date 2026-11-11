@@ -40,7 +40,7 @@ jobs:
       - name: Record conformance cassette
         id: record
         run: scripts/conformance-grade --serve
-      - uses: hop-top/spec-12fc@e2f1248aec40a12a83a2a6290c390e5202abe7e6 # feat/kit-preinstalled 2026-11-11
+      - uses: hop-top/spec-12fc@e2f1248aec40a12a83a2a6290c390e5202abe7e6 # 2026-11-11
         with:
           command: all
           kit-version: preinstalled
