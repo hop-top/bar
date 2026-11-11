@@ -440,15 +440,15 @@ fn init(m: &ArgMatches) {
             let data = json!({"path": p.display().to_string(), "preset": name, "written": false});
             cli_out::emit(m, "init", "", &data);
         }
-        Err(e) if e.ends_with(hop_bar::presets::EXISTS) => cli_out::fail(
+        Err(e @ hop_bar::presets::InitError::Exists(_)) => cli_out::fail(
             m,
             "init",
             cli_out::with_fix(
-                CliError::conflict(e),
+                CliError::conflict(e.to_string()),
                 "edit that file, or move it aside and rerun bar init",
             ),
         ),
-        Err(e) => cli_out::fail(m, "init", CliError::usage(e)),
+        Err(e) => cli_out::fail(m, "init", CliError::usage(e.to_string())),
     }
 }
 

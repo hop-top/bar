@@ -42,41 +42,69 @@ pub enum Init {
     Same(PathBuf),
 }
 
+/// Why `bar init` wrote nothing.
+#[derive(Debug, PartialEq, Eq)]
+pub enum InitError {
+    /// A config other than the preset asked for is at this path.
+    Exists(PathBuf),
+    /// Anything else: an unknown preset, an unusable path, a failed write.
+    Other(String),
+}
+
+impl std::fmt::Display for InitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InitError::Exists(p) => write!(f, "{} {EXISTS}", p.display()),
+            InitError::Other(e) => f.write_str(e),
+        }
+    }
+}
+
 /// Writes preset `name` to the first config search path. A config that
 /// already holds exactly that preset is left as is ([`Init::Same`]); any
-/// other existing config is refused, as is a relative path (home unset or
-/// relative).
+/// other existing config is refused ([`InitError::Exists`]), as is a
+/// relative path (home unset or relative).
 pub fn init(
     name: &str,
     env: &dyn Fn(&str) -> Option<String>,
     home: &Path,
     kit_dir: &Path,
-) -> Result<Init, String> {
-    let body = get(name).ok_or_else(|| format!("unknown preset `{name}`"))?;
+) -> Result<Init, InitError> {
+    let other = InitError::Other;
+    let body = get(name).ok_or_else(|| other(format!("unknown preset `{name}`")))?;
     let path = crate::conf::search_paths(env, home, kit_dir).remove(0);
     if !path.is_absolute() {
-        return Err(format!(
+        return Err(other(format!(
             "{HOME_VAR} is unset or relative; set it or XDG_CONFIG_HOME"
-        ));
+        )));
     }
     if let Some(p) = crate::conf::find_path(env, home, kit_dir) {
         if std::fs::read(&p).is_ok_and(|b| b == body.as_bytes()) {
             return Ok(Init::Same(p));
         }
-        return Err(format!("{} {EXISTS}", p.display()));
+        return Err(InitError::Exists(p));
     }
     if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        std::fs::create_dir_all(dir).map_err(|e| other(format!("{}: {e}", dir.display())))?;
     }
-    write_new(&path, body)?;
-    Ok(Init::Wrote(path))
+    match link_new(&path, body) {
+        Ok(()) => Ok(Init::Wrote(path)),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Err(InitError::Exists(path)),
+        Err(e) => Err(other(format!("{}: {e}", path.display()))),
+    }
 }
 
 /// Writes `body` to `path` all at once and never over an existing file:
 /// a temp file in the same directory, hard-linked to `path` (which fails
 /// when `path` exists), then removed.
 pub fn write_new(path: &Path, body: &str) -> Result<(), String> {
-    let shown = |e: std::io::Error| format!("{}: {e}", path.display());
+    link_new(path, body).map_err(|e| match e.kind() {
+        std::io::ErrorKind::AlreadyExists => format!("{} {EXISTS}", path.display()),
+        _ => format!("{}: {e}", path.display()),
+    })
+}
+
+fn link_new(path: &Path, body: &str) -> std::io::Result<()> {
     let dir = path.parent().unwrap_or(Path::new("."));
     let tmp = dir.join(format!(
         ".{}.tmp-{}",
@@ -95,8 +123,5 @@ pub fn write_new(path: &Path, body: &str) -> Result<(), String> {
         std::fs::hard_link(&tmp, path)
     })();
     let _ = std::fs::remove_file(&tmp);
-    written.map_err(|e| match e.kind() {
-        std::io::ErrorKind::AlreadyExists => format!("{} {EXISTS}", path.display()),
-        _ => shown(e),
-    })
+    written
 }
