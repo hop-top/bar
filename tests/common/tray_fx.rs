@@ -7,6 +7,7 @@ use super::plugin_fx::{busy_retry, echo_info, install, Fx};
 use bar_tray::model::snapshot::{self, Snapshot};
 use hop_bar::tray::SNAPSHOT_FILE;
 use serde_json::{json, Value};
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -91,19 +92,49 @@ impl T {
         &self.fx.state
     }
 
-    pub fn bar(&self) -> Command {
+    /// The environment `bar` runs with: the fixture plugin dirs first on
+    /// `PATH`, every other dir under the fixture root.
+    pub fn env(&self) -> Vec<(&'static str, OsString)> {
         let inherited = std::env::var_os("PATH").unwrap_or_default();
         let dirs = [self.fx.bin.clone(), self.bin2.clone()]
             .into_iter()
             .chain(std::env::split_paths(&inherited));
+        vec![
+            ("PATH", std::env::join_paths(dirs).unwrap()),
+            ("BAR_STATE_DIR", self.state().into()),
+            ("HOME", self.fx.root.clone().into()),
+            ("XDG_CONFIG_HOME", self.fx.root.join("xdg").into()),
+            ("XDG_STATE_HOME", self.fx.root.join("xdg-state").into()),
+            ("CLAUDE_CONFIG_DIR", self.fx.root.join("claude").into()),
+        ]
+    }
+
+    pub fn bar(&self) -> Command {
         let mut c = Command::new(assert_cmd::cargo::cargo_bin("bar"));
-        c.env("PATH", std::env::join_paths(dirs).unwrap())
-            .env("BAR_STATE_DIR", self.state())
-            .env("HOME", &self.fx.root)
-            .env("XDG_CONFIG_HOME", self.fx.root.join("xdg"))
-            .env("XDG_STATE_HOME", self.fx.root.join("xdg-state"))
-            .env("CLAUDE_CONFIG_DIR", self.fx.root.join("claude"));
+        c.envs(self.env());
         c
+    }
+
+    /// A `bar` for the tray's spawner: a script that sets this fixture's
+    /// environment, then runs the real binary with the same arguments.
+    /// The spawner clears a child's environment down to the dir
+    /// variables of the tray's own process; the script puts the
+    /// fixture's in their place, so the test process's stay untouched.
+    pub fn shim(&self) -> PathBuf {
+        let dir = self.fx.root.join("shim");
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut s = String::from("#!/bin/sh\n");
+        for (k, v) in self.env() {
+            s.push_str(&format!("export {k}='{}'\n", v.to_string_lossy()));
+        }
+        s.push_str(&format!(
+            "exec '{}' \"$@\"\n",
+            assert_cmd::cargo::cargo_bin("bar").display()
+        ));
+        let p = dir.join("bar");
+        std::fs::write(&p, s).unwrap();
+        std::fs::set_permissions(&p, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        p
     }
 
     pub fn run(&self) -> Output {
