@@ -10,12 +10,14 @@ use std::collections::BTreeMap;
 mod load;
 pub mod project;
 mod set;
+mod tray;
 pub use load::{
     find_path, find_path_default, load, load_from, load_layered, palette_dir, palette_dir_default,
     search_paths,
 };
 pub use project::ProjectMode;
 use set::{apply_palette, apply_price, apply_set};
+pub use tray::TrayGrant;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfError {
@@ -149,6 +151,13 @@ pub struct Config {
     pub plugins: BTreeMap<String, Options>,
     /// `action` lines, at most one per placeholder (a later line replaces).
     pub actions: Vec<ActionBinding>,
+    /// `tray` lines: what the tray app may show and run, in file order,
+    /// without duplicates. `action` lines grant nothing here.
+    pub tray: Vec<TrayGrant>,
+    /// `set tray-views on`: the tray also lists the view toggles.
+    pub tray_views: bool,
+    /// `set tray-poll`: seconds between the tray's idle polls.
+    pub tray_poll: u64,
     /// Claude Code's data dir (`set claude-dir`); `None` follows the
     /// environment.
     pub claude_dir: Option<String>,
@@ -217,6 +226,9 @@ impl Default for Config {
             rules: Vec::new(),
             plugins: BTreeMap::new(),
             actions: Vec::new(),
+            tray: Vec::new(),
+            tray_views: false,
+            tray_poll: tray::DEFAULT_POLL,
             claude_dir: None,
             prices: Vec::new(),
             compact_at: None,
@@ -460,6 +472,7 @@ fn apply_line(c: &mut Config, t: &[String]) -> Result<(), String> {
             });
             Ok(())
         }
+        "tray" => tray::apply(c, &t[1..]),
         other => Err(format!("unknown directive `{other}`")),
     }
 }

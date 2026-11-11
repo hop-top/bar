@@ -165,13 +165,13 @@ pub(super) fn guard(
     if t[0] == "set"
         && matches!(
             t.get(1).map(String::as_str),
-            Some("usage-source" | "account-source")
+            Some("usage-source" | "account-source" | "tray-views" | "tray-poll")
         )
     {
         return Err(format!("`{}` is read from the user config only", t[1]));
     }
-    if t[0] == "action" {
-        return Err("`action` is read from the user config only".into());
+    if t[0] == "action" || t[0] == "tray" {
+        return Err(format!("`{}` is read from the user config only", t[0]));
     }
     if mode == ProjectMode::Full {
         return Ok(());

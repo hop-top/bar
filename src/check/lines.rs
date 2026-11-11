@@ -58,6 +58,31 @@ impl Checker<'_> {
         }
     }
 
+    /// A `tray <plugin>[.<action>]` line: warns when the grant cannot
+    /// show anything.
+    fn tray(&mut self, target: &str, line: usize) {
+        let (plug, act) = match target.split_once('.') {
+            Some((p, a)) => (p, Some(a)),
+            None => (target, None),
+        };
+        let Some(found) = plugin::find(self.dirs, plug) else {
+            let msg = format!("`tray {target}`: plugin `{plug}` not on PATH");
+            self.add(Level::Warning, line, msg);
+            return;
+        };
+        let info = plugin::info(&found);
+        if !info.capabilities.iter().any(|c| c == "menu") {
+            let msg =
+                format!("`tray {target}`: plugin `{plug}` does not declare the `menu` capability");
+            self.add(Level::Warning, line, msg);
+        }
+        if let Some(act) = act.filter(|a| !info.actions.contains_key(*a)) {
+            let msg =
+                format!("`tray {target}`: plugin `{plug}` does not declare the action `{act}`");
+            self.add(Level::Warning, line, msg);
+        }
+    }
+
     /// A layout for line `n` past `set max-rows`: it prints only when fewer
     /// rows come before it.
     fn past_max_rows(&mut self, key: &str, n: usize, src: &str, line: usize) {
@@ -80,6 +105,9 @@ impl Checker<'_> {
             match t.first().map(String::as_str) {
                 Some("set") if t.len() == 3 => self.set(&t[1], &t[2], i + 1),
                 Some("action") if t.len() == 3 => self.action(&t[1], &t[2], i + 1),
+                Some("tray") if t.len() == 2 && self.layer == Layer::User => {
+                    self.tray(&t[1], i + 1)
+                }
                 Some("default") if t.len() >= 2 => {
                     if let Ok(o) = parse_options(&t[2..]) {
                         self.placeholder(&t[1], &o, i + 1, false);
