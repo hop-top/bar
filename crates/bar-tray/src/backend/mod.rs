@@ -32,5 +32,8 @@ pub mod windows;
 #[cfg(any(all(target_os = "linux", feature = "linux-sni"), test))]
 pub mod sni_map;
 
+#[cfg(any(all(target_os = "linux", feature = "linux-sni"), test))]
+pub mod sni_loop;
+
 #[cfg(all(target_os = "linux", feature = "linux-sni"))]
 pub mod linux;

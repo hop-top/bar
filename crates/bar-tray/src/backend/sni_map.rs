@@ -172,5 +172,24 @@ pub fn pixmap(size: u32) -> Vec<u8> {
     px
 }
 
+/// [`pixmap`] with a red dot in the top right corner: the attention
+/// glyph, for when the last action was refused or `bar` failed.
+pub fn pixmap_bad(size: u32) -> Vec<u8> {
+    let mut px = pixmap(size);
+    let n = size as usize;
+    let r = (n / 6).max(2);
+    let (cx, cy) = (n - r - 1, r + 1);
+    for y in 0..n {
+        for x in 0..n {
+            let (dx, dy) = (x.abs_diff(cx), y.abs_diff(cy));
+            if dx * dx + dy * dy <= r * r {
+                let o = (y * n + x) * 4;
+                px[o..o + 4].copy_from_slice(&[0xFF, 0xE0, 0x30, 0x30]);
+            }
+        }
+    }
+    px
+}
+
 #[cfg(test)]
 mod tests;

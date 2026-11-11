@@ -96,7 +96,16 @@ fn show(source: Source, bar: Option<PathBuf>, poll: Duration) -> ExitCode {
     bar_tray::backend::windows::run(bar_tray::backend::Options { source, bar, poll })
 }
 
-#[cfg(not(any(target_os = "macos", windows)))]
+#[cfg(all(target_os = "linux", feature = "linux-sni"))]
+fn show(source: Source, bar: Option<PathBuf>, poll: Duration) -> ExitCode {
+    bar_tray::backend::linux::run(bar_tray::backend::Options { source, bar, poll })
+}
+
+#[cfg(not(any(
+    target_os = "macos",
+    windows,
+    all(target_os = "linux", feature = "linux-sni")
+)))]
 fn show(_source: Source, _bar: Option<PathBuf>, _poll: Duration) -> ExitCode {
     eprintln!("bar-tray: no tray backend for this platform yet; --print shows the menu");
     ExitCode::FAILURE

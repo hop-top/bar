@@ -22,18 +22,11 @@ use ksni::menu::{
 };
 use std::sync::mpsc::Sender;
 
-/// What the host did, as the app must see it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Event {
-    /// A row was activated; the model row id.
-    Click(String),
-    /// The root menu is about to open.
-    AboutToShow,
-    /// No `StatusNotifierWatcher` (panel gone or not started yet).
-    WatcherOffline,
-    /// A watcher is back and the item is registered again.
-    WatcherOnline,
-}
+pub use super::sni_loop::Event;
+
+#[path = "linux/run.rs"]
+mod run;
+pub use run::run;
 
 /// The running item.
 pub struct Tray {
@@ -50,6 +43,8 @@ impl Tray {
         let sni = Sni {
             entries: sni_map::entries(menu),
             events,
+            bad: false,
+            tip: String::new(),
         };
         // a missing watcher is not an error: the panel may start later
         let handle = sni.assume_sni_available(true).spawn()?;
@@ -61,6 +56,17 @@ impl Tray {
     pub fn show(&self, menu: &Menu) -> bool {
         let entries = sni_map::entries(menu);
         self.handle.update(|t| t.entries = entries).is_some()
+    }
+
+    /// Marks the item as needing attention (a glyph with a dot, hosts
+    /// may also emphasise it) or back to idle.
+    pub fn set_bad(&self, bad: bool) -> bool {
+        self.handle.update(|t| t.bad = bad).is_some()
+    }
+
+    /// Sets the hover text.
+    pub fn set_tooltip(&self, tip: String) -> bool {
+        self.handle.update(|t| t.tip = tip).is_some()
     }
 
     /// The service ended (bus gone, shut down).
@@ -78,6 +84,8 @@ impl Tray {
 pub struct Sni {
     entries: Vec<Entry>,
     events: Sender<Event>,
+    bad: bool,
+    tip: String,
 }
 
 impl Sni {
@@ -116,6 +124,32 @@ impl ksni::Tray for Sni {
                 data: sni_map::pixmap(s),
             })
             .collect()
+    }
+
+    fn status(&self) -> ksni::Status {
+        if self.bad {
+            ksni::Status::NeedsAttention
+        } else {
+            ksni::Status::Active
+        }
+    }
+
+    fn attention_icon_pixmap(&self) -> Vec<ksni::Icon> {
+        sni_map::PIXMAP_SIZES
+            .iter()
+            .map(|&s| ksni::Icon {
+                width: s as i32,
+                height: s as i32,
+                data: sni_map::pixmap_bad(s),
+            })
+            .collect()
+    }
+
+    fn tool_tip(&self) -> ksni::ToolTip {
+        ksni::ToolTip {
+            title: self.tip.clone(),
+            ..Default::default()
+        }
     }
 
     fn menu(&self) -> Vec<MenuItem<Self>> {
