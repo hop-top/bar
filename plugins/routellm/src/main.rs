@@ -27,6 +27,7 @@ fn main() {
             "{}",
             serde_json::to_string(&check()).unwrap_or_else(|_| r#"{"warnings":[]}"#.into())
         ),
+        Some("--menu") => println!("{}", menu().to_json()),
         Some("--action") => std::process::exit(action(args.get(1).map(String::as_str))),
         Some("status" | "on" | "off" | "tiers" | "setup") => std::process::exit(cli(&args)),
         None => println!("{}", run().finish().to_json()),
@@ -85,6 +86,31 @@ fn run() -> Output {
         &render::Opts::from_input(&input),
         &input.session.model_id,
     )
+}
+
+/// `--menu`: answered from the cache; the proxy is not called.
+fn menu() -> bar_plugin::menu::Menu {
+    let Ok(cfg) = config::load(&config::path()) else {
+        return Default::default();
+    };
+    let state = bar_plugin::dirs::bar_state();
+    let t = now();
+    let snaps: Vec<Option<collect::Snapshot>> = cfg
+        .instances
+        .iter()
+        .map(|inst| {
+            let key = key_for(inst).ok()?;
+            Some(collect::cached(&Ctx {
+                inst,
+                key: &key,
+                state_dir: &state,
+                now: t,
+                want_tiers: false,
+                force: false,
+            }))
+        })
+        .collect();
+    bar_routellm::menu::build(&cfg.instances, &snaps, t)
 }
 
 fn check() -> CheckReport {

@@ -5,6 +5,7 @@
 pub mod cache;
 pub mod collect;
 pub mod config;
+pub mod menu;
 pub mod mgmt;
 pub mod render;
 pub mod toggle;
