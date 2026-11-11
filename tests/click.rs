@@ -109,12 +109,10 @@ fn toggle_flips_dotted_plugin_toggle_apart_from_text() {
 
 /// A PATH dir under `t` holding an executable `bar-tlc` (never run).
 fn tlc_path(t: &Tmp) -> PathBuf {
-    use std::os::unix::fs::PermissionsExt;
     let bin = t.path().join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     let f = bin.join("bar-tlc");
-    std::fs::write(&f, "#!/bin/sh\nexit 1\n").unwrap();
-    std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o755)).unwrap();
+    common::exe::write(&f, "#!/bin/sh\nexit 1\n");
     bin
 }
 

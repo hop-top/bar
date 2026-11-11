@@ -144,15 +144,13 @@ fn click_run_cli_refuses_through_fakes() {
     let calls = t.path().join("calls.log");
     for name in ["osascript", "tmux", "ps"] {
         let p = bin.join(name);
-        std::fs::write(
+        common::exe::write(
             &p,
             format!(
                 "#!/bin/sh\necho \"{name} $*\" >> '{}'\nexit 1\n",
                 calls.display()
             ),
-        )
-        .unwrap();
-        std::fs::set_permissions(&p, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        );
     }
     let url = format!("bar://cmd/clear?tty=ttys004&sid={SID}");
     Command::cargo_bin("bar")

@@ -220,15 +220,13 @@ fn fake_tmux(t: &Tmp, name: &str, code: i32) -> std::path::PathBuf {
     std::fs::create_dir_all(&bin).unwrap();
     let log = t.path().join("tmux.log");
     let p = bin.join("tmux");
-    std::fs::write(
+    common::exe::write(
         &p,
         format!(
             "#!/bin/sh\necho \"$*\" >> '{}'\necho '{name}'\nexit {code}\n",
             log.display()
         ),
-    )
-    .unwrap();
-    std::fs::set_permissions(&p, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    );
     log
 }
 
@@ -245,11 +243,14 @@ fn with_tmux(t: &Tmp) -> Run<'_> {
         .env("TMUX_PANE", "%5")
 }
 
-/// Runs the background job to completion, as `bar refresh` would.
+/// Runs the background job, as `bar refresh` would, until it stores a
+/// value: on a loaded host a run can pass the job's 2 s limit and store
+/// nothing, which says nothing about the code under test.
 fn refresh_now(t: &Tmp) {
     let (iso, cwd) = common::isolation(t.path());
+    let key = cache_key(TMUX, "%5");
     let req = Request {
-        key: cache_key(TMUX, "%5"),
+        key: key.clone(),
         job: Job::Tmux { pane: "%5".into() },
         lock: String::new(),
     };
@@ -258,15 +259,20 @@ fn refresh_now(t: &Tmp) {
         t.path().join("tmux-bin").display(),
         std::env::var("PATH").unwrap_or_default()
     );
-    assert_cmd::Command::cargo_bin("bar")
-        .unwrap()
-        .envs(iso)
-        .env("PATH", path)
-        .env("TMUX", TMUX)
-        .current_dir(cwd)
-        .args(["refresh", &req.to_json()])
-        .assert()
-        .success();
+    let cache = Cache::new(&t.path().join("state"));
+    let stored = || {
+        assert_cmd::Command::cargo_bin("bar")
+            .unwrap()
+            .envs(iso.iter().cloned())
+            .env("PATH", &path)
+            .env("TMUX", TMUX)
+            .current_dir(&cwd)
+            .args(["refresh", &req.to_json()])
+            .assert()
+            .success();
+        cache.read_fresh(&key, 3600).is_some()
+    };
+    assert!(common::wait_until(common::BG_WAIT, stored), "never stored");
 }
 
 #[test]
@@ -325,9 +331,19 @@ fn tmux_hidden_outside_tmux_or_with_bad_pane() {
 fn tmux_failure_backs_off() {
     let t = Tmp::new();
     let log = fake_tmux(&t, "boom", 1);
-    for _ in 0..3 {
+    let cache = Cache::new(&t.path().join("state"));
+    let key = cache_key(TMUX, "%5");
+    with_tmux(&t).go();
+    // the background refresh ran tmux, failed and let go of its lock
+    let failed = || cache.fail_path(&key).exists() && !cache.lock_path(&key).exists();
+    assert!(common::wait_until(common::BG_WAIT, failed), "no failed run");
+    for _ in 0..2 {
         with_tmux(&t).go();
-        std::thread::sleep(Duration::from_millis(600));
+        // a render starting a refresh takes the lock before it returns
+        assert!(
+            !cache.lock_path(&key).exists(),
+            "refreshed while backing off"
+        );
     }
     let n = std::fs::read_to_string(log).unwrap().lines().count();
     assert_eq!(n, 1, "retried inside the backoff window");

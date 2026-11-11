@@ -21,12 +21,10 @@ fn seed(t: &Tmp, d: &std::path::Path, body: &str) -> std::path::PathBuf {
     std::fs::create_dir_all(&bin).unwrap();
     let log = t.path().join("git.log");
     let g = bin.join("git");
-    std::fs::write(
+    common::exe::write(
         &g,
         format!("#!/bin/sh\necho \"$*\" >> '{}'\nexit 1\n", log.display()),
-    )
-    .unwrap();
-    std::fs::set_permissions(&g, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    );
     log
 }
 

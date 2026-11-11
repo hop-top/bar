@@ -9,7 +9,6 @@ use render_fx::*;
 
 use hop_bar::cache::Cache;
 use hop_bar::placeholders::jj::cache_key;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -32,16 +31,14 @@ fn fake_jj(t: &Tmp, out: &str) -> (String, PathBuf) {
     let body = t.path().join("jj.out");
     std::fs::write(&body, out).unwrap();
     let jj = bin.join("jj");
-    std::fs::write(
+    common::exe::write(
         &jj,
         format!(
             "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\" >> '{}'; done\n/bin/cat '{}'\n",
             log.display(),
             body.display()
         ),
-    )
-    .unwrap();
-    std::fs::set_permissions(&jj, PermissionsExt::from_mode(0o755)).unwrap();
+    );
     (bin.display().to_string(), log)
 }
 

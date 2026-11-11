@@ -231,24 +231,23 @@ fn no_repo_none() {
 }
 
 /// Renders `d` with a fake `git` first on `PATH`; returns the output and
-/// what the fake logged. `edit` adjusts the isolated environment.
+/// the file the fake logs its calls to. `edit` adjusts the isolated
+/// environment.
 fn render_with_fake_git(
     t: &Tmp,
     d: &Path,
     edit: impl FnOnce(&mut Vec<(&'static str, std::ffi::OsString)>),
-) -> (String, String) {
+) -> (String, PathBuf) {
     let home = t.path().join("home");
     let (mut iso, cwd) = common::isolation(&home);
     let log = t.path().join("git-calls.log");
     let fake = t.path().join("fake-git");
     std::fs::create_dir_all(&fake).unwrap();
     let g = fake.join("git");
-    std::fs::write(
+    common::exe::write(
         &g,
         format!("#!/bin/sh\necho \"$*\" >> '{}'\nexit 1\n", log.display()),
-    )
-    .unwrap();
-    std::fs::set_permissions(&g, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    );
     for (k, v) in iso.iter_mut() {
         if *k == "PATH" {
             let mut p = fake.clone().into_os_string();
@@ -283,9 +282,18 @@ fn render_with_fake_git(
     }
     let mut text = String::new();
     std::io::Read::read_to_string(&mut child.stdout.take().unwrap(), &mut text).unwrap();
-    // background refreshes of prs/issues run detached; give them time
-    std::thread::sleep(std::time::Duration::from_millis(800));
-    (text, std::fs::read_to_string(&log).unwrap_or_default())
+    (text, log)
+}
+
+/// What the fake `git` logged.
+fn calls(log: &Path) -> String {
+    std::fs::read_to_string(log).unwrap_or_default()
+}
+
+/// Whether the render handed the remote to `git`: the detached refresh
+/// it started ran `git remote get-url`.
+fn asked_git(log: &Path) -> bool {
+    common::wait_until(common::BG_WAIT, || calls(log).contains("get-url"))
 }
 
 fn github_repo(t: &Tmp) -> PathBuf {
@@ -306,12 +314,14 @@ fn keep_fast_path(env: &mut Vec<(&'static str, std::ffi::OsString)>) {
 fn render_spawns_no_git_on_plain_repo() {
     let t = Tmp::new();
     let d = github_repo(&t);
-    let (text, calls) = render_with_fake_git(&t, &d, keep_fast_path);
+    let (text, log) = render_with_fake_git(&t, &d, keep_fast_path);
     assert!(
         text.contains("main") && text.contains("github.com/o/r"),
         "{text:?}"
     );
-    assert_eq!(calls, "", "git was spawned");
+    // background refreshes of prs/issues run detached; give them time
+    std::thread::sleep(std::time::Duration::from_millis(800));
+    assert_eq!(calls(&log), "", "git was spawned");
 }
 
 #[test]
@@ -324,11 +334,11 @@ fn config_env_hands_over_to_git() {
     ] {
         let t = Tmp::new();
         let d = github_repo(&t);
-        let (_, calls) = render_with_fake_git(&t, &d, |env| {
+        let (_, log) = render_with_fake_git(&t, &d, |env| {
             keep_fast_path(env);
             env.push((k, v.into()));
         });
-        assert!(calls.contains("get-url"), "{k}: git not asked: {calls:?}");
+        assert!(asked_git(&log), "{k}: git not asked: {:?}", calls(&log));
     }
 }
 
@@ -340,8 +350,8 @@ fn fifo_in_git_files_never_blocks() {
         let fifo = d.join(rel);
         let _ = std::fs::remove_file(&fifo);
         assert!(Std::new("mkfifo").arg(&fifo).status().unwrap().success());
-        let (_, calls) = render_with_fake_git(&t, &d, keep_fast_path);
-        assert!(calls.contains("get-url"), "{rel}: not handed to git");
+        let (_, log) = render_with_fake_git(&t, &d, keep_fast_path);
+        assert!(asked_git(&log), "{rel}: not handed to git");
     }
 }
 
@@ -351,12 +361,12 @@ fn fifo_global_config_never_blocks() {
     let d = github_repo(&t);
     let fifo = t.path().join("global-fifo");
     assert!(Std::new("mkfifo").arg(&fifo).status().unwrap().success());
-    let (_, calls) = render_with_fake_git(&t, &d, |env| {
+    let (_, log) = render_with_fake_git(&t, &d, |env| {
         keep_fast_path(env);
         env.retain(|(k, _)| *k != "GIT_CONFIG_GLOBAL");
         env.push(("GIT_CONFIG_GLOBAL", fifo.clone().into()));
     });
-    assert!(calls.contains("get-url"), "not handed to git");
+    assert!(asked_git(&log), "not handed to git");
 }
 
 #[test]
@@ -367,6 +377,6 @@ fn oversized_config_hands_over_to_git() {
     let mut body = std::fs::read_to_string(&cfg).unwrap();
     body.push_str(&format!("# {}\n", "x".repeat(2 * 1024 * 1024)));
     std::fs::write(&cfg, body).unwrap();
-    let (_, calls) = render_with_fake_git(&t, &d, keep_fast_path);
-    assert!(calls.contains("get-url"), "{calls:?}");
+    let (_, log) = render_with_fake_git(&t, &d, keep_fast_path);
+    assert!(asked_git(&log), "{:?}", calls(&log));
 }

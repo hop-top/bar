@@ -62,7 +62,7 @@ devcontainer exec --workspace-folder . make check
 - Conventional Commits: `type(scope): subject`; types `feat fix refactor build ci chore docs style perf test`.
 - Test first. A fix gets a test that fails without it.
 - Keep files under about 500 lines; comment only non-obvious logic.
-- Tests that touch state use temp `HOME` / `XDG_*` dirs, a fake `gh` on `PATH` and a non-git working directory. `tests/common` holds the helpers. Temp dirs go under `<temp>/bar-tests` through `tests/common/tmp.rs`: each is removed when its fixture drops, and any left behind (a killed run, a detached `bar refresh` writing late) is swept by a later test run once 10 minutes old. `BAR_TEST_KEEP=1 cargo test ...` keeps a failing test's dir and prints its path. Never read real config, tokens or the keychain.
+- Tests that touch state use temp `HOME` / `XDG_*` dirs, a fake `gh` on `PATH` and a non-git working directory. `tests/common` holds the helpers. Temp dirs go under `<temp>/bar-tests` through `tests/common/tmp.rs`: each is removed when its fixture drops, and any left behind (a killed run, a detached `bar refresh` writing late) is swept by a later test run once 10 minutes old. `BAR_TEST_KEEP=1 cargo test ...` keeps a failing test's dir and prints its path. A fake executable is written with `tests/common/exe.rs` (by a child process, so a sibling test's spawn cannot leave it "text file busy"), and a test waiting on detached work polls with `common::wait_until` rather than sleeping a fixed time. Never read real config, tokens or the keychain.
 
 ## Branches
 

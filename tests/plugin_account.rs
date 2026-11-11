@@ -52,8 +52,7 @@ fn credits_setup(fx: &Fx) -> std::path::PathBuf {
     std::fs::create_dir_all(&fake).unwrap();
     let exe = |name: &str, body: String| {
         let p = fake.join(name);
-        std::fs::write(&p, body).unwrap();
-        std::fs::set_permissions(&p, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        common::exe::write(&p, body);
     };
     let d = fake.display();
     exe(

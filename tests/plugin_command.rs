@@ -4,12 +4,10 @@
 mod common;
 
 use assert_cmd::Command;
-use std::os::unix::fs::PermissionsExt;
 
 fn script(dir: &std::path::Path, name: &str, body: &str) {
     let p = dir.join(name);
-    std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
-    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+    common::exe::write(&p, format!("#!/bin/sh\n{body}\n"));
 }
 
 fn bar(home: &common::tmp::Dir, bin: &std::path::Path) -> Command {

@@ -339,22 +339,19 @@ fn job_round_trips() {
 mod fake_curl {
     use super::*;
     use assert_cmd::Command;
-    use std::os::unix::fs::PermissionsExt;
     use std::path::Path;
     use std::time::{Duration, Instant};
 
     fn fx(t: &Tmp, curl_body: &str) -> Command {
         let (envs, cwd) = common::isolation(t.path());
         let fake = t.path().join("fake-bin/curl");
-        std::fs::write(
+        common::exe::write(
             &fake,
             format!(
                 "#!/bin/sh\necho \"$@\" >> \"{}/argv\"\n{curl_body}\n",
                 t.path().display()
             ),
-        )
-        .unwrap();
-        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+        );
         let mut c = Command::cargo_bin("bar").unwrap();
         c.envs(envs).current_dir(cwd);
         c
