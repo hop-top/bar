@@ -47,6 +47,12 @@ pub fn preview(env: &Env, o: &Opts) -> Result<Preview, String> {
         plan.path.clone(),
         exists,
     )];
+    // the backup of the old settings removes the oldest ones
+    if exists {
+        let dir = crate::click::settings::backup_dir(&env.state_dir);
+        let old = crate::rewrite::rotated_out(&plan.path, crate::rewrite::Backups::In(&dir));
+        changes.extend(old.into_iter().map(|p| ("remove", p, false)));
+    }
     let rec = record_path(&env.state_dir, &plan.path);
     match &plan.record {
         Record::Write(_) => {

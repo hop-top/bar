@@ -1124,6 +1124,7 @@ In text the plan is a line per file, `would create <path>`, `would update <path>
 
 - `command`: the command, as in [command contracts](#command-contracts) without `bar`.
 - `changes`: the files it would write, in order; empty when nothing would change. `action` is `create`, `update` or `remove`; `backup` is true when the old file would be backed up first; `bar toggle` adds `current` and `proposed`, the view now and after.
+- Housekeeping the run does is listed too, as `remove` changes: the old backups a new backup pushes out (the newest 5 are kept), after the file backed up; and for `bar toggle <key>?sid=<id>`, the toggle dirs of other sessions idle for 30 days, which it removes first, even when the toggle itself would not change.
 - The command's own fields: `bar init` `preset`; `bar install` `settings`, `diff` and `notes` (the lines it would print besides the diff; `changes` also lists bar's record of the status line it replaces, in the state dir); `bar config import` `diff`; `bar toggle` `key` and `view` (the view after); `bar prices update` `source` (the URL it would fetch).
 
 ### Command contracts
