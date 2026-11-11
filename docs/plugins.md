@@ -165,7 +165,7 @@ A plugin with the `check` capability answers `bar-<plugin> --check` (5 s limit, 
 
 ### Menu
 
-A plugin with the `menu` capability answers `bar-<plugin> --menu` with the groups and items a desktop menu shows for it: a picker, toggles, buttons and information rows. Each item names one of the plugin's declared [actions](#actions) and the token values it takes; choosing the item runs that action exactly as a click does. The call is made directly (no shell), with a 3 s limit, `BAR_STATE_DIR` set, and this on stdin:
+A plugin with the `menu` capability answers `bar-<plugin> --menu` with the groups and items a desktop menu shows for it: a picker, toggles, buttons and information rows. Each item names one of the plugin's declared [actions](#actions) and the token values it takes; choosing the item runs that action exactly as a click does. bar asks only plugins the user names in a `tray` line, and the [tray](tray.md) runs only the actions those lines grant. The call is made directly (no shell), with a 3 s limit, `BAR_STATE_DIR` set, and this on stdin:
 
 ```json
 { "options": { "provider": "auto" }, "toggles": { "scope": true },
@@ -201,9 +201,9 @@ Stdout is one JSON object:
   - `buttons`: one-shot actions;
   - `info`: disabled rows, text only; their items carry no action.
 - `items` (required, an array of at most 16 objects per group): the rows. Each has `id`, `label` (required, visibly non-empty), optionally `detail` (a second line or a tooltip, as the desktop allows), `checked` (default `false`), `enabled` (default `true`; a disabled item is shown but cannot be chosen), `style` (`good`, `warn`, `bad` or `dim`, as for a render; anything else is dropped), and outside `info` groups `action` (required, a declared action name) with `tokens`.
-- `id` of a group or item: letters, digits, `_`, `@`, `:` and `-`, 1 to 32 characters, unique among its siblings (the first of a duplicated id is kept). A dot is not allowed: bar joins `<plugin>.<group>.<item>` into the one id a menu choice is run by, so an id should stay the same from one call to the next for the same thing (an account index, an instance). Stable ids keep a choice made on an older menu meaningful.
+- `id` of a group or item: letters, digits, `_`, `@`, `:` and `-`, 1 to 32 characters, unique among its siblings (the first of a duplicated id is kept). A dot is not allowed: bar joins `<plugin>.<group>.<item>` into the one id a menu choice is run by, so an id should stay the same from one call to the next for the same thing (an account index, an instance). Stable ids keep a choice made on an older menu meaningful. An item whose joined id would be longer than 96 characters is left out of the tray's menu.
 - `tokens` follow the [render output](#render) rules: names from `a-z0-9_-`, values of at most 64 characters from `A-Za-z0-9._@-`, at most 8; an invalid token is dropped, more than 8 drop the item. They must name exactly the tokens the action declares (`actions.<name>.tokens`): an item whose action is undeclared, or whose token names differ from the declaration, is dropped. An action declared with `confirm` is asked for confirmation by the menu before it runs.
-- `label`, `detail` and a group's `label` are sanitised like `text` (control and format characters dropped, tabs and line breaks become spaces), trimmed and cut to 120 characters. Only the fields above are kept; anything else in the output is discarded.
+- `label`, `detail` and a group's `label` are sanitised like `text` (control and format characters dropped, tabs and line breaks become spaces), trimmed and cut to 120 characters (the tray's menu keeps at most 80). Only the fields above are kept; anything else in the output is discarded.
 - A group without a known `kind`, a valid `id` or any usable item is dropped; `{"groups": []}` is a valid answer (nothing to show). An output that is not an object with a `groups` array, a non-zero exit or a timeout means no menu for the plugin this time.
 
 Rules a menu plugin follows:
