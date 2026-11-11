@@ -491,6 +491,29 @@ mod job {
         (cache, key)
     }
 
+    /// `refresh`, with the clock before and after it. The job reads its
+    /// clock in between, so a `retry_at` is exactly `wait` past a second in
+    /// `before..=after`, however long the run took.
+    fn timed(
+        t: &Tmp,
+        envs: &[(&'static str, std::ffi::OsString)],
+        cwd: &Path,
+    ) -> (Cache, String, (i64, i64)) {
+        let before = now();
+        let (cache, key) = refresh(t, envs, cwd);
+        (cache, key, (before, now()))
+    }
+
+    fn assert_retry(retry_at: i64, (before, after): (i64, i64), wait: i64, what: &str) {
+        let ok = (before + wait..=after + wait).contains(&retry_at);
+        assert!(
+            ok,
+            "{what}: {retry_at} not in {}..={}",
+            before + wait,
+            after + wait
+        );
+    }
+
     fn token_nowhere(t: &Tmp, cache: &Cache, key: &str) {
         let d = t.path();
         let argv = std::fs::read_to_string(d.join("curl.argv")).unwrap();
@@ -601,11 +624,10 @@ mod job {
         envs.push(("BAR_REFRESH_TIMEOUT", "2".into()));
         let d = t.path();
         exe(&d.join("fake-bin/security"), "#!/bin/sh\nsleep 5\n");
-        let (cache, key) = refresh(&t, &envs, &cwd);
+        let (cache, key, span) = timed(&t, &envs, &cwd);
         assert!(!d.join("curl.argv").exists());
         let v = Data::from_json(&cache.read_fresh(&key, 3600).unwrap()).unwrap();
-        let wait = v.retry_at - now();
-        assert!((3500..=3600).contains(&wait), "{wait}");
+        assert_retry(v.retry_at, span, 3600, "blocked keychain");
     }
 
     /// The keychain read and the request share the refresh time limit, so
@@ -640,11 +662,10 @@ mod job {
         let key = usageapi::cache_key(&t.path().join("claude").to_string_lossy());
         let old = sample(now() - 600);
         cache.store(&key, &old.to_json()).unwrap();
-        refresh(&t, &envs, &cwd);
+        let (_, _, span) = timed(&t, &envs, &cwd);
         let d = Data::from_json(&cache.read_fresh(&key, 3600).unwrap()).unwrap();
         assert_eq!(d.models, old.models);
-        let wait = d.retry_at - now();
-        assert!((100..=121).contains(&wait), "{wait}");
+        assert_retry(d.retry_at, span, 120, "Retry-After");
         // while waiting, the job does not call curl again
         std::fs::remove_file(t.path().join("curl.argv")).unwrap();
         refresh(&t, &envs, &cwd);
@@ -685,23 +706,22 @@ mod job {
             let mut prev = old.clone();
             prev.fails = fails;
             cache.store(&key, &prev.to_json()).unwrap();
-            refresh(&t, &envs, &cwd);
+            let (_, _, span) = timed(&t, &envs, &cwd);
             let d = Data::from_json(&cache.read_fresh(&key, 3600).unwrap()).unwrap();
             assert_eq!(
                 (&d.models, &d.extra, d.at),
                 (&old.models, &old.extra, old.at)
             );
             assert_eq!(d.fails, fails + 1);
-            let got = d.retry_at - now();
-            assert!((wait - 5..=wait).contains(&got), "after {fails}: {got}");
+            assert_retry(d.retry_at, span, wait, &format!("after {fails}"));
         }
         // a curl failure backs off the same way
         t.write("resp/status", "not-a-status");
         cache.store(&key, &old.to_json()).unwrap();
-        refresh(&t, &envs, &cwd);
+        let (_, _, span) = timed(&t, &envs, &cwd);
         let d = Data::from_json(&cache.read_fresh(&key, 3600).unwrap()).unwrap();
         assert_eq!(d.fails, 1);
-        assert!(d.retry_at - now() > 250);
+        assert_retry(d.retry_at, span, 300, "curl failure");
         // success clears the count
         t.write("resp/status", "200");
         let mut prev = old.clone();
