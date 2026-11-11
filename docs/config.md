@@ -51,7 +51,7 @@ A project file comes with the repository, so what it may do is set in your confi
 | `safe` (default) | applied, except: no `%…%` values (commands or environment variables) in placeholder options or `default` lines, no `plugin` lines, no `set update-check`, `set service-status`, `set usage-api`, `set claude-dir` or `set gitlab-hosts`, and no plugin placeholder your config does not name (in a layout, a `default` line or a `plugin` line). Each such line is left out |
 | `full` | applied like your own config, `%cmd%` values and any plugin included |
 
-`set project-config` is read from your config only; in a project file it is left out. So are `set usage-source`, `set account-source` and `action` lines, whatever the mode.
+`set project-config` is read from your config only; in a project file it is left out. So are `set usage-source`, `set account-source`, `action` and `tray` lines and `set tray-views` and `set tray-poll`, whatever the mode.
 
 `safe` limits what a project file adds, not what your config already allows. Under `safe` a project file can still use every built-in placeholder, including the git placeholders, which may run `git` in the session's directory, and `prs` and `issues`, which run `gh` or `glab` for the repository's remote (in bar's state directory, naming the repository with `-R`, so nothing in the project's directory reaches them), and it can pass options to the plugins your config names, which then run with those options (the plugins named by `usage-source` and `account-source` included, so a repository can change which windows or account label they supply). Use `off` for repositories you do not trust.
 
@@ -59,10 +59,11 @@ A project file comes with the repository, so what it may do is set in your confi
 
 | Directive | Form |
 |-----------|------|
-| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-64) `subagent subagent-hide separator gap wrap max-rows refresh icons icon-width skin skin-glyphs palette color-depth gradient claude-dir compact-at project-config update-check service-status usage-api usage-source account-source gitlab-hosts budget-session budget-today budget-month budget-block budget-warn color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
+| `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-64) `subagent subagent-hide separator gap wrap max-rows refresh icons icon-width skin skin-glyphs palette color-depth gradient claude-dir compact-at project-config update-check service-status usage-api usage-source account-source gitlab-hosts tray-views tray-poll budget-session budget-today budget-month budget-block budget-warn color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
 | `default` | `default <placeholder> key=value ...` |
 | `account` | `account "<glob>" <label> <color>` |
 | `action` | `action <placeholder> <plugin>.<action>`: a click on the placeholder runs a plugin's declared action; see [Plugin actions](#plugin-actions). Your config only |
+| `tray` | `tray <plugin>[.<action>]`: lets the tray app list a plugin's menu and run its actions (all of them, or one); see [tray](tray.md). Your config only. An `action` line does not grant it |
 | `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%`; see [Rules](#rules) |
 | `plugin` | `plugin <name> key=value ...`; see [plugins](plugins.md#render) |
 
@@ -95,6 +96,8 @@ Quote values with spaces (double quotes; a value is one token). `#` outside quot
 | `project-config` | `off`, `safe` (default) or `full`: what a project `.bar.conf` may do. See [Project config](#project-config) |
 | `budget-session`, `budget-today`, `budget-month`, `budget-block` | Dollar budget for [budget](#budget): `$20`, `20` or `12.50` (more than zero, at most two decimals); `off` clears it. Unset by default |
 | `budget-warn` | Percent of a budget from which spend takes the warn colour, `1%`-`100%`, default `80%`. See [budget](#budget) |
+| `tray-views` | `off` (default) or `on`: the [tray](tray.md) menu also lists the view toggles |
+| `tray-poll` | How often the [tray](tray.md) polls while idle, `10s` to `10m`. Default `30s` |
 | `gitlab-hosts` | Self-hosted GitLab hosts, comma-separated (`git.example.com,gitlab.corp.example`), whose remotes [prs and issues](#prs-and-issues) read with `glab`; gitlab.com always counts. `""` clears it. Default none |
 | `color.good`, `color.warn`, `color.bad`, `ramp` | State colours (one colour) and usage ramp (exactly 11 colours, quoted, worst score first). See [Colours](#colours) |
 | `price` | Model price override for [spendhist](#spendhist) |
