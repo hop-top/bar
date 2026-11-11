@@ -130,10 +130,13 @@ fn nearer_than_git() {
     assert_eq!(nearer_than(&ws, Some(&ws)), None, "colocated");
     assert_eq!(nearer_than(&ws.join("x"), Some(&ws.join("x"))), None);
     // reached through a symlink, compared to the canonical git top
-    let link = d.join("link");
-    std::os::unix::fs::symlink(&ws, &link).unwrap();
-    assert_eq!(nearer_than(&link, Some(&ws)), None, "colocated via symlink");
-    assert_eq!(nearer_than(&ws, Some(&link)), None);
+    #[cfg(unix)]
+    {
+        let link = d.join("link");
+        std::os::unix::fs::symlink(&ws, &link).unwrap();
+        assert_eq!(nearer_than(&link, Some(&ws)), None, "colocated via symlink");
+        assert_eq!(nearer_than(&ws, Some(&link)), None);
+    }
     let _ = std::fs::remove_dir_all(&d);
 }
 
