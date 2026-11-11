@@ -2,6 +2,7 @@ use std::io::Write;
 
 mod cli_out;
 mod config_cmd;
+mod help_json;
 
 use std::ffi::OsString;
 
@@ -206,6 +207,10 @@ fn main() {
     }
     let cli_cmd: Command = Cli::command();
     let (cli_cmd, _ctx) = register_output_flags(cli_cmd, RegisterOutputFlagsOptions::default());
+    let rest: Vec<OsString> = std::env::args_os().skip(1).collect();
+    if let Some(format) = help_json::requested(&rest) {
+        return help_json::print(cli_cmd, &rest, &format);
+    }
     let matches = cli_out::matches(cli_cmd);
     match matches.subcommand() {
         Some(("render", _)) => render(),

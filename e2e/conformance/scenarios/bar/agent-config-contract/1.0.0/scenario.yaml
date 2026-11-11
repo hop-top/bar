@@ -285,6 +285,12 @@ assertions:
     factor: 5
     path: commands.0.side_effect
     parse: json
+  - id: help-json-declares-idempotency
+    kind: output_field_present
+    on: help_json
+    factor: 7
+    path: commands.0.idempotent
+    parse: json
 
   # F3: --format json is honoured by every command, errors included
   - id: init-error-json
