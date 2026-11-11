@@ -79,6 +79,20 @@ impl Record {
 mod tests {
     use super::*;
 
+    /// `p`, absolute on this OS: Windows wants a drive.
+    fn abs(p: &str) -> String {
+        if cfg!(windows) {
+            format!("C:{p}")
+        } else {
+            p.to_string()
+        }
+    }
+
+    /// The JSON `text` with each string value starting `/` made [`abs`].
+    fn json(text: &str) -> String {
+        text.replace("\"/", &format!("\"{}", abs("/")))
+    }
+
     const REC: &str = r#"{"bar":"/opt/bar/bar","tray":"/opt/bar/bar-tray",
         "state_dir":"/s/bar","claude_dir":"/h/.claude","follows_pointer":false,
         "env":{"BAR_STATE_DIR":"/s/bar","XDG_STATE_HOME":null,"PATH":"/usr/bin",
@@ -86,16 +100,16 @@ mod tests {
 
     #[test]
     fn parses_paths_and_handler_variables_only() {
-        let r = parse(REC).unwrap();
-        assert_eq!(r.bar, PathBuf::from("/opt/bar/bar"));
-        assert_eq!(r.state_dir, PathBuf::from("/s/bar"));
-        assert_eq!(r.lock(), PathBuf::from("/s/bar/tray.lock"));
+        let r = parse(&json(REC)).unwrap();
+        assert_eq!(r.bar, PathBuf::from(abs("/opt/bar/bar")));
+        assert_eq!(r.state_dir, PathBuf::from(abs("/s/bar")));
+        assert_eq!(r.lock(), PathBuf::from(abs("/s/bar/tray.lock")));
         assert_eq!(
             r.env,
             [
-                ("BAR_STATE_DIR".to_string(), Some("/s/bar".to_string())),
+                ("BAR_STATE_DIR".to_string(), Some(abs("/s/bar"))),
                 ("CLAUDE_CONFIG_DIR".to_string(), None),
-                ("PATH".to_string(), Some("/usr/bin".to_string())),
+                ("PATH".to_string(), Some(abs("/usr/bin"))),
                 ("XDG_STATE_HOME".to_string(), None),
             ]
         );
@@ -103,15 +117,25 @@ mod tests {
 
     #[test]
     fn refuses_relative_or_missing_paths() {
-        assert!(parse(r#"{"bar":"bar","state_dir":"/s"}"#)
+        let p = |text: &str| parse(&json(text));
+        assert!(p(r#"{"bar":"bar","state_dir":"/s"}"#)
             .unwrap_err()
             .contains("bar is not absolute"));
-        assert!(parse(r#"{"bar":"/b","state_dir":"s"}"#)
+        assert!(p(r#"{"bar":"/b","state_dir":"s"}"#)
             .unwrap_err()
             .contains("state_dir is not absolute"));
-        assert!(parse(r#"{"bar":"/b"}"#).is_err());
-        assert!(parse("not json").is_err());
-        assert_eq!(parse(r#"{"bar":"/b","state_dir":"/s"}"#).unwrap().env, []);
+        assert!(p(r#"{"bar":"/b"}"#).is_err());
+        assert!(p("not json").is_err());
+        assert_eq!(p(r#"{"bar":"/b","state_dir":"/s"}"#).unwrap().env, []);
+    }
+
+    /// A root without a drive is not absolute on Windows.
+    #[cfg(windows)]
+    #[test]
+    fn a_path_without_a_drive_is_refused() {
+        assert!(parse(r#"{"bar":"/b","state_dir":"C:/s"}"#)
+            .unwrap_err()
+            .contains("bar is not absolute"));
     }
 
     #[test]

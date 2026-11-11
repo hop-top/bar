@@ -135,8 +135,16 @@ fn path_probe() {
         dir.join(BAR_NAME).is_file(),
         "the probe needs `bar` on PATH"
     );
-    let e = locate(None).unwrap_err();
-    assert_eq!(e, "no `bar` beside bar-tray; pass --bar <path>");
+    // on Windows cargo leaves `bar.exe` beside the test binary in
+    // `deps`: finding that one is right, the one on `PATH` never is
+    let beside = bar_path(&std::env::current_exe().unwrap());
+    if beside.is_file() {
+        assert_eq!(locate(None).unwrap(), beside);
+        assert_ne!(beside, dir.join(BAR_NAME));
+    } else {
+        let e = locate(None).unwrap_err();
+        assert_eq!(e, "no `bar` beside bar-tray; pass --bar <path>");
+    }
 }
 
 #[test]

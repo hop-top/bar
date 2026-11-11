@@ -51,6 +51,16 @@ fn write_pid(path: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Seek};
+
+    /// The lock file's text, read through the holder's handle: Windows
+    /// refuses every other handle while the lock is held.
+    fn held(f: &mut File) -> String {
+        let mut s = String::new();
+        f.rewind().unwrap();
+        f.read_to_string(&mut s).unwrap();
+        s
+    }
 
     fn tmp(name: &str) -> std::path::PathBuf {
         let d = std::env::temp_dir().join(format!("bar-tray-lock-{}-{name}", std::process::id()));
@@ -61,11 +71,8 @@ mod tests {
     #[test]
     fn second_holder_is_refused_until_the_first_lets_go() {
         let p = tmp("two");
-        let first = acquire(&p).unwrap().expect("first takes the lock");
-        assert_eq!(
-            std::fs::read_to_string(&p).unwrap().trim(),
-            std::process::id().to_string()
-        );
+        let mut first = acquire(&p).unwrap().expect("first takes the lock");
+        assert_eq!(held(&mut first), format!("{}\n", std::process::id()));
         let pid = pid_path(&p);
         assert_eq!(pid, p.with_file_name("tray.pid"));
         assert_eq!(
@@ -75,10 +82,7 @@ mod tests {
         std::fs::write(&pid, "1\n").unwrap();
         assert!(acquire(&p).unwrap().is_none(), "second is refused");
         // a refused start leaves the owner's pid alone, in both files
-        assert_eq!(
-            std::fs::read_to_string(&p).unwrap().trim(),
-            std::process::id().to_string()
-        );
+        assert_eq!(held(&mut first), format!("{}\n", std::process::id()));
         assert_eq!(std::fs::read_to_string(&pid).unwrap(), "1\n");
         drop(first);
         assert!(acquire(&p).unwrap().is_some(), "free again once dropped");
@@ -91,13 +95,10 @@ mod tests {
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(&p, "999999999\nleftover\n").unwrap();
         std::fs::write(pid_path(&p), "999999999\nleftover\n").unwrap();
-        let _held = acquire(&p).unwrap().unwrap();
-        for f in [p.clone(), pid_path(&p)] {
-            assert_eq!(
-                std::fs::read_to_string(&f).unwrap(),
-                format!("{}\n", std::process::id())
-            );
-        }
+        let mut f = acquire(&p).unwrap().unwrap();
+        let want = format!("{}\n", std::process::id());
+        assert_eq!(held(&mut f), want);
+        assert_eq!(std::fs::read_to_string(pid_path(&p)).unwrap(), want);
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
