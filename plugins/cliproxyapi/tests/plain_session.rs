@@ -1,9 +1,8 @@
 #![cfg(unix)]
-//! A session without a proxy (`ANTHROPIC_BASE_URL` unset): with one
-//! instance configured, `#{account}` still links the action bound to it,
-//! while showing the signed-in account. The link follows the plugin's
-//! declaration: `next` is declared everywhere, `pick` only where a chooser
-//! exists (macOS), so a binding of it elsewhere draws no link.
+//! A session without a proxy (`ANTHROPIC_BASE_URL` unset): `#{account}`
+//! shows the signed-in account and links no account action, even with one
+//! instance configured, since switching the proxy's account would not
+//! change the account this session uses.
 
 mod fake;
 
@@ -139,19 +138,12 @@ fn account_bound_to(action: &str) -> (String, bool) {
 }
 
 #[test]
-fn account_links_the_bound_action_in_a_plain_session() {
-    // declared everywhere: the lone instance's tokens link it
-    let (raw, declared) = account_bound_to("next");
-    assert!(declared, "the plugin declares next");
-    assert!(
-        raw.contains("bar://action/cliproxyapi.next?"),
-        "no next link in {raw:?}"
-    );
-    // declared only with a chooser: linked exactly where it is
-    let (raw, declared) = account_bound_to("pick");
-    assert_eq!(
-        raw.contains("bar://action/cliproxyapi.pick?"),
-        declared,
-        "pick link against its declaration in {raw:?}"
-    );
+fn account_links_no_action_in_a_plain_session() {
+    for action in ["next", "pick"] {
+        let (raw, _) = account_bound_to(action);
+        assert!(
+            !raw.contains("bar://action/"),
+            "{action}: a session outside the proxy gets no account link: {raw:?}"
+        );
+    }
 }

@@ -381,7 +381,7 @@ fn the_plugin_s_own_alias_beats_the_lines_but_the_colour_still_comes_from_the_li
 }
 
 #[test]
-fn a_session_without_a_proxy_gets_the_tokens_of_a_lone_instance() {
+fn a_session_without_a_proxy_gets_no_tokens() {
     let s = Server::start(|_| ok("{}"));
     let other = Server::start(|_| ok("{}"));
     let h = Home::new("plain");
@@ -410,11 +410,8 @@ fn a_session_without_a_proxy_gets_the_tokens_of_a_lone_instance() {
         o.get("account").is_none() && o.get("items").is_none(),
         "{o}"
     );
-    assert_eq!(
-        o["tokens"],
-        json!({"provider":"claude","instance":bar_cliproxyapi::switch::instance_id(&s.origin())})
-    );
-    // several instances: which one would it be
+    // even with one instance: switching it would not change this session
+    assert!(o.get("tokens").is_none(), "{o}");
     assert!(render(h.cmd(&two), input.clone()).get("tokens").is_none());
     // a session on some other URL is not a plain one
     let o = render(
