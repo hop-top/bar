@@ -226,6 +226,48 @@ mod unix {
         assert!(t.elapsed() < Duration::from_secs(5));
     }
 
+    /// The subshell is a grandchild holding stderr (`; :` keeps the shell
+    /// from exec'ing it); the kill must reach it too.
+    #[test]
+    fn limit_kills_what_the_child_started() {
+        let mark = std::env::temp_dir().join(format!("bar-tray-tree-{}", std::process::id()));
+        let _ = std::fs::remove_file(&mark);
+        let script = format!("(sleep 1; touch '{}'); :", mark.display());
+        let t = Instant::now();
+        let e = run(
+            Path::new(SH),
+            &sh(&script),
+            false,
+            Duration::from_millis(100),
+        );
+        assert_eq!(e.unwrap_err(), "timed out");
+        assert!(
+            t.elapsed() < Duration::from_millis(900),
+            "{:?}",
+            t.elapsed()
+        );
+        std::thread::sleep(Duration::from_millis(1500));
+        assert!(!mark.exists(), "the grandchild outlived the kill");
+    }
+
+    /// A descendant still holding a pipe after the child exits holds the
+    /// tray no longer than the limit.
+    #[test]
+    fn a_lingering_descendant_does_not_hold_the_tray() {
+        let limit = Duration::from_millis(300);
+        let t = Instant::now();
+        let ok = run(
+            Path::new(SH),
+            &sh("sleep 5 >/dev/null & exit 0"),
+            false,
+            limit,
+        );
+        assert_eq!(ok.unwrap(), "");
+        let e = run(Path::new(SH), &sh("sleep 5 & printf hi"), true, limit);
+        assert_eq!(e.unwrap_err(), "timed out");
+        assert!(t.elapsed() < Duration::from_secs(3), "{:?}", t.elapsed());
+    }
+
     #[test]
     fn oversize_refused() {
         let s = format!("head -c {} /dev/zero", MAX_CAPTURE + 10);
