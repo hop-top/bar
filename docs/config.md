@@ -305,9 +305,11 @@ Colour:
 Toggle:
 
 - `bar toggle` (a click on the bar or percentage) flips between `show` and `alt`; `alt` defaults to `show` with `bar` and `pct` swapped. Time, `eta` and `proj` stay outside the link.
-- Toggle state: `pct-5h` / `pct-7d` files (mode 0600) in the [state directory](#files-and-environment). While a file exists, `bar` and `pct` swap. `bar toggle <5h|7d>` flips it and prints the view now shown (`5h: pct`, `7d: bar`); an unknown key exits 2.
+- Toggle state: `pct-5h` / `pct-7d` files (mode 0600) in the [state directory](#files-and-environment). While a file exists, `bar` and `pct` swap. `bar toggle <5h|7d>` flips it and prints the view now shown (`5h: pct`, `7d: bar`).
 - Plugins toggle the same way: `bar toggle <plugin name>` flips `toggle-<name>` (printing `<name>: alt` or `<name>: show`), and a plugin output with `alt` shows `alt` instead of `text` while it is on (see [plugins](plugins.md#render)). The CLI works without the handler app.
 - A plugin output with `label_toggle` names a second, independent toggle on its label or icon: `bar toggle <plugin>.<toggle>` flips `toggle-<plugin>.<toggle>`, linked as `bar://toggle/<plugin>.<toggle>` (see [plugins](plugins.md#render)). The plugin reads it from `toggles` on its stdin.
+- Set instead of flip: `bar toggle <key> <value>` sets the view, so running it twice leaves the same view. `value` is `on` or `off`, or the view name `bar toggle` prints: `pct` or `bar` for `5h` / `7d`, `alt` or `show` for `<plugin>` and `<plugin>.<toggle>` (`bar toggle 5h pct`, `bar toggle tlc.scope off`). Another value exits 2, naming the valid ones.
+- Keys: `5h`, `7d`, the name of an installed plugin (a `bar-<name>` executable found as [plugins](plugins.md) are, on `PATH` or beside `bar`), or `<plugin>.<toggle>` for one, `<toggle>` a name of letters, digits, `-` and `_`. Plugins are not run to check: the toggles a plugin names come with its render output, so any such name is accepted after an installed plugin. Any other key exits 2 and writes nothing; the message lists the valid keys and installed plugins. The handler's `<key>?sid=<session id>` form is checked for its shape only, since the link comes from a render whose `PATH` may hold plugins the handler's does not.
 - Link `bar://toggle/<key>` is emitted only when the handler app is installed (marker `click-installed` in the state directory) and `click` is not `none`.
 - Toggles are per session: a link in a session's status line is `bar://toggle/<key>?sid=<session id>`, and a click flips that session's toggle only; other sessions keep theirs. The handler passes it on as `bar toggle '<key>?sid=<session id>'`, which writes `toggles/<session id>/<file>` (`on` or `off`, the file named as the global one). A row without a session id (a `bar subagent` row) links the global toggle.
 - Global default: `bar toggle <key>` without a session flips the global file above. A session that has never flipped `key` follows it; once it flips `key`, its own state wins for that key, whatever the default does later.
@@ -1079,8 +1081,8 @@ Each row is laid out like the status line, with the same skin, palette, icons an
 | `bar config import <file>\|- --merge\|--replace [--yes]` | Merges a file into your config or replaces it, after a preview ([bar config](#bar-config)) | 0, 2 on an invalid file, 3 when the file is missing, 7 when it cannot ask or is declined, 1 when the write fails |
 | `bar preview [--state early\|burning\|final] [--preset [<name>]] [--subagent]` | Layout with sample data ([bar preview](#bar-preview)) | 0 |
 | `bar edit` | Full-screen config editor with a live preview ([bar edit](#bar-edit)) | 0, 2 without a terminal or on an unreadable file |
-| `bar init [--preset <name>]` | Writes a preset as your config ([presets](#presets)) | 0, 4 when a config exists, 2 when the path is unusable |
-| `bar toggle <key>` | Flips `5h`, `7d`, `<plugin>` or `<plugin>.<toggle>` ([usage](#usage)): the global default, or one session's toggle with `<key>?sid=<session id>` | 0, 2 on an unknown key or a bad session id |
+| `bar init [--preset <name>]` | Writes a preset as your config ([presets](#presets)) | 0 (also when the config is that preset already), 4 when another config exists, 2 when the path is unusable |
+| `bar toggle <key> [<value>]` | Flips `5h`, `7d`, `<plugin>` or `<plugin>.<toggle>` ([usage](#usage)), or sets it to `<value>` (`on`, `off` or the view name): the global default, or one session's toggle with `<key>?sid=<session id>` | 0, 2 on an unknown key or value or a bad session id |
 | `bar click install [--dry-run] [--hooks-only]` | URL handler app and hooks ([click handler](#click-handler-macos)) | 0, 2 unsupported or bad home, 1 on failure |
 | `bar click run <url>` | Types an allow-listed slash command ([clickable commands](#clickable-commands)) | 0, 1 refused, 2 on Windows |
 | `bar click action <url>` | Runs a plugin's declared action ([plugin actions](#plugin-actions)) | 0, 1 refused |
@@ -1098,7 +1100,7 @@ Exit codes follow one table for every command: 0 success (also when nothing need
 
 With `--format json` or `yaml` an error is reported on stdout as that document instead, with the fields `code` (`USAGE`, `NOT_FOUND`, `CONFLICT`, `CONSENT_REFUSED` or `GENERIC`, matching the exit code), `message`, `cause` (the lint report of an invalid file, clap's message of a usage error; absent when there is none), `suggested_fix` (what to run or change; absent when there is none), `exit_code` and `transience` (`transient` when rerunning differently can clear it, as `CONSENT_REFUSED`; else `permanent`); stderr holds only text meant for a person, such as the diff of a refused write. Under any other format an error is a line on stderr, `bar <command>: <message>`, the fix on the next line.
 
-Results under `--format json`: `bar init` `{path, preset}`; `bar install` `{settings, written, backup}` (`written` is false when the file already said the same, `backup` the copy of the old file or `null`); `bar config import` `{path, written, backup}`; `bar config export` `{user, project, text, lines}` (see [bar config](#bar-config)), or `{path, written}` when it writes a file; `bar toggle` `{key, view}`; `bar update` `{check, status, current, channel, latest, age_secs, stale, newer, dev, upgrade}`, where `check` says whether the update check is on, `status` is `off`, `pending` (no result yet), `failed` or `ok`, `latest` the tag the check found, `age_secs` the age of that result, `stale` whether it is older than a day and `newer` the newer version; `latest`, `age_secs` and `newer` are `null` when there is none. `bar refresh <request>` is internal: render spawns it to fill the cache in the background.
+Results under `--format json`: `bar init` `{path, preset, written}` (`written` is false when the config was that preset already); `bar install` `{settings, written, backup}` (`written` is false when the file already said the same, `backup` the copy of the old file or `null`); `bar config import` `{path, written, backup}`; `bar config export` `{user, project, text, lines}` (see [bar config](#bar-config)), or `{path, written}` when it writes a file; `bar toggle` `{key, view}`; `bar update` `{check, status, current, channel, latest, age_secs, stale, newer, dev, upgrade}`, where `check` says whether the update check is on, `status` is `off`, `pending` (no result yet), `failed` or `ok`, `latest` the tag the check found, `age_secs` the age of that result, `stale` whether it is older than a day and `newer` the newer version; `latest`, `age_secs` and `newer` are `null` when there is none. `bar refresh <request>` is internal: render spawns it to fill the cache in the background.
 
 ### Command contracts
 
@@ -1106,7 +1108,7 @@ Results under `--format json`: `bar init` `{path, preset}`; `bar install` `{sett
 
 - `path`: `["bar", "config", "import"]`; `short`: the one-line help.
 - `side_effect`: `read` (changes nothing but bar's own cache), `write-local` (writes files on this machine: your config, Claude Code's settings, the state dir, a file you name), `write-shared` (acts outside bar: types into a Claude Code session, runs a plugin's action) or `interactive` (a full-screen terminal UI).
-- `idempotent`: `yes` when running it again with the same arguments changes nothing more (a second `bar init` refuses and leaves the file as it is), `no` when each run changes state again (`bar toggle` flips).
+- `idempotent`: `yes` when running it again with the same arguments changes nothing more (a second `bar init` of the same preset succeeds and leaves the file as it is), `no` when each run changes state again (`bar click run` types again), `conditional` when it depends on the arguments (`bar toggle <key> <value>` sets, `bar toggle <key>` flips).
 - `args` (`name`, `required`, `variadic`), `flags` (`name`, `short`, `type`, `description`, `default`, `required`, `choices`), `dry_run_supported` (it has `--dry-run`) and `hidden` (not listed in `--help`).
 
 The entries come from the command definitions, so the list cannot leave a command out. The vocabulary is that of the [12-Factor AI-CLI](https://github.com/hop-top/spec-12fc) conformance checks. `bar <name>` plugins are not listed; `bar plugin list` shows them.
@@ -1220,7 +1222,8 @@ Six example configs ship in the binary and in [`presets/`](../presets): `minimal
 
 `bar init [--preset <name>]` writes one (default `full`) to the first search path: `$XDG_CONFIG_HOME/bar/bar.conf`, else `~/.config/bar/bar.conf`.
 
-- It refuses when any search path already holds a config, prints the path it found and exits 4 (conflict).
+- When a search path already holds a config that is exactly the preset asked for, it writes nothing, says so (`… exists; not overwritten (already preset <name>)` on stderr) and exits 0, so running the same `bar init` twice is safe.
+- It refuses any other existing config (another preset, or the preset edited), prints the path it found and exits 4 (conflict).
 - It also refuses when that path would be relative (home unset or relative: `HOME`, on Windows `USERPROFILE` then `HOME`); a relative `XDG_CONFIG_HOME` is ignored, as the XDG spec says, here and in the search order.
 - The file is written to a temp file beside it and linked into place, so it is never partial and never replaces a file that appeared meanwhile.
 - There is no `--force`; remove or move the file yourself.

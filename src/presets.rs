@@ -33,15 +33,25 @@ pub const EXISTS: &str = "exists; not overwritten";
 /// The variable the home directory comes from, for messages.
 const HOME_VAR: &str = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
 
-/// Writes preset `name` to the first config search path; refuses when any
-/// search path already holds a config, or when the path would be relative
-/// (home unset or relative). Returns the written path.
+/// What `bar init` did.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Init {
+    /// Wrote the preset to this path.
+    Wrote(PathBuf),
+    /// The config at this path is the preset already; nothing written.
+    Same(PathBuf),
+}
+
+/// Writes preset `name` to the first config search path. A config that
+/// already holds exactly that preset is left as is ([`Init::Same`]); any
+/// other existing config is refused, as is a relative path (home unset or
+/// relative).
 pub fn init(
     name: &str,
     env: &dyn Fn(&str) -> Option<String>,
     home: &Path,
     kit_dir: &Path,
-) -> Result<PathBuf, String> {
+) -> Result<Init, String> {
     let body = get(name).ok_or_else(|| format!("unknown preset `{name}`"))?;
     let path = crate::conf::search_paths(env, home, kit_dir).remove(0);
     if !path.is_absolute() {
@@ -50,13 +60,16 @@ pub fn init(
         ));
     }
     if let Some(p) = crate::conf::find_path(env, home, kit_dir) {
+        if std::fs::read(&p).is_ok_and(|b| b == body.as_bytes()) {
+            return Ok(Init::Same(p));
+        }
         return Err(format!("{} {EXISTS}", p.display()));
     }
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     }
     write_new(&path, body)?;
-    Ok(path)
+    Ok(Init::Wrote(path))
 }
 
 /// Writes `body` to `path` all at once and never over an existing file:

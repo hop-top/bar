@@ -56,7 +56,7 @@ enum SubCmd {
     /// Edit the config in a full-screen terminal editor with a live preview.
     #[cfg(feature = "edit")]
     Edit,
-    /// Write a preset as your config; refuses when a config exists.
+    /// Write a preset as your config; refuses when another config exists.
     Init {
         /// Preset to write.
         #[arg(long, value_parser = hop_bar::presets::NAMES, default_value = hop_bar::presets::DEFAULT)]
@@ -92,10 +92,12 @@ enum SubCmd {
     /// Show the newest release found by the update check and how to upgrade (never downloads).
     Update,
     /// Flip a usage view between bar and percentage, or a plugin between
-    /// its text and alternate text.
+    /// its text and alternate text; with a value, set it instead.
     Toggle {
-        /// 5h, 7d or a plugin name
+        /// 5h, 7d, an installed plugin's name or <plugin>.<toggle>
         key: String,
+        /// on or off, or the view: pct or bar (5h, 7d), alt or show (plugins)
+        value: Option<String>,
     },
     /// Click handler app and clickable commands.
     Click {
@@ -231,17 +233,9 @@ fn main() {
         Some(("toggle", m)) => {
             cli_out::check_format(m, "toggle");
             let arg = m.get_one::<String>("key").map_or("", String::as_str);
-            let flipped = click::toggle_target(arg).and_then(|(key, sid)| {
-                click::toggle_in(&click::handler_state_dir(), key, sid).map(|on| (key, on))
-            });
-            match flipped {
-                Ok((key, on)) => {
-                    let view = match (click::is_usage_key(key), on) {
-                        (true, true) => "pct",
-                        (true, false) => "bar",
-                        (false, true) => "alt",
-                        (false, false) => "show",
-                    };
+            let value = m.get_one::<String>("value").map(String::as_str);
+            match click::toggle_cli(&click::handler_state_dir(), arg, value) {
+                Ok((key, view)) => {
                     let data = json!({"key": key, "view": view});
                     cli_out::emit(m, "toggle", &format!("{key}: {view}\n"), &data);
                 }
@@ -432,10 +426,19 @@ fn init(m: &ArgMatches) {
         &hop_bar::platform::dirs::config(),
     );
     match r {
-        Ok(p) => {
+        Ok(hop_bar::presets::Init::Wrote(p)) => {
             let text = format!("wrote {} (preset {name})\n", p.display());
-            let data = json!({"path": p.display().to_string(), "preset": name});
+            let data = json!({"path": p.display().to_string(), "preset": name, "written": true});
             cli_out::emit(m, "init", &text, &data);
+        }
+        Ok(hop_bar::presets::Init::Same(p)) => {
+            let _ = writeln!(
+                std::io::stderr(),
+                "bar init: {} exists; not overwritten (already preset {name})",
+                p.display()
+            );
+            let data = json!({"path": p.display().to_string(), "preset": name, "written": false});
+            cli_out::emit(m, "init", "", &data);
         }
         Err(e) if e.ends_with(hop_bar::presets::EXISTS) => cli_out::fail(
             m,

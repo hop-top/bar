@@ -128,6 +128,15 @@ fn init_reports_as_data_and_an_existing_config_is_a_conflict() {
     let v = r.disciplined();
     assert_eq!(v["preset"], "minimal");
     assert!(v["path"].as_str().unwrap().ends_with("bar.conf"), "{v}");
+    assert_eq!(v["written"], true);
+
+    // the same preset again: success, nothing written, the note on stderr
+    let r = bar(&t, &["init", "--preset", "minimal", "--format", "json"], "");
+    assert_eq!(r.code, 0, "{}", r.err);
+    assert!(r.err.contains("already preset minimal"), "{}", r.err);
+    let v = r.disciplined();
+    assert_eq!(v["preset"], "minimal");
+    assert_eq!(v["written"], false);
 
     let r = bar(&t, &["init", "--preset", "full"], "");
     assert_eq!(r.code, 4);
