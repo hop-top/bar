@@ -99,6 +99,12 @@ fn conf(t: &Tmp) -> PathBuf {
     t.path().join("xdg/bar/bar.conf")
 }
 
+/// A plan path equals `p` component-wise (Windows prints `\`, the
+/// expected paths are joined with `/`).
+fn is_path(v: &Value, p: &Path) -> bool {
+    v.as_str().is_some_and(|s| Path::new(s) == p)
+}
+
 #[test]
 fn init_dry_run_plans_the_file() {
     let t = Tmp::new();
@@ -106,7 +112,7 @@ fn init_dry_run_plans_the_file() {
     let v = r.plan("init");
     let c = only_change(&v);
     assert_eq!(c["action"], "create", "{v}");
-    assert_eq!(c["path"], conf(&t).display().to_string());
+    assert!(is_path(&c["path"], &conf(&t)), "{v}");
     assert_eq!(v["preset"], hop_bar::presets::DEFAULT);
     // text: what it would do, and that nothing was written
     let r = dry(&t, &["init", "--dry-run"], "");
@@ -162,7 +168,7 @@ fn install_dry_run_plans_settings_without_consent() {
             .as_array()
             .unwrap()
             .iter()
-            .find(|c| c["path"] == settings.display().to_string())
+            .find(|c| is_path(&c["path"], &settings))
             .unwrap_or_else(|| panic!("{v}"));
         assert_eq!(c["action"], "create", "{v}");
         assert!(v["diff"].as_str().unwrap().contains("statusLine"), "{v}");
@@ -195,7 +201,7 @@ fn import_dry_run_plans_the_write_and_backup() {
     let v = r.plan("config import");
     let c = only_change(&v);
     assert_eq!(c["action"], "create", "{v}");
-    assert_eq!(c["path"], conf(&t).display().to_string());
+    assert!(is_path(&c["path"], &conf(&t)), "{v}");
     assert!(v["diff"].as_str().unwrap().contains("+set gap 4"), "{v}");
     t.write("xdg/bar/bar.conf", "set gap 2\n");
     let r = dry(&t, &args, "set gap 4\n");
