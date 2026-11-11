@@ -81,28 +81,28 @@ done < "$tmp/order"
 
 for tgz in "$tmp/packs"/*.tgz; do
   list="$(tar -tzvf "$tgz")"
-  echo "$list" | grep -q ' package/LICENSE$' || fail "$(basename "$tgz"): no LICENSE"
-  echo "$list" | grep -q ' package/package.json$' || fail "$(basename "$tgz"): no package.json"
+  grep -q ' package/LICENSE$' <<<"$list" || fail "$(basename "$tgz"): no LICENSE"
+  grep -q ' package/package.json$' <<<"$list" || fail "$(basename "$tgz"): no package.json"
   name="$(tar -xzOf "$tgz" package/package.json | node -p 'JSON.parse(require("fs").readFileSync(0)).name')"
   dest="$tmp/app/node_modules/$name"
   mkdir -p "$dest"
   tar -xzf "$tgz" -C "$dest" --strip-components=1
 done
-tar -tzvf "$tmp/packs/hop-top-bar-$host-$version.tgz" | grep -Eq '^-rwx.* package/bin/bar$' \
+grep -Eq '^-rwx.* package/bin/bar$' <<<"$(tar -tzvf "$tmp/packs/hop-top-bar-$host-$version.tgz")" \
   || fail "bar-$host: bin/bar is not packed executable"
-tar -tzvf "$tmp/packs/hop-top-bar-$host-$version.tgz" | grep -Eq '^-rwx.* package/bin/bar-cliproxyapi$' \
+grep -Eq '^-rwx.* package/bin/bar-cliproxyapi$' <<<"$(tar -tzvf "$tmp/packs/hop-top-bar-$host-$version.tgz")" \
   || fail "bar-$host: bin/bar-cliproxyapi is not packed executable"
-tar -tzvf "$tmp/packs/hop-top-bar-$host-$version.tgz" | grep -Eq '^-rwx.* package/bin/bar-routellm$' \
+grep -Eq '^-rwx.* package/bin/bar-routellm$' <<<"$(tar -tzvf "$tmp/packs/hop-top-bar-$host-$version.tgz")" \
   || fail "bar-$host: bin/bar-routellm is not packed executable"
 for p in win32-arm64 win32-x64; do
-  tar -tzf "$tmp/packs/hop-top-bar-$p-$version.tgz" | grep -qx 'package/bin/bar-cliproxyapi.exe' \
+  grep -qx 'package/bin/bar-cliproxyapi.exe' <<<"$(tar -tzf "$tmp/packs/hop-top-bar-$p-$version.tgz")" \
     || fail "bar-$p: bin/bar-cliproxyapi.exe not packed"
-  tar -tzf "$tmp/packs/hop-top-bar-$p-$version.tgz" | grep -qx 'package/bin/bar-routellm.exe' \
+  grep -qx 'package/bin/bar-routellm.exe' <<<"$(tar -tzf "$tmp/packs/hop-top-bar-$p-$version.tgz")" \
     || fail "bar-$p: bin/bar-routellm.exe not packed"
 done
-tar -tzf "$tmp/packs/hop-top-bar-$version.tgz" | grep -qx 'package/bin/bar.js' \
+grep -qx 'package/bin/bar.js' <<<"$(tar -tzf "$tmp/packs/hop-top-bar-$version.tgz")" \
   || fail "launcher: bin/bar.js not packed"
-tar -tzf "$tmp/packs/hop-top-bar-$version.tgz" | grep -qx 'package/README.md' \
+grep -qx 'package/README.md' <<<"$(tar -tzf "$tmp/packs/hop-top-bar-$version.tgz")" \
   || fail "launcher: README.md not packed"
 
 launcher="$tmp/app/node_modules/@hop-top/bar/bin/bar.js"
@@ -119,6 +119,6 @@ err="$(node "$launcher" --version 2>&1)"
 status=$?
 set -e
 [ "$status" = 1 ] || fail "missing platform package: exit $status, want 1"
-echo "$err" | grep -q "@hop-top/bar-$host is not installed" || fail "missing platform package: $err"
+grep -q "@hop-top/bar-$host is not installed" <<<"$err" || fail "missing platform package: $err"
 
 echo "npm packages ok ($host, $version)"
