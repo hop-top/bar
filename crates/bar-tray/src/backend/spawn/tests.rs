@@ -54,20 +54,40 @@ fn env_is_scrubbed() {
         ("BAR_STATE_DIR", "/tmp/s"),
         ("XDG_STATE_HOME", ""),
         ("HOME", "/Users/x"),
+        ("USERPROFILE", r"C:\Users\x"),
         ("ANTHROPIC_API_KEY", "secret"),
+        ("TMPDIR", "/tmp"),
     ]
     .map(|(k, v)| (OsString::from(k), OsString::from(v)));
     let kept: Vec<(String, String)> = scrub(env)
         .into_iter()
         .map(|(k, v)| (k.into_string().unwrap(), v.into_string().unwrap()))
         .collect();
+    // the home dir is where `bar` finds its config and state without an
+    // override: a child without it reads no `tray` line
+    let home = if cfg!(windows) {
+        ("USERPROFILE".to_string(), r"C:\Users\x".to_string())
+    } else {
+        ("HOME".to_string(), "/Users/x".to_string())
+    };
     assert_eq!(
         kept,
         [
             ("PATH".to_string(), "/usr/bin".to_string()),
-            ("BAR_STATE_DIR".to_string(), "/tmp/s".to_string())
+            ("BAR_STATE_DIR".to_string(), "/tmp/s".to_string()),
+            home,
         ]
     );
+}
+
+#[test]
+fn windows_names_match_in_any_case() {
+    assert!(handler_var("PATH"));
+    assert!(handler_var("BAR_STATE_DIR"));
+    assert!(!handler_var("HOMEBREW_PREFIX"));
+    assert_eq!(handler_var("Path"), cfg!(windows));
+    assert_eq!(handler_var("SystemRoot"), cfg!(windows));
+    assert_eq!(handler_var("HOME"), !cfg!(windows));
 }
 
 #[test]
@@ -160,7 +180,11 @@ mod unix {
         )
         .unwrap();
         let lines: Vec<&str> = out.lines().collect();
-        assert!(!lines.iter().any(|l| l.starts_with("HOME=")), "{lines:?}");
+        if let Some(home) = std::env::var_os("HOME").filter(|h| !h.is_empty()) {
+            let want = format!("HOME={}", home.to_string_lossy());
+            assert!(lines.contains(&want.as_str()), "{lines:?}");
+        }
+        assert!(!lines.iter().any(|l| l.starts_with("TMPDIR=")), "{lines:?}");
         assert!(!lines.iter().any(|l| l.starts_with("stdin:")), "{lines:?}");
         // the shell sets a few of its own (PWD, SHLVL, _, OLDPWD)
         let shell = ["PWD=", "SHLVL=", "_=", "OLDPWD="];
