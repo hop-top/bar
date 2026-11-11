@@ -57,6 +57,13 @@ pub const HANDLER_ENV: [&str; 11] = [
     "PATH",
 ];
 
+/// Set to [`PRIVATE_CONSOLE`]: tells a `bar` started by the tray that
+/// its console (created hidden, `CREATE_NO_WINDOW`) is its own, so its
+/// children may share it.
+pub const PRIVATE_CONSOLE_ENV: &str = "BAR_PRIVATE_CONSOLE";
+/// The value of [`PRIVATE_CONSOLE_ENV`].
+pub const PRIVATE_CONSOLE: &str = "1";
+
 /// Whether `name` is one of [`HANDLER_ENV`]; Windows names are stored
 /// in any case (`Path`, `SystemRoot`).
 pub fn handler_var(name: &str) -> bool {
@@ -166,13 +173,10 @@ fn command(bar: &Path, args: &[OsString], capture: bool) -> Command {
             Stdio::null()
         })
         .stderr(Stdio::piped());
-    tree::own_group(&mut c);
+    // its console is hidden and its own: its children may share it
     #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        c.creation_flags(CREATE_NO_WINDOW);
-    }
+    c.env(PRIVATE_CONSOLE_ENV, PRIVATE_CONSOLE);
+    tree::own_group(&mut c);
     c
 }
 

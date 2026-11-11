@@ -68,6 +68,8 @@ pub fn subagent() {
 }
 
 pub fn refresh(raw: &str) {
+    // started by a render with a hidden console of its own
+    hop_bar::platform::claim_private_console();
     if let Ok(req) = Request::from_json(raw) {
         let limit = refresh_timeout(std::env::var("BAR_REFRESH_TIMEOUT").ok().as_deref());
         Cache::new(&click::state_dir()).refresh(&req, limit);

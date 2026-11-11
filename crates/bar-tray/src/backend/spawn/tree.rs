@@ -7,10 +7,23 @@
 
 use std::process::{Child, Command};
 
-/// Makes the child of `c` killable with its descendants.
+/// `CREATE_NO_WINDOW`: a console of its own, without a window.
+#[cfg(windows)]
+pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// The Windows creation flags of every child of the tray, a GUI process
+/// with no console: a hidden console of its own. Set in one call, since
+/// `creation_flags` replaces what was set before.
+#[cfg(windows)]
+pub const CHILD_FLAGS: u32 = CREATE_NO_WINDOW;
+
+/// Makes the child of `c` killable with its descendants and, on
+/// Windows, gives it [`CHILD_FLAGS`]: nothing else sets creation flags.
 pub fn own_group(c: &mut Command) -> &mut Command {
     #[cfg(unix)]
     std::os::unix::process::CommandExt::process_group(c, 0);
+    #[cfg(windows)]
+    std::os::windows::process::CommandExt::creation_flags(c, CHILD_FLAGS);
     c
 }
 
@@ -32,17 +45,14 @@ pub fn kill_tree(child: &mut Child) {
 /// in case `taskkill` cannot run.
 #[cfg(windows)]
 pub fn kill_tree(child: &mut Child) {
-    use std::os::windows::process::CommandExt;
     use std::process::Stdio;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     if let Some(root) = std::env::var_os("SYSTEMROOT") {
-        let _ = Command::new(std::path::Path::new(&root).join(r"System32\taskkill.exe"))
-            .args(["/T", "/F", "/PID", &child.id().to_string()])
+        let mut tk = Command::new(std::path::Path::new(&root).join(r"System32\taskkill.exe"));
+        tk.args(["/T", "/F", "/PID", &child.id().to_string()])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .creation_flags(CREATE_NO_WINDOW)
-            .status();
+            .stderr(Stdio::null());
+        let _ = own_group(&mut tk).status();
     }
     let _ = child.kill();
 }

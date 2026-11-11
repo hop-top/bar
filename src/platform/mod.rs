@@ -3,6 +3,8 @@
 //! and the local zone offset. Unix and Windows provide the same functions;
 //! the wasm build (the web configurator's renderer) stubs them out.
 
+pub mod flags;
+
 #[cfg(unix)]
 mod unix;
 #[cfg(unix)]

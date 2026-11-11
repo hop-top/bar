@@ -112,6 +112,9 @@ pub fn shell(cmd: &str) -> Command {
     c
 }
 
+/// Consoles are a Windows matter; nothing to claim.
+pub fn claim_private_console() {}
+
 /// A child that may be killed with everything it started: its own
 /// process group.
 pub fn own_group(c: &mut Command) -> &mut Command {

@@ -9,6 +9,7 @@ use std::os::windows::fs::MetadataExt;
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 use std::time::UNIX_EPOCH;
 
@@ -17,17 +18,17 @@ use windows_sys::Win32::Foundation::{
     HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, STILL_ACTIVE, SYSTEMTIME,
 };
 use windows_sys::Win32::System::Console::{
-    GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
+    GetConsoleCP, GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
 };
 use windows_sys::Win32::System::Threading::{
-    GetExitCodeProcess, OpenProcess, CREATE_BREAKAWAY_FROM_JOB, CREATE_NEW_PROCESS_GROUP,
-    CREATE_NO_WINDOW, DETACHED_PROCESS, PROCESS_QUERY_LIMITED_INFORMATION,
+    GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows_sys::Win32::System::Time::{
     FileTimeToSystemTime, GetDynamicTimeZoneInformation, SystemTimeToFileTime,
     SystemTimeToTzSpecificLocalTimeEx, DYNAMIC_TIME_ZONE_INFORMATION,
 };
 
+use super::flags::{self, PRIVATE_CONSOLE, PRIVATE_CONSOLE_ENV};
 use super::{exec_exts, split_exec_name};
 
 /// The Windows system directory (`C:\Windows\System32`), from the API
@@ -140,27 +141,58 @@ pub fn shell(cmd: &str) -> Command {
     c
 }
 
-/// A child that may be killed with everything it started: its own
-/// process group, and no console window of its own.
-pub fn own_group(c: &mut Command) -> &mut Command {
-    c.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP)
+/// This process's console is private (see [`flags`]); set once by
+/// [`claim_private_console`], false until then.
+static PRIVATE: AtomicBool = AtomicBool::new(false);
+/// The parent set [`PRIVATE_CONSOLE_ENV`]; children do not get it.
+static MARKED: AtomicBool = AtomicBool::new(false);
+
+/// For a process whose children may share its console when the parent
+/// created it hidden for this process (`bar refresh`, `bar tray`): reads
+/// the parent's mark and confirms a console exists. Never called by a
+/// status line render, whose children always get a console of their own.
+pub fn claim_private_console() {
+    let marked = flags::marked(std::env::var_os(PRIVATE_CONSOLE_ENV).as_deref());
+    // SAFETY: no arguments; 0 means this process has no console.
+    let has_console = marked && unsafe { GetConsoleCP() } != 0;
+    MARKED.store(marked, Ordering::Relaxed);
+    PRIVATE.store(
+        flags::private_console(marked, has_console),
+        Ordering::Relaxed,
+    );
 }
 
-/// No console window for a console child of a windowless process.
+/// The one place a waited-for child gets its creation flags: the whole
+/// set at once (`creation_flags` replaces, it does not add).
+fn child_flags(c: &mut Command, f: fn(bool) -> u32) -> &mut Command {
+    if MARKED.load(Ordering::Relaxed) {
+        c.env_remove(PRIVATE_CONSOLE_ENV);
+    }
+    c.creation_flags(f(PRIVATE.load(Ordering::Relaxed)))
+}
+
+/// A child that may be killed with everything it started: its own
+/// process group, and no console window: this process's console when it
+/// is private, else one of its own without a window.
+pub fn own_group(c: &mut Command) -> &mut Command {
+    child_flags(c, flags::job)
+}
+
+/// No console window for a console child; the same flags as
+/// [`own_group`], so either may follow the other.
 pub fn hide_window(c: &mut Command) -> &mut Command {
-    c.creation_flags(CREATE_NO_WINDOW)
+    child_flags(c, flags::tool)
 }
 
 /// `taskkill /T /F` ends the child and its descendants; the child itself
 /// is killed directly too, in case `taskkill` is unavailable.
 pub fn kill_tree(child: &mut Child) {
-    let _ = Command::new("taskkill.exe")
-        .args(["/T", "/F", "/PID", &child.id().to_string()])
+    let mut tk = Command::new("taskkill.exe");
+    tk.args(["/T", "/F", "/PID", &child.id().to_string()])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .creation_flags(CREATE_NO_WINDOW)
-        .status();
+        .stderr(Stdio::null());
+    let _ = hide_window(&mut tk).status();
     let _ = child.kill();
 }
 
@@ -181,16 +213,20 @@ fn unshare_std_handles() {
     }
 }
 
-/// Starts `c` detached: no console, its own process group, out of the
-/// caller's job object when the job allows it, not waited on. Stdio is
-/// the caller's to set.
+/// Starts `c` in the background: a console of its own without a window
+/// (which everything it starts shares; marked private, see [`flags`]),
+/// its own process group, out of the caller's job object when the job
+/// allows it, not waited on. Stdio is the caller's to set.
 pub fn spawn_detached(mut c: Command) -> std::io::Result<()> {
     unshare_std_handles();
-    let flags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP;
-    match c.creation_flags(flags | CREATE_BREAKAWAY_FROM_JOB).spawn() {
+    c.env(PRIVATE_CONSOLE_ENV, PRIVATE_CONSOLE);
+    match c.creation_flags(flags::refresh(true)).spawn() {
         Ok(_) => Ok(()),
         // a job without breakaway rights refuses the flag
-        Err(_) => c.creation_flags(flags).spawn().map(drop),
+        Err(e) if flags::retry_without_breakaway(e.raw_os_error()) => {
+            c.creation_flags(flags::refresh(false)).spawn().map(drop)
+        }
+        Err(e) => Err(e),
     }
 }
 
