@@ -2,6 +2,7 @@
 //! and action calls share the runner): prompt end, time limit, cap.
 
 use hop_bar::cache::Job;
+use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 fn job(cmd: &str, timeout: u64) -> Job {
@@ -13,9 +14,11 @@ fn job(cmd: &str, timeout: u64) -> Job {
 
 /// The runner returns when the command exits, not at the next tick of a
 /// polling interval: its fastest run of a trivial command is within a
-/// few ms of the fastest blocking `output()` of the same command. Minima,
-/// as host noise only ever adds time; a 10 ms poll never returns before
-/// its first sleep.
+/// few ms of the fastest blocking `output()` of the same command, started
+/// as the runner starts it (own process group; on Windows also a console
+/// of its own, without a window, which costs a console host's start).
+/// Minima, as host noise only ever adds time; a 10 ms poll never returns
+/// before its first sleep.
 #[test]
 fn a_fast_command_ends_the_wait_promptly() {
     let j = job("echo ok", 30);
@@ -23,7 +26,9 @@ fn a_fast_command_ends_the_wait_promptly() {
     let mut base = Duration::MAX;
     for _ in 0..15 {
         let t = Instant::now();
-        let out = hop_bar::platform::shell("echo ok").output().unwrap();
+        let mut c = hop_bar::platform::shell("echo ok");
+        hop_bar::platform::own_group(&mut c).stdin(Stdio::null());
+        let out = c.stderr(Stdio::null()).output().unwrap();
         base = base.min(t.elapsed());
         assert!(out.status.success());
         let t = Instant::now();
