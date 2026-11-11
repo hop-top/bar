@@ -19,6 +19,12 @@ path = "src/main.rs"
 [lints]
 workspace = true
 
+[features]
+default = []
+# Linux StatusNotifierItem backend. Off by default: ksni (Unlicense) pulls
+# zbus 5, whose advisories `cargo deny` reports until ksni moves to zbus 6.
+linux-sni = ["dep:ksni"]
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
@@ -33,3 +39,6 @@ windows-sys = { version = "=0.61.2", features = [
     "Win32_System_Threading",
     "Win32_UI_WindowsAndMessaging",
 ] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+ksni = { version = "=0.3.7", default-features = false, features = ["async-io", "blocking"], optional = true }
