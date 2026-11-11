@@ -110,7 +110,8 @@ fn export(m: &ArgMatches) {
             let data = json!({
                 "user": shown(user.as_ref().map(|(p, _)| p.as_path())),
                 "project": shown(project.as_ref().map(|(p, _)| p.as_path())),
-                "config": body,
+                "lines": confio::directives(&body),
+                "text": body,
             });
             cli_out::emit(m, "config export", &body, &data);
         }
