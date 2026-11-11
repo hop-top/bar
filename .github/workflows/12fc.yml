@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
-      - uses: hop-top/spec-12fc@816391c45a3eb0175f9ab63438112d85296f6cd1 # main 2026-10-24
+      - uses: hop-top/spec-12fc@4ea62e76d2583a3e59054472aecb75b7bc88af4e # main 2026-11-11
         with:
           command: all
           kit-version: v0.5.0-alpha.1
