@@ -5,7 +5,7 @@ How long Claude Code waits for each status-line tool, and what each costs in CPU
 <!-- bench:tools:start -->
 | Tool | Language | Version | Installed as |
 |---|---|---|---|
-| bar | Rust | commit `d64182c` | `cargo build --release --locked` from this repository |
+| bar | Rust | commit `e8f9e06` | `cargo build --release --locked` from this repository |
 | [ccstatusline](https://github.com/sirmalloc/ccstatusline) | TypeScript (Node) | 2.2.34 | `npm install -g`, as found in the environment |
 | [claude-powerline](https://github.com/Owloops/claude-powerline) | TypeScript (Node) | 1.32.8 | `npm install -g @owloops/claude-powerline`, as found in the environment |
 | [CCometixLine](https://github.com/Haleclipse/CCometixLine) (`ccline`) | Rust | 2.0.1 | release binary `ccline-linux-arm64.tar.gz` (as found in the environment), placed at `~/.claude/ccline/ccline` as its README says |
@@ -16,20 +16,20 @@ Harness: [ben](https://github.com/hop-top/ben), a Go benchmark runner, with the 
 ## ben results
 
 <!-- bench:results:start -->
-bar `d64182c`, run on 2026-11-10; benchmark inputs `sha256:58a7eb8c46b7…` ([scripts/bench-inputs](../scripts/bench-inputs)). Warm: 100 runs after 10 warm-up runs. Cold: 30 runs, the tool's whole `HOME` reset to config only before each. Load average 1.8 to 2.2 during the run ([results/ben-load-*.txt](results/)).
+bar `e8f9e06`, run on 2026-11-11; benchmark inputs `sha256:14df8f0e1ba1…` ([scripts/bench-inputs](../scripts/bench-inputs)). Warm: 100 runs after 10 warm-up runs. Cold: 30 runs, the tool's whole `HOME` reset to config only before each. Load average 2.2 to 3.7 during the run ([results/ben-load-*.txt](results/)).
 
 | Tool | Warm latency median ± sd | Warm p95 | Warm CPU median | Cold latency median ± sd | Cold p95 | Cold CPU median |
 |---|---|---|---|---|---|---|
-| bar | 0.83 ± 0.38 | 0.98 | 0.77 | 1.88 ± 0.07 | 2.05 | 1.71 |
-| bar-notokens | **0.80** ± 0.05 | 0.91 | **0.75** | **1.03** ± 0.10 | 1.21 | **0.91** |
-| ccline | 0.92 ± 0.03 | 0.98 | 0.87 | 6.55 ± 0.78 | 7.13 | 2.89 |
-| claude-powerline | 41.53 ± 5.25 | 48.88 | 48.18 | 57.48 ± 1.40 | 59.74 | 73.83 |
-| ccstatusline | 91.97 ± 3.22 | 99.04 | 117.47 | 96.99 ± 1.84 | 99.70 | 123.00 |
-| floor: `env` → `/usr/bin/true` | 0.63 ± 0.10 | 0.77 | 0.58 |  |  |  |
+| bar | 0.81 ± 0.09 | 0.92 | 0.76 | 2.19 ± 0.48 | 3.55 | 1.88 |
+| bar-notokens | **0.81** ± 0.04 | 0.89 | **0.75** | **1.03** ± 0.10 | 1.22 | **0.89** |
+| ccline | 0.95 ± 0.09 | 1.18 | 0.88 | 6.58 ± 0.87 | 7.41 | 2.68 |
+| claude-powerline | 45.89 ± 2.35 | 51.41 | 53.47 | 60.20 ± 2.98 | 67.71 | 78.39 |
+| ccstatusline | 98.75 ± 4.94 | 108.44 | 125.73 | 103.63 ± 4.09 | 113.49 | 132.20 |
+| floor: `env` → `/usr/bin/true` | 0.62 ± 0.06 | 0.69 | 0.57 |  |  |  |
 
-Max RSS, ben, warm median (MiB): bar 16.7, bar-notokens 18.2, ccline 18.2, claude-powerline 102.4, ccstatusline 115.9; the floor reads 17.0. GNU time, mean of 20 warm runs ([results/ben-time-v-*.txt](results/)): bar 3.8, bar-notokens 3.9, ccline 5.0 MiB.
+Max RSS, ben, warm median (MiB): bar 16.5, bar-notokens 18.7, ccline 18.4, claude-powerline 101.9, ccstatusline 114.8; the floor reads 16.6. GNU time, mean of 20 warm runs ([results/ben-time-v-*.txt](results/)): bar 3.8, bar-notokens 3.8, ccline 5.1 MiB.
 
-Total cold CPU per render, foreground plus detached jobs, `rusage.py`, 30 runs each (`results/ben-total-cold-<tool>.json`, medians, ms): bar 5.6 (1.2 foreground, 4.3 in 2 jobs), bar-notokens 1.7 (0.4 foreground, 1.3 in 1 job), ccline 2.1, claude-powerline 71.4, ccstatusline 123.9.
+Total cold CPU per render, foreground plus detached jobs, `rusage.py`, 30 runs each (`results/ben-total-cold-<tool>.json`, medians, ms): bar 6.1 (1.3 foreground, 4.8 in 2 jobs), bar-notokens 1.9 (0.4 foreground, 1.4 in 1 job), ccline 2.7, claude-powerline 78.8, ccstatusline 132.1.
 <!-- bench:results:end -->
 
 How to read it:
@@ -45,17 +45,17 @@ ccline has no session token metric, so the default bar layout (which includes `#
 <!-- bench:like:start -->
 ```text
 bar-notokens  Opus 5.5 │ ctx 42% │ main ~1 ?1 │ $4.27 │ 37% 2h12m │ 61% 3d3h │ 1h02m
-ccline        Opus 5.5 · High │ 42% │ main * +1 │ $4.27 │ 38% · 13:20 │ 61% · Fri 15:07 │ 1h2m
+ccline        Opus 5.5 · High │ 42% │ main * +1 │ $4.27 │ 38% · 19:22 │ 61% · Sat 21:09 │ 1h2m
 ```
 
 | Metric | bar (with tokens) | bar-notokens | ccline |
 |---|---|---|---|
-| Warm latency median | 0.83 | **0.80** | 0.92 |
-| Warm CPU median | 0.77 | **0.75** | 0.87 |
-| Cold latency median | 1.88 | **1.03** | 6.55 |
-| Cold CPU median (render only) | 1.71 | **0.91** | 2.89 |
-| Cold total CPU incl. detached jobs, median | 5.6 (1.2 + 4.3 in 2 jobs) | **1.7 (0.4 + 1.3 in 1 job)** | 2.1 (none) |
-| Warm max RSS, GNU time (MiB) | **3.8** | 3.9 | 5.0 |
+| Warm latency median | 0.81 | **0.81** | 0.95 |
+| Warm CPU median | 0.76 | **0.75** | 0.88 |
+| Cold latency median | 2.19 | **1.03** | 6.58 |
+| Cold CPU median (render only) | 1.88 | **0.89** | 2.68 |
+| Cold total CPU incl. detached jobs, median | 6.1 (1.3 + 4.8 in 2 jobs) | **1.9 (0.4 + 1.4 in 1 job)** | 2.7 (none) |
+| Warm max RSS, GNU time (MiB) | 3.8 | **3.8** | 5.1 |
 
 bar-notokens is lower than ccline on 6 of 6 metrics; bar is lower than ccline on 5 of 6 metrics (not on: cold total CPU incl. detached jobs, median).
 <!-- bench:like:end -->
@@ -82,7 +82,7 @@ Target content, the same for every tool where it can: model, context %, git bran
 ```text
 bar               Opus 5.5 │ ctx 42% │ main ~1 ?1 │ $4.27 │ 37% 2h12m │ 61% 3d3h │ 1h02m │ 1.7M↑ 870k↓
 bar-notokens      Opus 5.5 │ ctx 42% │ main ~1 ?1 │ $4.27 │ 37% 2h12m │ 61% 3d3h │ 1h02m
-ccline            Opus 5.5 · High │ 42% │ main * +1 │ $4.27 │ 38% · 13:20 │ 61% · Fri 15:07 │ 1h2m
+ccline            Opus 5.5 · High │ 42% │ main * +1 │ $4.27 │ 38% · 19:22 │ 61% · Sat 21:09 │ 1h2m
 claude-powerline   M Opus 5.5  C 42%  ~ main (~1 ?1) *  S $4.27 (199.0M tokens)  B 38% (2h 13m)  W 61% (3d 4h)  T 1.0h 
 ccstatusline       Model: Opus 5.5 │ Ctx Used: 42.0% │ main  *? │ Cost: $4.27 │ 5h: 37.5%  Reset: 2hr 12m │ Weekly: 61.2%  Weekly Reset: 3d 3hr 59m │ Session: 1hr 2m │ Total: 120.0M 
 ```
@@ -128,7 +128,7 @@ Configs, exactly as used: [configs/](configs/). Each tool reads its config from 
 - Environment: Arch Linux ARM, Linux aarch64, kernel 7.2.12, 10 CPUs visible, no CPU quota, 12 GiB RAM, glibc 2.43.
 - Node 26.12.0, npm 12.2.1, Bun 1.4.4, Rust 1.99.1, git 2.56.0, Python 3.14.8, hyperfine 2.0.0, GNU time 1.10.
 - ben: commit `2b24904` (reports itself as 0.1.0), as found in the environment.
-- Run on 2026-11-10, `COLUMNS=200`, bar commit `d64182c`.
+- Run on 2026-11-11, `COLUMNS=200`, bar commit `e8f9e06`.
 <!-- bench:env:end -->
 
 ## Caveats

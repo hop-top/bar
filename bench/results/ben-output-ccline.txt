@@ -1,7 +1,7 @@
 # ccline: /opt/slbench/home/ccline/.claude/ccline/ccline  (COLUMNS=200)
 ## escapes visible (cat -v)
-^[[0m^[[0;96mOpus 5.5^[[0;37m M-BM-7 ^[[0;96mHigh^[[0;37m M-bM-^TM-^B ^[[0;95m42%^[[0;37m M-bM-^TM-^B ^[[0;94mmain * +1^[[0;37m M-bM-^TM-^B ^[[0;33m$4.27^[[0;37m M-bM-^TM-^B ^[[0;36m38%^[[0;37m M-BM-7 ^[[0;36m13:20^[[0;37m M-bM-^TM-^B ^[[0;33m61%^[[0;37m M-BM-7 ^[[0;33mFri 15:07^[[0;37m M-bM-^TM-^B ^[[0;32m1h2m^[[0m
+^[[0m^[[0;96mOpus 5.5^[[0;37m M-BM-7 ^[[0;96mHigh^[[0;37m M-bM-^TM-^B ^[[0;95m42%^[[0;37m M-bM-^TM-^B ^[[0;94mmain * +1^[[0;37m M-bM-^TM-^B ^[[0;33m$4.27^[[0;37m M-bM-^TM-^B ^[[0;36m38%^[[0;37m M-BM-7 ^[[0;36m19:22^[[0;37m M-bM-^TM-^B ^[[0;33m61%^[[0;37m M-BM-7 ^[[0;33mSat 21:09^[[0;37m M-bM-^TM-^B ^[[0;32m1h2m^[[0m
 
 ## colour stripped
-Opus 5.5 · High │ 42% │ main * +1 │ $4.27 │ 38% · 13:20 │ 61% · Fri 15:07 │ 1h2m
+Opus 5.5 · High │ 42% │ main * +1 │ $4.27 │ 38% · 19:22 │ 61% · Sat 21:09 │ 1h2m
 
