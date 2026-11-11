@@ -12,7 +12,8 @@ OUT       directory to write; gets one ready-to-publish directory per
 Copies packaging/npm/, checks that every package.json (and each of the
 launcher's optionalDependencies) carries VERSION and that the launcher
 lists exactly the platform packages, verifies each archive against its
-.sha256, unpacks its binaries (bar, bar-cliproxyapi, bar-routellm) into the platform package's bin/ and adds
+.sha256, unpacks its binaries (bar, bar-cliproxyapi, bar-routellm, and
+bar-tray on macOS and Windows) into the platform package's bin/ and adds
 LICENSE to every package. Prints the package directories, platform
 packages first, in publish order.
 """
@@ -30,6 +31,9 @@ NPM = ROOT / "packaging" / "npm"
 LAUNCHER = "bar"
 # executables each archive holds; bar finds the plugin in its own directory
 BINARIES = ("bar", "bar-cliproxyapi", "bar-routellm")
+# the tray app, beside bar, in the macOS and Windows archives only: its Linux
+# backend is behind a non-default feature
+TRAY = "bar-tray"
 
 # platform package directory -> release target
 TARGETS = {
@@ -120,7 +124,8 @@ def main(argv):
         if not asset.is_file():
             die(f"missing {asset.name} in {assets}")
         verify(asset)
-        for exe in BINARIES:
+        tray = (TRAY,) if windows or target.endswith("-apple-darwin") else ()
+        for exe in (*BINARIES, *tray):
             unpack(asset, exe + (".exe" if windows else ""), out / d / "bin")
     for d in order:
         print(out / d)
