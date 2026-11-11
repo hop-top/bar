@@ -140,7 +140,7 @@ fn export_effective_user_and_file() {
     assert_eq!(code, 0);
     assert!(std::fs::read_to_string(&f).unwrap().contains("#{ctx}"));
     let (code, _, err) = bar(&t, &dir, &["export", "--user", fs], "");
-    assert_eq!(code, 2);
+    assert_eq!(code, 4, "an existing file is a conflict");
     assert!(err.contains("exists"), "{err}");
     let (code, _, _) = bar(&t, &dir, &["export", "--user", "--force", fs], "");
     assert_eq!(code, 0);
@@ -248,11 +248,11 @@ fn import_refuses_invalid_files_and_unconfirmed_writes() {
         &["import", "--replace", ok.to_str().unwrap()],
         "y\n",
     );
-    assert_eq!(code, 2);
+    assert_eq!(code, 7, "no terminal to ask: consent refused");
     assert!(out.contains("+set gap 6"), "{out}");
     assert!(err.contains("pass --yes"), "{err}");
     let (code, _, err) = bar(&t, t.path(), &["import", "--merge", "-"], "set gap 6\n");
-    assert_eq!(code, 2);
+    assert_eq!(code, 7, "stdin cannot be confirmed: consent refused");
     assert!(err.contains("needs --yes"), "{err}");
     let (code, _, _) = bar(&t, t.path(), &["import", ok.to_str().unwrap()], "");
     assert_eq!(code, 2, "--merge or --replace is required");

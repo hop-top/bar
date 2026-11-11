@@ -300,7 +300,7 @@ fn web_plugins_writes_the_manifest_of_a_dir() {
         .arg(&file)
         .output()
         .unwrap();
-    assert_eq!(o.status.code(), Some(2));
+    assert_eq!(o.status.code(), Some(4), "an existing file is a conflict");
     assert!(String::from_utf8_lossy(&o.stderr).contains("--force"));
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "mine\n");
     bar(&r)

@@ -426,6 +426,26 @@ pub fn run(
     input: &mut dyn BufRead,
     out: &mut dyn Write,
 ) -> Result<(), Error> {
+    run_outcome(env, o, tty, input, out).map(|_| ())
+}
+
+/// What [`run_outcome`] did: the settings file, whether it was written,
+/// and the backup of its old content.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Outcome {
+    pub path: PathBuf,
+    pub written: bool,
+    pub backup: Option<PathBuf>,
+}
+
+/// [`run`], returning what it did.
+pub fn run_outcome(
+    env: &Env,
+    o: &Opts,
+    tty: bool,
+    input: &mut dyn BufRead,
+    out: &mut dyn Write,
+) -> Result<Outcome, Error> {
     let io = |e: std::io::Error| Error::Failed(e.to_string());
     let plan = if o.uninstall {
         plan_uninstall(env, o)?
@@ -442,7 +462,11 @@ pub fn run(
             "already up to date"
         };
         writeln!(out, "{}: {what}", plan.path.display()).map_err(io)?;
-        return Ok(());
+        return Ok(Outcome {
+            path: plan.path,
+            written: false,
+            backup: None,
+        });
     }
     write!(out, "{}", plan.diff()).map_err(io)?;
     if plan.reformats() {
@@ -485,10 +509,15 @@ pub fn run(
     if let Record::Remove = plan.record {
         let _ = std::fs::remove_file(&rec);
     }
-    if let Some(b) = backup {
+    if let Some(b) = &backup {
         writeln!(out, "backup {}", b.display()).map_err(io)?;
     }
-    writeln!(out, "wrote {}", plan.path.display()).map_err(io)
+    writeln!(out, "wrote {}", plan.path.display()).map_err(io)?;
+    Ok(Outcome {
+        path: plan.path,
+        written: true,
+        backup,
+    })
 }
 
 #[cfg(test)]
