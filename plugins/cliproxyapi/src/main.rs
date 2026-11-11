@@ -332,11 +332,7 @@ fn action(name: Option<&str>) -> i32 {
             return finish(
                 switch::next_tokens(&raw, "pick").and_then(|(provider, id)| {
                     let cfg = load_config(&rules)?;
-                    let inst = cfg
-                        .instances
-                        .iter()
-                        .find(|i| switch::instance_id(&i.origin.to_string()) == id)
-                        .ok_or_else(|| switch::Refusal("no such instance".into()))?;
+                    let inst = switch::instance_by_id(&cfg, &id)?;
                     let state = bar_plugin::dirs::bar_state();
                     let key = switch::key_for(inst)?;
                     let live = switch::connect(inst, &key, &state, now())?;
@@ -352,11 +348,7 @@ fn action(name: Option<&str>) -> i32 {
     let name = name.unwrap_or_default();
     finish(switch::next_tokens(&raw, name).and_then(|(provider, id)| {
         let cfg = load_config(&rules)?;
-        let inst = cfg
-            .instances
-            .iter()
-            .find(|i| switch::instance_id(&i.origin.to_string()) == id)
-            .ok_or_else(|| switch::Refusal("no such instance".into()))?;
+        let inst = switch::instance_by_id(&cfg, &id)?;
         let state = bar_plugin::dirs::bar_state();
         let key = switch::key_for(inst)?;
         let live = switch::connect(inst, &key, &state, now())?;
@@ -364,16 +356,26 @@ fn action(name: Option<&str>) -> i32 {
     }))
 }
 
+/// `use` from a click or a menu: the account by its `auth_index` only, in
+/// the instance the `instance` token names, else in the one whose
+/// listing holds it.
 fn action_use(raw: &str, rules: &[bar_plugin::proto::AccountRule]) -> i32 {
-    finish(switch::action_tokens(raw).and_then(|(account, provider)| {
-        session(rules, None, Some((&account, &provider)), |live| {
-            // an `auth_index` only: the link carries nothing else
+    finish(switch::action_tokens(raw).and_then(|t| {
+        let apply = |live: &switch::Live| {
             let target = live
                 .entries
                 .iter()
-                .find(|e| e.index == account && e.provider == provider)
+                .find(|e| e.index == t.account && e.provider == t.provider)
                 .ok_or_else(|| switch::Refusal("no such account".into()))?;
-            switch::run_use(live, Some(&target.index), Some(&provider), false, false)
-        })
+            switch::run_use(live, Some(&target.index), Some(&t.provider), false, false)
+        };
+        let Some(id) = &t.instance else {
+            return session(rules, None, Some((&t.account, &t.provider)), apply);
+        };
+        let cfg = load_config(rules)?;
+        let inst = switch::instance_by_id(&cfg, id)?;
+        let state = bar_plugin::dirs::bar_state();
+        let key = switch::key_for(inst)?;
+        apply(&switch::connect(inst, &key, &state, now())?)
     }))
 }

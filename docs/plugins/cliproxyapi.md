@@ -219,7 +219,7 @@ On a terminal it then asks `use which? [1-4, q to quit]` and switches as `use` d
 
 ### Clicking an account
 
-The plugin declares the action `use` with the tokens `account` and `provider`, and the actions `next` (`most-left`), `next-soon` (`soonest-reset`) and `pick` with the tokens `provider` and `instance`, which its output always carries at the top level. Bind one in `bar.conf` for either placement:
+The plugin declares the action `use` with the tokens `account`, `instance` and `provider`, and the actions `next` (`most-left`), `next-soon` (`soonest-reset`) and `pick` with the tokens `provider` and `instance`, which its output always carries at the top level. Bind one in `bar.conf` for either placement:
 
 ```
 # the account segment: a click runs `use` for the account it shows
@@ -244,7 +244,7 @@ In a session that does not use the proxy, `#{account}` shows the signed-in accou
 
 `next` and `next-soon` are linked even when `#{account}` shows bar's own signed-in account (a round-robin pool has no single preferred account); `use` needs the account the plugin named.
 
-Links need the click handler installed with action support: run `bar click install` (again after upgrading bar). A click runs `bar-cliproxyapi --action <action>` with the tokens on its standard input; the plugin checks that the token names an account of its current listing, performs `use`, and exits non-zero with a reason when it refuses. bar shows the outcome in `action-status` in its state directory and refreshes the segment at the next render. A click has no session environment, so the plugin finds the instance whose listing holds the account; when two instances list the same index it refuses.
+Links need the click handler installed with action support: run `bar click install` (again after upgrading bar). A click runs `bar-cliproxyapi --action <action>` with the tokens on its standard input; the plugin checks that the token names an account of its current listing, performs `use`, and exits non-zero with a reason when it refuses. bar shows the outcome in `action-status` in its state directory and refreshes the segment at the next render. The `instance` token (the id the output carries at the top level) names the instance; an id that matches no configured instance is refused, never matched to another one. Without the token, since a click has no session environment, the plugin finds the instance whose listing holds the account, and refuses when two instances list the same index.
 
 Management failures behave as for rendering: a 401 or 403, on the listing or on the change, stops every call until the key changes.
 
@@ -274,7 +274,7 @@ Choose which Codex account serves the session with `bar cpa use <account> --prov
 
 With the `menu` capability the plugin answers `bar-cliproxyapi --menu` for a desktop tray (see [Menu](../plugins.md#menu)). The menu covers every configured instance, not the one a session uses:
 
-- per instance and provider, a radio group of the accounts, the one the proxy prefers checked (none when several share the top priority); choosing one runs `use`. Each row's detail is its most used window and reset (`5h 59% used ↻2h10m`), marked `(stale)` when the reading is older than the render's freshness limit;
+- per instance and provider, a radio group of the accounts, the one the proxy prefers checked (none when several share the top priority); choosing one runs `use` for that instance, so two instances listing the same account index are told apart. Each row's detail is its most used window and reset (`5h 59% used ↻2h10m`), marked `(stale)` when the reading is older than the render's freshness limit;
 - below it, `Next: most quota left` and `Next: resets soonest` buttons, which run `next` and `next-soon` for that instance and provider;
 - an information row when the proxy cannot be read: management refused the key, the API is off, the key is unavailable, or the proxy is backing off.
 

@@ -61,9 +61,15 @@ fn detail(a: &Acct, now: i64) -> Option<String> {
     s
 }
 
-fn account_item(a: &Acct, preferred: bool, now: i64) -> MenuItem {
+fn account_item(a: &Acct, id: &str, preferred: bool, now: i64) -> MenuItem {
+    // the instance named: two instances may list the same index
+    let t = [
+        ("account", a.key.as_str()),
+        ("instance", id),
+        ("provider", &a.provider),
+    ];
     let mut i = MenuItem::new(&item_id(&a.key), &a.label)
-        .action("use", &[("account", &a.key), ("provider", &a.provider)])
+        .action("use", &t)
         .checked(preferred);
     if let Some(d) = detail(a, now) {
         i = i.detail(&d);
@@ -134,7 +140,7 @@ fn instance(inst: &Instance, state: &Path, now: i64) -> Vec<MenuGroup> {
         let label = format!("{} \u{B7} {}", title(p), host(inst));
         let mut radio = MenuGroup::new(&format!("{p}@{id}"), MenuKind::Radio).label(&label);
         for a in &accts {
-            radio = radio.item(account_item(a, top == Some(a.key.as_str()), now));
+            radio = radio.item(account_item(a, &id, top == Some(a.key.as_str()), now));
         }
         let t = [("instance", id.as_str()), ("provider", p.as_str())];
         out.push(radio);

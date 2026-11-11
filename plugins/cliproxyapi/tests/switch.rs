@@ -369,7 +369,7 @@ fn ext_info_declares_the_use_action() {
     let v: Value = serde_json::from_slice(&o.stdout).unwrap();
     assert_eq!(
         v["actions"]["use"],
-        json!({"description":"Prefer this account","tokens":["account","provider"],"confirm":false})
+        json!({"description":"Prefer this account","tokens":["account","instance","provider"],"confirm":false})
     );
 }
 

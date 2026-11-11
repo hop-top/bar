@@ -41,7 +41,8 @@ pub fn actions() -> BTreeMap<String, ActionSpec> {
             "use".to_string(),
             ActionSpec {
                 description: "Prefer this account".into(),
-                tokens: vec!["account".into(), "provider".into()],
+                // sorted: bar compares a click's token names in order
+                tokens: vec!["account".into(), "instance".into(), "provider".into()],
                 confirm: false,
                 timeout: 0,
             },
@@ -891,6 +892,20 @@ pub fn instance_id(origin: &str) -> String {
     bar_plugin::sha256::hex(origin.as_bytes())[..16].to_string()
 }
 
+/// Whether `s` has the shape of an [`instance_id`].
+fn is_instance_id(s: &str) -> bool {
+    s.len() == 16 && s.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// The configured instance whose [`instance_id`] is `id`; an unknown id
+/// is refused, never matched to another instance.
+pub fn instance_by_id<'a>(cfg: &'a Config, id: &str) -> Result<&'a Instance, Refusal> {
+    cfg.instances
+        .iter()
+        .find(|i| instance_id(&i.origin.to_string()) == id)
+        .ok_or_else(|| Refusal("no such instance".into()))
+}
+
 /// Validates the `--action next` / `next-soon` / `pick` input and returns
 /// `(provider, instance id)`.
 pub fn next_tokens(stdin: &str, action: &str) -> Result<(String, String), Refusal> {
@@ -903,8 +918,7 @@ pub fn next_tokens(stdin: &str, action: &str) -> Result<(String, String), Refusa
     let (Some(p), Some(i)) = (get("provider"), get("instance")) else {
         return refuse("needs the provider and instance tokens");
     };
-    let hex = i.len() == 16 && i.bytes().all(|b| b.is_ascii_hexdigit());
-    if !hex || !crate::config::PROVIDERS.contains(&p) {
+    if !is_instance_id(i) || !crate::config::PROVIDERS.contains(&p) {
         return refuse("malformed tokens");
     }
     Ok((p.into(), i.into()))
@@ -956,10 +970,19 @@ pub fn key_for(inst: &Instance) -> Result<Secret, Refusal> {
     keysource::read(&inst.key).map_err(|e| Refusal(format!("{}: {e}", inst.origin)))
 }
 
-/// Validates the `--action use` input and returns `(account, provider)`.
-/// The values come from a link: they must be well-formed and, checked by
-/// the caller against the instance, name an account of the snapshot.
-pub fn action_tokens(stdin: &str) -> Result<(String, String), Refusal> {
+/// The `--action use` tokens.
+#[derive(Debug, PartialEq, Eq)]
+pub struct UseTokens {
+    pub account: String,
+    pub provider: String,
+    /// An [`instance_id`]; absent, the instance is found from the snapshot.
+    pub instance: Option<String>,
+}
+
+/// Validates the `--action use` input. The values come from a link or a
+/// menu: they must be well-formed and, checked by the caller against the
+/// instance, name an account of the snapshot.
+pub fn action_tokens(stdin: &str) -> Result<UseTokens, Refusal> {
     let v: Value = serde_json::from_str(stdin).map_err(|_| Refusal("bad input".into()))?;
     if v["action"].as_str() != Some("use") {
         return refuse("unknown action");
@@ -974,10 +997,19 @@ pub fn action_tokens(stdin: &str) -> Result<(String, String), Refusal> {
             && s.bytes()
                 .all(|b| b.is_ascii_alphanumeric() || b"._@-".contains(&b))
     };
-    if !ok(a, 64) || !ok(p, 32) || !crate::config::PROVIDERS.contains(&p) {
+    let inst = get("instance");
+    if !ok(a, 64)
+        || !ok(p, 32)
+        || !crate::config::PROVIDERS.contains(&p)
+        || inst.is_some_and(|i| !is_instance_id(i))
+    {
         return refuse("malformed tokens");
     }
-    Ok((a.into(), p.into()))
+    Ok(UseTokens {
+        account: a.into(),
+        provider: p.into(),
+        instance: inst.map(Into::into),
+    })
 }
 
 #[cfg(test)]
@@ -1143,8 +1175,20 @@ mod tests {
     #[test]
     fn action_tokens_are_checked() {
         let ok = r#"{"action":"use","tokens":{"account":"ix1","provider":"claude"}}"#;
-        assert_eq!(action_tokens(ok).unwrap(), ("ix1".into(), "claude".into()));
+        let want = UseTokens {
+            account: "ix1".into(),
+            provider: "claude".into(),
+            instance: None,
+        };
+        assert_eq!(action_tokens(ok).unwrap(), want);
+        let ok = r#"{"action":"use","tokens":{"account":"ix1","instance":"0123456789abcdef","provider":"claude"}}"#;
+        assert_eq!(
+            action_tokens(ok).unwrap().instance.as_deref(),
+            Some("0123456789abcdef")
+        );
         for bad in [
+            r#"{"action":"use","tokens":{"account":"ix1","instance":"x","provider":"claude"}}"#,
+            r#"{"action":"use","tokens":{"account":"ix1","instance":"0123456789abcdef0","provider":"claude"}}"#,
             "",
             r#"{"action":"nope","tokens":{}}"#,
             r#"{"action":"use","tokens":{"account":"ix1"}}"#,
