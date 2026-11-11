@@ -1,9 +1,11 @@
-//! `bar tray`: what the desktop tray shows. `state` builds the snapshot
-//! the tray reads (the view toggles, the last action, the session counts
-//! and the granted plugins' menus) and writes it to the state dir; the
-//! tray never computes any of it.
+//! `bar tray`: what the desktop tray shows and runs. `state` builds the
+//! snapshot the tray reads (the view toggles, the last action, the
+//! session counts and the granted plugins' menus) and writes it to the
+//! state dir; `run` runs one item of that snapshot. The tray never
+//! computes any of it.
 
 mod plugins;
+pub mod run;
 pub mod state;
 pub mod waybar;
 
