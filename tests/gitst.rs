@@ -19,7 +19,7 @@ fn tmp() -> PathBuf {
         N.fetch_add(1, Ordering::SeqCst)
     ));
     std::fs::create_dir_all(&p).unwrap();
-    p.canonicalize().unwrap()
+    hop_bar::platform::canonicalize(&p).unwrap()
 }
 
 fn git(dir: &Path, args: &[&str]) {

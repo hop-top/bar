@@ -101,7 +101,7 @@ fn bar(t: &Tmp, dir: &Path, args: &[&str], stdin: &str) -> (i32, String, String)
 }
 
 fn user_conf(t: &Tmp) -> std::path::PathBuf {
-    t.path().join("xdg/bar/bar.conf")
+    t.path().join("xdg").join("bar").join("bar.conf")
 }
 
 fn backups(t: &Tmp) -> Vec<String> {

@@ -188,7 +188,13 @@ fn missing_and_broken_files_are_config_errors() {
     t.conf("set palette harbour\n");
     let e = err(t.load(None));
     assert!(e.contains("invalid palette `harbour`"), "{e}");
-    assert!(e.contains("palettes/harbour.conf"), "{e}");
+    assert!(
+        e.contains(&format!(
+            "palettes{}harbour.conf",
+            std::path::MAIN_SEPARATOR
+        )),
+        "{e}"
+    );
     t.palette("harbour", "set muted 250\n");
     let e = err(t.load(None));
     assert!(e.contains("palette `harbour`"), "{e}");

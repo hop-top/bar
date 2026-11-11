@@ -23,7 +23,7 @@ impl Tmp {
             N.fetch_add(1, Ordering::SeqCst)
         ));
         std::fs::create_dir_all(&p).unwrap();
-        Tmp(p.canonicalize().unwrap())
+        Tmp(hop_bar::platform::canonicalize(&p).unwrap())
     }
     pub fn path(&self) -> &Path {
         &self.0
