@@ -9,7 +9,7 @@
 # the fallback for any other account.
 # The cookie reaches curl only on stdin, never in argv or the environment.
 if [ "$1" = "--ext-info" ]; then
-  printf '%s\n' '{"name":"claude-credits","version":"0.1.0","description":"Claude Console prepaid credit balance","capabilities":["discover","placeholder"],"options":{"account":{"type":"string"}},"inputs":{"account":true},"ttl":"5m","web":{"category":"usage","samples":[{"output":{"text":"$149.07","label":"14d"}}],"options":{"account":{"label":"Keychain entry","help":"Keychain entry holding the Console session cookie; else plugin claude-credits keychain=...","placeholder":"claude-console"}}}}'
+  printf '%s\n' '{"name":"claude-credits","version":"0.1.0","description":"Claude Console prepaid credit balance","capabilities":["discover","placeholder"],"options":{"account":{"type":"string"}},"inputs":{"account":true},"ttl":"5m","timeout":"10s","web":{"category":"usage","samples":[{"output":{"text":"$149.07","label":"14d"}}],"options":{"account":{"label":"Keychain entry","help":"Keychain entry holding the Console session cookie; else plugin claude-credits keychain=...","placeholder":"claude-console"}}}}'
   exit 0
 fi
 
@@ -36,7 +36,7 @@ cookie=$(security find-generic-password -a "${USER:-$(id -un)}" -s "$entry" -w 2
 case "$cookie" in ''|*[!A-Za-z0-9._~%+=/-]*) exit 1 ;; esac
 
 # printf is a shell builtin: the cookie stays out of every child's argv.
-resp=$(printf 'header = "Cookie: sessionKey=%s"\n' "$cookie" | curl -s -m 2 -K - \
+resp=$(printf 'header = "Cookie: sessionKey=%s"\n' "$cookie" | curl -s -m 8 -K - \
   -w '\n%{http_code}' -H 'Accept: application/json' -H 'User-Agent: Mozilla/5.0' \
   "https://platform.claude.com/api/organizations/$org/prepaid/credits" 2>/dev/null) || exit 1
 unset cookie
