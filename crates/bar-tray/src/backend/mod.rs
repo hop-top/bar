@@ -1,6 +1,6 @@
 //! Backends draw the menu the model describes. The modules here that
-//! carry no OS calls (`app`, `rows`, `icon`, `spawn`, `source`,
-//! `sni_map`) build and test anywhere; `menu` is the muda menu the
+//! carry no OS calls beyond starting and killing processes (`app`,
+//! `rows`, `icon`, `spawn`, `source`, `sni_map`) build and test anywhere; `menu` is the muda menu the
 //! macOS and Windows backends share; each OS backend sits behind its
 //! `cfg`.
 

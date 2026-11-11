@@ -4,12 +4,16 @@
 //! shell; `bar` is found beside the tray binary (or where `--bar` says),
 //! never on `PATH`. Every child gets null stdin, a scrubbed
 //! environment (only the names the `bar://` handler bakes, with the
-//! tray's own values), a time limit and, past it, a kill.
+//! tray's own values), a time limit and, past it, a kill of the child
+//! and everything it started.
+
+mod tree;
 
 use std::ffi::OsString;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
 /// Output of `bar tray state --json` beyond this is an error.
@@ -74,6 +78,8 @@ pub const GRACE: Duration = Duration::from_secs(5);
 pub const QUICK: Duration = Duration::from_secs(15);
 /// Longest failure note kept from stderr.
 const MAX_NOTE: usize = 80;
+/// How long the pipes may stay open after a kill.
+const PIPE_GRACE: Duration = Duration::from_millis(500);
 
 /// The deadline for an action: its limit (`None` or 0: the longest
 /// `bar` allows) plus [`GRACE`].
@@ -160,6 +166,7 @@ fn command(bar: &Path, args: &[OsString], capture: bool) -> Command {
             Stdio::null()
         })
         .stderr(Stdio::piped());
+    tree::own_group(&mut c);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -171,26 +178,53 @@ fn command(bar: &Path, args: &[OsString], capture: bool) -> Command {
 
 /// Reads a pipe to its end on its own thread, keeping at most `cap`
 /// bytes plus one (so the caller can tell an overflow).
-fn reader<R: Read + Send + 'static>(
-    pipe: Option<R>,
-    cap: u64,
-) -> Option<std::thread::JoinHandle<Vec<u8>>> {
+fn reader<R: Read + Send + 'static>(pipe: Option<R>, cap: u64) -> Option<Receiver<Vec<u8>>> {
     pipe.map(|p| {
+        let (tx, rx) = mpsc::channel();
         std::thread::spawn(move || {
             let mut s = Vec::new();
             let _ = p.take(cap + 1).read_to_end(&mut s);
-            s
-        })
+            let _ = tx.send(s);
+        });
+        rx
     })
 }
 
-fn joined(h: Option<std::thread::JoinHandle<Vec<u8>>>) -> Vec<u8> {
-    h.map_or_else(Vec::new, |h| h.join().unwrap_or_default())
+/// What the pipe's reader got, once the pipe closed by `by`; `None` while
+/// something still holds it open (its reader is left to finish alone).
+fn collected(rx: Option<Receiver<Vec<u8>>>, by: Instant) -> Option<Vec<u8>> {
+    let Some(rx) = rx else {
+        return Some(Vec::new());
+    };
+    match rx.recv_timeout(by.saturating_duration_since(Instant::now())) {
+        Ok(s) => Some(s),
+        Err(RecvTimeoutError::Timeout) => None,
+        Err(RecvTimeoutError::Disconnected) => Some(Vec::new()),
+    }
 }
 
-/// Runs `bar args`, waits at most `limit` (then kills and reaps it) and
-/// returns what it printed when `capture` is set (empty otherwise). A
-/// failure's message is the first line of stderr when there is one.
+/// Waits for `child` until `deadline`, then kills it with everything it
+/// started and reaps it.
+fn wait(child: &mut Child, deadline: Instant) -> Result<ExitStatus, String> {
+    loop {
+        match child.try_wait() {
+            Ok(Some(st)) => return Ok(st),
+            Ok(None) if Instant::now() >= deadline => {
+                tree::kill_tree(child);
+                let _ = child.wait();
+                return Err("timed out".to_string());
+            }
+            Ok(None) => std::thread::sleep(Duration::from_millis(20)),
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+}
+
+/// Runs `bar args`, waits at most `limit` (then kills and reaps it with
+/// its descendants) and returns what it printed when `capture` is set
+/// (empty otherwise). A failure's message is the first line of stderr
+/// when there is one. A descendant that escaped the kill, or outlives a
+/// child that exited, holds the pipes no longer than the limit.
 pub fn run(
     bar: &Path,
     args: &[OsString],
@@ -203,24 +237,16 @@ pub fn run(
     let out = reader(child.stdout.take(), MAX_CAPTURE);
     let err = reader(child.stderr.take(), 4096);
     let start = Instant::now();
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(st)) => break Ok(st),
-            Ok(None) if start.elapsed() >= limit => {
-                let _ = child.kill();
-                let _ = child.wait();
-                break Err("timed out".to_string());
-            }
-            Ok(None) => std::thread::sleep(Duration::from_millis(20)),
-            Err(e) => break Err(e.to_string()),
-        }
-    };
-    let bytes = joined(out);
-    let stderr = note(&String::from_utf8_lossy(&joined(err)));
-    if bytes.len() as u64 > MAX_CAPTURE {
+    let status = wait(&mut child, start + limit);
+    let by = (start + limit).max(Instant::now() + PIPE_GRACE);
+    let bytes = collected(out, by);
+    let stderr =
+        collected(err, by).map_or_else(String::new, |e| note(&String::from_utf8_lossy(&e)));
+    if bytes.as_ref().is_some_and(|b| b.len() as u64 > MAX_CAPTURE) {
         return Err("output too large".to_string());
     }
     let status = status?;
+    let bytes = bytes.ok_or_else(|| "timed out".to_string())?;
     if !status.success() {
         return Err(if stderr.is_empty() {
             format!("exit {}", status.code().unwrap_or(-1))
