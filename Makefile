@@ -32,7 +32,7 @@ COVERAGE_MIN ?= 94
 quality: audit unused coverage dupes
 
 audit:
-	cargo deny check
+	cargo deny --workspace check
 
 unused:
 	cargo machete
