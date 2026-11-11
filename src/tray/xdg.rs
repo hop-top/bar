@@ -259,6 +259,9 @@ mod tests {
         assert!(desktop_entry(&s(&["/o/bar-tray", "a\nb"]), &[]).is_err());
     }
 
+    // XDG autostart and systemd user units are Linux only; their `/`
+    // paths are not absolute on Windows
+    #[cfg(unix)]
     #[test]
     fn unit_quotes_words_and_escapes_specifiers() {
         let u = unit(
@@ -296,6 +299,9 @@ mod tests {
         assert!(unit(&s(&["/t", "a\nb"]), &[]).is_err());
     }
 
+    // XDG autostart and systemd user units are Linux only; their `/`
+    // paths are not absolute on Windows
+    #[cfg(unix)]
     #[test]
     fn dirs_follow_xdg_with_home_fallback() {
         let env = |pairs: &'static [(&'static str, &'static str)]| {

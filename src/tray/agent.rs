@@ -138,6 +138,12 @@ mod tests {
             kickstart(501),
             ["/bin/launchctl", "kickstart", "gui/501/top.hop.bar-tray"]
         );
+    }
+
+    // LaunchAgents are macOS only; `/h` is no absolute home on Windows
+    #[cfg(unix)]
+    #[test]
+    fn agents_live_under_an_absolute_home() {
         assert_eq!(agents_dir(Some(Path::new("rel"))), None);
         assert_eq!(
             agents_dir(Some(Path::new("/h"))),
