@@ -135,20 +135,17 @@ fn run(argv: &[String]) -> Result<Secret, KeyError> {
         Ok(buf)
     });
     let end = Instant::now() + BUDGET;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(st)) => break st,
-            Ok(None) if Instant::now() >= end => {
-                let _ = child.kill();
-                let _ = child.wait();
-                // not joined: a grandchild holding the pipe open would
-                // block here past the budget
-                drop(reader);
-                return Err(KeyError::TimedOut);
-            }
-            Ok(None) => std::thread::sleep(Duration::from_millis(10)),
-            Err(_) => return Err(KeyError::Failed),
+    let status = match crate::wait::wait_until(&mut child, end) {
+        Ok(Some(st)) => st,
+        Ok(None) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            // not joined: a grandchild holding the pipe open would block
+            // here past the budget
+            drop(reader);
+            return Err(KeyError::TimedOut);
         }
+        Err(_) => return Err(KeyError::Failed),
     };
     let buf = reader.join().map_err(|_| KeyError::Failed)??;
     if !status.success() {
@@ -310,6 +307,28 @@ mod tests {
         assert_eq!(
             read(&KeySource::Command(vec!["/nonexistent/prog".into()])).unwrap_err(),
             KeyError::Failed
+        );
+    }
+
+    /// A key command's exit ends the wait at once, not at the next tick
+    /// of a polling interval (minima vs a blocking `output()`: noise only
+    /// adds; a 10 ms poll never returns before its first sleep).
+    #[cfg(unix)]
+    #[test]
+    fn a_fast_key_command_ends_the_wait_promptly() {
+        let argv = ["/bin/echo".to_string(), "k3y".to_string()];
+        let (mut ours, mut base) = (Duration::MAX, Duration::MAX);
+        for _ in 0..15 {
+            let t = Instant::now();
+            Command::new(&argv[0]).arg(&argv[1]).output().unwrap();
+            base = base.min(t.elapsed());
+            let t = Instant::now();
+            assert_eq!(run(&argv).unwrap().as_bytes(), b"k3y");
+            ours = ours.min(t.elapsed());
+        }
+        assert!(
+            ours < base + Duration::from_millis(5),
+            "run {ours:?} vs output() {base:?}"
         );
     }
 
