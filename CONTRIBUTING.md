@@ -103,7 +103,7 @@ kit conformance verify-no-leak --audit
 
 Do not add scenario rubrics, assertions or judge keys to stories.
 
-The graded factors (structured output, errors, contracts, preview, idempotency, state, exit codes) come from the scenario in `e2e/conformance/scenarios/bar/agent-config-contract/1.0.0/scenario.yaml`: steps run against bar, assertions on their exit codes, stdout and stderr. Some assertions state requirements bar does not meet yet (JSON for every command and error, `--dry-run`, kit's exit-code classes, a set form for `toggle`); they fail until bar does, and the grade with them. It pins its story, `e2e/stories/agent-config-contract.yaml`, by sha256; after editing the story, put `shasum -a 256` of the file in the scenario's `content_hash`. `.verifynoleak.allow` keeps the scenario out of the leak gate. To grade locally (needs a kit with `conformance svc` and `conformance harness`):
+The graded factors (structured output, errors, contracts, preview, idempotency, state, exit codes) come from the scenario in `e2e/conformance/scenarios/bar/agent-config-contract/1.0.0/scenario.yaml`: steps run against bar, assertions on their exit codes, stdout and stderr. It pins its story, `e2e/stories/agent-config-contract.yaml`, by sha256; after editing the story, put `shasum -a 256` of the file in the scenario's `content_hash`. `.verifynoleak.allow` keeps the scenario out of the leak gate. To grade locally (needs a kit with `conformance svc` and `conformance harness`):
 
 ```sh
 cargo build

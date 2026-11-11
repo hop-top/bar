@@ -11,12 +11,16 @@ tier: 3
 story_ref:
   story_id: bar.agent.config-contract
   story_path: e2e/stories/agent-config-contract.yaml
-  content_hash: "sha256:2a23ae83730997c46e75be8fd07587ea26271612158caad03a7209a6393cd68f"
+  content_hash: "sha256:f6a0b1753e3ab7aed6c54075d4cb4c3e1f3ba4d2d8ca903c151e52b93cb6cb16"
 steps:
   - id: check_none
     invoke: ["bar", "check", "--format", "json"]
   - id: check_yaml
     invoke: ["bar", "check", "--format", "yaml"]
+  - id: init_dry_run
+    invoke: ["bar", "init", "--preset", "minimal", "--dry-run", "--format", "json"]
+  - id: check_after_init_dry_run
+    invoke: ["bar", "check", "--format", "json"]
   - id: init
     invoke: ["bar", "init", "--preset", "minimal"]
   - id: init_again
@@ -65,20 +69,33 @@ steps:
     invoke: ["bar", "config", "import", "-"]
   - id: plugin_list
     invoke: ["bar", "plugin", "list", "--format", "json"]
-  - id: init_again_json
-    invoke: ["bar", "init", "--preset", "minimal", "--format", "json"]
   - id: unknown_command_json
     invoke: ["bar", "frobnicate", "--format", "json"]
   - id: install_repeat_json
     invoke: ["bar", "install", "--project", "--yes", "--format", "json"]
+  - id: install_dry_run_json
+    invoke: ["bar", "install", "--local", "--yes", "--dry-run", "--format", "json"]
   - id: install_local_preview_json
     invoke: ["bar", "install", "--local", "--format", "json"]
   - id: import_dry_run
     invoke: ["bar", "config", "import", "-", "--replace", "--dry-run"]
     stdin: |
       set left "#{model}"
+  - id: import_dry_run_json
+    invoke: ["bar", "config", "import", "-", "--replace", "--yes", "--dry-run", "--format", "json"]
+    stdin: |
+      set left "#{model}"
+  - id: import_after_dry_run
+    invoke: ["bar", "config", "import", "-", "--replace", "--yes", "--format", "json"]
+    stdin: |
+      set left "#{model} | #{ctx}"
+      set right "#{usage[type=7d]}"
   - id: toggle_dry_run
     invoke: ["bar", "toggle", "5h", "--dry-run"]
+  - id: toggle_dry_run_json
+    invoke: ["bar", "toggle", "5h", "pct", "--dry-run", "--format", "json"]
+  - id: check_after_toggle_dry_run
+    invoke: ["bar", "check", "--format", "json"]
   - id: toggle_set
     invoke: ["bar", "toggle", "5h", "pct"]
   - id: toggle_json
@@ -93,6 +110,18 @@ steps:
     invoke: ["bar", "config", "export", "--format", "json"]
   - id: plugin_missing
     invoke: ["bar", "plugin", "info", "no-such-plugin"]
+  - id: prices_dry_run
+    invoke: ["bar", "prices", "update", "--dry-run", "--format", "json"]
+  - id: check_after_prices_dry_run
+    invoke: ["bar", "check", "--format", "json"]
+  - id: export_file_dry_run
+    invoke: ["bar", "config", "export", "exported.conf", "--dry-run", "--format", "json"]
+  - id: export_file_after_dry_run
+    invoke: ["bar", "config", "export", "exported.conf", "--format", "json"]
+  - id: web_plugins_dry_run
+    invoke: ["bar", "web", "plugins", "-o", "plugins.json", "--dry-run", "--format", "json"]
+  - id: web_plugins_after_dry_run
+    invoke: ["bar", "web", "plugins", "-o", "plugins.json"]
 assertions:
   # F3 structured I/O: reports parse as JSON or YAML; data on stdout,
   # diagnostics on stderr
@@ -352,6 +381,241 @@ assertions:
     kind: stream_discipline_pass
     on: install_local_preview_json
     factor: 6
+
+  # F6: each dry run prints its plan as data (dry_run, command, and the
+  # changes: action and path) and writes nothing
+  - id: init-dry-run-plan
+    kind: output_field_equals
+    on: init_dry_run
+    factor: 6
+    path: dry_run
+    value: true
+    parse: json
+  - id: init-dry-run-command
+    kind: output_field_equals
+    on: init_dry_run
+    factor: 6
+    path: command
+    value: "init"
+    parse: json
+  - id: init-dry-run-action
+    kind: output_field_equals
+    on: init_dry_run
+    factor: 6
+    path: changes.0.action
+    value: create
+    parse: json
+  - id: init-dry-run-path
+    kind: output_field_present
+    on: init_dry_run
+    factor: 6
+    path: changes.0.path
+    parse: json
+  - id: init-dry-run-writes-nothing
+    kind: output_field_equals
+    on: check_after_init_dry_run
+    factor: 6
+    path: path
+    value: null
+    parse: json
+  - id: import-dry-run-plan
+    kind: output_field_equals
+    on: import_dry_run_json
+    factor: 6
+    path: dry_run
+    value: true
+    parse: json
+  - id: import-dry-run-command
+    kind: output_field_equals
+    on: import_dry_run_json
+    factor: 6
+    path: command
+    value: "config import"
+    parse: json
+  - id: import-dry-run-action
+    kind: output_field_equals
+    on: import_dry_run_json
+    factor: 6
+    path: changes.0.action
+    value: update
+    parse: json
+  - id: import-dry-run-path
+    kind: output_field_present
+    on: import_dry_run_json
+    factor: 6
+    path: changes.0.path
+    parse: json
+  - id: import-dry-run-writes-nothing
+    kind: output_field_equals
+    on: import_after_dry_run
+    factor: 6
+    path: written
+    value: false
+    parse: json
+  - id: toggle-dry-run-plan
+    kind: output_field_equals
+    on: toggle_dry_run_json
+    factor: 6
+    path: dry_run
+    value: true
+    parse: json
+  - id: toggle-dry-run-command
+    kind: output_field_equals
+    on: toggle_dry_run_json
+    factor: 6
+    path: command
+    value: "toggle"
+    parse: json
+  - id: toggle-dry-run-action
+    kind: output_field_equals
+    on: toggle_dry_run_json
+    factor: 6
+    path: changes.0.action
+    value: create
+    parse: json
+  - id: toggle-dry-run-path
+    kind: output_field_present
+    on: toggle_dry_run_json
+    factor: 6
+    path: changes.0.path
+    parse: json
+  - id: toggle-dry-run-writes-nothing
+    kind: output_field_equals
+    on: check_after_toggle_dry_run
+    factor: 6
+    path: state.toggles.0.view
+    value: bar
+    parse: json
+  - id: install-dry-run-plan
+    kind: output_field_equals
+    on: install_dry_run_json
+    factor: 6
+    path: dry_run
+    value: true
+    parse: json
+  - id: install-dry-run-command
+    kind: output_field_equals
+    on: install_dry_run_json
+    factor: 6
+    path: command
+    value: "install"
+    parse: json
+  - id: install-dry-run-action
+    kind: output_field_equals
+    on: install_dry_run_json
+    factor: 6
+    path: changes.0.action
+    value: create
+    parse: json
+  - id: install-dry-run-path
+    kind: output_field_present
+    on: install_dry_run_json
+    factor: 6
+    path: changes.0.path
+    parse: json
+  - id: install-dry-run-writes-nothing
+    kind: exit_code_class
+    on: install_local_preview_json
+    factor: 6
+    classes: [CONSENT_REFUSED]
+  - id: prices-dry-run-plan
+    kind: output_field_equals
+    on: prices_dry_run
+    factor: 6
+    path: dry_run
+    value: true
+    parse: json
+  - id: prices-dry-run-command
+    kind: output_field_equals
+    on: prices_dry_run
+    factor: 6
+    path: command
+    value: "prices update"
+    parse: json
+  - id: prices-dry-run-action
+    kind: output_field_equals
+    on: prices_dry_run
+    factor: 6
+    path: changes.0.action
+    value: create
+    parse: json
+  - id: prices-dry-run-path
+    kind: output_field_present
+    on: prices_dry_run
+    factor: 6
+    path: changes.0.path
+    parse: json
+  - id: prices-dry-run-writes-nothing
+    kind: output_field_equals
+    on: check_after_prices_dry_run
+    factor: 6
+    path: prices.fetched
+    value: null
+    parse: json
+  - id: export-dry-run-plan
+    kind: output_field_equals
+    on: export_file_dry_run
+    factor: 6
+    path: dry_run
+    value: true
+    parse: json
+  - id: export-dry-run-command
+    kind: output_field_equals
+    on: export_file_dry_run
+    factor: 6
+    path: command
+    value: "config export"
+    parse: json
+  - id: export-dry-run-action
+    kind: output_field_equals
+    on: export_file_dry_run
+    factor: 6
+    path: changes.0.action
+    value: create
+    parse: json
+  - id: export-dry-run-path
+    kind: output_field_present
+    on: export_file_dry_run
+    factor: 6
+    path: changes.0.path
+    parse: json
+  - id: export-dry-run-writes-nothing
+    kind: exit_code_class
+    on: export_file_after_dry_run
+    factor: 6
+    classes: [OK]
+  - id: web-plugins-dry-run-plan
+    kind: output_field_equals
+    on: web_plugins_dry_run
+    factor: 6
+    path: dry_run
+    value: true
+    parse: json
+  - id: web-plugins-dry-run-command
+    kind: output_field_equals
+    on: web_plugins_dry_run
+    factor: 6
+    path: command
+    value: "web plugins"
+    parse: json
+  - id: web-plugins-dry-run-action
+    kind: output_field_equals
+    on: web_plugins_dry_run
+    factor: 6
+    path: changes.0.action
+    value: create
+    parse: json
+  - id: web-plugins-dry-run-path
+    kind: output_field_present
+    on: web_plugins_dry_run
+    factor: 6
+    path: changes.0.path
+    parse: json
+  - id: web-plugins-dry-run-writes-nothing
+    kind: exit_code_class
+    on: web_plugins_after_dry_run
+    factor: 6
+    classes: [OK]
 
   # F7: repeating init with the same preset is a no-op success; a view
   # can be set, not only flipped
