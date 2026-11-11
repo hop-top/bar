@@ -38,7 +38,7 @@ Any executable named `bar-<name>` on `PATH` (on Windows `bar-<name>.exe`, `.cmd`
 | Field | Meaning |
 |---|---|
 | `name`, `version` | Required strings. Without them, or on timeout or non-zero exit, `bar` falls back to the file name, an empty version and no capabilities. |
-| `capabilities` | Must include `placeholder`, or `bar` never renders the plugin. |
+| `capabilities` | Must include `placeholder`, or `bar` never renders the plugin. `check` adds the [`--check`](#check) call; `menu` adds the [`--menu`](#menu) call. |
 | `description` | Optional string, shown by `bar plugin list`. |
 | `options` | Allowed options; keys, choices and string defaults are sanitised like `text`. Types: `int` (sent as a JSON integer), `string`, `bool` (written `true`/`yes`/`on`/`1` or `false`/`no`/`off`/`0`, sent as JSON `true`/`false`), `enum` (with `enum` choices, sent as the string). `default` fills a missing option when it fits the type. Options of unknown type are dropped. `icon`, `bg`, `fg`, `bold`, `gradient` and `click` are reserved: declared, they are dropped and `bar check` warns. |
 | `icon` | Optional default segment icon, used when `set icons` is not `none`. Sanitised; at most 2 cells. |
@@ -162,6 +162,56 @@ directly, with a 10 s limit (the action's declared `timeout`, at most 120 s, whe
 ### Check
 
 A plugin with the `check` capability answers `bar-<plugin> --check` (5 s limit, no stdin) with a JSON array of strings or `{"warnings": ["..."]}`: problems with its own configuration, found without a network call (a missing key file, a remembered refusal). `bar check` shows each, sanitised, at most 8 of 200 characters, as a warning for a plugin the layout uses.
+
+### Menu
+
+A plugin with the `menu` capability answers `bar-<plugin> --menu` with the groups and items a desktop menu shows for it: a picker, toggles, buttons and information rows. Each item names one of the plugin's declared [actions](#actions) and the token values it takes; choosing the item runs that action exactly as a click does. The call is made directly (no shell), with a 3 s limit, `BAR_STATE_DIR` set, and this on stdin:
+
+```json
+{ "options": { "provider": "auto" }, "toggles": { "scope": true },
+  "accounts": [{"glob": "*@example.test", "label": "work", "color": "33"}] }
+```
+
+- `options`: the placeholder's `default <name>` options, typed and with schema defaults filled in, as a render gets them.
+- `toggles`: the plugin's named toggles that are on, as in a render.
+- `accounts`: only for plugins declaring `inputs.accounts`, and only when the user has `account` lines: see [Account rules](#account-rules). Absent otherwise.
+- Nothing from the session: there is none. A menu covers everything the plugin is configured for (every proxy instance, say), not the instance one session happens to use. Unknown fields are ignored.
+
+Stdout is one JSON object:
+
+```json
+{ "groups": [
+  { "id": "claude@8317", "label": "Claude · :8317", "kind": "radio", "items": [
+      { "id": "3", "label": "alice", "detail": "5h 59% ↻2h10m · 7d 71%", "checked": true,
+        "action": "use", "tokens": { "account": "3", "provider": "claude" } },
+      { "id": "4", "label": "bob", "detail": "5h 12% ↻4h02m · 7d 40%",
+        "action": "use", "tokens": { "account": "4", "provider": "claude" } } ] },
+  { "id": "next@8317", "kind": "buttons", "items": [
+      { "id": "next", "label": "Use most quota left", "action": "next", "tokens": { "provider": "claude" } } ] },
+  { "id": "rtellm@8317", "label": "Routing", "kind": "check", "items": [
+      { "id": "toggle", "label": "Routing", "checked": true,
+        "action": "toggle", "tokens": { "instance": "9f2c", "to": "off" } } ] },
+  { "id": "info", "kind": "info", "items": [
+      { "id": "auth", "label": "management refused the key", "style": "bad" } ] } ] }
+```
+
+- `groups` (required, an array of at most 16 objects): the sections of the menu, in order. Each has `id`, an optional `label` (a heading) and `kind`:
+  - `radio`: a picker, one item checked (the first checked one when several are);
+  - `check`: toggles, each item checked or not;
+  - `buttons`: one-shot actions;
+  - `info`: disabled rows, text only; their items carry no action.
+- `items` (required, an array of at most 16 objects per group): the rows. Each has `id`, `label` (required, visibly non-empty), optionally `detail` (a second line or a tooltip, as the desktop allows), `checked` (default `false`), `enabled` (default `true`; a disabled item is shown but cannot be chosen), `style` (`good`, `warn`, `bad` or `dim`, as for a render; anything else is dropped), and outside `info` groups `action` (required, a declared action name) with `tokens`.
+- `id` of a group or item: letters, digits, `_`, `@`, `:` and `-`, 1 to 32 characters, unique among its siblings (the first of a duplicated id is kept). A dot is not allowed: bar joins `<plugin>.<group>.<item>` into the one id a menu choice is run by, so an id should stay the same from one call to the next for the same thing (an account index, an instance). Stable ids keep a choice made on an older menu meaningful.
+- `tokens` follow the [render output](#render) rules: names from `a-z0-9_-`, values of at most 64 characters from `A-Za-z0-9._@-`, at most 8; an invalid token is dropped, more than 8 drop the item. They must name exactly the tokens the action declares (`actions.<name>.tokens`): an item whose action is undeclared, or whose token names differ from the declaration, is dropped. An action declared with `confirm` is asked for confirmation by the menu before it runs.
+- `label`, `detail` and a group's `label` are sanitised like `text` (control and format characters dropped, tabs and line breaks become spaces), trimmed and cut to 120 characters. Only the fields above are kept; anything else in the output is discarded.
+- A group without a known `kind`, a valid `id` or any usable item is dropped; `{"groups": []}` is a valid answer (nothing to show). An output that is not an object with a `groups` array, a non-zero exit or a timeout means no menu for the plugin this time.
+
+Rules a menu plugin follows:
+
+- **Answered from its own cache.** The call runs every time a menu opens, so it must be cheap: read the plugin's own cache files and configuration and answer. A network call is allowed only when the plugin's own freshness rule says the cache is stale (the same rule its render uses), never on every call; it must respect the plugin's refusal records (a remembered 401 or 403) as a render does. The 3 s limit is a cap, not a budget.
+- **No secrets.** The output is written to a file in the state directory and shown by a desktop process, and on some desktops every program of the user's session can read menu labels. Labels, details and tokens carry names, indices, instance ids and status text only: no keys, no addresses the user did not put in an `account` line themselves, no URLs with credentials.
+- **Stable, complete.** The menu lists everything the plugin is configured for, each item identified so that the same `id` means the same thing next time, with `checked` reflecting the current state (the preferred account, whether routing is on). A toggle item carries the value to switch to (`"to": "off"` while on), and the action re-reads the current state before changing it, so an item chosen from a stale menu is a no-op, not a flip back.
+- **Same action semantics.** An action run from the menu receives the same stdin as from a click (`{"action", "tokens"[, "accounts"]}`), with the same limit, and reports the same way (its first stdout line, its exit status). The plugin validates its tokens itself, as it does for a click.
 
 ### Account
 
