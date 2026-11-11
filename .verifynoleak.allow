@@ -1,0 +1,5 @@
+# bar's conformance scenario is graded by a grading service the 12fc
+# workflow starts in its own job (scripts/conformance-grade), so its rubric
+# is public on purpose. Every other file, stories included, stays under
+# the leak gate.
+e2e/conformance/scenarios/**

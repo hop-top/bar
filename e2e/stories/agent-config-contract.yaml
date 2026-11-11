@@ -1,0 +1,119 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: bar.agent.config-contract
+title: Set up and change the config from a script, without a terminal
+binary: bar
+intent: |
+  An agent sets bar up for a user from a script, with no terminal to answer
+  prompts. It reads what bar sees as JSON, writes a preset, tries to
+  overwrite it, imports a broken file and a good one, previews before
+  writing, repeats each write, adds bar to a project's Claude Code
+  settings, and recovers from its own mistakes from what bar prints.
+preconditions:
+  - bar binary is on PATH
+  - no bar config yet
+  - the working directory is a project with no .claude directory
+steps:
+  - id: check_none
+    intent: |
+      Read the config report as JSON before any config exists: which file
+      bar would read, where its price data lives, and whether all is ok.
+    invoke: ["bar", "check", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: check_yaml
+    intent: |
+      Read the same report as YAML, for a tool that prefers it to JSON.
+    invoke: ["bar", "check", "--format", "yaml"]
+    capture: [exit_code, stdout]
+  - id: init
+    intent: |
+      Write the minimal preset as the config.
+    invoke: ["bar", "init", "--preset", "minimal"]
+    capture: [exit_code, stdout]
+  - id: init_again
+    intent: |
+      Run the same init again. bar refuses to overwrite the config it
+      just wrote and says so.
+    invoke: ["bar", "init", "--preset", "minimal"]
+    capture: [exit_code, stderr]
+  - id: check_config
+    intent: |
+      Read the report again: it names the config file and finds no issues.
+    invoke: ["bar", "check", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: import_broken
+    intent: |
+      Import a config from stdin that has an unknown key. bar lists the
+      error with its line number and writes nothing.
+    invoke: ["bar", "config", "import", "-", "--replace", "--yes"]
+    capture: [exit_code, stdout, stderr]
+  - id: check_after_broken
+    intent: |
+      Read the report after the refused import: the config is the preset
+      and still has no issues, so nothing was half written.
+    invoke: ["bar", "check", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: import_preview
+    intent: |
+      Import a good config from stdin without --yes. bar shows the diff it
+      would apply and asks for --yes instead of writing.
+    invoke: ["bar", "config", "import", "-", "--replace"]
+    capture: [exit_code, stdout, stderr]
+  - id: import_apply
+    intent: |
+      Import the same config with --yes. bar writes it and backs up the
+      old file.
+    invoke: ["bar", "config", "import", "-", "--replace", "--yes"]
+    capture: [exit_code, stdout]
+  - id: import_repeat
+    intent: |
+      Import it once more. The config already matches, so nothing is
+      written and the command still succeeds.
+    invoke: ["bar", "config", "import", "-", "--replace", "--yes"]
+    capture: [exit_code, stdout, stderr]
+  - id: check_imported
+    intent: |
+      Read the report after the import: same file, no issues.
+    invoke: ["bar", "check", "--format", "json"]
+    capture: [exit_code, stdout]
+  - id: install_preview
+    intent: |
+      Add bar to the project's Claude Code settings without --yes. bar
+      prints the diff and, with no terminal to ask, tells the agent to
+      rerun with --yes.
+    invoke: ["bar", "install", "--project"]
+    capture: [exit_code, stdout, stderr]
+  - id: install_apply
+    intent: |
+      Run the install with --yes. bar writes the settings file.
+    invoke: ["bar", "install", "--project", "--yes"]
+    capture: [exit_code, stdout]
+  - id: install_repeat
+    intent: |
+      Run the install again. The settings are already up to date, so the
+      command succeeds without changing them.
+    invoke: ["bar", "install", "--project", "--yes"]
+    capture: [exit_code, stdout, stderr]
+  - id: unknown_command
+    intent: |
+      Mistype a command. bar says it does not know it and points at
+      bar --help and the plugin list.
+    invoke: ["bar", "frobnicate"]
+    capture: [exit_code, stderr]
+  - id: bad_format
+    intent: |
+      Ask for an output format bar does not have. bar lists the formats it
+      supports.
+    invoke: ["bar", "check", "--format", "xml"]
+    capture: [exit_code, stderr]
+  - id: import_no_mode
+    intent: |
+      Import without saying whether to merge or replace. bar names the
+      missing flag and points at --help.
+    invoke: ["bar", "config", "import", "-"]
+    capture: [exit_code, stderr]
+  - id: plugin_list
+    intent: |
+      List the plugins bar finds on PATH as JSON.
+    invoke: ["bar", "plugin", "list", "--format", "json"]
+    capture: [exit_code, stdout]

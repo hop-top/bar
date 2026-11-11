@@ -65,6 +65,16 @@ Binary size: the release `bar` grows by about 390 KB (2.11 MB to 2.50 MB on macO
 - Kept per model: provider, id, input/output/cache rates (USD per million tokens). The file header records the source and fetch date.
 - No crate is added; the fetch shells out to `curl` with a fixed argv.
 
+## Conformance tooling (not built into bar)
+
+`scripts/conformance-grade` and the 12fc workflow grade bar against its [conformance scenario](../CONTRIBUTING.md#conformance). Nothing here ships in the binary or release archives.
+
+### kit v0.5.0-beta.1 (12fc workflow)
+
+- Use: `kit conformance` (grading service, token mint, cassette recorder and every leaf of the `hop-top/spec-12fc` Action, which runs with `kit-version: preinstalled`).
+- Source: `hop-top/kit`, tag `v0.5.0-beta.1` released 2026-10-20, over 14 days old; pinned to commit `95a3f13bb9cf8bbeae5c095c281575e61cd508d3` and built with `go build ./cmd/kit` (the releases ship no binaries, and `go install` refuses the module for its `replace` directive). Go comes from the runner; the module's `go` line picks the toolchain.
+- License: MIT.
+
 ## Gallery tooling (not built into bar)
 
 `scripts/gallery` draws [docs/gallery.md](gallery.md) images. It is a development script; nothing here ships in the binary or release archives.
