@@ -116,3 +116,14 @@ fn pixmaps_are_argb_squares_with_ink() {
         assert_eq!(inked + clear, px4.len(), "only ink or transparent");
     }
 }
+
+#[test]
+fn bad_pixmap_adds_a_red_dot() {
+    for s in PIXMAP_SIZES {
+        let (a, b) = (pixmap(s), pixmap_bad(s));
+        assert_eq!(a.len(), b.len());
+        assert_ne!(a, b);
+        assert!(b.chunks(4).any(|p| p == [0xFF, 0xE0, 0x30, 0x30]));
+        assert!(!a.chunks(4).any(|p| p == [0xFF, 0xE0, 0x30, 0x30]));
+    }
+}
