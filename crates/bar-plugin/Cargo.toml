@@ -16,3 +16,6 @@ serde_json = { version = "1", features = ["preserve_order"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "=0.2.191"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_System_Threading"] }
