@@ -298,14 +298,17 @@ mod tests {
         let d = std::env::temp_dir().join(format!("bar-tray-main-{}", std::process::id()));
         std::fs::create_dir_all(&d).unwrap();
         let rec = d.join("tray-dirs.json");
-        std::fs::write(&rec, r#"{"bar":"/opt/bar","state_dir":"/s","env":{}}"#).unwrap();
+        // absolute on this OS: Windows wants a drive
+        let root = if cfg!(windows) { "C:" } else { "" };
+        let text = format!(r#"{{"bar":"{root}/opt/bar","state_dir":"{root}/s","env":{{}}}}"#);
+        std::fs::write(&rec, text).unwrap();
         let a = with_record(Args {
             dirs: Some(rec.clone()),
             ..Args::default()
         })
         .unwrap();
-        assert_eq!(a.bar, Some("/opt/bar".into()));
-        assert_eq!(a.lock, Some("/s/tray.lock".into()));
+        assert_eq!(a.bar, Some(format!("{root}/opt/bar").into()));
+        assert_eq!(a.lock, Some(format!("{root}/s/tray.lock").into()));
         let a = with_record(Args {
             dirs: Some(rec.clone()),
             bar: Some("/x/bar".into()),
