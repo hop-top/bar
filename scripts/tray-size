@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Size budget of the tray app: fails when a release `bar-tray` binary is
+# larger than MAX bytes.
+#
+#     scripts/tray-size FILE...
+#
+# The release workflow runs it on the macOS and Windows builds before
+# packaging them, CI on every pull request, `make tray-size` on this host's
+# release build. The budget leaves headroom over today's builds for the menu
+# model to grow; a build over it means a dependency or feature crept in.
+# Never raise it to get a change through without knowing why the binary grew.
+set -euo pipefail
+
+MAX=$((2 * 1024 * 1024)) # 2 MiB
+
+[ "$#" -gt 0 ] || { echo "usage: scripts/tray-size FILE..." >&2; exit 2; }
+status=0
+for f in "$@"; do
+  if [ ! -f "$f" ]; then
+    echo "tray-size: $f: no such file" >&2
+    status=1
+    continue
+  fi
+  size=$(($(wc -c <"$f")))
+  if [ "$size" -gt "$MAX" ]; then
+    echo "tray-size: $f is $size bytes, budget $MAX" >&2
+    status=1
+  else
+    echo "tray-size: $f is $size bytes, budget $MAX"
+  fi
+done
+exit "$status"

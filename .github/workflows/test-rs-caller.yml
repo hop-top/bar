@@ -2,7 +2,8 @@
 # kit will surface conflicting refreshes as `.kit-suggested` siblings.
 # Runs `make check` on Linux and macOS; Windows runs clippy and tests for
 # the whole workspace (bar and its plugin) and type-checks arm64; the
-# static musl build of both binaries is checked on Linux.
+# static musl build of both binaries is checked on Linux; the release build
+# of the tray app is held to its size budget on macOS and Windows.
 
 name: CI
 
@@ -29,6 +30,9 @@ jobs:
         run: rustup toolchain install stable --profile minimal --component clippy,rustfmt && rustup default stable
       - name: Check
         run: make check
+      - name: Tray size
+        if: runner.os == 'macOS'
+        run: make tray-size
 
   windows:
     runs-on: windows-2022
@@ -47,6 +51,8 @@ jobs:
         run: cargo test --locked --workspace --no-fail-fast --features hop-bar/test-tools,bar-cliproxyapi/test-tools
       - name: Type-check arm64
         run: cargo check --locked --workspace --target aarch64-pc-windows-msvc
+      - name: Tray size
+        run: cargo build --release --locked -p bar-tray && scripts/tray-size target/release/bar-tray.exe
 
   # The release's static Linux build, checked before a tag needs it.
   musl:

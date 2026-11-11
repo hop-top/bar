@@ -50,6 +50,9 @@ jobs:
   # bar-<version>-<target>.tar.gz holding `bar`, `bar-cliproxyapi` and `bar-routellm`, plus a
   # .sha256 file covering the whole archive; .zip holding `bar.exe`,
   # `bar-cliproxyapi.exe` and `bar-routellm.exe` for Windows (arm64 cross-built on the x64 runner with MSVC).
+  # The macOS and Windows archives also hold the tray app, `bar-tray`
+  # (`bar-tray.exe`); Linux archives do not while its backend is behind the
+  # non-default `linux-sni` feature.
   # Linux gnu builds on ubuntu-22.04 (glibc 2.35) so they run on glibc >= 2.35;
   # the musl builds are static and run on any Linux of that architecture.
   # The arm Linux runner needs a plan/repo that provides it.
@@ -82,17 +85,36 @@ jobs:
           persist-credentials: false
       - name: Toolchain
         run: rustup toolchain install stable --profile minimal --target "$TARGET" && rustup default stable
+      - name: Binaries
+        run: |
+          set -euo pipefail
+          bins="bar bar-cliproxyapi bar-routellm"
+          case "$TARGET" in
+            *-apple-darwin|*-windows-*) bins="$bins bar-tray" ;;
+          esac
+          echo "BINS=$bins" >> "$GITHUB_ENV"
       # the plugin crates stay at 0.0.0 (one Cargo.lock entry to bump, not
       # three); the plugin reports bar's version, the tag's.
       - name: Build
         run: |
-          BAR_RELEASE_VERSION="${TAG#v}" cargo build --release --locked --target "$TARGET" -p hop-bar -p bar-cliproxyapi -p bar-routellm
+          set -euo pipefail
+          pkgs=(-p hop-bar -p bar-cliproxyapi -p bar-routellm)
+          case " $BINS " in *" bar-tray "*) pkgs+=(-p bar-tray) ;; esac
+          BAR_RELEASE_VERSION="${TAG#v}" cargo build --release --locked --target "$TARGET" "${pkgs[@]}"
+      # size budget of the tray app (scripts/tray-size)
+      - name: Tray size
+        if: ${{ !contains(matrix.target, '-linux-') }}
+        run: |
+          set -euo pipefail
+          exe=""
+          case "$TARGET" in *-windows-*) exe=".exe" ;; esac
+          scripts/tray-size "target/${TARGET}/release/bar-tray${exe}"
       # musl: no program interpreter and no shared libraries, or the build fails.
       - name: Static binary
         if: endsWith(matrix.target, '-musl')
         run: |
           set -euo pipefail
-          for name in bar bar-cliproxyapi bar-routellm; do
+          for name in $BINS; do
             bin="target/${TARGET}/release/${name}"
             file "$bin"
             if readelf -lW "$bin" | grep -q 'INTERP' || readelf -dW "$bin" | grep -q '(NEEDED)'; then
@@ -104,14 +126,17 @@ jobs:
         run: |
           set -euo pipefail
           name="bar-${TAG#v}-${TARGET}"
+          read -ra bins <<<"$BINS"
           case "$TARGET" in
             *-windows-*)
               asset="${name}.zip"
-              7z a -tzip "$asset" "./target/${TARGET}/release/bar.exe" "./target/${TARGET}/release/bar-cliproxyapi.exe" "./target/${TARGET}/release/bar-routellm.exe"
+              files=()
+              for b in "${bins[@]}"; do files+=("./target/${TARGET}/release/${b}.exe"); done
+              7z a -tzip "$asset" "${files[@]}"
               ;;
             *)
               asset="${name}.tar.gz"
-              tar -czf "$asset" -C "target/${TARGET}/release" bar bar-cliproxyapi bar-routellm
+              tar -czf "$asset" -C "target/${TARGET}/release" "${bins[@]}"
               ;;
           esac
           if command -v sha256sum >/dev/null; then
@@ -126,7 +151,8 @@ jobs:
         run: gh release upload "$TAG" "$ASSET" "${ASSET}.sha256" --clobber
 
   # npm: @hop-top/bar (a Node launcher) plus one package per platform holding
-  # its binaries (`bar`, `bar-cliproxyapi` and `bar-routellm`), selected by npm through os/cpu on optionalDependencies; no
+  # its binaries (`bar`, `bar-cliproxyapi` and `bar-routellm`, plus `bar-tray`
+  # on macOS and Windows), selected by npm through os/cpu on optionalDependencies; no
   # install scripts, no downloads. Built from this release's archives
   # (scripts/npm-stage checks the .sha256 files and that every package.json
   # carries the tag's version). Runs when every binary job succeeded and

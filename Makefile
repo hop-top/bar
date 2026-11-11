@@ -1,4 +1,4 @@
-.PHONY: quality audit unused coverage dupes mutation plugin-check npm-check build test lint format check setup web web-check gallery gallery-check bench bench-check bench-docs bench-docs-check bench-badge bench-badge-check
+.PHONY: quality audit unused coverage dupes mutation plugin-check npm-check tray-size build test lint format check setup web web-check gallery gallery-check bench bench-check bench-docs bench-docs-check bench-badge bench-badge-check
 
 check: lint test plugin-check npm-check web-check gallery-check bench-docs-check bench-badge-check
 
@@ -60,6 +60,12 @@ plugin-check:
 # npm packages (packaging/npm/): staged from fake archives, packed and run; skipped without node
 npm-check:
 	scripts/npm-check
+
+# release build of the tray app against its size budget (scripts/tray-size);
+# macOS and Windows only, where the archives ship it
+tray-size:
+	cargo build --release --locked -p bar-tray
+	scripts/tray-size target/release/bar-tray$(if $(filter Windows_NT,$(OS)),.exe,)
 
 # web configurator: bar's renderer as wasm in web/pkg/ (docs/web.md)
 web:

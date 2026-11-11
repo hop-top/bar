@@ -32,11 +32,14 @@ class Bar < Formula
 
   def install
     bin.install "bar", "bar-cliproxyapi", "bar-routellm"
+    # the tray app ships in the macOS archives only
+    bin.install "bar-tray" if OS.mac?
   end
 
   test do
     assert_match version.to_s, shell_output("#{bin}/bar --version")
     assert_predicate bin/"bar-cliproxyapi", :executable?
     assert_predicate bin/"bar-routellm", :executable?
+    assert_predicate bin/"bar-tray", :executable? if OS.mac?
   end
 end
