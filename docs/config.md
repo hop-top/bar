@@ -309,6 +309,8 @@ Toggle:
 - Plugins toggle the same way: `bar toggle <plugin name>` flips `toggle-<name>` (printing `<name>: alt` or `<name>: show`), and a plugin output with `alt` shows `alt` instead of `text` while it is on (see [plugins](plugins.md#render)). The CLI works without the handler app.
 - A plugin output with `label_toggle` names a second, independent toggle on its label or icon: `bar toggle <plugin>.<toggle>` flips `toggle-<plugin>.<toggle>`, linked as `bar://toggle/<plugin>.<toggle>` (see [plugins](plugins.md#render)). The plugin reads it from `toggles` on its stdin.
 - Link `bar://toggle/<key>` is emitted only when the handler app is installed (marker `click-installed` in the state directory) and `click` is not `none`.
+- Toggles are per session: a link in a session's status line is `bar://toggle/<key>?sid=<session id>`, and a click flips that session's toggle only; other sessions keep theirs. The handler passes it on as `bar toggle '<key>?sid=<session id>'`, which writes `toggles/<session id>/<file>` (`on` or `off`, the file named as the global one). A row without a session id (a `bar subagent` row) links the global toggle.
+- Global default: `bar toggle <key>` without a session flips the global file above. A session that has never flipped `key` follows it; once it flips `key`, its own state wins for that key, whatever the default does later.
 
 ### tokens, cache, cachettl
 
@@ -1078,7 +1080,7 @@ Each row is laid out like the status line, with the same skin, palette, icons an
 | `bar preview [--state early\|burning\|final] [--preset [<name>]] [--subagent]` | Layout with sample data ([bar preview](#bar-preview)) | 0 |
 | `bar edit` | Full-screen config editor with a live preview ([bar edit](#bar-edit)) | 0, 2 without a terminal or on an unreadable file |
 | `bar init [--preset <name>]` | Writes a preset as your config ([presets](#presets)) | 0, 2 when a config exists or the path is unusable |
-| `bar toggle <key>` | Flips `5h`, `7d`, `<plugin>` or `<plugin>.<toggle>` ([usage](#usage)) | 0, 2 on an unknown key |
+| `bar toggle <key>` | Flips `5h`, `7d`, `<plugin>` or `<plugin>.<toggle>` ([usage](#usage)): the global default, or one session's toggle with `<key>?sid=<session id>` | 0, 2 on an unknown key or a bad session id |
 | `bar click install [--dry-run] [--hooks-only]` | URL handler app and hooks ([click handler](#click-handler-macos)) | 0, 2 unsupported or bad home, 1 on failure |
 | `bar click run <url>` | Types an allow-listed slash command ([clickable commands](#clickable-commands)) | 0, 1 refused, 2 on Windows |
 | `bar click action <url>` | Runs a plugin's declared action ([plugin actions](#plugin-actions)) | 0, 1 refused |
@@ -1202,7 +1204,7 @@ Six example configs ship in the binary and in [`presets/`](../presets): `minimal
 
 `bar click install` builds `~/Applications/bar-click.app` (`BAR_APP_DIR` overrides the directory) from an AppleScript `on open location` handler (source kept as `click-handler.applescript` in the state directory), sets `LSUIElement`, the bundle id `top.hop.bar-click` and the `bar` URL scheme with `plutil`, signs it ad hoc, registers it with `lsregister`, adds the [hooks](#hooks) to Claude Code's `settings.json`, then writes the marker `click-installed` (content `cmd`) and, when there is none yet, the random `action-nonce` (mode 0600) in the state directory.
 
-- The handler passes `bar://toggle/<key>` to `bar toggle <key>` `bar://cmd/...` to `bar click run` and `bar://action/...` to `bar click action`, using the absolute path of the `bar` that ran the install; reinstall after moving the binary.
+- The handler passes `bar://toggle/<key>` (with its `?sid=<session id>`) to `bar toggle <key>`, `bar://cmd/...` to `bar click run` and `bar://action/...` to `bar click action`, using the absolute path of the `bar` that ran the install; reinstall after moving the binary.
 - Directories: macOS starts the handler with the login session's environment, not your shell's, so variables set in a shell profile (`XDG_STATE_HOME`, say) are not there. The install therefore bakes the dir variables of its own environment into the handler: `BAR_STATE_DIR`, `XDG_STATE_HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `CLAUDE_CONFIG_DIR` and `TMUX_TMPDIR`. Each call sets the ones that were set at install (single-quoted for the shell) and unsets the rest. Run the install from the same environment as Claude Code (normally the shell you start `claude` from); after changing one of these variables, run it again.
 - The resolved dirs are recorded in the bundle (`Contents/Resources/bar-dirs.json`); [`bar check`](#bar-check) compares them with the current environment and warns on a mismatch. The install prints the state dir it baked in, and the same warnings.
 - Renderer pointer: when `bar render` uses a state dir other than the macOS default and the handler is installed there, it keeps a symlink `state-dir` in `~/Library/Application Support/bar` pointing at that dir. `bar toggle` and `bar click run` whose own environment resolves to the default follow it (when the target still holds `click-installed`), so a handler installed with neither `BAR_STATE_DIR` nor `XDG_STATE_HOME` set still reaches the renderer's toggles. A render costs one `readlink`; the link is written only when the dir changes, and not again within a minute (two sessions with different state dirs do not rewrite it on every render). A render in the default dir removes it.
@@ -1294,7 +1296,7 @@ Empty box:
 | `PostToolUse`, `PostToolUseFailure`, `PermissionDenied` (main agent) | waiting marker cleared; `PostToolUse` of `Bash` also updates the tlc record |
 | `Stop` (main agent) | marker set to `done` |
 | `UserPromptSubmit` | marker cleared |
-| `SessionEnd` | marker cleared; the session's subagent entries and plugin records dropped |
+| `SessionEnd` | marker cleared; the session's subagent entries, plugin records and own toggles dropped |
 | `SubagentStart`, `SubagentStop` | subagent entry added, removed |
 
 Waiting marker: `sessions/<session id>` (mode 0600), content `waiting` or `done`. [`sessions`](#account-agents-sessions-tmux) counts waiting and finished sessions from it. `Stop`, `PostToolUse`, `PostToolUseFailure` and `PermissionDenied` from a subagent (they carry an `agent_id`) leave it alone.
@@ -1351,7 +1353,8 @@ In the state directory:
 | `transcript/<hash>.json` | render, `bar refresh` | per-transcript offsets, token totals and recent context sizes ([tokens](#tokens-cache-cachettl), [ctx](#ctx)) |
 | `spendhist/<hash>.json` | `bar refresh` | spend history scan ([spendhist](#spendhist)) |
 | `hist-5h`, `hist-7d`, `hist-7d-<model>`, `hist-5h@<plugin>`, `hist-7d@<plugin>` | render | usage samples for `spark` |
-| `pct-5h`, `pct-7d`, `toggle-<plugin>`, `toggle-<plugin>.<toggle>` | `bar toggle` | toggle state: present means on |
+| `pct-5h`, `pct-7d`, `toggle-<plugin>`, `toggle-<plugin>.<toggle>` | `bar toggle` | global toggle state, the default for every session: present means on |
+| `toggles/<session id>/` | `bar toggle` (a click) | one session's own toggles, same file names, content `on` or `off`; dropped at `SessionEnd`, and a dir untouched for 30 days is pruned on the next click |
 | `click-installed`, `click-handler.applescript` | `bar click install` | handler marker, handler source |
 | `state-dir` (macOS default state dir only) | render | symlink to the state dir `bar render` uses, for the [click handler](#click-handler-macos) |
 | `install/<hash>.json` | `bar install` | the status line it replaced, per settings file |

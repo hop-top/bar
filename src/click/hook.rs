@@ -1,6 +1,7 @@
 //! `bar click hook`: Claude Code hook keeping a per-session waiting marker
 //! (`<state>/sessions/<session id>`, content `waiting` or `done`) for
-//! `sessions`, the running-subagent registry and per-session plugin records.
+//! `sessions`, the running-subagent registry and per-session plugin records;
+//! `SessionEnd` also drops the session's own toggles.
 //! Fast and silent; never fails the session.
 
 use super::url::valid_sid;
@@ -227,6 +228,9 @@ pub fn run_hook(state: &Path, input: &str) {
                 let _ = std::fs::remove_dir_all(d);
             }
             drop_records(state, sid);
+            if let Some(d) = super::session_toggles_dir(state, sid).filter(|d| is_real_dir(d)) {
+                let _ = std::fs::remove_dir_all(d);
+            }
         }
         Some("PostToolUse") if v["tool_name"] == "Bash" => record_tlc(state, &v, sid),
         _ => {}
