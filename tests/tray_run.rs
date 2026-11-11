@@ -131,8 +131,10 @@ fn a_spent_snapshot_refuses_a_replay_until_the_next_state() {
     );
     assert_eq!(refused(&t, &[BOB]), "menu is stale, reopen it");
     let (s, _) = t.snapshot();
-    assert_ne!(s.generation, g);
-    ok(&t, &[BOB, "--generation", &s.generation]);
+    // the items did not move, so the tray's generation still holds: the
+    // spend alone stops a replay, the new snapshot allows a new click
+    assert_eq!(s.generation, g);
+    ok(&t, &[BOB, "--generation", &g]);
     assert!(ran(&t));
 }
 

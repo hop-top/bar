@@ -14,7 +14,7 @@ use tray_fx::*;
 use bar_tray::model::snapshot::{self, GroupKind};
 use hop_bar::click::action::STATUS_FILE;
 use hop_bar::tray::{self, state, SNAPSHOT_FILE};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
 use std::time::{Duration, Instant};
@@ -144,12 +144,69 @@ fn the_state_dir_is_created_when_missing() {
 }
 
 #[test]
-fn each_run_is_a_new_generation() {
-    let t = T::new("");
+fn the_generation_follows_the_runnable_items() {
+    let t = T::new("tray echo\n");
+    t.fx.put("ext.json", &menu_ext(json!({})));
+    t.fx.put("menu.json", &good_menu());
     let (a, _) = t.snapshot();
-    let (b, _) = t.snapshot();
-    assert_ne!(a.generation, b.generation);
+    assert_eq!(a.generation.len(), 32);
     assert!(a.generation.bytes().all(|b| b.is_ascii_hexdigit()));
+    // another run, a session marker and a last action: same items, same id
+    std::fs::write(t.state().join(STATUS_FILE), "7 ok: x\n").unwrap();
+    std::fs::create_dir_all(t.state().join("sessions")).unwrap();
+    std::fs::write(t.state().join("sessions/s-1"), "waiting").unwrap();
+    assert_eq!(t.snapshot().0.generation, a.generation);
+    // text, the checked row and styles change: a click means the same
+    let mut m: Value = serde_json::from_str(&good_menu()).unwrap();
+    m["groups"][0]["items"][0]["label"] = json!("alice (renamed)");
+    m["groups"][0]["items"][0]["detail"] = json!("5h 61%");
+    m["groups"][0]["items"][0]["checked"] = json!(false);
+    m["groups"][0]["items"][1]["checked"] = json!(true);
+    m["groups"][2]["items"][0]["style"] = json!("good");
+    t.fx.put("menu.json", &m.to_string());
+    assert_eq!(t.snapshot().0.generation, a.generation);
+    // a token value changes: a new id
+    m["groups"][0]["items"][1]["tokens"]["account"] = json!("5");
+    t.fx.put("menu.json", &m.to_string());
+    let b = t.snapshot().0.generation;
+    assert_ne!(b, a.generation);
+    // an item goes: a new id
+    m["groups"][1]["items"] = json!([]);
+    t.fx.put("menu.json", &m.to_string());
+    let c = t.snapshot().0.generation;
+    assert_ne!(c, b);
+    // a grant changes what is enabled: a new id
+    t.fx.put("menu.json", &good_menu());
+    t.config("tray echo.use\n");
+    assert_ne!(t.snapshot().0.generation, a.generation);
+    // the empty menu has an id of its own
+    t.config("");
+    let (e, _) = t.snapshot();
+    assert_eq!(e.generation.len(), 32);
+    assert_ne!(e.generation, a.generation);
+}
+
+#[test]
+fn generation_is_a_pure_function_of_the_items() {
+    use hop_bar::tray::state::generation;
+    let a = json!([{"name": "p", "groups": [{"id": "g", "items": [
+        {"id": "i", "action": "use", "tokens": {"b": "2", "a": "1"}, "enabled": true}]}]}]);
+    let same = json!([{"name": "p", "label": "P", "groups": [{"id": "g", "label": "G", "items": [
+        {"id": "i", "label": "x", "action": "use", "tokens": {"a": "1", "b": "2"}, "enabled": true,
+         "checked": true, "style": "good", "limit": 10}]}]}]);
+    let other_tokens = json!([{"name": "p", "groups": [{"id": "g", "items": [
+        {"id": "i", "action": "use", "tokens": {"a": "1", "b": "3"}, "enabled": true}]}]}]);
+    let other_action = json!([{"name": "p", "groups": [{"id": "g", "items": [
+        {"id": "i", "action": "reset", "tokens": {"a": "1", "b": "2"}, "enabled": true}]}]}]);
+    let confirm = json!([{"name": "p", "groups": [{"id": "g", "items": [
+        {"id": "i", "action": "use", "tokens": {"a": "1", "b": "2"}, "enabled": true, "confirm": true}]}]}]);
+    let g = |v: &Value| generation(v.as_array().unwrap());
+    assert_eq!(g(&a), g(&same), "token order and cosmetics do not count");
+    assert_ne!(g(&a), g(&other_tokens));
+    assert_ne!(g(&a), g(&other_action));
+    assert_ne!(g(&a), g(&confirm));
+    assert_ne!(g(&a), generation(&[]));
+    assert_eq!(generation(&[]), generation(&[]));
 }
 
 #[test]

@@ -1,5 +1,6 @@
 //! The tray snapshot, version 1: one JSON object with `generation` (an id
-//! the tray echoes back when it runs an item), `at`, `last_action` (from
+//! of the runnable items, which the tray echoes back when it runs one;
+//! see [`generation`]), `at`, `last_action` (from
 //! `action-status`), `sessions` (counts of the hook's markers), `views`
 //! (the toggles, only with `set tray-views on`) and `plugins` (one entry
 //! per `tray` line, its menu from `--menu`). Written to `tray-menu.json`
@@ -73,21 +74,58 @@ pub fn views(state: &Path, config: &Config) -> Vec<Value> {
     out
 }
 
-/// A fresh snapshot id: `[0-9a-f]`, 32 characters, different each call.
-pub fn generation(now: u64) -> String {
-    crate::cache::hash_hex(&format!("{}:{now}", crate::cache::nonce()))
+/// The snapshot id: `[0-9a-f]`, 32 characters, a hash of what a run
+/// depends on, in order: each plugin's name, each group's id, each
+/// item's id, action, token values, `enabled` and `confirm`. Two
+/// snapshots whose runnable items agree share it, so a tray that holds
+/// a menu is not refused because `bar waybar` or an idle poll rewrote
+/// the file with the same items; one whose items moved (an account
+/// gone, a token changed, a grant added) gets a new one. Labels,
+/// details, `checked`, styles, the view toggles and the last action do
+/// not count: a click means the same with them changed.
+pub fn generation(plugins: &[Value]) -> String {
+    let mut key = String::new();
+    let field = |k: &mut String, v: &Value| {
+        k.push_str(&v.to_string());
+        k.push('\n');
+    };
+    for p in plugins {
+        field(&mut key, &p["name"]);
+        for g in p["groups"].as_array().into_iter().flatten() {
+            field(&mut key, &g["id"]);
+            for i in g["items"].as_array().into_iter().flatten() {
+                field(&mut key, &i["id"]);
+                field(&mut key, &i["action"]);
+                let tokens: std::collections::BTreeMap<&str, &Value> = i["tokens"]
+                    .as_object()
+                    .into_iter()
+                    .flatten()
+                    .map(|(k, v)| (k.as_str(), v))
+                    .collect();
+                for (k, v) in tokens {
+                    key.push_str(k);
+                    key.push('=');
+                    field(&mut key, v);
+                }
+                field(&mut key, &i["enabled"]);
+                field(&mut key, &i["confirm"]);
+            }
+        }
+    }
+    crate::cache::hash_hex(&key)
 }
 
 /// The snapshot for `now` (Unix seconds): file reads, then every granted
 /// plugin's `--menu` in parallel.
 pub fn snapshot(state: &Path, config: &Config, dirs: &[PathBuf], now: u64) -> Value {
-    let mut v = json!({"version": VERSION, "generation": generation(now), "at": now});
+    let plugins = plugins::menus(state, config, dirs);
+    let mut v = json!({"version": VERSION, "generation": generation(&plugins), "at": now});
     if let Some(a) = last_action(state) {
         v["last_action"] = a;
     }
     v["sessions"] = sessions(state);
     v["views"] = Value::Array(views(state, config));
-    v["plugins"] = Value::Array(plugins::menus(state, config, dirs));
+    v["plugins"] = Value::Array(plugins);
     v
 }
 
