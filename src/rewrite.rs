@@ -86,13 +86,14 @@ fn backup_prefix(path: &Path, to: Backups) -> PathBuf {
 }
 
 /// Copies `path` to a unique `<prefix><secs>-<nanos>-<pid>` (see
-/// [`Backups`]), then removes all but the newest [`KEEP`] backups of it.
+/// [`Backups`]), then removes the backups [`rotated_out`] names.
 /// A backup in a directory of its own is private (0600 on Unix).
 pub fn backup(path: &Path, to: Backups) -> std::io::Result<PathBuf> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();
     let prefix = backup_prefix(path, to);
+    let old = rotated_out(path, to);
     let b = PathBuf::from(format!(
         "{}{}-{:09}-{}",
         prefix.display(),
@@ -114,7 +115,9 @@ pub fn backup(path: &Path, to: Backups) -> std::io::Result<PathBuf> {
             std::io::Write::write_all(&mut o.open(&b)?, &body)?;
         }
     }
-    prune(&prefix);
+    for p in &old {
+        let _ = std::fs::remove_file(p);
+    }
     Ok(b)
 }
 
@@ -129,15 +132,18 @@ fn stamp(tail: &str) -> Option<(u64, u32, u32)> {
     p.next().is_none().then_some(t)
 }
 
-/// Removes all but the newest [`KEEP`] files named `<prefix><stamp>`;
-/// other files are never touched.
-fn prune(prefix: &Path) {
+/// The backups of `path` (see [`Backups`]) a new [`backup`] removes,
+/// oldest first: all but the newest [`KEEP`] - 1, so [`KEEP`] remain
+/// with the new one. Files of other names are never listed. Dry runs
+/// list these.
+pub fn rotated_out(path: &Path, to: Backups) -> Vec<PathBuf> {
+    let prefix = backup_prefix(path, to);
     let (Some(dir), Some(head)) = (prefix.parent(), prefix.file_name()) else {
-        return;
+        return Vec::new();
     };
     let head = head.to_string_lossy();
     let Ok(rd) = std::fs::read_dir(dir) else {
-        return;
+        return Vec::new();
     };
     let mut found: Vec<((u64, u32, u32), PathBuf)> = rd
         .flatten()
@@ -148,10 +154,8 @@ fn prune(prefix: &Path) {
         })
         .collect();
     found.sort();
-    let extra = found.len().saturating_sub(KEEP);
-    for (_, p) in &found[..extra] {
-        let _ = std::fs::remove_file(p);
-    }
+    found.truncate((found.len() + 1).saturating_sub(KEEP));
+    found.into_iter().map(|(_, p)| p).collect()
 }
 
 /// Writes `body` to `path` (already a [`target`]): creates missing parent

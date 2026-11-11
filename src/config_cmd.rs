@@ -132,11 +132,8 @@ fn export(m: &ArgMatches) {
                 )));
             }
             if dry_run::on(m) {
-                let mut c = dry_run::write(f);
-                if old.is_some() {
-                    c["backup"] = json!(true);
-                }
-                return dry_run::emit(m, "config export", vec![c], json!({}), "");
+                let c = dry_run::write_backed_up(f);
+                return dry_run::emit(m, "config export", c, json!({}), "");
             }
             if let Err(e) = confio::write_config(f, old.as_deref(), &body) {
                 fail(CliError::generic(e));
@@ -238,11 +235,8 @@ fn import(m: &ArgMatches) {
     let diff = hop_bar::diff::unified(old.as_deref().unwrap_or(""), &new, from, &name);
     if dry_run::on(m) {
         warn_notable(shown, &text);
-        let mut c = dry_run::write(&target);
-        if old.is_some() {
-            c["backup"] = json!(true);
-        }
-        return dry_run::emit(m, "config import", vec![c], json!({"diff": diff}), &diff);
+        let c = dry_run::write_backed_up(&target);
+        return dry_run::emit(m, "config import", c, json!({"diff": diff}), &diff);
     }
     let mut human = cli_out::human(m);
     let _ = write!(human, "{diff}");

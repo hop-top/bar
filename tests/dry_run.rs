@@ -55,7 +55,8 @@ fn bar(t: &Tmp, args: &[&str], stdin: &str) -> Run {
     }
 }
 
-/// Every file and dir under `root`, with the files' content.
+/// Every file, dir and symlink under `root`, with the files' content
+/// and the links' targets (links are not followed).
 fn tree(root: &Path) -> BTreeMap<PathBuf, Option<Vec<u8>>> {
     let mut out = BTreeMap::new();
     let mut todo = vec![root.to_path_buf()];
@@ -63,7 +64,11 @@ fn tree(root: &Path) -> BTreeMap<PathBuf, Option<Vec<u8>>> {
         for e in std::fs::read_dir(&d).unwrap().flatten() {
             let p = e.path();
             let rel = p.strip_prefix(root).unwrap().to_path_buf();
-            if e.file_type().unwrap().is_dir() {
+            let ft = e.file_type().unwrap();
+            if ft.is_symlink() {
+                let to = std::fs::read_link(&p).unwrap();
+                out.insert(rel, Some(to.to_string_lossy().into_owned().into_bytes()));
+            } else if ft.is_dir() {
                 out.insert(rel, None);
                 todo.push(p);
             } else {
@@ -289,6 +294,83 @@ fn toggle_dry_run_plans_the_view() {
     assert_eq!(r.code, 2, "{}", r.err);
 }
 
+/// Ages a dir past the 30 days after which other sessions' toggle dirs
+/// are pruned (Unix: Windows cannot open a dir to set its time).
+#[cfg(unix)]
+fn age(dir: &Path) {
+    let long_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(31 * 86_400);
+    let f = std::fs::File::open(dir).unwrap();
+    f.set_modified(long_ago).unwrap();
+}
+
+/// The `remove` changes of a plan, as paths.
+fn removals(v: &Value) -> Vec<PathBuf> {
+    let c = v["changes"].as_array().unwrap();
+    c.iter()
+        .filter(|c| c["action"] == "remove")
+        .map(|c| PathBuf::from(c["path"].as_str().unwrap()))
+        .collect()
+}
+
+#[cfg(unix)]
+#[test]
+fn session_toggle_dry_run_lists_the_pruned_dirs() {
+    const A: &str = "0a1b2c3d-0000-4000-8000-00000000000a";
+    const B: &str = "0a1b2c3d-0000-4000-8000-00000000000b";
+    const C: &str = "0a1b2c3d-0000-4000-8000-00000000000c";
+    let t = Tmp::new();
+    let toggles = t.path().join("state/toggles");
+    for s in [B, C] {
+        assert_eq!(
+            bar(&t, &["toggle", &format!("5h?sid={s}"), "pct"], "").code,
+            0
+        );
+    }
+    let (old, fresh) = (toggles.join(B), toggles.join(C));
+    age(&old);
+    let a = format!("5h?sid={A}");
+    // the set form and the flip form both prune; a set that changes
+    // nothing still does
+    for args in [
+        vec![a.as_str(), "pct"],
+        vec![a.as_str()],
+        vec![a.as_str(), "bar"],
+    ] {
+        let mut full = vec!["toggle"];
+        full.extend(&args);
+        full.extend(["--dry-run", "--format", "json"]);
+        let v = dry(&t, &full, "").plan("toggle");
+        assert_eq!(removals(&v), vec![old.clone()], "{args:?} {v}");
+    }
+    let r = dry(&t, &["toggle", &a, "pct", "--dry-run"], "");
+    assert!(
+        r.out.contains(&format!("would remove {}", old.display())),
+        "{}",
+        r.out
+    );
+    // the real run removes exactly what the plan listed
+    let v = dry(
+        &t,
+        &["toggle", &a, "pct", "--dry-run", "--format", "json"],
+        "",
+    )
+    .plan("toggle");
+    let before = tree(t.path());
+    assert_eq!(bar(&t, &["toggle", &a, "pct"], "").code, 0);
+    let after = tree(t.path());
+    let gone: Vec<PathBuf> = before
+        .keys()
+        .filter(|k| !after.contains_key(*k))
+        .map(|k| t.path().join(k))
+        .filter(|p| p.parent() == Some(toggles.as_path()))
+        .collect();
+    assert_eq!(gone, removals(&v));
+    assert!(!old.exists() && fresh.exists());
+    // nothing stale left: nothing to remove
+    let v = dry(&t, &["toggle", &a, "--dry-run", "--format", "json"], "").plan("toggle");
+    assert!(removals(&v).is_empty(), "{v}");
+}
+
 #[test]
 fn prices_update_dry_run_fetches_and_writes_nothing() {
     let t = Tmp::new();
@@ -357,4 +439,102 @@ fn help_json_declares_dry_run() {
             .unwrap_or_else(|| panic!("{path:?}"));
         assert_eq!(c["dry_run_supported"], true, "{path:?}");
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn session_toggle_dry_run_refuses_a_symlinked_toggles_dir() {
+    let t = Tmp::new();
+    let elsewhere = t.path().join("elsewhere");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    std::fs::create_dir_all(t.path().join("state")).unwrap();
+    std::os::unix::fs::symlink(&elsewhere, t.path().join("state/toggles")).unwrap();
+    let a = "5h?sid=0a1b2c3d-0000-4000-8000-00000000000a";
+    let real = bar(&t, &["toggle", a, "pct"], "");
+    assert_eq!(real.code, 2, "{}", real.err);
+    let r = dry(&t, &["toggle", a, "pct", "--dry-run"], "");
+    assert_eq!(r.code, real.code, "{} {}", r.out, r.err);
+    assert!(r.err.contains("is not a directory"), "{}", r.err);
+}
+
+/// The files under `t` the run of `args` removed.
+fn removed_by(t: &Tmp, args: &[&str], stdin: &str) -> Vec<PathBuf> {
+    let before = tree(t.path());
+    let r = bar(t, args, stdin);
+    assert_eq!(r.code, 0, "{args:?} {} {}", r.out, r.err);
+    let after = tree(t.path());
+    let mut gone: Vec<PathBuf> = before
+        .keys()
+        .filter(|k| !after.contains_key(*k))
+        .map(|k| t.path().join(k))
+        .collect();
+    gone.sort();
+    gone
+}
+
+fn sorted(mut v: Vec<PathBuf>) -> Vec<PathBuf> {
+    v.sort();
+    v
+}
+
+#[test]
+fn import_dry_run_lists_the_backups_rotated_out() {
+    let t = Tmp::new();
+    t.write("xdg/bar/bar.conf", "set gap 2\n");
+    // five backups kept: a sixth pushes the oldest out
+    for i in 1..=5 {
+        t.write(
+            &format!("xdg/bar/bar.conf.bak-100000000{i}-000000000-1"),
+            "old\n",
+        );
+    }
+    let oldest = t.path().join("xdg/bar/bar.conf.bak-1000000001-000000000-1");
+    let mut args = vec!["config", "import", "-", "--replace", "--yes"];
+    let dry_args: Vec<&str> = args
+        .iter()
+        .copied()
+        .chain(["--dry-run", "--format", "json"])
+        .collect();
+    let v = dry(&t, &dry_args, "set gap 4\n").plan("config import");
+    let rm = removals(&v);
+    assert_eq!(rm, vec![oldest], "{v}");
+    let r = dry(&t, &dry_args[..dry_args.len() - 2], "set gap 4\n");
+    assert!(r.out.contains("would remove"), "{}", r.out);
+    args.push("--format");
+    args.push("json");
+    assert_eq!(removed_by(&t, &args, "set gap 4\n"), sorted(rm));
+}
+
+#[test]
+fn export_dry_run_lists_the_backups_rotated_out() {
+    let t = Tmp::new();
+    t.write("xdg/bar/bar.conf", "set gap 4\n");
+    t.write("neutral-cwd/out.conf", "old\n");
+    for i in 1..=6 {
+        t.write(
+            &format!("neutral-cwd/out.conf.bak-100000000{i}-000000000-1"),
+            "old\n",
+        );
+    }
+    let o = t.path().join("neutral-cwd/out.conf").display().to_string();
+    let args = ["config", "export", &o, "--force"];
+    let dry_args = [&args[..], &["--dry-run", "--format", "json"]].concat();
+    let rm = removals(&dry(&t, &dry_args, "").plan("config export"));
+    assert_eq!(rm.len(), 2, "{rm:?}");
+    assert_eq!(removed_by(&t, &args, ""), sorted(rm));
+}
+
+#[test]
+fn install_dry_run_lists_the_backups_rotated_out() {
+    let t = Tmp::new();
+    let install: &[&str] = &["install", "--project", "--yes"];
+    let uninstall: &[&str] = &["install", "--project", "--uninstall", "--yes"];
+    // each write after the first backs the old settings up: five backups
+    for args in [install, uninstall, install, uninstall, install, uninstall] {
+        assert_eq!(bar(&t, args, "").code, 0, "{args:?}");
+    }
+    let dry_args = [install, &["--dry-run", "--format", "json"]].concat();
+    let rm = removals(&dry(&t, &dry_args, "").plan("install"));
+    assert_eq!(rm.len(), 1, "{rm:?}");
+    assert_eq!(removed_by(&t, install, ""), sorted(rm));
 }

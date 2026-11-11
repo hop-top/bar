@@ -38,6 +38,22 @@ pub fn write(path: &Path) -> Value {
     change(if path.exists() { "update" } else { "create" }, path)
 }
 
+/// Writing `path` whole (`create` or `update`); an existing one is
+/// backed up beside it first, which removes its oldest backups (listed
+/// after the write).
+pub fn write_backed_up(path: &Path) -> Vec<Value> {
+    let mut c = write(path);
+    if !path.exists() {
+        return vec![c];
+    }
+    c["backup"] = json!(true);
+    let target = hop_bar::rewrite::target(path).unwrap_or_else(|_| path.to_path_buf());
+    let old = hop_bar::rewrite::rotated_out(&target, hop_bar::rewrite::Backups::Beside);
+    std::iter::once(c)
+        .chain(old.iter().map(|p| change("remove", p)))
+        .collect()
+}
+
 /// Prints the plan of `cmd`: `changes`, and the fields of `extra` (an
 /// object). `pre` is text shown before the change lines in text, such
 /// as a diff.
@@ -100,20 +116,21 @@ pub fn install(m: &ArgMatches, env: &hop_bar::install::Env, o: &hop_bar::install
     emit(m, "install", changes, extra, &pre);
 }
 
-/// `bar toggle --dry-run`: the view now and after, and the state file.
+/// `bar toggle --dry-run`: the view now and after, the state file and,
+/// for a session, the idle sessions' toggle dirs it prunes.
 pub fn toggle(m: &ArgMatches, dir: &Path, arg: &str, value: Option<&str>) {
     use hop_bar::click::{toggle_plan, view_name};
     let p = toggle_plan(dir, arg, value)
         .unwrap_or_else(|e| cli_out::fail(m, "toggle", CliError::usage(e)));
-    let changes = p
-        .change
-        .iter()
-        .map(|(action, path)| {
+    // the real run prunes first, then writes
+    let pruned = p.prune.iter().map(|d| change("remove", d));
+    let changes = pruned
+        .chain(p.change.iter().map(|(action, path)| {
             let mut c = change(action, path);
             c["current"] = json!(view_name(p.key, p.current));
             c["proposed"] = json!(view_name(p.key, p.proposed));
             c
-        })
+        }))
         .collect();
     let extra = json!({"key": p.key, "view": view_name(p.key, p.proposed)});
     emit(m, "toggle", changes, extra, "");

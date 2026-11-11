@@ -249,27 +249,30 @@ pub fn toggle_in(dir: &Path, key: &str, sid: Option<&str>) -> Result<bool, Strin
     Ok(on)
 }
 
-/// Drops other sessions' toggle dirs older than
-/// [`SESSION_TOGGLES_STALE_SECS`]; bounded work.
-fn prune_sessions(root: &Path, keep: &str) {
+/// Other sessions' toggle dirs under `root` (`<state>/toggles`) older
+/// than [`SESSION_TOGGLES_STALE_SECS`] at `now`: what a session-form
+/// `bar toggle` removes, and what its dry run lists. Bounded work.
+pub(crate) fn stale_sessions(root: &Path, keep: &str, now: std::time::SystemTime) -> Vec<PathBuf> {
     let Ok(rd) = std::fs::read_dir(root) else {
-        return;
+        return Vec::new();
     };
-    let now = std::time::SystemTime::now();
     let stale = std::time::Duration::from_secs(SESSION_TOGGLES_STALE_SECS as u64);
-    for e in rd.flatten().take(256) {
-        let (path, name) = (e.path(), e.file_name());
-        let Some(sid) = name.to_str().filter(|n| *n != keep && url::valid_sid(n)) else {
-            continue;
-        };
-        let old = std::fs::symlink_metadata(&path)
-            .ok()
-            .filter(|m| m.is_dir())
-            .and_then(|m| m.modified().ok())
-            .and_then(|m| now.duration_since(m).ok())
-            .is_some_and(|age| age >= stale);
-        if old {
-            let _ = std::fs::remove_dir_all(root.join(sid));
-        }
-    }
+    let mut out: Vec<PathBuf> = rd
+        .flatten()
+        .take(256)
+        .filter_map(|e| {
+            let name = e.file_name();
+            let sid = name.to_str().filter(|n| *n != keep && url::valid_sid(n))?;
+            let path = root.join(sid);
+            let old = std::fs::symlink_metadata(&path)
+                .ok()
+                .filter(|m| m.is_dir())
+                .and_then(|m| m.modified().ok())
+                .and_then(|m| now.duration_since(m).ok())
+                .is_some_and(|age| age >= stale);
+            old.then_some(path)
+        })
+        .collect();
+    out.sort();
+    out
 }

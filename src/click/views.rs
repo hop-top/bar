@@ -14,7 +14,7 @@ pub fn cli<'a>(
     value: Option<&str>,
 ) -> Result<(&'a str, &'static str), String> {
     let p = plan(dir, arg, value)?;
-    set_in(dir, p.key, p.sid, p.proposed)?;
+    write_in(dir, p.key, p.sid, p.proposed, &p.prune)?;
     Ok((p.key, view_name(p.key, p.proposed)))
 }
 
@@ -28,6 +28,9 @@ pub struct Plan<'a> {
     pub proposed: bool,
     /// The file created, updated or removed; `None` when nothing changes.
     pub change: Option<(&'static str, PathBuf)>,
+    /// Other sessions' idle toggle dirs the session form removes first
+    /// (see [`super::SESSION_TOGGLES_STALE_SECS`]), whatever `change` is.
+    pub prune: Vec<PathBuf>,
 }
 
 /// Plans `bar toggle <arg> [<value>]`. A key typed without a session
@@ -56,22 +59,24 @@ pub fn plan<'a>(dir: &Path, arg: &'a str, value: Option<&str>) -> Result<Plan<'a
         Some(v) => parse_value(key, v)?,
         None => !current,
     };
-    let change = match sid {
-        None => match (proposed, f.exists()) {
-            (true, false) => Some(("create", f)),
-            (false, true) => Some(("remove", f)),
-            _ => None,
-        },
+    let (change, prune) = match sid {
+        None => {
+            let change = match (proposed, f.exists()) {
+                (true, false) => Some(("create", f)),
+                (false, true) => Some(("remove", f)),
+                _ => None,
+            };
+            (change, Vec::new())
+        }
         Some(sid) => {
             let name = f.file_name().unwrap_or_default();
-            let own = session_toggles_dir(dir, sid)
-                .ok_or_else(|| format!("bad session id `{sid}`"))?
-                .join(name);
-            match super::session_state(dir, sid, name) {
+            let own = session_dirs(dir, sid)?.join(name);
+            let change = match super::session_state(dir, sid, name) {
                 Some(s) if s == proposed => None,
                 _ if own.exists() => Some(("update", own)),
                 _ => Some(("create", own)),
-            }
+            };
+            (change, stale(dir, sid))
         }
     };
     Ok(Plan {
@@ -80,6 +85,7 @@ pub fn plan<'a>(dir: &Path, arg: &'a str, value: Option<&str>) -> Result<Plan<'a
         current,
         proposed,
         change,
+        prune,
     })
 }
 
@@ -149,6 +155,40 @@ pub fn unknown_key(key: &str, plugins: &[String]) -> String {
 /// Sets `key` on or off, for session `sid` only or (without one) the
 /// global default; the same call twice leaves the same state.
 pub fn set_in(dir: &Path, key: &str, sid: Option<&str>, on: bool) -> Result<(), String> {
+    let prune = sid.map(|sid| stale(dir, sid)).unwrap_or_default();
+    write_in(dir, key, sid, on, &prune)
+}
+
+/// The idle toggle dirs of sessions other than `sid`, pruned on its
+/// next set.
+fn stale(dir: &Path, sid: &str) -> Vec<PathBuf> {
+    let root = dir.join(super::SESSION_TOGGLES);
+    super::stale_sessions(&root, sid, std::time::SystemTime::now())
+}
+
+/// Session `sid`'s toggle dir, refused for a bad id or when it or the
+/// toggles root is not a real dir: a planted symlink must not redirect
+/// the write.
+fn session_dirs(dir: &Path, sid: &str) -> Result<PathBuf, String> {
+    let own = session_toggles_dir(dir, sid).ok_or_else(|| format!("bad session id `{sid}`"))?;
+    let root = dir.join(super::SESSION_TOGGLES);
+    for d in [&root, &own] {
+        if std::fs::symlink_metadata(d).is_ok() && !hook::is_real_dir(d) {
+            return Err(format!("{} is not a directory", d.display()));
+        }
+    }
+    Ok(own)
+}
+
+/// [`set_in`], removing `prune` (other sessions' dirs, from [`stale`])
+/// before a session's write.
+fn write_in(
+    dir: &Path,
+    key: &str,
+    sid: Option<&str>,
+    on: bool,
+    prune: &[PathBuf],
+) -> Result<(), String> {
     let f = toggle_file(dir, key).ok_or_else(|| {
         format!("unknown key `{key}` (expected 5h, 7d, a plugin name or <plugin>.<toggle>)")
     })?;
@@ -160,15 +200,10 @@ pub fn set_in(dir: &Path, key: &str, sid: Option<&str>, on: bool) -> Result<(), 
         }
         .map_err(|e| e.to_string());
     };
-    let own = session_toggles_dir(dir, sid).ok_or_else(|| format!("bad session id `{sid}`"))?;
-    let root = dir.join(super::SESSION_TOGGLES);
-    // a planted symlink must not redirect the write
-    for d in [&root, &own] {
-        if std::fs::symlink_metadata(d).is_ok() && !hook::is_real_dir(d) {
-            return Err(format!("{} is not a directory", d.display()));
-        }
+    let own = session_dirs(dir, sid)?;
+    for d in prune {
+        let _ = std::fs::remove_dir_all(d);
     }
-    super::prune_sessions(&root, sid);
     let name = f.file_name().unwrap_or_default();
     write_atomic(&own.join(name), if on { "on" } else { "off" }).map_err(|e| e.to_string())
 }
