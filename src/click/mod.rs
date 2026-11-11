@@ -46,13 +46,10 @@ pub fn state_dir() -> PathBuf {
 }
 
 /// The state dir of `bar toggle` and `bar click run`, which the `bar://`
-/// handler starts: `state_dir()`, except that on macOS the platform
+/// handler starts: `state_dir()`, except that the platform
 /// default follows the renderer's pointer (see `pointer`).
 pub fn handler_state_dir() -> PathBuf {
     let base = state_dir();
-    if !cfg!(target_os = "macos") {
-        return base;
-    }
     match pointer::default_dir() {
         Some(d) => pointer::follow(base, &d),
         None => base,

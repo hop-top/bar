@@ -52,12 +52,9 @@ impl InstallCfg {
     }
 
     /// `handler_warnings` for this handler against this environment and
-    /// the renderer's pointer (macOS; none elsewhere).
+    /// the renderer's pointer.
     pub fn warnings(&self) -> Vec<String> {
-        let pointer = cfg!(target_os = "macos")
-            .then(super::pointer::default_dir)
-            .flatten()
-            .and_then(|d| super::pointer::read(&d));
+        let pointer = super::pointer::default_dir().and_then(|d| super::pointer::read(&d));
         let claude = self.settings.parent();
         super::dirs::handler_warnings(&self.app, &self.state_dir, claude, pointer.as_deref())
     }
