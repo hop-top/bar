@@ -109,9 +109,10 @@ fn options(config: &Config, name: &str, info: &ExtInfo) -> Map<String, Value> {
         .unwrap_or_default()
 }
 
-/// The plugin's named toggles that are on.
+/// The plugin's named toggles that are on: the global defaults, since the
+/// tray belongs to no session.
 fn toggles(state: &Path, name: &str) -> Map<String, Value> {
-    click::plugin_toggles(state, name)
+    click::plugin_toggles(state, name, "")
         .into_iter()
         .map(|(k, v)| (k, Value::Bool(v)))
         .collect()
