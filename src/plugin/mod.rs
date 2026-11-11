@@ -6,6 +6,7 @@ mod alias;
 pub mod check;
 mod discover;
 mod info;
+pub mod menu;
 mod render;
 pub mod web;
 
@@ -17,6 +18,7 @@ pub use info::{
     cached_info, env_secret, info, info_job, info_now, parse_info, validate, ActionSpec, ExtInfo,
     Inputs, OptSpec, OptType, MAX_ENV_INPUTS, MAX_ENV_VALUE, MAX_TOKENS, RESERVED, SESSION_INPUTS,
 };
+pub use menu::{parse_menu, Menu, MenuGroup, MenuItem, MenuKind, MENU_CAPABILITY, MENU_TIMEOUT};
 pub use render::{
     account_rules, cached_output, default_output, link_account, load_account_rules, paint,
     paint_with, parse_output, plan, render, render_found, render_found_with, with_accounts,

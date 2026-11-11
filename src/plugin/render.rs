@@ -297,7 +297,7 @@ fn usage(v: &Value) -> Option<Usage> {
 
 /// Valid tokens only: names `[a-z0-9_-]`, values `[A-Za-z0-9._@-]` of at
 /// most 64 characters, at most 8.
-fn tokens(v: &Value) -> BTreeMap<String, String> {
+pub(super) fn tokens(v: &Value) -> BTreeMap<String, String> {
     v.as_object()
         .map(|o| {
             o.iter()
