@@ -1,6 +1,7 @@
 //! `bar config export` and `bar config import`.
 
 use crate::cli_out::{self, with_fix};
+use crate::dry_run;
 use clap::{ArgMatches, Subcommand};
 use hop_bar::confio::{self, Mode};
 use hop_bar::{check, conf, plugin};
@@ -22,6 +23,9 @@ pub enum ConfigCmd {
         /// Overwrite FILE when it exists.
         #[arg(long)]
         force: bool,
+        /// Print what would be written, as data with --format; write nothing.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Merge a config file into yours or replace yours with it, after a
     /// preview; the old file is backed up.
@@ -38,6 +42,9 @@ pub enum ConfigCmd {
         /// Write without asking.
         #[arg(long, short)]
         yes: bool,
+        /// Print what would be written, as data with --format; write nothing.
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -106,6 +113,7 @@ fn export(m: &ArgMatches) {
         .get_one::<PathBuf>("file")
         .filter(|f| f.as_os_str() != "-")
     {
+        None if dry_run::on(m) => dry_run::emit(m, "config export", Vec::new(), json!({}), ""),
         None => {
             let data = json!({
                 "user": shown(user.as_ref().map(|(p, _)| p.as_path())),
@@ -122,6 +130,13 @@ fn export(m: &ArgMatches) {
                     "{} exists; pass --force to overwrite",
                     f.display()
                 )));
+            }
+            if dry_run::on(m) {
+                let mut c = dry_run::write(f);
+                if old.is_some() {
+                    c["backup"] = json!(true);
+                }
+                return dry_run::emit(m, "config export", vec![c], json!({}), "");
             }
             if let Err(e) = confio::write_config(f, old.as_deref(), &body) {
                 fail(CliError::generic(e));
@@ -206,6 +221,9 @@ fn import(m: &ArgMatches) {
         lint(m, &new, &format!("{} after the merge", target.display()));
     }
     let name = target.display().to_string();
+    if dry_run::on(m) && old.as_deref() == Some(new.as_str()) {
+        return dry_run::emit(m, "config import", Vec::new(), json!({}), "");
+    }
     if old.as_deref() == Some(new.as_str()) {
         let text = format!("{name} already matches; nothing written\n");
         let data = json!({"path": name, "written": false, "backup": null});
@@ -218,6 +236,14 @@ fn import(m: &ArgMatches) {
         "/dev/null"
     };
     let diff = hop_bar::diff::unified(old.as_deref().unwrap_or(""), &new, from, &name);
+    if dry_run::on(m) {
+        warn_notable(shown, &text);
+        let mut c = dry_run::write(&target);
+        if old.is_some() {
+            c["backup"] = json!(true);
+        }
+        return dry_run::emit(m, "config import", vec![c], json!({"diff": diff}), &diff);
+    }
     let mut human = cli_out::human(m);
     let _ = write!(human, "{diff}");
     let _ = human.flush();

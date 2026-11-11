@@ -25,9 +25,14 @@ pub fn run(out: Option<&Path>) -> Result<(PathBuf, usize), String> {
 pub fn run_within(out: Option<&Path>, max_time: u64) -> Result<(PathBuf, usize), String> {
     let body = fetch(max_time.max(1))?;
     let (text, n) = trim(&body, &super::models::today())?;
-    let path = out.map_or_else(user_path, Path::to_path_buf);
+    let path = target(out);
     write_atomic(&path, &text).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok((path, n))
+}
+
+/// The file [`run`] writes: `out`, else the data-dir file.
+pub fn target(out: Option<&Path>) -> PathBuf {
+    out.map_or_else(user_path, Path::to_path_buf)
 }
 
 fn fetch(max_time: u64) -> Result<Vec<u8>, String> {

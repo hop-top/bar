@@ -24,7 +24,10 @@ pub use install::{
 };
 pub use settings::{hook_command, hook_command_for, plan_settings, SettingsPlan, HOOK_EVENTS};
 pub use url::{link, parse, with_cmd_link, ClickUrl, Term, COMMANDS};
-pub use views::{check_key, cli as toggle_cli, parse_value, set_in, unknown_key, view_name};
+pub use views::{
+    check_key, cli as toggle_cli, parse_value, plan as toggle_plan, set_in, unknown_key, view_name,
+    Plan as TogglePlan,
+};
 
 use std::io::Write;
 use std::path::{Path, PathBuf};

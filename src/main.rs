@@ -2,6 +2,7 @@ use std::io::Write;
 
 mod cli_out;
 mod config_cmd;
+mod dry_run;
 mod help_json;
 
 use std::ffi::OsString;
@@ -61,6 +62,9 @@ enum SubCmd {
         /// Preset to write.
         #[arg(long, value_parser = hop_bar::presets::NAMES, default_value = hop_bar::presets::DEFAULT)]
         preset: String,
+        /// Print what would be written, as data with --format; write nothing.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Set bar as Claude Code's status line in its settings.json (shows the diff, asks first).
     Install {
@@ -88,6 +92,9 @@ enum SubCmd {
         /// Write without asking.
         #[arg(short, long)]
         yes: bool,
+        /// Print what would be written, as data with --format; write nothing.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Show the newest release found by the update check and how to upgrade (never downloads).
     Update,
@@ -98,6 +105,9 @@ enum SubCmd {
         key: String,
         /// on or off, or the view: pct or bar (5h, 7d), alt or show (plugins)
         value: Option<String>,
+        /// Print what would be written, as data with --format; write nothing.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Click handler app and clickable commands.
     Click {
@@ -138,6 +148,9 @@ enum PricesCmd {
         /// Write this file instead of the data dir's models.json.
         #[arg(long, value_name = "FILE")]
         out: Option<std::path::PathBuf>,
+        /// Print what would be written, as data with --format; write nothing.
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -153,6 +166,9 @@ enum WebCmd {
         /// Overwrite the `-o` file when it exists.
         #[arg(long)]
         force: bool,
+        /// Print what would be written, as data with --format; write nothing.
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -234,6 +250,9 @@ fn main() {
             cli_out::check_format(m, "toggle");
             let arg = m.get_one::<String>("key").map_or("", String::as_str);
             let value = m.get_one::<String>("value").map(String::as_str);
+            if dry_run::on(m) {
+                return dry_run::toggle(m, &click::handler_state_dir(), arg, value);
+            }
             match click::toggle_cli(&click::handler_state_dir(), arg, value) {
                 Ok((key, view)) => {
                     let data = json!({"key": key, "view": view});
@@ -322,9 +341,14 @@ fn refresh(raw: &str) {
 
 fn prices_cmd(m: &ArgMatches) {
     if let Some(("update", u)) = m.subcommand() {
-        match hop_bar::prices::update::run(
-            u.get_one::<std::path::PathBuf>("out").map(|p| p.as_path()),
-        ) {
+        let out = u.get_one::<std::path::PathBuf>("out").map(|p| p.as_path());
+        if dry_run::on(u) {
+            cli_out::check_format(u, "prices update");
+            let target = hop_bar::prices::update::target(out);
+            let extra = json!({"source": hop_bar::prices::update::URL});
+            return dry_run::emit(u, "prices update", vec![dry_run::write(&target)], extra, "");
+        }
+        match hop_bar::prices::update::run(out) {
             Ok((path, n)) => println!("{n} models written to {}", path.display()),
             Err(e) => {
                 eprintln!("bar prices update: {e}");
@@ -419,13 +443,25 @@ fn init(m: &ArgMatches) {
         .get_one::<String>("preset")
         .map_or(hop_bar::presets::DEFAULT, String::as_str);
     let home = hop_bar::platform::home().unwrap_or_default();
-    let r = hop_bar::presets::init(
+    let plan = if dry_run::on(m) {
+        hop_bar::presets::plan
+    } else {
+        hop_bar::presets::init
+    };
+    let r = plan(
         name,
         &|k| std::env::var(k).ok(),
         &home,
         &hop_bar::platform::dirs::config(),
     );
     match r {
+        Ok(hop_bar::presets::Init::Wrote(p)) if dry_run::on(m) => {
+            let c = vec![dry_run::change("create", &p)];
+            dry_run::emit(m, "init", c, json!({"preset": name}), "");
+        }
+        Ok(hop_bar::presets::Init::Same(_)) if dry_run::on(m) => {
+            dry_run::emit(m, "init", Vec::new(), json!({"preset": name}), "");
+        }
         Ok(hop_bar::presets::Init::Wrote(p)) => {
             let text = format!("wrote {} (preset {name})\n", p.display());
             let data = json!({"path": p.display().to_string(), "preset": name, "written": true});
@@ -508,6 +544,9 @@ fn install(m: &ArgMatches) {
         subagent_only: m.get_flag("subagent_only"),
         yes: m.get_flag("yes"),
     };
+    if dry_run::on(m) {
+        return dry_run::install(m, &env, &opts);
+    }
     let tty = std::io::IsTerminal::is_terminal(&std::io::stdin());
     let r = install::run_outcome(
         &env,
@@ -672,6 +711,12 @@ fn web_cmd(m: &ArgMatches) {
     } else {
         given
     };
+    // the global `-o/--output` (hop-top-kit output flags); `-` is stdout
+    let out = p.get_one::<String>("output").map_or("", String::as_str);
+    let force = p.get_flag("force");
+    if dry_run::on(p) {
+        return dry_run::web_plugins(p, out, force);
+    }
     let cache = Cache::new(&click::state_dir());
     let infos: Vec<_> = plugin::discover(&dirs)
         .iter()
@@ -681,9 +726,6 @@ fn web_cmd(m: &ArgMatches) {
         "{}\n",
         serde_json::to_string_pretty(&plugin::web::manifest(&infos)).unwrap_or_default()
     );
-    // the global `-o/--output` (hop-top-kit output flags); `-` is stdout
-    let out = p.get_one::<String>("output").map_or("", String::as_str);
-    let force = p.get_flag("force");
     let leaf = p;
     let written = match out {
         "" | "-" => std::io::stdout()
