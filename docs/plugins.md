@@ -8,7 +8,7 @@ Any executable named `bar-<name>` on `PATH` (on Windows `bar-<name>.exe`, `.cmd`
 - Per name, the first executable regular file wins; non-executables are skipped.
 - Windows: a file is executable when its extension is one of `.com`, `.exe`, `.bat`, `.cmd` listed in `PATHEXT` (default `.COM;.EXE;.BAT;.CMD`); the name is the file name without `bar-` and the extension, case ignored in the extension. In one dir the extension listed first in `PATHEXT` wins. Extension-less files (shebang scripts) and `.ps1` are skipped, since Windows cannot start them directly; wrap a PowerShell script in a `.cmd`, e.g. `bar-hello.cmd` holding `@powershell -NoProfile -File "%~dp0bar-hello.ps1" %*`. `.bat`/`.cmd` plugins run through `cmd.exe`, so `echo` output ends in CRLF; bar trims it.
 - Names are `[A-Za-z0-9_-]+`. Core placeholder names (every name in [config](config.md#placeholders): `account`, `repo`, `model`, `usage`, `tokens`, `cwd` and the rest) always win: `bar-account` is never used.
-- `bar plugin list` shows every plugin found (name, version, description, path); `bar plugin info <name>` runs `--ext-info` now and shows the parsed result plus the path, or exits 1 when no such plugin is on `PATH`. Both accept `--format json` (also `yaml`, `csv`, `text`).
+- `bar plugin list` shows every plugin found (name, version, description, path); `bar plugin info <name>` runs `--ext-info` now and shows the parsed result plus the path, or exits 3 when no such plugin is on `PATH`. Both accept `--format json` (also `yaml`, `csv`, `text`).
 
 ### Commands
 

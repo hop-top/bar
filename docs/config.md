@@ -1072,26 +1072,32 @@ Each row is laid out like the status line, with the same skin, palette, icons an
 |---|---|---|
 | `bar render` | Reads the session JSON on stdin, prints the status line ([technical notes](technical.md#flow)) | always 0 |
 | `bar subagent` | Reads the subagent rows on stdin, prints one `{"id", "content"}` JSON line per row it draws ([subagent rows](#subagent-rows)) | always 0 |
-| `bar install [--project\|--local] [--refresh <secs>] [--hooks] [--subagent\|--subagent-only] [--uninstall] [--yes]` | Sets bar as Claude Code's status line ([bar install](#bar-install)) | 0, 2 without a terminal and `--yes` or with a bad home, 1 declined or on failure |
+| `bar install [--project\|--local] [--refresh <secs>] [--hooks] [--subagent\|--subagent-only] [--uninstall] [--yes]` | Sets bar as Claude Code's status line ([bar install](#bar-install)) | 0, 7 without a terminal and `--yes` or declined, 2 with a bad home, 1 on failure |
 | `bar update` | Version, newest release the [update check](#update) found, how to upgrade; never downloads | 0 |
 | `bar check` | Lints the config ([bar check](#bar-check)) | 0, 2 on a config error |
-| `bar config export [<file>\|-] [--user] [--force]` | Writes the effective config ([bar config](#bar-config)) | 0, 2 on a config error, an existing file or a write error |
-| `bar config import <file>\|- --merge\|--replace [--yes]` | Merges a file into your config or replaces it, after a preview ([bar config](#bar-config)) | 0, 2 on an invalid file or when it cannot ask, 1 when declined or the write fails |
+| `bar config export [<file>\|-] [--user] [--force]` | Writes the effective config ([bar config](#bar-config)) | 0, 2 on a config error, 3 with `--user` and no config file, 4 on an existing file, 1 on a read or write error |
+| `bar config import <file>\|- --merge\|--replace [--yes]` | Merges a file into your config or replaces it, after a preview ([bar config](#bar-config)) | 0, 2 on an invalid file, 3 when the file is missing, 7 when it cannot ask or is declined, 1 when the write fails |
 | `bar preview [--state early\|burning\|final] [--preset [<name>]] [--subagent]` | Layout with sample data ([bar preview](#bar-preview)) | 0 |
 | `bar edit` | Full-screen config editor with a live preview ([bar edit](#bar-edit)) | 0, 2 without a terminal or on an unreadable file |
-| `bar init [--preset <name>]` | Writes a preset as your config ([presets](#presets)) | 0, 2 when a config exists or the path is unusable |
+| `bar init [--preset <name>]` | Writes a preset as your config ([presets](#presets)) | 0, 4 when a config exists, 2 when the path is unusable |
 | `bar toggle <key>` | Flips `5h`, `7d`, `<plugin>` or `<plugin>.<toggle>` ([usage](#usage)): the global default, or one session's toggle with `<key>?sid=<session id>` | 0, 2 on an unknown key or a bad session id |
 | `bar click install [--dry-run] [--hooks-only]` | URL handler app and hooks ([click handler](#click-handler-macos)) | 0, 2 unsupported or bad home, 1 on failure |
 | `bar click run <url>` | Types an allow-listed slash command ([clickable commands](#clickable-commands)) | 0, 1 refused, 2 on Windows |
 | `bar click action <url>` | Runs a plugin's declared action ([plugin actions](#plugin-actions)) | 0, 1 refused |
 | `bar click hook` | Claude Code hook ([hooks](#hooks)) | always 0 |
 | `bar plugin list` | Plugins on `PATH`: name, version, description, path ([plugins](plugins.md#discovery)) | 0 |
-| `bar plugin info <name>` | One plugin's `--ext-info` result and path | 0, 1 when no such plugin |
-| `bar web plugins [--dir <dir>]... [-o <file>] [--force]` | `plugins.json` for the [web configurator](web.md): `--ext-info` of every plugin on `PATH` or in the `--dir`s ([metadata](plugins.md#web-configurator-metadata)); `-o` writes the file atomically and refuses an existing one unless `--force` | 0, 2 when the file exists, 1 when it cannot be written |
+| `bar plugin info <name>` | One plugin's `--ext-info` result and path | 0, 3 when no such plugin |
+| `bar web plugins [--dir <dir>]... [-o <file>] [--force]` | `plugins.json` for the [web configurator](web.md): `--ext-info` of every plugin on `PATH` or in the `--dir`s ([metadata](plugins.md#web-configurator-metadata)); `-o` writes the file atomically and refuses an existing one unless `--force` | 0, 4 when the file exists, 1 when it cannot be written |
 | `bar prices update [--out <file>]` | Fetches models.dev prices ([snapshot fetch](#spendhist)); `--out` writes that file instead of the data dir's `models.json` | 0, 2 on failure |
 | `bar --version`, `bar --help`, `bar <command> --help` | Version, help | 0 |
 
-`--format csv|json|table|text|yaml` is accepted by every command and changes the output of `bar check`, `bar plugin list` and `bar plugin info` (default `table`). A usage error (unknown command or flag) exits 2. `bar refresh <request>` is internal: render spawns it to fill the cache in the background.
+`--format csv|json|table|text|yaml` is accepted by every command (default `table`, the text shown above). It changes the output of `bar check`, `bar plugin list`, `bar plugin info`, `bar init`, `bar install`, `bar config export`, `bar config import`, `bar toggle` and `bar update`: stdout then carries one document in that format, the command's result, and text meant for a person (a diff, a prompt, notes) goes to stderr. For these commands any other format is a usage error before the command does anything. A usage error (unknown command or flag) exits 2.
+
+Exit codes follow one table for every command: 0 success (also when nothing needed changing), 1 an unclassified failure (a read or write that failed), 2 a usage error (unknown command, flag, format or key, an invalid config file), 3 not found (no such plugin, file or config), 4 conflict (a file that exists and is not overwritten), 7 consent refused (a write that needs `--yes`, or a `n` at the prompt; rerun with `--yes`).
+
+With `--format json` or `yaml` an error is reported on stdout as that document instead, with the fields `code` (`USAGE`, `NOT_FOUND`, `CONFLICT`, `CONSENT_REFUSED` or `GENERIC`, matching the exit code), `message`, `cause` (the lint report of an invalid file, clap's message of a usage error; absent when there is none), `suggested_fix` (what to run or change; absent when there is none), `exit_code` and `transience` (`transient` when rerunning differently can clear it, as `CONSENT_REFUSED`; else `permanent`); stderr holds only text meant for a person, such as the diff of a refused write. Under any other format an error is a line on stderr, `bar <command>: <message>`, the fix on the next line.
+
+Results under `--format json`: `bar init` `{path, preset}`; `bar install` `{settings, written, backup}` (`written` is false when the file already said the same, `backup` the copy of the old file or `null`); `bar config import` `{path, written, backup}`; `bar config export` `{user, project, config}` (the two source paths or `null`, and the exported text), or `{path, written}` when it writes a file; `bar toggle` `{key, view}`; `bar update` `{check, status, current, channel, latest, age_secs, stale, newer, dev, upgrade}`, where `check` says whether the update check is on, `status` is `off`, `pending` (no result yet), `failed` or `ok`, `latest` the tag the check found, `age_secs` the age of that result, `stale` whether it is older than a day and `newer` the newer version; `latest`, `age_secs` and `newer` are `null` when there is none. `bar refresh <request>` is internal: render spawns it to fill the cache in the background.
 
 ### bar install
 
@@ -1105,7 +1111,7 @@ Each row is laid out like the status line, with the same skin, palette, icons an
 - `<path>` is the absolute path of the running binary, as for the [hooks](#hooks): a path that survives upgrades when there is one, and quoted: on Windows with forward slashes and unquoted when it has no spaces or shell characters. `--project` writes plain `bar render` (and `bar click hook`) instead: `.claude/settings.json` is shared with everyone working on the project, so it names no path of yours, and each person needs `bar` on the `PATH` Claude Code runs commands with.
 - Installed from npm (`npm install -g @hop-top/bar`), the `bar` on `PATH` is the Node launcher, so a plain `bar` from `--project` starts Node on every refresh; to avoid that in your own settings, use `--local` or the user settings, which name the binary itself (`bar install` run through the launcher writes the platform package's binary path).
 - Run through `npx` (`npm exec`), the binary sits in npm's cache (a `_npx` directory), which npm may clear: `bar install` then prints a warning and suggests `npm install -g @hop-top/bar` first.
-- It prints a unified diff of the file first, then asks `write <file>? [y/N]`. The file keeps its indent (two or four spaces, or tabs). A file laid out otherwise (on one line, or with arrays on one line) is rewritten in bar's layout with its indent; the diff then compares its content in that layout, so only real changes show, and a line says the file is reformatted. `--yes` skips the question; without a terminal on stdin and without `--yes` it prints the diff, writes nothing and exits 2. Any answer but `y` or `yes` writes nothing and exits 1.
+- It prints a unified diff of the file first, then asks `write <file>? [y/N]`. The file keeps its indent (two or four spaces, or tabs). A file laid out otherwise (on one line, or with arrays on one line) is rewritten in bar's layout with its indent; the diff then compares its content in that layout, so only real changes show, and a line says the file is reformatted. `--yes` skips the question; without a terminal on stdin and without `--yes` it prints the diff, writes nothing and exits 7 (consent refused; rerun with `--yes`). Any answer but `y` or `yes` writes nothing and exits 7.
 - Other keys and their order are kept, as are other fields of an existing `statusLine` (`padding`, `hideVimModeIndicator`, `refreshInterval`). `--refresh <secs>` (1 or more) sets `refreshInterval`, which re-runs the status line on a timer as well as on Claude Code's events.
 - An existing file is first copied to `backups/<name>-<hash>.bak-<time>-<pid>` in the state directory (mode 0600), never beside it: `.claude/` may be committed and a settings file may hold keys. The path is printed; the newest 5 backups of each file are kept. The file is then written atomically, keeping its mode; a symlink is written through to its target. A file that does not parse as a JSON object is left untouched (exit 1). Nothing is written when the file already says the same.
 - A status line that does not run bar is kept in `install/<hash>.json` in the state directory before it is replaced.
@@ -1140,7 +1146,7 @@ Exit 0 when there are no errors (warnings allowed), 2 on a config error. `--form
 `bar config export [<file>|-]` writes the effective config: your config file (or the built-in layout) with the [project config](#project-config) for the working directory merged over it, as one file that renders the same. Each part starts with a comment naming its source (`# bar config: <path>`, `# project config: <path>`). Lines of yours that a project line replaces (the same `set` key, `set price` prefix, `plugin` name, `rule` target or `account` glob) are left out; `default` lines are all kept, since they merge.
 
 - No file or `-`: stdout. A new file is written atomically (mode 0600). An existing file is refused unless `--force`, which copies it to `<file>.bak-<time>-<pid>` beside it first (the newest 5 backups are kept) and keeps its mode.
-- `--user`: your config file as it is, without the project config; exit 2 when you have none.
+- `--user`: your config file as it is, without the project config; exit 3 when you have none.
 - A config with errors is not exported (exit 2; run `bar check`). `--user` exports the file as it is.
 
 `bar config import <file>|- --merge|--replace [--yes]` changes your config file:
@@ -1148,10 +1154,10 @@ Exit 0 when there are no errors (warnings allowed), 2 on a config error. `--form
 - `--merge`: your file, minus the lines the imported file replaces (same keys as above), then the imported file. The result reads as the imported file applied over yours.
 - `--replace`: the imported file becomes your config.
 - One of the two is required. Without a config file the import is written where `bar init` writes.
-- The imported file is checked first, the same way as [bar check](#bar-check) checks a config (a plugin not on `PATH` is an error); with errors nothing is written, the report goes to stderr and the exit is 2. A merge result is checked the same way.
-- A unified diff of the change goes to stdout. Control characters in it (escape sequences, carriage returns, C1 controls and bidi overrides) are shown escaped, as `\x1b` or `\u{9b}`, so a file cannot hide lines from the preview; `bar install` shows its diff the same way. Then stderr lists every line of the imported file that runs a command or reads the environment (a `%…%` value), runs a plugin (`plugin`) or sets `project-config`, with its line number, then asks `write <path>? [y/N]`. Only `y` or `yes` writes; anything else exits 1. `--yes` writes without asking; without it, a file read from stdin (`-`) or a stdin that is not a terminal exits 2 after the diff, writing nothing.
+- The imported file is checked first, the same way as [bar check](#bar-check) checks a config (a plugin not on `PATH` is an error); with errors nothing is written, the report goes to stderr and the exit is 2. A file that does not exist exits 3. A merge result is checked the same way.
+- A unified diff of the change goes to stdout. Control characters in it (escape sequences, carriage returns, C1 controls and bidi overrides) are shown escaped, as `\x1b` or `\u{9b}`, so a file cannot hide lines from the preview; `bar install` shows its diff the same way. Then stderr lists every line of the imported file that runs a command or reads the environment (a `%…%` value), runs a plugin (`plugin`) or sets `project-config`, with its line number, then asks `write <path>? [y/N]`. Only `y` or `yes` writes; anything else exits 7. `--yes` writes without asking; without it, a file read from stdin (`-`) or a stdin that is not a terminal exits 7 after the diff, writing nothing.
 - An import that changes nothing writes nothing.
-- Your file is read again right before writing; if it changed since the diff was made, nothing is written (exit 1). `export --force` likewise leaves a file that changed while it ran alone (exit 2).
+- Your file is read again right before writing; if it changed since the diff was made, nothing is written (exit 1). `export --force` likewise leaves a file that changed while it ran alone (exit 1). An existing file without `--force` exits 4.
 - The old file is copied to `bar.conf.bak-<time>-<pid>` beside it (the newest 5 backups are kept), then the new one is written atomically, keeping the old file's permissions. A symlinked config is written through to its target.
 
 ### bar preview
@@ -1195,7 +1201,7 @@ Six example configs ship in the binary and in [`presets/`](../presets): `minimal
 
 `bar init [--preset <name>]` writes one (default `full`) to the first search path: `$XDG_CONFIG_HOME/bar/bar.conf`, else `~/.config/bar/bar.conf`.
 
-- It refuses when any search path already holds a config, prints the path it found and exits 2.
+- It refuses when any search path already holds a config, prints the path it found and exits 4 (conflict).
 - It also refuses when that path would be relative (home unset or relative: `HOME`, on Windows `USERPROFILE` then `HOME`); a relative `XDG_CONFIG_HOME` is ignored, as the XDG spec says, here and in the search order.
 - The file is written to a temp file beside it and linked into place, so it is never partial and never replaces a file that appeared meanwhile.
 - There is no `--force`; remove or move the file yourself.

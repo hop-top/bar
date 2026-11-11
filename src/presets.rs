@@ -27,6 +27,9 @@ pub fn get(name: &str) -> Option<&'static str> {
     })
 }
 
+/// How [`init`] ends the message of a refusal to overwrite a config.
+pub const EXISTS: &str = "exists; not overwritten";
+
 /// The variable the home directory comes from, for messages.
 const HOME_VAR: &str = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
 
@@ -47,7 +50,7 @@ pub fn init(
         ));
     }
     if let Some(p) = crate::conf::find_path(env, home, kit_dir) {
-        return Err(format!("{} exists; not overwritten", p.display()));
+        return Err(format!("{} {EXISTS}", p.display()));
     }
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
@@ -80,7 +83,7 @@ pub fn write_new(path: &Path, body: &str) -> Result<(), String> {
     })();
     let _ = std::fs::remove_file(&tmp);
     written.map_err(|e| match e.kind() {
-        std::io::ErrorKind::AlreadyExists => format!("{} exists; not overwritten", path.display()),
+        std::io::ErrorKind::AlreadyExists => format!("{} {EXISTS}", path.display()),
         _ => shown(e),
     })
 }

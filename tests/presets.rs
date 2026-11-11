@@ -153,7 +153,7 @@ fn init_named_preset_under_home_config() {
 fn init_refuses_to_overwrite() {
     let t = Tmp::new();
     t.write("xdg/bar/bar.conf", "set left \"#{model}\"\n");
-    let o = bar(&t, &["init", "--preset", "minimal"]).assert().code(2);
+    let o = bar(&t, &["init", "--preset", "minimal"]).assert().code(4);
     let err = String::from_utf8(o.get_output().stderr.clone()).unwrap();
     assert!(err.contains("exists"), "{err}");
     let body = std::fs::read_to_string(t.path().join("xdg/bar/bar.conf")).unwrap();
@@ -164,7 +164,7 @@ fn init_refuses_to_overwrite() {
 fn init_refuses_when_another_search_path_has_a_config() {
     let t = Tmp::new();
     t.write(".config/bar/bar.conf", "set left \"#{model}\"\n");
-    bar(&t, &["init"]).assert().code(2);
+    bar(&t, &["init"]).assert().code(4);
     assert!(!t.path().join("xdg/bar/bar.conf").exists());
 }
 

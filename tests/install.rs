@@ -293,7 +293,11 @@ fn cli_refuses_without_terminal_and_writes_with_yes() {
     let t = Tmp::new();
     let s = t.path().join("claude").join("settings.json");
     let o = cli(&t, &[]);
-    assert_eq!(o.status.code(), Some(2));
+    assert_eq!(
+        o.status.code(),
+        Some(7),
+        "no terminal to ask: consent refused"
+    );
     assert!(String::from_utf8_lossy(&o.stderr).contains("--yes"));
     assert!(String::from_utf8_lossy(&o.stdout).contains("statusLine"));
     assert!(!s.exists());

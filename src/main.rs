@@ -1,5 +1,6 @@
 use std::io::Write;
 
+mod cli_out;
 mod config_cmd;
 
 use std::ffi::OsString;
@@ -8,7 +9,8 @@ use clap::{ArgMatches, Command, CommandFactory, Parser, Subcommand};
 use hop_bar::cache::{refresh_timeout, Cache, CachedRunner, Request};
 use hop_bar::{check, click, conf, plugin, session};
 use hop_top_kit::output::{
-    dispatch, register_output_flags, DispatchOptions, RegisterOutputFlagsOptions, EXIT_USAGE,
+    dispatch, register_output_flags, CliError, DispatchOptions, RegisterOutputFlagsOptions,
+    EXIT_USAGE,
 };
 use serde_json::{json, Value};
 
@@ -204,7 +206,7 @@ fn main() {
     }
     let cli_cmd: Command = Cli::command();
     let (cli_cmd, _ctx) = register_output_flags(cli_cmd, RegisterOutputFlagsOptions::default());
-    let matches = cli_cmd.get_matches();
+    let matches = cli_out::matches(cli_cmd);
     match matches.subcommand() {
         Some(("render", _)) => render(),
         Some(("subagent", _)) => subagent(),
@@ -212,7 +214,7 @@ fn main() {
         Some(("preview", m)) => preview(m),
         Some(("init", m)) => init(m),
         Some(("install", m)) => install(m),
-        Some(("update", _)) => update(),
+        Some(("update", m)) => update(m),
         Some(("config", m)) => config_cmd::run(m),
         #[cfg(feature = "edit")]
         Some(("edit", _)) => {
@@ -222,6 +224,7 @@ fn main() {
             }
         }
         Some(("toggle", m)) => {
+            cli_out::check_format(m, "toggle");
             let arg = m.get_one::<String>("key").map_or("", String::as_str);
             let flipped = click::toggle_target(arg).and_then(|(key, sid)| {
                 click::toggle_in(&click::handler_state_dir(), key, sid).map(|on| (key, on))
@@ -234,12 +237,10 @@ fn main() {
                         (false, true) => "alt",
                         (false, false) => "show",
                     };
-                    println!("{key}: {view}");
+                    let data = json!({"key": key, "view": view});
+                    cli_out::emit(m, "toggle", &format!("{key}: {view}\n"), &data);
                 }
-                Err(e) => {
-                    eprintln!("bar toggle: {e}");
-                    std::process::exit(2);
-                }
+                Err(e) => cli_out::fail(m, "toggle", CliError::usage(e)),
             }
         }
         Some(("click", m)) => click_cmd(m),
@@ -254,7 +255,7 @@ fn main() {
                 .get_many::<OsString>("")
                 .map(|v| v.cloned().collect())
                 .unwrap_or_default();
-            external(name, &args);
+            external(name, &args, cli_out::format(&matches));
         }
         _ => {}
     }
@@ -263,8 +264,9 @@ fn main() {
 /// `bar <name> <args>`: runs the plugin `bar-<name>` (found as a render
 /// finds one) with `args`, stdio inherited, and exits with its status. A
 /// name that is no plugin but is an alias a plugin declares runs that
-/// plugin; any other name is a usage error, as any unknown command.
-fn external(name: &str, args: &[OsString]) -> ! {
+/// plugin; any other name is a usage error, as any unknown command,
+/// reported per the `--format` before `name` or among `args`.
+fn external(name: &str, args: &[OsString], format: &str) -> ! {
     let dirs = plugin::plugin_dirs(std::env::var_os("PATH").as_deref());
     let cache = Cache::new(&click::state_dir());
     let found = match plugin::resolve(&dirs, name, &|f| plugin::info_now(&cache, f).aliases) {
@@ -277,9 +279,13 @@ fn external(name: &str, args: &[OsString]) -> ! {
             std::process::exit(EXIT_USAGE);
         }
         plugin::Resolved::Unknown => {
-            eprintln!("bar: unrecognized command `{name}`");
-            eprintln!("see `bar --help`; `bar plugin list` shows the plugins found");
-            std::process::exit(EXIT_USAGE);
+            let err = CliError::usage(format!("unrecognized command `{name}`"));
+            let fix = "see `bar --help`; `bar plugin list` shows the plugins found";
+            let fmt = match cli_out::format_in(args) {
+                "table" => format,
+                f => f,
+            };
+            cli_out::fail_as(fmt, "", cli_out::with_fix(err, fix));
         }
     };
     let mut c = std::process::Command::new(&found.path);
@@ -396,6 +402,7 @@ fn preview(m: &ArgMatches) {
 }
 
 fn init(m: &ArgMatches) {
+    cli_out::check_format(m, "init");
     let name = m
         .get_one::<String>("preset")
         .map_or(hop_bar::presets::DEFAULT, String::as_str);
@@ -407,39 +414,49 @@ fn init(m: &ArgMatches) {
         &hop_bar::platform::dirs::config(),
     );
     match r {
-        Ok(p) => println!("wrote {} (preset {name})", p.display()),
-        Err(e) => {
-            eprintln!("bar init: {e}");
-            std::process::exit(EXIT_USAGE);
+        Ok(p) => {
+            let text = format!("wrote {} (preset {name})\n", p.display());
+            let data = json!({"path": p.display().to_string(), "preset": name});
+            cli_out::emit(m, "init", &text, &data);
         }
+        Err(e) if e.ends_with(hop_bar::presets::EXISTS) => cli_out::fail(
+            m,
+            "init",
+            cli_out::with_fix(
+                CliError::conflict(e),
+                "edit that file, or move it aside and rerun bar init",
+            ),
+        ),
+        Err(e) => cli_out::fail(m, "init", CliError::usage(e)),
     }
 }
 
-fn update() {
+fn update(m: &ArgMatches) {
     use hop_bar::{cache::Job, update};
+    cli_out::check_format(m, "update");
     let on = matches!(conf::load(cwd().as_deref()), conf::LoadResult::Ok(c) if c.update_check);
+    let cache = Cache::new(&click::state_dir());
+    let key = update::cache_key(update::channel_is_prerelease(update::current()));
     let cached = on.then(|| {
         let pre = update::channel_is_prerelease(update::current());
         // a stale result also starts the daily check in the background
-        Cache::new(&click::state_dir()).read_or_refresh(
-            update::cache_key(pre),
-            update::TTL,
-            &Job::Update { prerelease: pre },
-        )
+        cache.read_or_refresh(key, update::TTL, &Job::Update { prerelease: pre })
     });
     let exe = std::env::current_exe().unwrap_or_else(|_| "bar".into());
-    print!(
-        "{}",
-        update::report(
-            update::current(),
-            cached.as_ref().map(|c| c.as_deref()),
-            &exe
-        )
-    );
+    let cached = cached.as_ref().map(|c| c.as_deref());
+    let text = update::report(update::current(), cached, &exe);
+    let age = std::fs::metadata(cache.path_for(key))
+        .and_then(|md| md.modified())
+        .ok()
+        .and_then(|t| t.elapsed().ok())
+        .map(|d| d.as_secs());
+    let data = update::report_json(update::current(), cached, age, &exe);
+    cli_out::emit(m, "update", &text, &data);
 }
 
 fn install(m: &ArgMatches) {
     use hop_bar::install::{self, Error, Scope};
+    cli_out::check_format(m, "install");
     let scope = if m.get_flag("project") {
         Scope::Project
     } else if m.get_flag("local") {
@@ -448,10 +465,8 @@ fn install(m: &ArgMatches) {
         Scope::User
     };
     let cwd = std::env::current_dir().unwrap_or_default();
-    let settings = install::settings_path(scope, click::claude_dir(), &cwd).unwrap_or_else(|e| {
-        eprintln!("bar install: {e}");
-        std::process::exit(EXIT_USAGE);
-    });
+    let settings = install::settings_path(scope, click::claude_dir(), &cwd)
+        .unwrap_or_else(|e| cli_out::fail(m, "install", CliError::usage(e)));
     let env = install::Env {
         bar: install::bar_for(
             scope,
@@ -472,20 +487,32 @@ fn install(m: &ArgMatches) {
         yes: m.get_flag("yes"),
     };
     let tty = std::io::IsTerminal::is_terminal(&std::io::stdin());
-    let r = install::run(
+    let r = install::run_outcome(
         &env,
         &opts,
         tty,
         &mut std::io::stdin().lock(),
-        &mut std::io::stdout(),
+        &mut cli_out::human(m),
     );
-    if let Err(e) = r {
-        eprintln!("bar install: {e}");
-        std::process::exit(if e == Error::NeedsConfirm {
-            EXIT_USAGE
-        } else {
-            1
-        });
+    match r {
+        Ok(o) => {
+            let data = json!({
+                "settings": o.path.display().to_string(),
+                "written": o.written,
+                "backup": o.backup.map(|b| b.display().to_string()),
+            });
+            cli_out::emit(m, "install", "", &data);
+        }
+        Err(e) => {
+            let err = match e {
+                Error::NeedsConfirm | Error::Declined => cli_out::with_fix(
+                    CliError::consent_refused(e.to_string()),
+                    "rerun with --yes to write",
+                ),
+                Error::Failed(_) => CliError::generic(e.to_string()),
+            };
+            cli_out::fail(m, "install", err);
+        }
     }
 }
 
@@ -591,8 +618,9 @@ fn plugin_cmd(m: &ArgMatches) {
         Some(("info", i)) => {
             let name = i.get_one::<String>("name").map_or("", String::as_str);
             let Some(f) = plugin::find(&dirs, name) else {
-                eprintln!("bar plugin info: no plugin `{name}` on PATH");
-                std::process::exit(1);
+                let err = CliError::not_found(format!("no plugin `{name}` on PATH"));
+                let fix = "`bar plugin list` shows the plugins found";
+                cli_out::fail(i, "plugin info", cli_out::with_fix(err, fix));
             };
             let mut v = plugin::info(&f).to_json();
             v["path"] = json!(f.path.display().to_string());
@@ -634,6 +662,7 @@ fn web_cmd(m: &ArgMatches) {
     // the global `-o/--output` (hop-top-kit output flags); `-` is stdout
     let out = p.get_one::<String>("output").map_or("", String::as_str);
     let force = p.get_flag("force");
+    let leaf = p;
     let written = match out {
         "" | "-" => std::io::stdout()
             .write_all(body.as_bytes())
@@ -641,8 +670,8 @@ fn web_cmd(m: &ArgMatches) {
         path => {
             let p = std::path::Path::new(path);
             if p.exists() && !force {
-                eprintln!("bar web plugins: {path} exists; pass --force to overwrite");
-                std::process::exit(EXIT_USAGE);
+                let err = CliError::conflict(format!("{path} exists; pass --force to overwrite"));
+                cli_out::fail(leaf, "web plugins", err);
             }
             hop_bar::rewrite::target(p).and_then(|t| {
                 hop_bar::rewrite::write(&t, &body).map_err(|e| format!("{path}: {e}"))
