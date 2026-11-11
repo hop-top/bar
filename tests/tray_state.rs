@@ -16,6 +16,7 @@ use hop_bar::click::action::STATUS_FILE;
 use hop_bar::tray::{self, state, SNAPSHOT_FILE};
 use serde_json::{json, Value};
 use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 use std::process::Command;
 use std::time::{Duration, Instant};
 
@@ -278,9 +279,22 @@ fn a_refused_action_shows_as_not_ok() {
 
 // --- budget ---
 
+/// Runs of each measure; the best counts. Enough that a busy moment on
+/// the host (sibling tests run alongside) passes.
+const RUNS: usize = 15;
+
 /// Best of `n` runs of `f`.
 fn best(n: usize, mut f: impl FnMut() -> Duration) -> Duration {
     (0..n).map(|_| f()).min().unwrap()
+}
+
+/// What a plugin costs bar on its own: `--ext-info`, then `--menu`.
+fn interrogate(plugin: &Path) {
+    for arg in ["--ext-info", "--menu"] {
+        let mut c = Command::new(plugin);
+        c.arg(arg).stdin(std::process::Stdio::null());
+        assert!(busy_retry(|| c.output()).status.success());
+    }
 }
 
 #[test]
@@ -296,30 +310,37 @@ fn a_warm_run_fits_the_budget() {
         start.elapsed()
     };
     time();
-    let files_only = best(5, time);
+    let files_only = best(RUNS, time);
     assert!(files_only < budget, "{files_only:?} without plugins");
-    // two fast plugins: what they cost themselves (interrogation and
-    // menu, which bar runs one after the other per plugin, plugins side
-    // by side) is taken out of the measure
+    // two fast plugins: what they cost themselves is taken out of the
+    // measure, run as bar runs them (each interrogated then asked for
+    // its menu, the two side by side), so the contention of two plugins
+    // starting at once counts as theirs, not bar's
     t.config("set tray-views on\ntray echo\ntray quick\n");
     t.fx.put("ext.json", &menu_ext(json!({})));
     t.fx.put("menu.json", &good_menu());
     t.clone_echo("quick", &menu_ext(json!({})), &good_menu());
-    let plugin_cost = best(5, || {
+    let plugins = [t.fx.bin.join("bar-echo"), t.bin2.join("bar-quick")];
+    let plugin_cost = || {
         let start = Instant::now();
-        for arg in ["--ext-info", "--menu"] {
-            let mut c = Command::new(t.fx.bin.join("bar-echo"));
-            c.arg(arg).stdin(std::process::Stdio::null());
-            assert!(busy_retry(|| c.output()).status.success());
-        }
+        std::thread::scope(|s| {
+            for p in &plugins {
+                s.spawn(move || interrogate(p));
+            }
+        });
         start.elapsed()
-    });
+    };
     time();
-    let with_plugins = best(5, time);
-    let own = with_plugins.saturating_sub(plugin_cost);
+    // in turns, so a busy moment weighs on both measures alike
+    let (mut with_plugins, mut cost) = (Duration::MAX, Duration::MAX);
+    for _ in 0..RUNS {
+        cost = cost.min(plugin_cost());
+        with_plugins = with_plugins.min(time());
+    }
+    let own = with_plugins.saturating_sub(cost);
     assert!(
         own < budget,
-        "{own:?} of bar's own ({with_plugins:?} in all, plugins {plugin_cost:?})"
+        "{own:?} of bar's own ({with_plugins:?} in all, plugins {cost:?})"
     );
 }
 
