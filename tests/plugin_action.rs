@@ -48,6 +48,13 @@ const ONE: &str = r#"{"text":"alice","tokens":{"account":"a1","provider":"claude
 
 // --- config ---
 
+/// Tests that point `CLAUDE_CONFIG_DIR` at a fixture hold this for the
+/// whole render: the variable is process-wide and tests run in parallel.
+fn claude_env() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 #[test]
 fn action_line_parses_and_replaces_per_placeholder() {
     let c = cfg("action echo echo.use\naction account cliproxyapi.use\naction echo echo.other\n");
@@ -203,6 +210,7 @@ fn account_links_through_the_account_source() {
     let (fx, c) = setup(out, conf);
     let claude = fx.root.join("claude");
     std::fs::create_dir_all(&claude).unwrap();
+    let _env = claude_env();
     std::env::set_var("CLAUDE_CONFIG_DIR", &claude);
     let (cache, dirs, s) = (fx.cache(), fx.dirs(), session());
     let draw = |c: &Config| {
@@ -260,6 +268,7 @@ fn an_action_not_aimed_at_the_shown_account_links_without_the_sources_account() 
         r#"{"oauthAccount":{"emailAddress":"local@example.test"}}"#,
     )
     .unwrap();
+    let _env = claude_env();
     std::env::set_var("CLAUDE_CONFIG_DIR", &claude);
     let (cache, dirs, s) = (fx.cache(), fx.dirs(), session());
     let shown = hop_bar::render::render_in(
