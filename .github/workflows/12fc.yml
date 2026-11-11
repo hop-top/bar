@@ -6,9 +6,12 @@ name: 12fc
 # source tree. F3-F8 and F11 come from the `grade` leaf: the job builds bar
 # and kit, starts kit's grading service on 127.0.0.1, records the scenario
 # in e2e/conformance/ against bar (scripts/conformance-grade), and the
-# Action grades that cassette with the same kit build.
+# Action grades that cassette with the same kit build. Any failed assertion
+# (68) or an ungradable run (69) fails the job, on PRs and on next.
 on:
   push:
+    branches: [next]
+  pull_request:
     branches: [next]
 
 permissions:
@@ -48,6 +51,7 @@ jobs:
           grade-service: ${{ steps.record.outputs.service }}
           grade-token: ${{ steps.record.outputs.token }}
           grade-tier: '3'
+          fail-on: '2,3,5,68,69'
           upload-sarif: 'false'
           sarif-path: ''
           pr-comment: 'false'
