@@ -75,6 +75,9 @@ pub struct MenuItem {
     /// The action asks for confirmation first; set by [`Menu::declared`]
     /// from the declaration, never by the plugin's output.
     pub confirm: bool,
+    /// Seconds the action may run (`click::action::limit` of its declared
+    /// `timeout`), set by [`Menu::declared`]; 0 until then.
+    pub limit: u64,
 }
 
 /// A section of the menu.
@@ -157,6 +160,7 @@ fn item(v: &Value, kind: MenuKind) -> Option<MenuItem> {
         action: if info { None } else { action },
         tokens: if info { BTreeMap::new() } else { tokens },
         confirm: false,
+        limit: 0,
     })
 }
 
@@ -210,7 +214,8 @@ impl Menu {
     }
 
     /// Only the items whose action `info` declares with exactly the token
-    /// names given, each marked with the declaration's `confirm`; a group
+    /// names given, each marked with the declaration's `confirm` and the
+    /// seconds its run may take; a group
     /// left without items goes too. `info` rows carry no action and stay.
     pub fn declared(mut self, info: &ExtInfo) -> Menu {
         for g in &mut self.groups {
@@ -226,6 +231,7 @@ impl Menu {
                     return false;
                 }
                 i.confirm = spec.confirm;
+                i.limit = click::action::limit(spec.timeout).as_secs();
                 true
             });
         }
@@ -268,6 +274,9 @@ fn item_json(i: &MenuItem) -> Value {
     if let Some(a) = &i.action {
         v["action"] = json!(a);
         v["tokens"] = json!(i.tokens);
+        if i.limit > 0 {
+            v["limit"] = json!(i.limit);
+        }
     }
     if i.confirm {
         v["confirm"] = json!(true);

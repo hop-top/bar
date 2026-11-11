@@ -827,6 +827,7 @@ version = "0.0.0"
 dependencies = [
  "assert_cmd",
  "bar-plugin",
+ "bar-tray",
  "clap",
  "crossterm",
  "hop-top-kit",
