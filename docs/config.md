@@ -1413,6 +1413,7 @@ In the state directory:
 | `action-nonce` | `bar click install` | secret in every action link; its presence says the handler routes actions |
 | `action-status` | `bar click action` | one line: when, and `ok` (with the first line the action printed, if any) or why refused or failed |
 | `click.log` | `bar click run` | refusals |
+| `tray-menu.json` | `bar tray state` | the menu snapshot the [tray](tray.md) shows, mode 0600 |
 | `sessions/`, `agents/`, `records/` | `bar click hook` | [Hooks](#hooks) |
 
 Removing the state directory resets toggles, history and caches; nothing in it is configuration.

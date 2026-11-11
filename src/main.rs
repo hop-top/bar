@@ -4,6 +4,7 @@ mod cli_out;
 mod config_cmd;
 mod dry_run;
 mod help_json;
+mod tray_cmd;
 
 use std::ffi::OsString;
 
@@ -113,6 +114,11 @@ enum SubCmd {
     Click {
         #[command(subcommand)]
         cmd: ClickCmd,
+    },
+    /// Desktop tray: the menu snapshot it shows.
+    Tray {
+        #[command(subcommand)]
+        cmd: tray_cmd::TrayCmd,
     },
     /// Discovered `bar-<name>` plugins (`bar <name> <args>` runs one).
     Plugin {
@@ -262,6 +268,7 @@ fn main() {
             }
         }
         Some(("click", m)) => click_cmd(m),
+        Some(("tray", m)) => tray_cmd::run(m),
         Some(("plugin", m)) => plugin_cmd(m),
         Some(("prices", m)) => prices_cmd(m),
         Some(("web", m)) => web_cmd(m),

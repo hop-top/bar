@@ -46,6 +46,7 @@ pub mod status;
 pub mod style;
 pub mod subagent;
 pub mod transcript;
+pub mod tray;
 pub mod tz;
 pub mod update;
 pub mod usageapi;

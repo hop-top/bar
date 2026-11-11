@@ -1,0 +1,29 @@
+//! `bar tray`: what the desktop tray shows. `state` builds the snapshot
+//! the tray reads (the view toggles, the last action, the session counts
+//! and the granted plugins' menus) and writes it to the state dir; the
+//! tray never computes any of it.
+
+mod plugins;
+pub mod state;
+
+use std::ffi::OsStr;
+use std::path::PathBuf;
+
+pub use plugins::{granted_names, valid_name, MAX_ID, MAX_LABEL};
+
+/// The snapshot `bar tray state` writes in the state dir, mode 0600.
+pub const SNAPSHOT_FILE: &str = "tray-menu.json";
+
+/// Where the tray's subcommands look for plugins: `PATH`, the dir of
+/// `bar` and the usual install dirs, since a desktop process starts
+/// `bar` with a minimal `PATH`.
+pub fn handler_plugin_dirs(path: Option<&OsStr>) -> Vec<PathBuf> {
+    let mut dirs = crate::plugin::plugin_dirs(path);
+    for d in ["/opt/homebrew/bin", "/usr/local/bin"] {
+        let d = PathBuf::from(d);
+        if !dirs.contains(&d) {
+            dirs.push(d);
+        }
+    }
+    dirs
+}
