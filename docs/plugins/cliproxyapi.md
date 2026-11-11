@@ -270,6 +270,16 @@ The placeholder takes the provider from the model id, so the segment and `#{usag
 
 Choose which Codex account serves the session with `bar cpa use <account> --provider codex`, `bar cpa pick --provider codex`, or a click on the account with `action cliproxyapi cliproxyapi.use`. Claude Code warns that it does not recognise the model id, and runs anyway.
 
+## Menu
+
+With the `menu` capability the plugin answers `bar-cliproxyapi --menu` for a desktop tray (see [Menu](../plugins.md#menu)). The menu covers every configured instance, not the one a session uses:
+
+- per instance and provider, a radio group of the accounts, the one the proxy prefers checked (none when several share the top priority); choosing one runs `use`. Each row's detail is its most used window and reset (`5h 59% used ↻2h10m`), marked `(stale)` when the reading is older than the render's freshness limit;
+- below it, `Next: most quota left` and `Next: resets soonest` buttons, which run `next` and `next-soon` for that instance and provider;
+- an information row when the proxy cannot be read: management refused the key, the API is off, the key is unavailable, or the proxy is backing off.
+
+The menu is built from the plugin's own cache files and never calls a proxy. A refusal on record shows as the information row, as for a render; the cache is refreshed by renders. An instance not yet cached shows `no accounts cached yet`. Rows carry labels, account indexes and status text only, never a key. `pick` is not in the menu.
+
 ## Privacy
 
 - The plugin reads accounts and quota. The only change it ever makes is an account's routing priority, when you ask (`use`, `--reset` or a bound click); it never disables or enables an account.

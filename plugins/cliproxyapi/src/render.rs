@@ -56,7 +56,12 @@ pub fn ext_info() -> ExtInfo {
         name: NAME.into(),
         version: crate::VERSION.into(),
         description: "Per-account quota of a CLIProxyAPI proxy".into(),
-        capabilities: vec!["discover".into(), "placeholder".into(), "check".into()],
+        capabilities: vec![
+            "discover".into(),
+            "placeholder".into(),
+            "check".into(),
+            bar_plugin::menu::MENU_CAPABILITY.into(),
+        ],
         options: o,
         ttl: "60s".into(),
         icon: None,
