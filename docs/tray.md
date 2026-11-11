@@ -33,7 +33,7 @@ set tray-poll 30s                # idle poll, 10s to 10m
       "tokens": {"account": "3", "provider": "claude"}}]}]}]}
 ```
 
-- `generation` is new on every run: the tray hands it back when it runs an item, so a choice made on an older menu is refused.
+- `generation` identifies the runnable items: each item's id, action, token values, `enabled` and `confirm`, in order. The tray hands it back when it runs an item, so a choice made on a menu whose items have since moved is refused. Labels, details, the checked row, styles, the view toggles and the last action do not change it: a run that merely refreshes them (an idle poll, `bar waybar`) keeps the generation a tray holds.
 - `views` is empty unless `set tray-views on`: the usage views (`5h`, `7d`) and the alternate text of every plugin with a `tray` line, each flipped with `bar toggle <key>`.
 - `plugins` lists the plugins in `tray` line order, each with the groups and items of its [menu](plugins.md#menu); `confirm` and `limit` (seconds the action may run: 10, or its declared `timeout` up to 120) come from the action's declaration.
 

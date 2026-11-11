@@ -64,4 +64,4 @@ bar tray run "$pick" --generation "$gen" || bar tray run "$pick" --generation "$
 pkill -RTMIN+8 waybar
 ```
 
-The second `bar tray run` in the example confirms blindly; for items with `"confirm": true` prompt first (a second `fuzzel --dmenu` with "yes" and "no") and pass `--confirmed` only on yes. Each `bar waybar` poll writes a new snapshot with a new generation, so a picker that stays open across a poll is refused; run the script again.
+The second `bar tray run` in the example confirms blindly; for items with `"confirm": true` prompt first (a second `fuzzel --dmenu` with "yes" and "no") and pass `--confirmed` only on yes. A `bar waybar` poll that lands while the picker is open keeps the generation unless the items themselves changed (an account gone, a token changed); then the run is refused with `menu changed, reopen it` and the script is run again.
