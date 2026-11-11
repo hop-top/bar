@@ -71,7 +71,7 @@ impl Checker<'_> {
             return;
         };
         let info = plugin::info(&found);
-        if !info.capabilities.iter().any(|c| c == "menu") {
+        if !info.has_menu() {
             let msg =
                 format!("`tray {target}`: plugin `{plug}` does not declare the `menu` capability");
             self.add(Level::Warning, line, msg);
