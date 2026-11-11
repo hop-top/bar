@@ -1,6 +1,6 @@
 # Tray
 
-A tray app shows bar's toggles and plugin actions as a native menu. This page covers the config that opts a plugin in; the app itself is documented with it.
+A tray app shows bar's toggles and plugin actions as a native menu. This page covers the config that opts a plugin in; the app itself is documented with it. Waybar users can show the same state as a text module: see [Waybar](waybar.md).
 
 ## Config
 

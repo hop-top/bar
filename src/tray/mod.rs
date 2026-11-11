@@ -5,6 +5,7 @@
 
 mod plugins;
 pub mod state;
+pub mod waybar;
 
 use std::ffi::OsStr;
 use std::path::PathBuf;
