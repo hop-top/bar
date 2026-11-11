@@ -308,3 +308,29 @@ fn rule_in_config_overrides_builtin() {
     let out = render_with(&ctx, &opts(&[("type", "5h"), ("view", "pct")]), t.path()).unwrap();
     assert!(out.contains("\x1b[38;5;196m70%"), "{out:?}");
 }
+
+#[test]
+fn toggle_is_per_session_and_link_names_it() {
+    let t = Tmp::new();
+    std::fs::write(t.path().join("click-installed"), "").unwrap();
+    const A: &str = "0a1b2c3d-0000-4000-8000-00000000000a";
+    const B: &str = "0a1b2c3d-0000-4000-8000-00000000000b";
+    let (a, b) = (
+        Session {
+            session_id: A.into(),
+            ..fresh()
+        },
+        Session {
+            session_id: B.into(),
+            ..fresh()
+        },
+    );
+    let linked = go(&a, &[("type", "5h")], t.path()).unwrap();
+    assert!(
+        linked.contains(&format!("\x1b]8;;bar://toggle/5h?sid={A}\x1b\\")),
+        "{linked:?}"
+    );
+    hop_bar::click::toggle_in(t.path(), "5h", Some(A)).unwrap();
+    assert!(strip(&go(&a, &[("type", "5h")], t.path()).unwrap()).ends_with("96%"));
+    assert!(strip(&go(&b, &[("type", "5h")], t.path()).unwrap()).contains('█'));
+}

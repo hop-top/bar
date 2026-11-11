@@ -87,29 +87,105 @@ pub fn valid_toggle_name(key: &str) -> bool {
 
 /// The named toggles of `plugin` that are on, from `toggle-<plugin>.<key>`
 /// files; off toggles have no file, so none is listed as `false`.
-pub fn plugin_toggles(dir: &Path, plugin: &str) -> std::collections::BTreeMap<String, bool> {
+/// Session `sid`'s own entries override the global files.
+pub fn plugin_toggles(
+    dir: &Path,
+    plugin: &str,
+    sid: &str,
+) -> std::collections::BTreeMap<String, bool> {
     let mut out = std::collections::BTreeMap::new();
     let prefix = format!("toggle-{plugin}.");
     if !hook::valid_plugin_name(plugin) {
         return out;
     }
-    let Ok(rd) = std::fs::read_dir(dir) else {
-        return out;
-    };
-    for e in rd.flatten() {
-        let name = e.file_name();
-        let Some(key) = name.to_str().and_then(|n| n.strip_prefix(&prefix)) else {
-            continue;
+    let keys = |d: &Path| -> Vec<(String, std::ffi::OsString)> {
+        let Ok(rd) = std::fs::read_dir(d) else {
+            return Vec::new();
         };
-        if hook::valid_plugin_name(key) {
-            out.insert(key.to_string(), true);
+        rd.flatten()
+            .filter_map(|e| {
+                let name = e.file_name();
+                let key = name.to_str()?.strip_prefix(&prefix)?;
+                hook::valid_plugin_name(key).then(|| (key.to_string(), name.clone()))
+            })
+            .collect()
+    };
+    for (key, _) in keys(dir) {
+        out.insert(key, true);
+    }
+    if let Some(own) = session_toggles_dir(dir, sid) {
+        for (key, name) in keys(&own) {
+            match session_state(dir, sid, &name) {
+                Some(true) => {
+                    out.insert(key, true);
+                }
+                Some(false) => {
+                    out.remove(&key);
+                }
+                None => {}
+            }
         }
     }
     out
 }
 
+/// The global (default) state of `key`, as `bar toggle <key>` sets it.
 pub fn is_toggled(dir: &Path, key: &str) -> bool {
     toggle_file(dir, key).is_some_and(|f| f.exists())
+}
+
+/// Per-session toggle state: `<state>/toggles/<session id>/<file>`, the
+/// file named as the global one, content `on` or `off`.
+pub const SESSION_TOGGLES: &str = "toggles";
+
+/// Where session `sid` keeps its own toggles; `None` for an invalid id.
+pub fn session_toggles_dir(dir: &Path, sid: &str) -> Option<PathBuf> {
+    url::valid_sid(sid).then(|| dir.join(SESSION_TOGGLES).join(sid))
+}
+
+/// Session `sid`'s own state of the toggle file `name`, when it has one.
+fn session_state(dir: &Path, sid: &str, name: &std::ffi::OsStr) -> Option<bool> {
+    let body = std::fs::read_to_string(session_toggles_dir(dir, sid)?.join(name)).ok()?;
+    match body.trim() {
+        "on" => Some(true),
+        "off" => Some(false),
+        _ => None,
+    }
+}
+
+/// `key` as session `sid` sees it: its own state when it flipped the
+/// toggle, else the global one.
+pub fn is_toggled_in(dir: &Path, key: &str, sid: &str) -> bool {
+    let Some(f) = toggle_file(dir, key) else {
+        return false;
+    };
+    f.file_name()
+        .and_then(|n| session_state(dir, sid, n))
+        .unwrap_or_else(|| f.exists())
+}
+
+/// The link that flips `key` in session `sid`: `bar://toggle/<key>?sid=<id>`,
+/// or `bar://toggle/<key>` (the global toggle) without a valid id.
+pub fn toggle_link(key: &str, sid: &str) -> String {
+    if url::valid_sid(sid) {
+        format!("bar://toggle/{key}?sid={sid}")
+    } else {
+        format!("bar://toggle/{key}")
+    }
+}
+
+/// `bar toggle` argument: `<key>`, or `<key>?sid=<session id>` as the
+/// handler passes the rest of a `bar://toggle/` link.
+pub fn toggle_target(arg: &str) -> Result<(&str, Option<&str>), String> {
+    let Some((key, query)) = arg.split_once('?') else {
+        return Ok((arg, None));
+    };
+    match query.strip_prefix("sid=").filter(|s| url::valid_sid(s)) {
+        Some(sid) => Ok((key, Some(sid))),
+        None => Err(format!(
+            "bad toggle target `{arg}` (expected <key>?sid=<session id>)"
+        )),
+    }
 }
 
 /// The install step writes this; links need a handler to open them.
@@ -160,4 +236,57 @@ pub fn toggle(dir: &Path, key: &str) -> Result<bool, String> {
     }
     write_private(&f, "").map_err(|e| e.to_string())?;
     Ok(true)
+}
+
+/// Session toggle dirs untouched this long are pruned on the next flip.
+pub const SESSION_TOGGLES_STALE_SECS: i64 = hook::RECORD_STALE_SECS;
+
+/// Flips `key` for session `sid` only (see [`is_toggled_in`]), or the
+/// global toggle without a session; `Ok(true)` when the alternate view is
+/// now on in that session.
+pub fn toggle_in(dir: &Path, key: &str, sid: Option<&str>) -> Result<bool, String> {
+    let Some(sid) = sid else {
+        return toggle(dir, key);
+    };
+    let f = toggle_file(dir, key).ok_or_else(|| {
+        format!("unknown key `{key}` (expected 5h, 7d, a plugin name or <plugin>.<toggle>)")
+    })?;
+    let own = session_toggles_dir(dir, sid).ok_or_else(|| format!("bad session id `{sid}`"))?;
+    let root = dir.join(SESSION_TOGGLES);
+    // a planted symlink must not redirect the write
+    for d in [&root, &own] {
+        if std::fs::symlink_metadata(d).is_ok() && !hook::is_real_dir(d) {
+            return Err(format!("{} is not a directory", d.display()));
+        }
+    }
+    let on = !is_toggled_in(dir, key, sid);
+    prune_sessions(&root, sid);
+    let name = f.file_name().unwrap_or_default();
+    write_atomic(&own.join(name), if on { "on" } else { "off" }).map_err(|e| e.to_string())?;
+    Ok(on)
+}
+
+/// Drops other sessions' toggle dirs older than
+/// [`SESSION_TOGGLES_STALE_SECS`]; bounded work.
+fn prune_sessions(root: &Path, keep: &str) {
+    let Ok(rd) = std::fs::read_dir(root) else {
+        return;
+    };
+    let now = std::time::SystemTime::now();
+    let stale = std::time::Duration::from_secs(SESSION_TOGGLES_STALE_SECS as u64);
+    for e in rd.flatten().take(256) {
+        let (path, name) = (e.path(), e.file_name());
+        let Some(sid) = name.to_str().filter(|n| *n != keep && url::valid_sid(n)) else {
+            continue;
+        };
+        let old = std::fs::symlink_metadata(&path)
+            .ok()
+            .filter(|m| m.is_dir())
+            .and_then(|m| m.modified().ok())
+            .and_then(|m| now.duration_since(m).ok())
+            .is_some_and(|age| age >= stale);
+        if old {
+            let _ = std::fs::remove_dir_all(root.join(sid));
+        }
+    }
 }

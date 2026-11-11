@@ -117,9 +117,10 @@ pub fn plan(ctx: &Ctx, found: &Found, info: &ExtInfo, opts: &Options) -> Option<
     let cwd = hash_hex(&ctx.session.cwd);
     let mut scope = cwd;
     let mut record = None;
-    // named label/icon toggles: part of the key, so a flip is a new entry
+    // named label/icon toggles as this session sees them: part of the key,
+    // so a flip is a new entry, and sessions that see the same ones share it
     let toggles = ctx.cache.map_or_else(Default::default, |c| {
-        click::plugin_toggles(c.state_dir(), &found.name)
+        click::plugin_toggles(c.state_dir(), &found.name, &ctx.session.session_id)
     });
     let toggles = json!(toggles);
     if info.session_cache {
@@ -489,6 +490,7 @@ pub fn render_found_with(ctx: &Ctx, found: &Found, opts: &Options, pick: &Pick) 
     let raw = cache.read_or_refresh(&plan.key, plan.ttl, &plan.job)?;
     let mut out = parse_output(&raw)?;
     let state = cache.state_dir();
+    let sid = ctx.session.session_id.as_str();
     if opts.get("click") != Some("none") {
         link_actions(
             &mut out,
@@ -501,9 +503,9 @@ pub fn render_found_with(ctx: &Ctx, found: &Found, opts: &Options, pick: &Pick) 
     }
     out.items = std::mem::take(&mut out.items)
         .into_iter()
-        .map(|i| toggled(i, &found.name, opts, state))
+        .map(|i| toggled(i, &found.name, sid, opts, state))
         .collect();
-    let out = toggled(out, &found.name, opts, state);
+    let out = toggled(out, &found.name, sid, opts, state);
     paint_with(
         &out,
         &found.name,
@@ -597,24 +599,25 @@ pub fn link_account(ctx: &Ctx, value: String) -> String {
     linked().unwrap_or(value)
 }
 
-/// An output with `alt` can be toggled (`bar toggle <name>`): while on,
-/// `alt` replaces `text`. The text links to `bar://toggle/<name>` unless
-/// the output has its own `link`, `click=none`, or no handler is installed.
-/// A `label_toggle` links the drawn label or icon to
-/// `bar://toggle/<name>.<toggle>` under the same conditions.
-fn toggled(mut out: Output, name: &str, opts: &Options, state: &Path) -> Output {
+/// An output with `alt` can be toggled (`bar toggle <name>`): while on in
+/// session `sid`, `alt` replaces `text`. The text links to
+/// `bar://toggle/<name>?sid=<sid>` unless the output has its own `link`,
+/// `click=none`, or no handler is installed. A `label_toggle` links the
+/// drawn label or icon to `bar://toggle/<name>.<toggle>?sid=<sid>` under
+/// the same conditions.
+fn toggled(mut out: Output, name: &str, sid: &str, opts: &Options, state: &Path) -> Output {
     let linkable = opts.get("click") != Some("none") && click::handler_installed(state);
     if let Some(key) = out.label_toggle.as_deref().filter(|_| linkable) {
-        out.label_link = Some(format!("bar://toggle/{name}.{key}"));
+        out.label_link = Some(click::toggle_link(&format!("{name}.{key}"), sid));
     }
     let Some(alt) = out.alt.take() else {
         return out;
     };
-    if click::is_toggled(state, name) {
+    if click::is_toggled_in(state, name, sid) {
         out.text = alt;
     }
     if out.link.as_deref().is_none_or(str::is_empty) && linkable {
-        out.link = Some(format!("bar://toggle/{name}"));
+        out.link = Some(click::toggle_link(name, sid));
     }
     out
 }

@@ -135,7 +135,7 @@ fn alt_shows_while_toggled_and_links_with_handler() {
     std::fs::write(fx.state.join("click-installed"), "cmd").unwrap();
     let linked = fx.show_in(&s, "sess", &c, &[]);
     assert!(
-        linked.contains("\x1b]8;;bar://toggle/sess\x1b\\"),
+        linked.contains(&format!("\x1b]8;;bar://toggle/sess?sid={SID_A}\x1b\\")),
         "{linked:?}"
     );
     // click is bar's own option: not sent, not rejected
@@ -242,4 +242,67 @@ fn toggles_reach_stdin_split_the_cache_and_stay_per_plugin() {
     assert_eq!(stdin(&fx, "sess")["toggles"], json!({"scope": true}));
     assert_eq!(toggle(&fx.state, "mark.scope"), Ok(false));
     assert_eq!(plain_text(&fx.show_in(&s, "mark", &c, &[])), "L trk");
+}
+
+// ---- per-session toggles ----
+
+/// Opens the first `bar://toggle/` link in `shown` as the handler does:
+/// `bar toggle <rest of the URL>`.
+fn click_toggle(fx: &Fx, shown: &str) {
+    let start = shown.find("\x1b]8;;bar://toggle/").expect(shown) + "\x1b]8;;bar://toggle/".len();
+    let rest = &shown[start..];
+    let key = &rest[..rest.find("\x1b\\").unwrap()];
+    assert_cmd::Command::cargo_bin("bar")
+        .unwrap()
+        .args(["toggle", key])
+        .env("BAR_STATE_DIR", &fx.state)
+        .assert()
+        .success();
+}
+
+#[test]
+fn label_click_in_one_session_leaves_the_other_alone() {
+    let fx = Fx::new();
+    mark_plugin(&fx, "scope");
+    std::fs::write(fx.state.join("click-installed"), "cmd").unwrap();
+    let c = cfg("");
+    let (a, b) = (in_session(SID_A), in_session(SID_B));
+    fx.prime_in(&a, "mark", &c, &[]);
+    let shown_a = fx.show_in(&a, "mark", &c, &[]);
+    // one shared entry while neither session has toggles of its own
+    let shown_b = fx.show_in(&b, "mark", &c, &[]);
+    assert!(shown_b.ends_with("trk"), "{shown_b:?}");
+    assert!(shown_a.ends_with("trk"));
+    click_toggle(&fx, &shown_a);
+    fx.prime_in(&a, "mark", &c, &[]);
+    fx.prime_in(&b, "mark", &c, &[]);
+    assert_eq!(stdin(&fx, "mark")["toggles"], json!({}));
+    let (now_a, now_b) = (
+        fx.show_in(&a, "mark", &c, &[]),
+        fx.show_in(&b, "mark", &c, &[]),
+    );
+    assert!(now_a.ends_with("all"), "{now_a:?}");
+    assert!(now_b.ends_with("trk"), "{now_b:?}");
+    // a click in B flips B only
+    click_toggle(&fx, &now_b);
+    fx.prime_in(&b, "mark", &c, &[]);
+    assert!(fx.show_in(&b, "mark", &c, &[]).ends_with("all"));
+    // and A again flips A back, B keeps its own
+    click_toggle(&fx, &now_a);
+    fx.prime_in(&a, "mark", &c, &[]);
+    assert!(fx.show_in(&a, "mark", &c, &[]).ends_with("trk"));
+    assert!(fx.show_in(&b, "mark", &c, &[]).ends_with("all"));
+}
+
+#[test]
+fn text_click_in_one_session_leaves_the_other_alone() {
+    let fx = Fx::new();
+    plugins(&fx);
+    std::fs::write(fx.state.join("click-installed"), "cmd").unwrap();
+    let c = cfg("");
+    let (a, b) = (in_session(SID_A), in_session(SID_B));
+    fx.prime_in(&a, "flat", &c, &[]);
+    click_toggle(&fx, &fx.show_in(&a, "flat", &c, &[]));
+    assert!(fx.show_in(&a, "flat", &c, &[]).contains("ALT"));
+    assert!(!fx.show_in(&b, "flat", &c, &[]).contains("ALT"));
 }

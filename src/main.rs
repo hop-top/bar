@@ -222,9 +222,12 @@ fn main() {
             }
         }
         Some(("toggle", m)) => {
-            let key = m.get_one::<String>("key").map_or("", String::as_str);
-            match click::toggle(&click::handler_state_dir(), key) {
-                Ok(on) => {
+            let arg = m.get_one::<String>("key").map_or("", String::as_str);
+            let flipped = click::toggle_target(arg).and_then(|(key, sid)| {
+                click::toggle_in(&click::handler_state_dir(), key, sid).map(|on| (key, on))
+            });
+            match flipped {
+                Ok((key, on)) => {
                     let view = match (click::is_usage_key(key), on) {
                         (true, true) => "pct",
                         (true, false) => "bar",

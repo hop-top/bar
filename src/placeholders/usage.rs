@@ -171,7 +171,8 @@ fn render_window(
     if show.iter().chain(&alt).any(|p| *p == Part::Spark) {
         series = history::sample(state, hist, win.resets_at, ctx.now, win.used_percentage);
     }
-    if click::is_toggled(state, key) {
+    let sid = ctx.session.session_id.as_str();
+    if click::is_toggled_in(state, key, sid) {
         show = alt;
     }
     let used_count = opts.get("count") == Some("used");
@@ -181,7 +182,7 @@ fn render_window(
     let gradient = opts.get("color") == Some("gradient");
     let wrap = |body: String| {
         if linked {
-            link(&format!("bar://toggle/{key}"), &body)
+            link(&click::toggle_link(key, sid), &body)
         } else {
             body
         }
