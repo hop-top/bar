@@ -290,6 +290,7 @@ dependencies = [
 name = "bar-tray"
 version = "0.0.0"
 dependencies = [
+ "bar-plugin",
  "dispatch2",
  "ksni",
  "libc",

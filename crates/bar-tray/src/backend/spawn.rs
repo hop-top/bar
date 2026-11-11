@@ -206,17 +206,14 @@ fn collected(rx: Option<Receiver<Vec<u8>>>, by: Instant) -> Option<Vec<u8>> {
 /// Waits for `child` until `deadline`, then kills it with everything it
 /// started and reaps it.
 fn wait(child: &mut Child, deadline: Instant) -> Result<ExitStatus, String> {
-    loop {
-        match child.try_wait() {
-            Ok(Some(st)) => return Ok(st),
-            Ok(None) if Instant::now() >= deadline => {
-                tree::kill_tree(child);
-                let _ = child.wait();
-                return Err("timed out".to_string());
-            }
-            Ok(None) => std::thread::sleep(Duration::from_millis(20)),
-            Err(e) => return Err(e.to_string()),
+    match bar_plugin::wait::wait_until(child, deadline) {
+        Ok(Some(st)) => Ok(st),
+        Ok(None) => {
+            tree::kill_tree(child);
+            let _ = child.wait();
+            Err("timed out".to_string())
         }
+        Err(e) => Err(e.to_string()),
     }
 }
 
