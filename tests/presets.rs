@@ -275,3 +275,19 @@ fn preview_samples_every_core_placeholder() {
         );
     }
 }
+
+#[test]
+fn init_outcomes_are_typed() {
+    let t = Tmp::new();
+    let xdg = t.path().join("xdg");
+    let env = |k: &str| (k == "XDG_CONFIG_HOME").then(|| xdg.display().to_string());
+    let kit = t.path().join("kit");
+    let conf = xdg.join("bar/bar.conf");
+    let init = |name| presets::init(name, &env, t.path(), &kit);
+    assert_eq!(init("minimal"), Ok(presets::Init::Wrote(conf.clone())));
+    assert_eq!(init("minimal"), Ok(presets::Init::Same(conf.clone())));
+    let err = init("full").unwrap_err();
+    assert_eq!(err, presets::InitError::Exists(conf.clone()));
+    assert!(err.to_string().ends_with(presets::EXISTS), "{err}");
+    assert!(matches!(init("nope"), Err(presets::InitError::Other(_))));
+}
