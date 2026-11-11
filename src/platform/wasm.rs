@@ -75,6 +75,9 @@ pub fn shell(cmd: &str) -> Command {
     Command::new(cmd)
 }
 
+/// No processes.
+pub fn claim_private_console() {}
+
 /// Unchanged.
 pub fn own_group(c: &mut Command) -> &mut Command {
     c

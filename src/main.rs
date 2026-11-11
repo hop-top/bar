@@ -184,7 +184,11 @@ fn main() {
         }
         Some(("toggle", m)) => cmd::toggle::run(m),
         Some(("click", m)) => cmd::click::run(m),
-        Some(("tray", m)) => tray_cmd::run(m),
+        Some(("tray", m)) => {
+            // started by the tray with a hidden console of its own
+            hop_bar::platform::claim_private_console();
+            tray_cmd::run(m);
+        }
         Some(("waybar", _)) => waybar_cmd::run(),
         Some(("plugin", m)) => cmd::plugin::run(m),
         Some(("prices", m)) => cmd::prices::run(m),
