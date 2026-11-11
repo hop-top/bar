@@ -97,7 +97,7 @@ Quote values with spaces (double quotes; a value is one token). `#` outside quot
 | `budget-session`, `budget-today`, `budget-month`, `budget-block` | Dollar budget for [budget](#budget): `$20`, `20` or `12.50` (more than zero, at most two decimals); `off` clears it. Unset by default |
 | `budget-warn` | Percent of a budget from which spend takes the warn colour, `1%`-`100%`, default `80%`. See [budget](#budget) |
 | `tray-views` | `off` (default) or `on`: the [tray](tray.md) menu also lists the view toggles |
-| `tray-poll` | How often the [tray](tray.md) polls while idle, `10s` to `10m`. Default `30s` |
+| `tray-poll` | The [tray](tray.md)'s idle poll, `10s` to `10m`, default `30s`; checked, but the running tray does not read it (it polls every 30 s unless started with `bar-tray --poll`) |
 | `gitlab-hosts` | Self-hosted GitLab hosts, comma-separated (`git.example.com,gitlab.corp.example`), whose remotes [prs and issues](#prs-and-issues) read with `glab`; gitlab.com always counts. `""` clears it. Default none |
 | `color.good`, `color.warn`, `color.bad`, `ramp` | State colours (one colour) and usage ramp (exactly 11 colours, quoted, worst score first). See [Colours](#colours) |
 | `price` | Model price override for [spendhist](#spendhist) |
@@ -1413,7 +1413,9 @@ In the state directory:
 | `action-nonce` | `bar click install` | secret in every action link; its presence says the handler routes actions |
 | `action-status` | `bar click action` | one line: when, and `ok` (with the first line the action printed, if any) or why refused or failed |
 | `click.log` | `bar click run` | refusals |
-| `tray-menu.json` | `bar tray state` | the menu snapshot the [tray](tray.md) shows, mode 0600 |
+| `tray-menu.json` | `bar tray state`, `bar waybar` | the menu snapshot the [tray](tray.md) shows, mode 0600 |
+| `tray-installed`, `tray-dirs.json` | `bar tray install` | tray marker; the recorded `bar` and `bar-tray` paths, dirs and variables, mode 0600 |
+| `tray.lock`, `tray.pid` | `bar-tray` | single-instance lock and the running tray's pid |
 | `sessions/`, `agents/`, `records/` | `bar click hook` | [Hooks](#hooks) |
 
 Removing the state directory resets toggles, history and caches; nothing in it is configuration.

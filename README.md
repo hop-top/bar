@@ -121,6 +121,17 @@ Skins, palettes, icons, multi-line layouts and [subagent rows](docs/config.md#su
 
 Compose a config in the browser with a live preview: run `make web`, open `web/index.html` ([web configurator](docs/web.md)).
 
+## Tray
+
+`bar-tray` shows plugin actions (an account picker, a routing toggle) and session counts in the macOS menu bar, the Windows notification area or a Linux tray. Opt a plugin in with a `tray` line in your config (`tray cliproxyapi`), then let bar start the tray at login:
+
+```sh
+cargo install --path crates/bar-tray --locked   # beside bar; on Linux add --features linux-sni
+bar tray install --dry-run                       # what it would write; then run it without --dry-run
+```
+
+Per-platform notes, the menu and the install details: [docs/tray.md](docs/tray.md).
+
 ## Write a plugin
 
 ```sh
