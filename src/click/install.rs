@@ -248,15 +248,27 @@ pub fn run_install(
 /// `--hooks-only`: wires the `bar click hook` entries into `settings.json`
 /// and nothing else (no app bundle, any platform).
 pub fn run_hooks_only(cfg: &InstallCfg, dry_run: bool, out: &mut dyn Write) -> Result<(), String> {
+    register_hooks(&cfg.settings, &cfg.bar, &cfg.state_dir, dry_run, out)
+}
+
+/// The hook step on its own, for any installer: adds the `bar click
+/// hook` entries for `bar` to `settings` (backup under `state_dir`).
+pub fn register_hooks(
+    settings: &Path,
+    bar: &Path,
+    state_dir: &Path,
+    dry_run: bool,
+    out: &mut dyn Write,
+) -> Result<(), String> {
     let io = |e: std::io::Error| e.to_string();
-    let plan = plan_settings(&cfg.settings, &cfg.bar)?;
+    let plan = plan_settings(settings, bar)?;
     for l in plan.describe() {
         writeln!(out, "{l}").map_err(io)?;
     }
     if dry_run {
         return Ok(());
     }
-    if let Some(backup) = apply_settings(&plan, &cfg.state_dir).map_err(io)? {
+    if let Some(backup) = apply_settings(&plan, state_dir).map_err(io)? {
         writeln!(out, "backup {}", backup.display()).map_err(io)?;
     }
     Ok(())
