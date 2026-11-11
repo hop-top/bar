@@ -118,8 +118,9 @@ fn init_dry_run_plans_the_file() {
     let r = dry(&t, &["init", "--dry-run"], "");
     assert_eq!(r.code, 0, "{}", r.err);
     assert!(
-        r.out
-            .contains(&format!("would create {}", conf(&t).display())),
+        r.out.lines().any(|l| l
+            .strip_prefix("would create ")
+            .is_some_and(|p| Path::new(p) == conf(&t))),
         "{}",
         r.out
     );
