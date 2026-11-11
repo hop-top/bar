@@ -240,7 +240,7 @@ action account cliproxyapi.next-soon   # or: among the most left, the soonest re
 action account cliproxyapi.pick
 ```
 
-With exactly one instance configured, `pick` is linked in sessions that do not use the proxy too: `#{account}` keeps showing the signed-in account, and a click offers the instance's Claude accounts. With several instances there is no link in such a session, since it is not clear which proxy is meant.
+With exactly one instance configured, `pick` is linked (where it is declared) in sessions that do not use the proxy too: `#{account}` keeps showing the signed-in account, and a click offers the instance's Claude accounts. With several instances there is no link in such a session, since it is not clear which proxy is meant.
 
 `next` and `next-soon` are linked even when `#{account}` shows bar's own signed-in account (a round-robin pool has no single preferred account); `use` needs the account the plugin named.
 
