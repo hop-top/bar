@@ -185,7 +185,6 @@ fn a_bad_id_is_refused_before_anything_is_read() {
         "echo.claude@8317",
         "echo.claude@8317.4.x",
         "echo..4",
-        "Echo.claude@8317.4",
         "echo.cl/aude.4",
         "echo.claude@8317.4;rm",
         "ech o.claude@8317.4",
@@ -196,6 +195,10 @@ fn a_bad_id_is_refused_before_anything_is_read() {
     assert_eq!(
         run::parse_id("echo.claude@8317.4"),
         Some(("echo", "claude@8317", "4"))
+    );
+    assert_eq!(
+        run::parse_id("Echo.claude@8317.4"),
+        Some(("Echo", "claude@8317", "4"))
     );
     // parts stay within their own limits (32 each): 96 binds the whole
     let max = format!("{}.{}.{}", "p".repeat(30), "g".repeat(32), "i".repeat(32));

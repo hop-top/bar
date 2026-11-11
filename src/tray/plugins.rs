@@ -19,15 +19,13 @@ pub const MAX_LABEL: usize = 80;
 /// Longest dispatch id `<plugin>.<group>.<item>`.
 pub const MAX_ID: usize = 96;
 
-/// Plugin names as the snapshot takes them: `[a-z0-9_-]`, 1 to 32.
+/// Plugin names as the snapshot takes them: what a `tray` line takes,
+/// `[A-Za-z0-9_-]`, 1 to 64.
 pub fn valid_name(s: &str) -> bool {
-    (1..=32).contains(&s.len())
-        && s.bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
+    click::valid_toggle_name(s)
 }
 
-/// The plugins with a `tray` line, in order, once each; a name the
-/// snapshot would refuse is left out.
+/// The plugins with a `tray` line, in order, once each.
 pub fn granted_names(config: &Config) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for g in &config.tray {

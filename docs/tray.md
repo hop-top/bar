@@ -19,7 +19,7 @@ set tray-views on                # also list the view toggles (default off)
 set tray-poll 2m                 # idle poll (default 30s)
 ```
 
-- `tray <plugin>[.<action>]` names a plugin whose menu the tray may show, and optionally one of its declared actions. Names are letters, digits, `-` and `_`. Repeating a line changes nothing.
+- `tray <plugin>[.<action>]` names a plugin whose menu the tray may show, and optionally one of its declared actions. Names are letters (either case, kept as written), digits, `-` and `_`, at most 64 characters: every plugin name discovery accepts, up to that length. Repeating a line changes nothing.
 - A `tray` line is your decision, in your config only. A project `.bar.conf` cannot add one, in any mode; the same goes for `set tray-views` and `set tray-poll`.
 - `action` lines do not imply `tray`: binding a click in the status line does not put the action in the tray menu. `bar tray install` prints a suggested `tray` line for every `action` line no `tray` line covers yet, and leaves your config alone.
 - With `tray <plugin>.<action>` only, the plugin's other items are still shown, disabled, each with the line that would enable it.

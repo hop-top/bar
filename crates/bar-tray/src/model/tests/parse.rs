@@ -299,3 +299,17 @@ fn minimal_poll() -> Option<u64> {
         .unwrap()
         .poll
 }
+
+#[test]
+fn plugin_names_and_view_keys_take_capitals() {
+    let long = format!("My{}", "x".repeat(62));
+    let mut v = fixture_json();
+    v["plugins"][1]["name"] = json!(long);
+    v["views"][0]["key"] = json!("MyProxy");
+    let s = parse_value(&v).unwrap();
+    assert_eq!(s.plugins[1].name, long);
+    assert_eq!(s.views[0].key, "MyProxy");
+    assert!(s.warnings.is_empty(), "{:?}", s.warnings);
+    v["plugins"][1]["name"] = json!(format!("{long}x"));
+    assert!(parse_value(&v).unwrap_err().why.starts_with("name:"));
+}

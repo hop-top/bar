@@ -76,8 +76,8 @@ fn plugins_without_a_menu_get_one_info_row() {
     let names: Vec<&str> = s.plugins.iter().map(|p| p.name.as_str()).collect();
     assert_eq!(
         names,
-        ["echo", "plain", "nosuch"],
-        "a name the tray refuses is left out"
+        ["echo", "plain", "nosuch", "Upper"],
+        "every `tray` line gets an entry, capitals and all"
     );
     let row = |s: &Snapshot, name: &str| {
         let p = plugin(s, name);
@@ -98,6 +98,10 @@ fn plugins_without_a_menu_get_one_info_row() {
     assert_eq!(
         row(&s, "nosuch"),
         ("missing".into(), "bar-nosuch not found".into())
+    );
+    assert_eq!(
+        row(&s, "Upper"),
+        ("missing".into(), "bar-Upper not found".into())
     );
     // declares the capability but answers nothing
     t.fx.put("ext.json", &menu_ext(json!({})));
@@ -284,4 +288,18 @@ fn the_render_cache_is_never_touched() {
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .collect();
     assert_eq!(names, [SNAPSHOT_FILE]);
+}
+
+#[test]
+fn a_plugin_named_with_capitals_gets_its_menu_and_view() {
+    let name = format!("MyProxy{}", "x".repeat(57));
+    assert_eq!(name.len(), 64);
+    let t = T::new(&format!("tray {name}\nset tray-views on\n"));
+    t.clone_echo(&name, &menu_ext(json!({})), &good_menu());
+    let (s, _) = t.snapshot();
+    assert!(s.warnings.is_empty(), "{:?}", s.warnings);
+    let p = plugin(&s, &name);
+    assert_eq!(p.groups.len(), 3);
+    assert!(p.groups[0].items[0].enabled);
+    assert!(s.views.iter().any(|v| v.key == name), "{:?}", s.views);
 }
