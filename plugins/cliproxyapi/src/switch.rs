@@ -1084,7 +1084,13 @@ mod tests {
 
     #[test]
     fn positions_count_enabled_accounts_per_provider() {
-        let cfg = crate::config::parse("instance http://127.0.0.1:1\n key-file /k\n", None);
+        let cfg = crate::config::parse(
+            &format!(
+                "instance http://127.0.0.1:1\n key-file {}\n",
+                crate::config::abs("/k")
+            ),
+            None,
+        );
         let v = serde_json::json!({"files":[
             {"name":"a","auth_index":"a1","type":"claude","email":"a@x.test","disabled":true},
             {"name":"b","auth_index":"b1","type":"codex","email":"b@x.test"},

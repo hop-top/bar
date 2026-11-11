@@ -240,6 +240,17 @@ impl Config {
     }
 }
 
+/// Tests only: a `/`-rooted path made absolute on this platform too
+/// (`/k` is relative on Windows; `C:/k` is not).
+#[cfg(test)]
+pub(crate) fn abs(p: &str) -> String {
+    if cfg!(windows) {
+        format!("C:{p}")
+    } else {
+        p.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -248,13 +259,14 @@ mod tests {
 
     #[test]
     fn parses_instances() {
-        let c = parse(GOOD, Some(Path::new("/h")));
+        let home = abs("/h");
+        let c = parse(GOOD, Some(Path::new(&home)));
         assert!(c.errors.is_empty(), "{:?}", c.errors);
         assert_eq!(c.instances.len(), 2);
         let a = &c.instances[0];
         assert_eq!(a.origin.to_string(), "http://127.0.0.1:8318");
         assert_eq!(a.management, "http://127.0.0.1:8318/v8/management");
-        assert_eq!(a.key, KeySource::File("/h/k".into()));
+        assert_eq!(a.key, KeySource::File(abs("/h/k").into()));
         assert_eq!(a.providers, ["claude", "codex"]);
         assert_eq!(a.aliases, [("*@a.test".to_string(), "work".to_string())]);
         let b = &c.instances[1];
@@ -269,38 +281,42 @@ mod tests {
 
     #[test]
     fn refuses_unsafe_instances() {
+        let k = abs("/k");
         let cases = [
             (
-                "instance http://proxy.example\n key-file /k\n",
+                format!("instance http://proxy.example\n key-file {k}\n"),
                 "remote yes",
             ),
             (
-                "instance http://proxy.example\n remote yes\n key-file /k\n",
+                format!("instance http://proxy.example\n remote yes\n key-file {k}\n"),
                 "remote yes",
             ),
-            ("instance http://127.0.0.1:1\n", "no key source"),
+            ("instance http://127.0.0.1:1\n".to_string(), "no key source"),
             (
-                "instance http://127.0.0.1:1\n key-file /k\n key-keychain s\n",
+                format!("instance http://127.0.0.1:1\n key-file {k}\n key-keychain s\n"),
                 "more than one",
             ),
             (
-                "instance http://127.0.0.1:1\n key-command bin/x\n",
+                "instance http://127.0.0.1:1\n key-command bin/x\n".to_string(),
                 "absolute",
             ),
-            ("instance http://127.0.0.1:1\n key-file k\n", "absolute"),
             (
-                "instance http://127.0.0.1:1\n key-file /k\n providers xai\n",
+                "instance http://127.0.0.1:1\n key-file k\n".to_string(),
+                "absolute",
+            ),
+            (
+                format!("instance http://127.0.0.1:1\n key-file {k}\n providers xai\n"),
                 "not supported",
             ),
             (
-                "instance http://127.0.0.1:1\n key-file /k\n management http://127.0.0.1:1/x\n",
+                format!("instance http://127.0.0.1:1\n key-file {k}\n management http://127.0.0.1:1/x\n"),
                 "must end",
             ),
-            ("instance ftp://x\n key-file /k\n", "not an http"),
-            ("key-file /k\n", "outside an instance"),
+            (format!("instance ftp://x\n key-file {k}\n"), "not an http"),
+            (format!("key-file {k}\n"), "outside an instance"),
         ];
         for (text, want) in cases {
-            let c = parse(text, None);
+            let c = parse(&text, None);
             assert!(c.instances.is_empty(), "{text:?}");
             assert!(
                 c.errors.iter().any(|e| e.contains(want)),
@@ -312,13 +328,14 @@ mod tests {
 
     #[test]
     fn key_command_keeps_its_arguments() {
+        let pass = abs("/usr/bin/pass");
         let c = parse(
-            "instance http://localhost:1\n key-command \"/usr/bin/pass\" show \"a b\"\n",
+            &format!("instance http://localhost:1\n key-command \"{pass}\" show \"a b\"\n"),
             None,
         );
         assert_eq!(
             c.instances[0].key,
-            KeySource::Command(vec!["/usr/bin/pass".into(), "show".into(), "a b".into()])
+            KeySource::Command(vec![pass, "show".into(), "a b".into()])
         );
     }
 

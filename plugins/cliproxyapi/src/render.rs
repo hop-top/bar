@@ -1030,8 +1030,9 @@ mod tests {
     #[test]
     fn a_session_without_a_proxy_offers_the_tokens_of_a_lone_instance() {
         use crate::config;
+        let k = config::abs("/k");
         let conf = |text: &str| config::parse(text, None);
-        let one = conf("instance http://127.0.0.1:8317\n key-file /k\n");
+        let one = conf(&format!("instance http://127.0.0.1:8317\n key-file {k}\n"));
         let o = plain(&one);
         assert_eq!(o.text.as_deref(), Some(""));
         assert!(o.account.is_none() && o.items.is_empty());
@@ -1040,12 +1041,14 @@ mod tests {
             o.tokens["instance"],
             crate::switch::instance_id(&one.instances[0].origin.to_string())
         );
-        let two = conf(
-            "instance http://127.0.0.1:8317\n key-file /k\ninstance http://127.0.0.1:8318\n key-file /k\n",
-        );
+        let two = conf(&format!(
+            "instance http://127.0.0.1:8317\n key-file {k}\ninstance http://127.0.0.1:8318\n key-file {k}\n"
+        ));
         assert!(plain(&two).tokens.is_empty(), "which one would it be?");
         assert!(plain(&conf("")).tokens.is_empty());
-        let codex = conf("instance http://127.0.0.1:8317\n key-file /k\n providers codex\n");
+        let codex = conf(&format!(
+            "instance http://127.0.0.1:8317\n key-file {k}\n providers codex\n"
+        ));
         assert!(plain(&codex).tokens.is_empty(), "no Claude to pick for");
     }
 }
