@@ -8,6 +8,7 @@ pub mod cache;
 pub mod chooser;
 pub mod collect;
 pub mod config;
+pub mod menu;
 pub mod mgmt;
 pub mod model;
 pub mod pool;

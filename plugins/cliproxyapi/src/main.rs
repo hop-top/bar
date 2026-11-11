@@ -28,6 +28,7 @@ fn main() {
             "{}",
             serde_json::to_string(&check()).unwrap_or_else(|_| r#"{"warnings":[]}"#.into())
         ),
+        Some("--menu") => menu(),
         Some("--action") => std::process::exit(action(std::env::args().nth(2).as_deref())),
         Some("list") => std::process::exit(cli(&std::env::args().skip(1).collect::<Vec<_>>())),
         Some("use") | Some("pick") => {
@@ -109,6 +110,21 @@ fn run() -> Output {
         &inst.origin.to_string(),
         now,
     )
+}
+
+/// `--menu`: the groups for every configured instance, from the caches.
+fn menu() {
+    let mut raw = String::new();
+    let _ = std::io::stdin().take(1 << 20).read_to_string(&mut raw);
+    let input: bar_plugin::menu::MenuInput = serde_json::from_str(&raw).unwrap_or_default();
+    let m = match config::load(&config::path()) {
+        Ok(mut cfg) => {
+            cfg.set_rules(&input.accounts);
+            bar_cliproxyapi::menu::build(&cfg, &bar_plugin::dirs::bar_state(), now())
+        }
+        Err(_) => bar_plugin::menu::Menu::default(),
+    };
+    println!("{}", m.to_json());
 }
 
 fn check() -> CheckReport {
