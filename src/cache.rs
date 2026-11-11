@@ -419,15 +419,9 @@ fn run_child_raw_capped(
         let _ = std::io::copy(&mut stdout, &mut std::io::sink());
         let _ = tx.send(buf);
     });
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(s)) => break Some(s),
-            Ok(None) if Instant::now() < deadline => {
-                std::thread::sleep(Duration::from_millis(10));
-            }
-            _ => break None,
-        }
-    };
+    let status = bar_plugin::wait::wait_until(&mut child, deadline)
+        .ok()
+        .flatten();
     let out = status.and_then(|_| {
         rx.recv_timeout(deadline.saturating_duration_since(Instant::now()))
             .ok()
