@@ -225,72 +225,15 @@ pub fn report(current: &str, cached: Option<Option<&str>>, exe: &Path) -> String
     out
 }
 
-/// [`report`] as data: `check` (whether the check is on), `status`
-/// (`off`, `pending` before a first result, `failed` or `ok`), `current`,
-/// `channel`, `latest` (the tag found, else null), `age_secs` (age of the
-/// cached result, else null), `stale` (older than a day), `newer` (the
-/// newer version, else null), `dev` (a development build, never
-/// compared) and `upgrade`.
-pub fn report_json(
-    current: &str,
-    cached: Option<Option<&str>>,
-    age_secs: Option<u64>,
-    exe: &Path,
-) -> Value {
-    let tag = cached.flatten().map(str::trim).filter(|t| !t.is_empty());
-    let status = match cached {
-        None => "off",
-        Some(None) => "pending",
-        Some(Some(_)) if tag.is_none() => "failed",
-        Some(Some(_)) => "ok",
-    };
-    let age_secs = cached.flatten().and(age_secs);
-    let newer = tag.and_then(|t| newer(current, t));
-    let target = if newer.is_some() { tag } else { None };
-    serde_json::json!({
-        "check": cached.is_some(),
-        "status": status,
-        "current": current,
-        "channel": if channel_is_prerelease(current) { "prerelease" } else { "stable" },
-        "latest": tag,
-        "age_secs": age_secs,
-        "stale": age_secs.is_some_and(|a| a > TTL),
-        "newer": newer,
-        "dev": parse(current).is_some_and(|v| is_dev(&v)),
-        "upgrade": upgrade_hint(exe, target),
-    })
+/// Whether `current` is a development build (`0.0.0`), which is not
+/// compared with releases.
+pub fn is_dev_build(current: &str) -> bool {
+    parse(current).is_some_and(|v| is_dev(&v))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn report_json_states() {
-        let exe = Path::new("/usr/local/bin/bar");
-        let v = report_json("1.0.0", None, Some(5), exe);
-        assert_eq!(
-            (v["check"].clone(), v["status"].clone()),
-            (false.into(), "off".into())
-        );
-        assert_eq!(v["age_secs"], Value::Null);
-        assert_eq!(
-            report_json("1.0.0", Some(None), None, exe)["status"],
-            "pending"
-        );
-        let v = report_json("1.0.0", Some(Some("")), Some(9), exe);
-        assert_eq!(v["status"], "failed");
-        let v = report_json("1.0.0", Some(Some("v1.2.0")), Some(TTL + 1), exe);
-        assert_eq!(v["status"], "ok");
-        assert_eq!(v["latest"], "v1.2.0");
-        assert_eq!(v["newer"], "1.2.0");
-        assert_eq!(v["age_secs"], TTL + 1);
-        assert_eq!(v["stale"], true);
-        assert_eq!(
-            report_json("1.0.0", Some(Some("v1.0.0")), Some(1), exe)["stale"],
-            false
-        );
-    }
 
     #[test]
     fn semver_precedence() {

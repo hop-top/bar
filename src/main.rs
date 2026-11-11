@@ -457,21 +457,22 @@ fn update(m: &ArgMatches) {
     cli_out::check_format(m, "update");
     let on = matches!(conf::load(cwd().as_deref()), conf::LoadResult::Ok(c) if c.update_check);
     let cache = Cache::new(&click::state_dir());
-    let key = update::cache_key(update::channel_is_prerelease(update::current()));
+    let pre = update::channel_is_prerelease(update::current());
+    // a stale result also starts the daily check in the background
     let cached = on.then(|| {
-        let pre = update::channel_is_prerelease(update::current());
-        // a stale result also starts the daily check in the background
-        cache.read_or_refresh(key, update::TTL, &Job::Update { prerelease: pre })
+        cache.read_or_refresh(
+            update::cache_key(pre),
+            update::TTL,
+            &Job::Update { prerelease: pre },
+        )
     });
     let exe = std::env::current_exe().unwrap_or_else(|_| "bar".into());
-    let cached = cached.as_ref().map(|c| c.as_deref());
-    let text = update::report(update::current(), cached, &exe);
-    let age = std::fs::metadata(cache.path_for(key))
-        .and_then(|md| md.modified())
-        .ok()
-        .and_then(|t| t.elapsed().ok())
-        .map(|d| d.as_secs());
-    let data = update::report_json(update::current(), cached, age, &exe);
+    let text = update::report(
+        update::current(),
+        cached.as_ref().map(|c| c.as_deref()),
+        &exe,
+    );
+    let data = check::state::update_state(&cache, update::current(), on, &exe);
     cli_out::emit(m, "update", &text, &data);
 }
 

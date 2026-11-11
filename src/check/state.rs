@@ -16,7 +16,12 @@ pub fn snapshot(dir: &Path, update_check: bool) -> Value {
         "toggles": toggles(dir),
         "sessions": sessions(dir),
         "cache": cache(dir),
-        "update": update_state(&Cache::new(dir), update::current(), update_check),
+        "update": update_state(
+            &Cache::new(dir),
+            update::current(),
+            update_check,
+            &std::env::current_exe().unwrap_or_else(|_| "bar".into()),
+        ),
     })
 }
 
@@ -108,10 +113,15 @@ fn cache(dir: &Path) -> Value {
     })
 }
 
-/// The update check as `bar update` reads it: `status` is `off`,
-/// `pending` (no result yet), `failed` (the last check found nothing) or
-/// `ok`; `latest` the newest release of the running version's channel.
-pub fn update_state(cache: &Cache, current: &str, on: bool) -> Value {
+/// The update check, as `bar update --format json` and `bar check`'s
+/// `state.update` report it: `check` (whether it is on), `status` (`off`,
+/// `pending` before a first result, `failed` when the last check found
+/// nothing, `ok`), `current`, `channel`, `latest` (the newest release of
+/// the running version's channel, else null), `age_secs` (age of that
+/// result, else null), `stale` (older than a day), `newer` (the newer
+/// version, else null), `dev` (a development build, never compared) and
+/// `upgrade` (how to upgrade the binary `exe`). Reads the cache only.
+pub fn update_state(cache: &Cache, current: &str, on: bool, exe: &Path) -> Value {
     let pre = update::channel_is_prerelease(current);
     let key = update::cache_key(pre);
     let found = if on {
@@ -130,6 +140,8 @@ pub fn update_state(cache: &Cache, current: &str, on: bool) -> Value {
         (true, Some(_), None) => "failed",
         (true, Some(_), Some(_)) => "ok",
     };
+    let newer = latest.and_then(|t| update::newer(current, t));
+    let target = if newer.is_some() { latest } else { None };
     json!({
         "check": on,
         "status": status,
@@ -137,13 +149,19 @@ pub fn update_state(cache: &Cache, current: &str, on: bool) -> Value {
         "channel": if pre { "prerelease" } else { "stable" },
         "latest": latest,
         "age_secs": age,
-        "stale": age.map(|a| a >= update::TTL),
+        // the cache refreshes from this age on
+        "stale": age.is_some_and(|a| a >= update::TTL),
+        "newer": newer,
+        "dev": update::is_dev_build(current),
+        "upgrade": update::upgrade_hint(exe, target),
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const EXE: &str = "/usr/local/bin/bar";
 
     #[test]
     fn toggle_files_map_to_keys() {
@@ -160,14 +178,60 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("bar-upd-state-{}", std::process::id()));
         let c = Cache::new(&dir);
         c.store("update:prerelease", "v1.0.0-rc.1").unwrap();
-        let v = update_state(&c, "1.0.0-beta.0", true);
+        let v = update_state(&c, "1.0.0-beta.0", true, Path::new(EXE));
         assert_eq!(v["channel"], "prerelease");
         assert_eq!(v["latest"], "v1.0.0-rc.1");
-        assert_eq!(update_state(&c, "1.0.0", true)["status"], "pending");
         assert_eq!(
-            update_state(&c, "1.0.0-beta.0", false)["latest"],
+            update_state(&c, "1.0.0", true, Path::new(EXE))["status"],
+            "pending"
+        );
+        assert_eq!(
+            update_state(&c, "1.0.0-beta.0", false, Path::new(EXE))["latest"],
             Value::Null
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn update_states() {
+        let dir = std::env::temp_dir().join(format!("bar-upd-states-{}", std::process::id()));
+        let c = Cache::new(&dir);
+        let v = update_state(&c, "1.0.0", false, Path::new(EXE));
+        assert_eq!((&v["check"], &v["status"]), (&false.into(), &"off".into()));
+        assert_eq!(v["age_secs"], Value::Null);
+        assert_eq!(v["stale"], false);
+        assert_eq!(
+            update_state(&c, "1.0.0", true, Path::new(EXE))["status"],
+            "pending"
+        );
+        c.store("update:stable", "").unwrap();
+        assert_eq!(
+            update_state(&c, "1.0.0", true, Path::new(EXE))["status"],
+            "failed"
+        );
+        c.store("update:stable", "v1.2.0").unwrap();
+        let v = update_state(&c, "1.0.0", true, Path::new(EXE));
+        assert_eq!(v["status"], "ok");
+        assert_eq!(v["latest"], "v1.2.0");
+        assert_eq!(v["newer"], "1.2.0");
+        assert_eq!(v["dev"], false);
+        assert_eq!(v["stale"], false);
+        assert!(v["upgrade"].as_str().unwrap().contains("v1.2.0"), "{v}");
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(update::TTL + 1);
+        std::fs::File::options()
+            .write(true)
+            .open(c.path_for("update:stable"))
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        let v = update_state(&c, "1.0.0", true, Path::new(EXE));
+        assert!(
+            v["age_secs"].as_u64().is_some_and(|a| a > update::TTL),
+            "{v}"
+        );
+        assert_eq!(v["stale"], true);
+        let v = update_state(&c, "0.0.0", true, Path::new(EXE));
+        assert_eq!((&v["dev"], &v["newer"]), (&true.into(), &Value::Null));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -141,6 +141,24 @@ fn check_reports_the_update_check() {
 }
 
 #[test]
+fn update_and_check_report_the_same_update_state() {
+    let fx = Fx::new("update-same");
+    fx.conf("set update-check on\n");
+    // a fresh result: neither command starts the background check
+    store(&fx.state(), "update:stable", "v9.9.9");
+    let mut from_check = fx.check_state()["update"].clone();
+    let mut from_update = fx.json(&["update", "--format", "json"]);
+    for v in [&mut from_check, &mut from_update] {
+        assert!(v["age_secs"].as_u64().is_some(), "{v}");
+        v["age_secs"] = Value::Null;
+    }
+    assert_eq!(from_check, from_update);
+    for k in ["newer", "dev", "upgrade"] {
+        assert!(from_check.get(k).is_some(), "{k}: {from_check}");
+    }
+}
+
+#[test]
 fn check_keeps_its_fields() {
     let fx = Fx::new("fields");
     let v = fx.json(&["check", "--format", "json"]);
