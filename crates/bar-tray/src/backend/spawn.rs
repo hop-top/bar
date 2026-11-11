@@ -18,11 +18,15 @@ pub const MAX_CAPTURE: u64 = 1 << 20;
 /// File name of the `bar` binary on this OS.
 pub const BAR_NAME: &str = if cfg!(windows) { "bar.exe" } else { "bar" };
 
-/// Every variable that moves a dir `bar` reads, the same set the
-/// `bar://` handler bakes: the state dir, the XDG bases, Claude Code's
-/// config dir, tmux's socket dir, and `PATH`, where an action finds its
-/// plugin. Nothing else reaches a child.
-pub const HANDLER_ENV: [&str; 7] = [
+/// Every variable that moves a dir `bar` reads: the home dir (where its
+/// config and state dirs are without an override; the `bar://` handler
+/// inherits it from the login session, a child of the tray would not),
+/// the state dir, the XDG bases, Claude Code's config dir, tmux's socket
+/// dir, and `PATH`, where an action finds its plugin. Nothing else
+/// reaches a child.
+#[cfg(not(windows))]
+pub const HANDLER_ENV: [&str; 8] = [
+    "HOME",
     "BAR_STATE_DIR",
     "XDG_STATE_HOME",
     "XDG_CONFIG_HOME",
@@ -31,6 +35,35 @@ pub const HANDLER_ENV: [&str; 7] = [
     "TMUX_TMPDIR",
     "PATH",
 ];
+
+/// Windows: the profile and app-data dirs stand in for the home dir, and
+/// `SYSTEMROOT` is needed to start any process at all.
+#[cfg(windows)]
+pub const HANDLER_ENV: [&str; 11] = [
+    "USERPROFILE",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "SYSTEMROOT",
+    "BAR_STATE_DIR",
+    "XDG_STATE_HOME",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "CLAUDE_CONFIG_DIR",
+    "TMUX_TMPDIR",
+    "PATH",
+];
+
+/// Whether `name` is one of [`HANDLER_ENV`]; Windows names are stored
+/// in any case (`Path`, `SystemRoot`).
+fn handler_var(name: &str) -> bool {
+    HANDLER_ENV.iter().any(|h| {
+        if cfg!(windows) {
+            h.eq_ignore_ascii_case(name)
+        } else {
+            *h == name
+        }
+    })
+}
 
 /// The longest `bar tray run` lets an action run.
 pub const MAX_LIMIT: Duration = Duration::from_secs(120);
@@ -111,7 +144,7 @@ pub fn toggle_args(key: &str) -> Vec<OsString> {
 /// The [`HANDLER_ENV`] subset of `env`; empty values count as unset.
 pub fn scrub(env: impl IntoIterator<Item = (OsString, OsString)>) -> Vec<(OsString, OsString)> {
     env.into_iter()
-        .filter(|(k, v)| k.to_str().is_some_and(|k| HANDLER_ENV.contains(&k)) && !v.is_empty())
+        .filter(|(k, v)| k.to_str().is_some_and(handler_var) && !v.is_empty())
         .collect()
 }
 
