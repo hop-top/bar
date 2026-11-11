@@ -38,6 +38,16 @@ pub const CONTRACTS: &[(&str, &str, &str)] = &[
     ("web plugins", "write-local", "yes"),
     ("prices update", "write-local", "yes"),
     ("refresh", "write-local", "yes"),
+    ("tray state", "write-local", "yes"),
+    // runs a plugin action, like `click run`
+    ("tray run", "write-shared", "no"),
+    ("tray install", "write-local", "yes"),
+    ("tray uninstall", "write-local", "yes"),
+    // one tray per state dir: a second start is a no-op
+    ("tray start", "write-local", "yes"),
+    ("tray stop", "write-local", "yes"),
+    ("tray status", "read", "yes"),
+    ("waybar", "read", "yes"),
     ("help", "read", "yes"),
 ];
 
