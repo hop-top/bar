@@ -357,13 +357,26 @@ fn check(m: &ArgMatches) {
     let mut out = std::io::stdout();
     if m.get_one::<String>("format").map(String::as_str) == Some("table") {
         let _ = out.write_all(report.to_text().as_bytes());
-    } else if let Err(e) = dispatch(m, &mut out, &report.to_json(), DispatchOptions::default()) {
+    } else if let Err(e) = dispatch(
+        m,
+        &mut out,
+        &check_json(&report),
+        DispatchOptions::default(),
+    ) {
         eprintln!("bar check: {e}");
         std::process::exit(EXIT_USAGE);
     }
     if report.has_errors() {
         std::process::exit(EXIT_USAGE);
     }
+}
+
+/// The report with the `state` it renders from.
+fn check_json(report: &check::Report) -> Value {
+    let on = matches!(conf::load(cwd().as_deref()), conf::LoadResult::Ok(c) if c.update_check);
+    let mut v = report.to_json();
+    v["state"] = check::state::snapshot(&click::handler_state_dir(), on);
+    v
 }
 
 fn preview(m: &ArgMatches) {

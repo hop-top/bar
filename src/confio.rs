@@ -73,6 +73,15 @@ pub fn effective(user: Option<(&Path, &str)>, project: Option<(&Path, &str)>) ->
     }
 }
 
+/// The directives of config `text`, one token list per line; comments,
+/// blank lines and lines that do not tokenize are left out.
+pub fn directives(text: &str) -> Vec<Vec<String>> {
+    text.lines()
+        .filter_map(|l| tokenize(l).ok())
+        .filter(|t| !t.is_empty())
+        .collect()
+}
+
 /// Lines of `text` worth a look before importing it, with their 1-based
 /// numbers and what they do: `%…%` values (run a command or read an
 /// environment variable), `plugin` lines and `set project-config`. Each

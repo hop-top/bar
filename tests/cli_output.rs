@@ -205,7 +205,8 @@ fn export_reports_as_data() {
     let r = bar(&t, &["config", "export", "--format", "json"], "");
     assert_eq!(r.code, 0, "{}", r.err);
     let v = r.disciplined();
-    assert!(v["config"].as_str().unwrap().contains("set gap 4"), "{v}");
+    assert!(v["text"].as_str().unwrap().contains("set gap 4"), "{v}");
+    assert_eq!(v["lines"][0], serde_json::json!(["set", "gap", "4"]), "{v}");
     assert!(v["user"].as_str().unwrap().ends_with("bar.conf"), "{v}");
     assert_eq!(v["project"], Value::Null);
     // an existing output file without --force is a conflict

@@ -12,6 +12,7 @@ mod lines;
 mod options;
 mod placeholders;
 mod report;
+pub mod state;
 
 pub use options::{core_options, option_help, option_schema, Val};
 pub use report::{Issue, Level, ProjectInfo, Report};
