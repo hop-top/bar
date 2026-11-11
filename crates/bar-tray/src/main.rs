@@ -1,9 +1,11 @@
-//! `bar-tray [--snapshot <file>] [--bar <path>] [--poll <seconds>] [--print]`
+//! `bar-tray [--snapshot <file>] [--bar <path>] [--poll <seconds>] [--lock <file>] [--print]`
 //!
 //! Shows bar's menu in the menu bar or notification area. The menu comes
 //! from `bar tray state --json` (`bar` beside this binary, or `--bar`),
 //! or from a snapshot file with `--snapshot`, for showing a menu without
-//! `bar`. `--print` prints the menu once instead of showing it.
+//! `bar`. `--print` prints the menu once instead of showing it. With
+//! `--lock`, a tray that finds the file locked by another one exits 0
+//! at once (`bar tray install` and `bar tray start` pass it).
 
 // A tray has no console: the GUI subsystem keeps one from flashing up.
 #![cfg_attr(windows, windows_subsystem = "windows")]
@@ -16,7 +18,7 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 const USAGE: &str =
-    "usage: bar-tray [--snapshot <file>] [--bar <path>] [--poll <seconds>] [--print]";
+    "usage: bar-tray [--snapshot <file>] [--bar <path>] [--poll <seconds>] [--lock <file>] [--print]";
 /// Seconds between idle polls unless `--poll` says otherwise.
 const DEFAULT_POLL: u64 = 30;
 
@@ -25,6 +27,7 @@ struct Args {
     snapshot: Option<PathBuf>,
     bar: Option<PathBuf>,
     poll: Option<u64>,
+    lock: Option<PathBuf>,
     print: bool,
 }
 
@@ -45,6 +48,7 @@ fn parse(argv: impl IntoIterator<Item = String>) -> Result<Args, String> {
                         .ok_or_else(|| format!("invalid --poll `{v}` (10..600 seconds)"))?,
                 );
             }
+            "--lock" => a.lock = Some(PathBuf::from(value("--lock")?)),
             "--print" => a.print = true,
             other => return Err(format!("unknown argument `{other}`")),
         }
@@ -79,6 +83,19 @@ fn main() -> ExitCode {
     if args.print {
         return print(&source);
     }
+    // held until the process ends; the OS releases it however that happens
+    let _lock = match args.lock.as_deref().map(bar_tray::lock::acquire) {
+        None => None,
+        Some(Ok(Some(f))) => Some(f),
+        Some(Ok(None)) => {
+            eprintln!("bar-tray: already running");
+            return ExitCode::SUCCESS;
+        }
+        Some(Err(e)) => {
+            eprintln!("bar-tray: lock: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
     show(
         source,
         bar,
@@ -188,6 +205,8 @@ mod tests {
             "/x/bar",
             "--poll",
             "45",
+            "--lock",
+            "/s/tray.lock",
             "--print",
         ])
         .unwrap();
@@ -197,10 +216,12 @@ mod tests {
                 snapshot: Some("s.json".into()),
                 bar: Some("/x/bar".into()),
                 poll: Some(45),
+                lock: Some("/s/tray.lock".into()),
                 print: true
             }
         );
         assert_eq!(args(&["--poll"]).unwrap_err(), "--poll needs a value");
+        assert_eq!(args(&["--lock"]).unwrap_err(), "--lock needs a value");
         assert_eq!(
             args(&["--poll", "5"]).unwrap_err(),
             "invalid --poll `5` (10..600 seconds)"
