@@ -6,6 +6,8 @@
 //! `bar`. `--print` prints the menu once instead of showing it. With
 //! `--lock`, a tray that finds the file locked by another one exits 0
 //! at once (`bar tray install` and `bar tray start` pass it).
+//! `--backend` prints the tray backend this build has and exits, 1 when
+//! it has none (Linux without the `linux-sni` feature).
 
 // A tray has no console: the GUI subsystem keeps one from flashing up.
 #![cfg_attr(windows, windows_subsystem = "windows")]
@@ -18,7 +20,7 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 const USAGE: &str =
-    "usage: bar-tray [--snapshot <file>] [--bar <path>] [--poll <seconds>] [--lock <file>] [--print]";
+    "usage: bar-tray [--snapshot <file>] [--bar <path>] [--poll <seconds>] [--lock <file>] [--print] [--backend]";
 /// Seconds between idle polls unless `--poll` says otherwise.
 const DEFAULT_POLL: u64 = 30;
 
@@ -29,6 +31,7 @@ struct Args {
     poll: Option<u64>,
     lock: Option<PathBuf>,
     print: bool,
+    backend: bool,
 }
 
 fn parse(argv: impl IntoIterator<Item = String>) -> Result<Args, String> {
@@ -50,6 +53,7 @@ fn parse(argv: impl IntoIterator<Item = String>) -> Result<Args, String> {
             }
             "--lock" => a.lock = Some(PathBuf::from(value("--lock")?)),
             "--print" => a.print = true,
+            "--backend" => a.backend = true,
             other => return Err(format!("unknown argument `{other}`")),
         }
     }
@@ -64,6 +68,9 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    if args.backend {
+        return backend();
+    }
     // `bar` is needed for clicks, and for the snapshot without `--snapshot`
     let bar = match (&args.snapshot, &args.bar) {
         (Some(_), None) => None,
@@ -126,6 +133,30 @@ fn show(source: Source, bar: Option<PathBuf>, poll: Duration) -> ExitCode {
 fn show(_source: Source, _bar: Option<PathBuf>, _poll: Duration) -> ExitCode {
     eprintln!("bar-tray: no tray backend for this platform yet; --print shows the menu");
     ExitCode::FAILURE
+}
+
+/// The backend `show` runs in this build.
+const BACKEND: Option<&str> = if cfg!(target_os = "macos") {
+    Some("macos")
+} else if cfg!(windows) {
+    Some("windows")
+} else if cfg!(all(target_os = "linux", feature = "linux-sni")) {
+    Some("sni")
+} else {
+    None
+};
+
+fn backend() -> ExitCode {
+    match BACKEND {
+        Some(b) => {
+            println!("{b}");
+            ExitCode::SUCCESS
+        }
+        None => {
+            eprintln!("bar-tray: built without a tray backend for this platform");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 fn print(source: &Source) -> ExitCode {
@@ -217,9 +248,11 @@ mod tests {
                 bar: Some("/x/bar".into()),
                 poll: Some(45),
                 lock: Some("/s/tray.lock".into()),
-                print: true
+                print: true,
+                backend: false,
             }
         );
+        assert!(args(&["--backend"]).unwrap().backend);
         assert_eq!(args(&["--poll"]).unwrap_err(), "--poll needs a value");
         assert_eq!(args(&["--lock"]).unwrap_err(), "--lock needs a value");
         assert_eq!(

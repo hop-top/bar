@@ -3,9 +3,10 @@
 //! there (`bar-tray --lock`); whether the lock is held says whether it
 //! runs, whatever the file holds. With the LaunchAgent installed, start
 //! and stop go through `launchctl`, so launchd does not restart a tray
-//! stopped on purpose.
+//! stopped on purpose; with the systemd user unit, through `systemctl`.
 
 use super::agent;
+use super::xdg::{self, UNIT};
 use serde_json::{json, Value};
 use std::fs::{File, TryLockError};
 use std::io::Write;
@@ -15,13 +16,14 @@ use std::time::SystemTime;
 /// The single-instance lock a running tray holds.
 pub const LOCK_FILE: &str = "tray.lock";
 
-/// Where things are: the state dir, the LaunchAgents dir (macOS) and
-/// the user id launchd's GUI domain is named after.
+/// Where things are: the state dir, the LaunchAgents dir (macOS), the
+/// user id launchd's GUI domain is named after and the XDG dirs (Linux).
 #[derive(Debug, Clone)]
 pub struct Layout {
     pub state_dir: PathBuf,
     pub agents: Option<PathBuf>,
     pub uid: Option<u32>,
+    pub xdg: Option<xdg::Dirs>,
 }
 
 impl Layout {
@@ -37,6 +39,11 @@ impl Layout {
                 None
             },
             uid: crate::platform::current_uid(),
+            xdg: if cfg!(target_os = "linux") {
+                xdg::Dirs::from_env(home.as_deref(), &|k| std::env::var(k).ok())
+            } else {
+                None
+            },
         }
     }
 
@@ -53,6 +60,14 @@ impl Layout {
     fn agent(&self) -> Option<(PathBuf, u32)> {
         let p = self.plist().filter(|p| p.is_file())?;
         Some((p, self.uid?))
+    }
+
+    /// The installed systemd user unit (Linux).
+    fn unit(&self) -> Option<PathBuf> {
+        self.xdg
+            .as_ref()
+            .map(xdg::Dirs::unit)
+            .filter(|p| p.is_file())
     }
 }
 
@@ -138,6 +153,11 @@ pub fn start(
             .map_err(|e| format!("launchctl: {e}"))?;
         return writeln!(out, "started {}", agent::LABEL).map_err(io);
     }
+    if l.unit().is_some() {
+        let cmd = xdg::systemctl(&["start", UNIT]);
+        sys.exec(&cmd).map_err(|e| format!("systemctl: {e}"))?;
+        return writeln!(out, "started {UNIT}").map_err(io);
+    }
     let pid = sys.spawn(argv).map_err(|e| format!("{}: {e}", argv[0]))?;
     writeln!(out, "started pid {pid}").map_err(io)
 }
@@ -147,7 +167,8 @@ fn shown(pid: Option<u32>) -> String {
 }
 
 /// Stops the tray: unloads the LaunchAgent when installed (it loads
-/// again at the next login), then signals a tray still holding the lock.
+/// again at the next login) or stops the unit, then signals a tray still
+/// holding the lock.
 /// `Ok(false)` when nothing ran.
 pub fn stop(l: &Layout, sys: &mut dyn Sys, out: &mut dyn Write) -> Result<bool, String> {
     let io = |e: std::io::Error| e.to_string();
@@ -156,6 +177,14 @@ pub fn stop(l: &Layout, sys: &mut dyn Sys, out: &mut dyn Write) -> Result<bool, 
         // fails when it is not loaded, which is fine
         if sys.exec(&agent::bootout(uid)).is_ok() {
             writeln!(out, "unloaded {}", agent::LABEL).map_err(io)?;
+            stopped = true;
+        }
+    }
+    if l.unit().is_some() {
+        let was = running(&l.lock()) != Running::No;
+        // systemd then neither restarts it nor counts it as failed
+        if sys.exec(&xdg::systemctl(&["stop", UNIT])).is_ok() && was {
+            writeln!(out, "stopped {UNIT}").map_err(io)?;
             stopped = true;
         }
     }
@@ -180,7 +209,8 @@ pub fn stop(l: &Layout, sys: &mut dyn Sys, out: &mut dyn Write) -> Result<bool, 
 pub struct Status {
     pub installed: bool,
     pub state_dir: PathBuf,
-    /// The LaunchAgent plist, when installed.
+    /// The LaunchAgent plist, the user unit or the autostart entry, when
+    /// installed.
     pub autostart: Option<PathBuf>,
     pub running: Running,
     /// Seconds since the snapshot was written; `None` without one or
@@ -201,7 +231,10 @@ pub fn status(l: &Layout, now: SystemTime) -> Status {
             .join(crate::click::pointer::TRAY_MARKER)
             .is_file(),
         state_dir: l.state_dir.clone(),
-        autostart: l.plist().filter(|p| p.is_file()),
+        autostart: l
+            .plist()
+            .filter(|p| p.is_file())
+            .or_else(|| l.xdg.as_ref()?.autostart()),
         running: running(&l.lock()),
         snapshot_age,
     }

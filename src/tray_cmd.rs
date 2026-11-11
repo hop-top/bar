@@ -32,7 +32,8 @@ pub enum TrayCmd {
         generation: Option<String>,
     },
     /// Set the tray up: record its dirs, register the Claude Code hooks,
-    /// start it at login (a LaunchAgent on macOS) and now.
+    /// start it at login (a LaunchAgent on macOS, an autostart entry or a
+    /// systemd user unit on Linux) and now.
     Install {
         /// Print what would be written and run, change nothing.
         #[arg(long)]
@@ -43,6 +44,10 @@ pub enum TrayCmd {
         /// Leave the Claude Code hooks alone (the session rows need them).
         #[arg(long)]
         no_hooks: bool,
+        /// Linux: start it with a systemd user unit (graphical-session.target)
+        /// instead of an autostart entry.
+        #[arg(long, conflicts_with = "no_autostart")]
+        systemd: bool,
     },
     /// Stop the tray and remove what install wrote; the hooks stay while
     /// `bar click install` is installed.
@@ -75,6 +80,7 @@ pub fn run(m: &ArgMatches) {
             dry_run: i.get_flag("dry_run"),
             autostart: !i.get_flag("no_autostart"),
             hooks: !i.get_flag("no_hooks"),
+            systemd: i.get_flag("systemd"),
         }),
         Some(("uninstall", u)) => uninstall(u.get_flag("keep_hooks")),
         Some(("start", _)) => start(),

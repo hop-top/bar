@@ -64,7 +64,7 @@ The link handler's nonce and cache-entry binding are not used here. The nonce pr
 ## Install
 
 ```
-bar tray install [--dry-run] [--no-autostart] [--no-hooks]
+bar tray install [--dry-run] [--no-autostart] [--no-hooks] [--systemd]
 bar tray uninstall [--keep-hooks]
 bar tray start | stop | status [--json]
 ```
@@ -75,10 +75,17 @@ bar tray start | stop | status [--json]
 - writes the `tray-installed` marker, which also publishes the renderer's state dir to processes started without your shell's environment;
 - registers the Claude Code hooks that feed the session rows, as `bar click install --hooks-only` does (`--no-hooks` skips this);
 - prints a `tray` line for every `action` line no `tray` line covers yet: `action` lines do not grant the tray, so these are only suggested, and your config is not changed;
-- on macOS, writes the LaunchAgent `~/Library/LaunchAgents/top.hop.bar-tray.plist` and loads it with `launchctl bootstrap gui/<uid>`, which starts the tray now and at every login. The agent runs `bar-tray --bar <bar> --lock <state>/tray.lock` with the recorded variables, in the GUI session only, and restarts it after a crash but not after `Quit`. `--no-autostart` skips this; other platforms need it for now.
+- on macOS, writes the LaunchAgent `~/Library/LaunchAgents/top.hop.bar-tray.plist` and loads it with `launchctl bootstrap gui/<uid>`, which starts the tray now and at every login. The agent runs `bar-tray --bar <bar> --lock <state>/tray.lock` with the recorded variables, in the GUI session only, and restarts it after a crash but not after `Quit`;
+- on Linux, writes the icon `bar-tray-symbolic.svg` to `$XDG_DATA_HOME/icons/hicolor/scalable/apps/` (default `~/.local/share`), so panels draw it in their own colours, then the autostart entry `$XDG_CONFIG_HOME/autostart/bar-tray.desktop` (default `~/.config`), which GNOME, Plasma, XFCE, Cinnamon and LXQt run at login, and starts the tray now. With `--systemd` it writes the user unit `$XDG_CONFIG_HOME/systemd/user/bar-tray.service` instead (`WantedBy=graphical-session.target`, restarted after a crash but not after `Quit`), runs `systemctl --user daemon-reload` and `enable`, and starts it; installing one kind removes the other. Both run `bar-tray --bar <bar> --lock <state>/tray.lock` with the recorded variables. On GNOME it prints a reminder that GNOME Shell shows tray icons only with the AppIndicator extension (`gnome-shell-extension-appindicator`; Ubuntu ships it enabled).
+
+`--no-autostart` skips the autostart step; platforms other than macOS and Linux need it for now.
+
+The Linux tray needs a `bar-tray` built with the cargo feature `linux-sni` (off by default). Install asks `bar-tray --backend` first and, without that backend, refuses to set up autostart, which would only fail at every login; `--no-autostart` still records the dirs and installs the icon. [`bar waybar`](waybar.md) shows the menu state in waybar without the tray.
+
+Sessions that run neither autostart entries nor `graphical-session.target` (Hyprland started without uwsm, sway from a TTY) start the tray from their own config, for example in Hyprland: `exec-once = bar tray start`.
 
 `--dry-run` prints every file it would write and every command it would run, and changes nothing. `bar-tray` must be in the same directory as `bar`.
 
-One tray runs per state directory: a running tray holds a lock on `tray.lock` and wrote its pid there, and a second one exits at once. `bar tray start` starts the tray unless it runs, through `launchctl` when the LaunchAgent is installed, else in the background with the command line install recorded. `bar tray stop` unloads the LaunchAgent (it loads again at the next login) and stops a tray that still holds the lock. `bar tray status` says whether the tray is installed, starts at login and runs, and how old the menu snapshot is.
+One tray runs per state directory: a running tray holds a lock on `tray.lock` and wrote its pid there, and a second one exits at once. `bar tray start` starts the tray unless it runs, through `launchctl` when the LaunchAgent is installed, `systemctl --user start` when the unit is, else in the background with the command line install recorded. `bar tray stop` unloads the LaunchAgent (it loads again at the next login) or stops the unit, and stops a tray that still holds the lock. `bar tray status` says whether the tray is installed, starts at login and runs, and how old the menu snapshot is.
 
-`bar tray uninstall` stops the tray and removes the LaunchAgent, `tray-menu.json`, `tray-dirs.json`, the lock and the marker. It removes the hooks only when its install added them, `bar click install` is not installed (its `click-installed` marker is absent) and `--keep-hooks` is not given. `bar click install` and `bar tray install` are independent: either works without the other.
+`bar tray uninstall` stops the tray and removes the LaunchAgent, or the unit (disabled first), the autostart entry and the icon, then `tray-menu.json`, `tray-dirs.json`, the lock and the marker. It removes the hooks only when its install added them, `bar click install` is not installed (its `click-installed` marker is absent) and `--keep-hooks` is not given. `bar click install` and `bar tray install` are independent: either works without the other.

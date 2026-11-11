@@ -7,11 +7,13 @@
 
 pub mod agent;
 pub mod install;
+pub mod linux;
 mod plugins;
 pub mod process;
 pub mod run;
 pub mod state;
 pub mod waybar;
+pub mod xdg;
 
 use std::ffi::OsStr;
 use std::path::PathBuf;

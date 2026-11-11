@@ -38,6 +38,10 @@ fn cli_dry_run_prints_the_plan_and_writes_nothing() {
         assert!(o.status.success(), "{o:?}");
         assert!(out.contains("top.hop.bar-tray.plist:"), "{out}");
         assert!(out.contains("/bin/launchctl bootstrap gui/"), "{out}");
+    } else if cfg!(target_os = "linux") {
+        assert!(o.status.success(), "{o:?}");
+        assert!(out.contains("bar-tray.desktop:\n[Desktop Entry]"), "{out}");
+        assert!(!t.path().join("cfg").exists() && !t.path().join("home").exists());
     } else {
         assert_eq!(o.status.code(), Some(2), "{o:?}");
     }
