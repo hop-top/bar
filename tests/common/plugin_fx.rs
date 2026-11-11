@@ -68,10 +68,8 @@ impl Fx {
     /// 5 s deadline (which lapses on a loaded host and yields the empty
     /// fallback). Panics when the output does not parse.
     pub fn ext_info(&self, name: &str) -> plugin::ExtInfo {
-        let out = std::process::Command::new(self.found(name).path)
-            .arg("--ext-info")
-            .output()
-            .unwrap();
+        let path = self.found(name).path;
+        let out = busy_retry(|| std::process::Command::new(&path).arg("--ext-info").output());
         plugin::parse_info(&String::from_utf8_lossy(&out.stdout)).expect("--ext-info output")
     }
 
@@ -121,6 +119,21 @@ pub fn install(from: &Path, to: &Path) {
     std::fs::set_permissions(to, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
 }
 
+/// Runs a spawn, retrying while the binary is "text file busy": a test
+/// thread that just copied a plugin can leak its write handle into another
+/// thread's fork until that child execs, so the exec fails for a moment.
+pub fn busy_retry<T>(mut spawn: impl FnMut() -> std::io::Result<T>) -> T {
+    for _ in 0..50 {
+        match spawn() {
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            r => return r.unwrap(),
+        }
+    }
+    spawn().unwrap()
+}
+
 /// Stores a finished refresh. Plugin jobs run to completion without the
 /// product's deadlines (5 s info, 3 s render): on a loaded host those lapse
 /// and leave the cache cold, which says nothing about the code under test.
@@ -129,13 +142,14 @@ pub fn refresh(cache: &Cache, key: String, job: hop_bar::cache::Job) {
     use std::io::Write;
     use std::process::{Command, Stdio};
     let out = match &job {
-        Job::PluginInfo { path } => Command::new(path).arg("--ext-info").output().unwrap(),
+        Job::PluginInfo { path } => busy_retry(|| Command::new(path).arg("--ext-info").output()),
         Job::PluginRender { path, input, .. } => {
-            let mut child = Command::new(path)
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .spawn()
-                .unwrap();
+            let mut child = busy_retry(|| {
+                Command::new(path)
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .spawn()
+            });
             child
                 .stdin
                 .take()
