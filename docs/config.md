@@ -1074,23 +1074,23 @@ Each row is laid out like the status line, with the same skin, palette, icons an
 |---|---|---|
 | `bar render` | Reads the session JSON on stdin, prints the status line ([technical notes](technical.md#flow)) | always 0 |
 | `bar subagent` | Reads the subagent rows on stdin, prints one `{"id", "content"}` JSON line per row it draws ([subagent rows](#subagent-rows)) | always 0 |
-| `bar install [--project\|--local] [--refresh <secs>] [--hooks] [--subagent\|--subagent-only] [--uninstall] [--yes]` | Sets bar as Claude Code's status line ([bar install](#bar-install)) | 0, 7 without a terminal and `--yes` or declined, 2 with a bad home, 1 on failure |
+| `bar install [--project\|--local] [--refresh <secs>] [--hooks] [--subagent\|--subagent-only] [--uninstall] [--yes] [--dry-run]` | Sets bar as Claude Code's status line ([bar install](#bar-install)) | 0, 7 without a terminal and `--yes` or declined, 2 with a bad home, 1 on failure |
 | `bar update` | Version, newest release the [update check](#update) found, how to upgrade; never downloads | 0 |
 | `bar check` | Lints the config ([bar check](#bar-check)) | 0, 2 on a config error |
-| `bar config export [<file>\|-] [--user] [--force]` | Writes the effective config ([bar config](#bar-config)) | 0, 2 on a config error, 3 with `--user` and no config file, 4 on an existing file, 1 on a read or write error |
-| `bar config import <file>\|- --merge\|--replace [--yes]` | Merges a file into your config or replaces it, after a preview ([bar config](#bar-config)) | 0, 2 on an invalid file, 3 when the file is missing, 7 when it cannot ask or is declined, 1 when the write fails |
+| `bar config export [<file>\|-] [--user] [--force] [--dry-run]` | Writes the effective config ([bar config](#bar-config)) | 0, 2 on a config error, 3 with `--user` and no config file, 4 on an existing file, 1 on a read or write error |
+| `bar config import <file>\|- --merge\|--replace [--yes] [--dry-run]` | Merges a file into your config or replaces it, after a preview ([bar config](#bar-config)) | 0, 2 on an invalid file, 3 when the file is missing, 7 when it cannot ask or is declined, 1 when the write fails |
 | `bar preview [--state early\|burning\|final] [--preset [<name>]] [--subagent]` | Layout with sample data ([bar preview](#bar-preview)) | 0 |
 | `bar edit` | Full-screen config editor with a live preview ([bar edit](#bar-edit)) | 0, 2 without a terminal or on an unreadable file |
-| `bar init [--preset <name>]` | Writes a preset as your config ([presets](#presets)) | 0 (also when the config is that preset already), 4 when another config exists, 2 when the path is unusable |
-| `bar toggle <key> [<value>]` | Flips `5h`, `7d`, `<plugin>` or `<plugin>.<toggle>` ([usage](#usage)), or sets it to `<value>` (`on`, `off` or the view name): the global default, or one session's toggle with `<key>?sid=<session id>` | 0, 2 on an unknown key or value or a bad session id |
+| `bar init [--preset <name>] [--dry-run]` | Writes a preset as your config ([presets](#presets)) | 0 (also when the config is that preset already), 4 when another config exists, 2 when the path is unusable |
+| `bar toggle <key> [<value>] [--dry-run]` | Flips `5h`, `7d`, `<plugin>` or `<plugin>.<toggle>` ([usage](#usage)), or sets it to `<value>` (`on`, `off` or the view name): the global default, or one session's toggle with `<key>?sid=<session id>` | 0, 2 on an unknown key or value or a bad session id |
 | `bar click install [--dry-run] [--hooks-only]` | URL handler app and hooks ([click handler](#click-handler-macos)) | 0, 2 unsupported or bad home, 1 on failure |
 | `bar click run <url>` | Types an allow-listed slash command ([clickable commands](#clickable-commands)) | 0, 1 refused, 2 on Windows |
 | `bar click action <url>` | Runs a plugin's declared action ([plugin actions](#plugin-actions)) | 0, 1 refused |
 | `bar click hook` | Claude Code hook ([hooks](#hooks)) | always 0 |
 | `bar plugin list` | Plugins on `PATH`: name, version, description, path ([plugins](plugins.md#discovery)) | 0 |
 | `bar plugin info <name>` | One plugin's `--ext-info` result and path | 0, 3 when no such plugin |
-| `bar web plugins [--dir <dir>]... [-o <file>] [--force]` | `plugins.json` for the [web configurator](web.md): `--ext-info` of every plugin on `PATH` or in the `--dir`s ([metadata](plugins.md#web-configurator-metadata)); `-o` writes the file atomically and refuses an existing one unless `--force` | 0, 4 when the file exists, 1 when it cannot be written |
-| `bar prices update [--out <file>]` | Fetches models.dev prices ([snapshot fetch](#spendhist)); `--out` writes that file instead of the data dir's `models.json` | 0, 2 on failure |
+| `bar web plugins [--dir <dir>]... [-o <file>] [--force] [--dry-run]` | `plugins.json` for the [web configurator](web.md): `--ext-info` of every plugin on `PATH` or in the `--dir`s ([metadata](plugins.md#web-configurator-metadata)); `-o` writes the file atomically and refuses an existing one unless `--force` | 0, 4 when the file exists, 1 when it cannot be written |
+| `bar prices update [--out <file>] [--dry-run]` | Fetches models.dev prices ([snapshot fetch](#spendhist)); `--out` writes that file instead of the data dir's `models.json` | 0, 2 on failure |
 | `bar --version`, `bar --help`, `bar <command> --help` | Version, help | 0 |
 | `bar [<command>] --help --format json\|yaml` | The commands as data ([command contracts](#command-contracts)) | 0 |
 
@@ -1101,6 +1101,27 @@ Exit codes follow one table for every command: 0 success (also when nothing need
 With `--format json` or `yaml` an error is reported on stdout as that document instead, with the fields `code` (`USAGE`, `NOT_FOUND`, `CONFLICT`, `CONSENT_REFUSED` or `GENERIC`, matching the exit code), `message`, `cause` (the lint report of an invalid file, clap's message of a usage error; absent when there is none), `suggested_fix` (what to run or change; absent when there is none), `exit_code` and `transience` (`transient` when rerunning differently can clear it, as `CONSENT_REFUSED`; else `permanent`); stderr holds only text meant for a person, such as the diff of a refused write. Under any other format an error is a line on stderr, `bar <command>: <message>`, the fix on the next line.
 
 Results under `--format json`: `bar init` `{path, preset, written}` (`written` is false when the config was that preset already); `bar install` `{settings, written, backup}` (`written` is false when the file already said the same, `backup` the copy of the old file or `null`); `bar config import` `{path, written, backup}`; `bar config export` `{user, project, text, lines}` (see [bar config](#bar-config)), or `{path, written}` when it writes a file; `bar toggle` `{key, view}`; `bar update` `{check, status, current, channel, latest, age_secs, stale, newer, dev, upgrade}`, where `check` says whether the update check is on, `status` is `off`, `pending` (no result yet), `failed` or `ok`, `latest` the tag the check found, `age_secs` the age of that result, `stale` whether it is older than a day and `newer` the newer version; `latest`, `age_secs` and `newer` are `null` when there is none. `bar refresh <request>` is internal: render spawns it to fill the cache in the background.
+
+### Dry runs
+
+`--dry-run` on `bar init`, `bar install`, `bar toggle`, `bar config import`, `bar config export`, `bar prices update` and `bar web plugins` runs the command's checks and works out what it would write, prints that plan, writes nothing and exits 0. It asks nothing and needs no `--yes` (with `--yes` it still writes nothing). A refusal is reported as without `--dry-run`: an existing file is a conflict (4), an invalid import a usage error (2), an unknown toggle key a usage error (2). `bar prices update --dry-run` fetches nothing; `bar web plugins --dry-run` runs no plugin. The plan goes to stdout, `-o` or not.
+
+In text the plan is a line per file, `would create <path>`, `would update <path>` or `would remove <path>` (`(old file backed up)` when the old one is copied first; `bar toggle` adds `(<view now> -> <view after>)`), after the diff for `bar install` and `bar config import`, then `dry run: nothing written`; `nothing to change` when there is nothing to write. Under `--format json` or `yaml` it is one document:
+
+```json
+{
+  "dry_run": true,
+  "command": "config import",
+  "changes": [
+    {"action": "update", "path": "/home/me/.config/bar/bar.conf", "backup": true}
+  ],
+  "diff": "--- /home/me/.config/bar/bar.conf\n+++ ..."
+}
+```
+
+- `command`: the command, as in [command contracts](#command-contracts) without `bar`.
+- `changes`: the files it would write, in order; empty when nothing would change. `action` is `create`, `update` or `remove`; `backup` is true when the old file would be backed up first; `bar toggle` adds `current` and `proposed`, the view now and after.
+- The command's own fields: `bar init` `preset`; `bar install` `settings`, `diff` and `notes` (the lines it would print besides the diff; `changes` also lists bar's record of the status line it replaces, in the state dir); `bar config import` `diff`; `bar toggle` `key` and `view` (the view after); `bar prices update` `source` (the URL it would fetch).
 
 ### Command contracts
 

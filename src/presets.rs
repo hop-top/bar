@@ -60,11 +60,9 @@ impl std::fmt::Display for InitError {
     }
 }
 
-/// Writes preset `name` to the first config search path. A config that
-/// already holds exactly that preset is left as is ([`Init::Same`]); any
-/// other existing config is refused ([`InitError::Exists`]), as is a
-/// relative path (home unset or relative).
-pub fn init(
+/// What [`init`] would do, writing nothing: [`Init::Wrote`] with the
+/// path it would write, [`Init::Same`], or the refusal.
+pub fn plan(
     name: &str,
     env: &dyn Fn(&str) -> Option<String>,
     home: &Path,
@@ -84,6 +82,25 @@ pub fn init(
         }
         return Err(InitError::Exists(p));
     }
+    Ok(Init::Wrote(path))
+}
+
+/// Writes preset `name` to the first config search path. A config that
+/// already holds exactly that preset is left as is ([`Init::Same`]); any
+/// other existing config is refused ([`InitError::Exists`]), as is a
+/// relative path (home unset or relative).
+pub fn init(
+    name: &str,
+    env: &dyn Fn(&str) -> Option<String>,
+    home: &Path,
+    kit_dir: &Path,
+) -> Result<Init, InitError> {
+    let other = InitError::Other;
+    let path = match plan(name, env, home, kit_dir)? {
+        Init::Wrote(p) => p,
+        same => return Ok(same),
+    };
+    let body = get(name).unwrap_or_default();
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| other(format!("{}: {e}", dir.display())))?;
     }

@@ -8,6 +8,9 @@ use serde_json::{json, Value};
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 
+mod preview;
+pub use preview::{preview, Preview};
+
 /// Which Claude Code settings file to edit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scope {
