@@ -1,7 +1,9 @@
 #![cfg(unix)]
 //! A session without a proxy (`ANTHROPIC_BASE_URL` unset): with one
-//! instance configured, `#{account}` still links the `pick` action, while
-//! showing the signed-in account.
+//! instance configured, `#{account}` still links the action bound to it,
+//! while showing the signed-in account. The link follows the plugin's
+//! declaration: `next` is declared everywhere, `pick` only where a chooser
+//! exists (macOS), so a binding of it elsewhere draws no link.
 
 mod fake;
 
@@ -14,6 +16,7 @@ use hop_bar::placeholders::{lookup, Ctx};
 use hop_bar::plugin;
 use hop_bar::render::ColdRunner;
 use hop_bar::session::Session;
+use serde_json::Value;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::process::{Command, Stdio};
@@ -35,10 +38,12 @@ fn run(path: &str, arg: Option<&str>, stdin: &str) -> String {
     String::from_utf8(ch.wait_with_output().unwrap().stdout).unwrap()
 }
 
-#[test]
-fn account_links_the_pick_action_in_a_plain_session() {
+/// `#{account}` rendered with `action account cliproxyapi.<action>` bound,
+/// through the user's account lines, and whether the plugin declares
+/// `action` at all.
+fn account_bound_to(action: &str) -> (String, bool) {
     let server = Server::start(|_| ok("{}"));
-    let root = std::env::temp_dir().join(format!("cpa-plain-{}", std::process::id()));
+    let root = std::env::temp_dir().join(format!("cpa-plain-{}-{action}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let (bin, state, claude) = (root.join("bin"), root.join("state"), root.join("claude"));
     for d in [&bin, &state, &claude] {
@@ -78,19 +83,21 @@ fn account_links_the_pick_action_in_a_plain_session() {
     let dirs = plugin::plugin_dirs_with(None, Some(&bin.join("bar")));
     let found = plugin::find(&dirs, "cliproxyapi").unwrap();
     // account lines exist: they must not get in the way of the plain render
-    let cfg = parse(
-        "set account-source cliproxyapi\naction account cliproxyapi.pick\n\
-         account \"*@local.test\" mine 33\n",
-    )
+    let cfg = parse(&format!(
+        "set account-source cliproxyapi\naction account cliproxyapi.{action}\n\
+         account \"*@local.test\" mine 33\n"
+    ))
     .unwrap();
     let cache = Cache::with_exe(&state, "/nonexistent/bar".into());
     let (ikey, ijob) = plugin::info_job(&found);
     let Job::PluginInfo { path } = &ijob else {
         panic!()
     };
-    cache
-        .store(&ikey, &run(path, Some("--ext-info"), ""))
-        .unwrap();
+    let info = run(path, Some("--ext-info"), "");
+    let declared = serde_json::from_str::<Value>(&info).unwrap()["actions"]
+        .get(action)
+        .is_some();
+    cache.store(&ikey, &info).unwrap();
     let session = Session {
         model_id: "claude-opus-4".into(),
         ..Session::default()
@@ -126,10 +133,25 @@ fn account_links_the_pick_action_in_a_plain_session() {
         "mine",
         "the signed-in account, through the user's lines: {raw:?}"
     );
-    assert!(
-        raw.contains("bar://action/cliproxyapi.pick?"),
-        "no pick link in {raw:?}"
-    );
     assert_eq!(server.count(), 0, "nothing was asked of the proxy");
     let _ = std::fs::remove_dir_all(&root);
+    (raw, declared)
+}
+
+#[test]
+fn account_links_the_bound_action_in_a_plain_session() {
+    // declared everywhere: the lone instance's tokens link it
+    let (raw, declared) = account_bound_to("next");
+    assert!(declared, "the plugin declares next");
+    assert!(
+        raw.contains("bar://action/cliproxyapi.next?"),
+        "no next link in {raw:?}"
+    );
+    // declared only with a chooser: linked exactly where it is
+    let (raw, declared) = account_bound_to("pick");
+    assert_eq!(
+        raw.contains("bar://action/cliproxyapi.pick?"),
+        declared,
+        "pick link against its declaration in {raw:?}"
+    );
 }

@@ -74,6 +74,16 @@ fn ext_info_declares_the_protocol_extensions() {
         .filter_map(Value::as_str)
         .collect();
     assert!(caps.contains(&"placeholder") && caps.contains(&"check"));
+    // `pick` needs a chooser: declared on macOS only, so `bar check` can
+    // flag a binding of it elsewhere
+    assert_eq!(
+        v["actions"]["next"]["tokens"],
+        json!(["instance", "provider"])
+    );
+    assert_eq!(
+        v["actions"].get("pick").is_some(),
+        cfg!(target_os = "macos")
+    );
 }
 
 #[test]
