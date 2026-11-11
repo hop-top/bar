@@ -39,6 +39,34 @@ fn credits_ext_info_declares_account() {
     assert_eq!(out_json(&o)["options"]["account"], json!({"type":"string"}));
 }
 
+/// Console often takes 1.5 to 2 s; a reply cut short leaves the segment on
+/// its last value or empty. curl gets a few seconds, and the declared render
+/// limit leaves it room on top of the keychain read.
+#[test]
+fn credits_wait_for_a_slow_console_within_the_render_limit() {
+    let src = std::fs::read_to_string(script("bar-claude-credits")).unwrap();
+    let max_time: u64 = src
+        .split("curl -s -m ")
+        .nth(1)
+        .and_then(|r| r.split_whitespace().next())
+        .and_then(|n| n.parse().ok())
+        .expect("curl -m <seconds> in the script");
+    assert!(max_time >= 5, "curl -m {max_time}: too short for Console");
+    let o = Command::new(script("bar-claude-credits"))
+        .arg("--ext-info")
+        .output()
+        .unwrap();
+    let limit = out_json(&o)["timeout"]
+        .as_str()
+        .and_then(|t| t.strip_suffix('s'))
+        .and_then(|n| n.parse::<u64>().ok())
+        .unwrap_or(3);
+    assert!(
+        limit > max_time && limit <= 15,
+        "render limit {limit}s must exceed curl's {max_time}s and stay within 15s"
+    );
+}
+
 fn iso(ts: i64) -> String {
     let (days, rem) = (ts.div_euclid(DAY), ts.rem_euclid(DAY));
     let z = days + 719_468;
