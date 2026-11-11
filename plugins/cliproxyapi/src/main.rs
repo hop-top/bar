@@ -72,12 +72,11 @@ fn run() -> Output {
         .and_then(Origin::parse)
         .and_then(|o| cfg.instance_for(&o).cloned())
     else {
-        // a session without a proxy: with one instance configured, its
-        // tokens let `#{account}` link the pick action
-        return match url {
-            None => render::plain(&cfg),
-            Some(_) => Output::hidden(),
-        };
+        // a session without a proxy, or with one that is not configured:
+        // nothing to show and no tokens, so `#{account}` keeps the
+        // signed-in account unlinked (switching the proxy would not change
+        // this session's account)
+        return Output::hidden();
     };
     let provider = match input.opt_str("provider") {
         Some(p @ ("claude" | "codex")) => p,

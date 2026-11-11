@@ -405,24 +405,6 @@ pub fn items(s: &Snapshot, provider: &str, o: &Opts, instance: &str, now: i64) -
         .collect()
 }
 
-/// The output for a session that does not use a proxy: nothing drawn, but
-/// with exactly one configured instance (that reads Claude) the tokens its
-/// `pick` and `next` actions take, so `#{account}` can link them. No
-/// `account`: `#{account}` keeps showing the signed-in account.
-pub fn plain(cfg: &crate::config::Config) -> Output {
-    let mut out = Output::hidden();
-    if let [inst] = cfg.instances.as_slice() {
-        if inst.providers.iter().any(|p| p == "claude") {
-            out.tokens.insert("provider".into(), "claude".into());
-            out.tokens.insert(
-                "instance".into(),
-                crate::switch::instance_id(&inst.origin.to_string()),
-            );
-        }
-    }
-    out.finish()
-}
-
 /// The render output: one item per account, the pool's `usage` and, when
 /// the proxy's preference is certain, `account`. Nothing is drawn when the
 /// proxy is off or no account has data, but `usage` and `account` still
@@ -1025,30 +1007,5 @@ mod tests {
         );
         assert_eq!(o.items[0].label_color, None);
         assert_eq!(o.account.unwrap().color, None);
-    }
-
-    #[test]
-    fn a_session_without_a_proxy_offers_the_tokens_of_a_lone_instance() {
-        use crate::config;
-        let k = config::abs("/k");
-        let conf = |text: &str| config::parse(text, None);
-        let one = conf(&format!("instance http://127.0.0.1:8317\n key-file {k}\n"));
-        let o = plain(&one);
-        assert_eq!(o.text.as_deref(), Some(""));
-        assert!(o.account.is_none() && o.items.is_empty());
-        assert_eq!(o.tokens["provider"], "claude");
-        assert_eq!(
-            o.tokens["instance"],
-            crate::switch::instance_id(&one.instances[0].origin.to_string())
-        );
-        let two = conf(&format!(
-            "instance http://127.0.0.1:8317\n key-file {k}\ninstance http://127.0.0.1:8318\n key-file {k}\n"
-        ));
-        assert!(plain(&two).tokens.is_empty(), "which one would it be?");
-        assert!(plain(&conf("")).tokens.is_empty());
-        let codex = conf(&format!(
-            "instance http://127.0.0.1:8317\n key-file {k}\n providers codex\n"
-        ));
-        assert!(plain(&codex).tokens.is_empty(), "no Claude to pick for");
     }
 }
