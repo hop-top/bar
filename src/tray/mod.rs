@@ -2,10 +2,11 @@
 //! snapshot the tray reads (the view toggles, the last action, the
 //! session counts and the granted plugins' menus) and writes it to the
 //! state dir; `run` runs one item of that snapshot. The tray never
-//! computes any of it. `install`, `process` and `agent` set the tray up,
-//! start, stop and report on it.
+//! computes any of it. `install`, `process`, `agent` (macOS) and
+//! `agent_windows` set the tray up, start, stop and report on it.
 
 pub mod agent;
+pub mod agent_windows;
 pub mod install;
 pub mod linux;
 mod plugins;

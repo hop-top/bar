@@ -55,7 +55,7 @@ pub const HANDLER_ENV: [&str; 11] = [
 
 /// Whether `name` is one of [`HANDLER_ENV`]; Windows names are stored
 /// in any case (`Path`, `SystemRoot`).
-fn handler_var(name: &str) -> bool {
+pub fn handler_var(name: &str) -> bool {
     HANDLER_ENV.iter().any(|h| {
         if cfg!(windows) {
             h.eq_ignore_ascii_case(name)

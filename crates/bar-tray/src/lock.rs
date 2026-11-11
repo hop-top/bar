@@ -1,15 +1,22 @@
 //! One tray per state dir: `--lock <file>` takes an exclusive lock on the
-//! file for the life of the process and writes its pid there, so
-//! `bar tray status` and `bar tray stop` can find it. The lock goes with
-//! the process, however it ends, so a stale file never blocks a start.
+//! file for the life of the process and writes its pid there and in
+//! `tray.pid` beside it (Windows keeps a locked file unreadable to other
+//! processes), so `bar tray status` and `bar tray stop` can find it. The
+//! lock goes with the process, however it ends, so a stale file never
+//! blocks a start.
 
 use std::fs::{File, OpenOptions, TryLockError};
 use std::io::Write;
 use std::path::Path;
 
-/// Locks `path` (created 0600 when missing) and writes this pid into it;
-/// `Ok(None)` when another process holds the lock. Keep the file open:
-/// dropping it releases the lock.
+/// The pid file beside the lock `path`.
+pub fn pid_path(path: &Path) -> std::path::PathBuf {
+    path.with_file_name("tray.pid")
+}
+
+/// Locks `path` (created 0600 when missing) and writes this pid into it
+/// and into [`pid_path`]; `Ok(None)` when another process holds the
+/// lock. Keep the file open: dropping it releases the lock.
 pub fn acquire(path: &Path) -> std::io::Result<Option<File>> {
     if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
         std::fs::create_dir_all(dir)?;
@@ -28,7 +35,17 @@ pub fn acquire(path: &Path) -> std::io::Result<Option<File>> {
     f.set_len(0)?;
     writeln!(f, "{}", std::process::id())?;
     f.flush()?;
+    write_pid(&pid_path(path))?;
     Ok(Some(f))
+}
+
+/// Replaces the pid file (0600 when new) with this pid.
+fn write_pid(path: &Path) -> std::io::Result<()> {
+    let mut o = OpenOptions::new();
+    o.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut o, 0o600);
+    writeln!(o.open(path)?, "{}", std::process::id())
 }
 
 #[cfg(test)]
@@ -49,12 +66,20 @@ mod tests {
             std::fs::read_to_string(&p).unwrap().trim(),
             std::process::id().to_string()
         );
+        let pid = pid_path(&p);
+        assert_eq!(pid, p.with_file_name("tray.pid"));
+        assert_eq!(
+            std::fs::read_to_string(&pid).unwrap(),
+            format!("{}\n", std::process::id())
+        );
+        std::fs::write(&pid, "1\n").unwrap();
         assert!(acquire(&p).unwrap().is_none(), "second is refused");
-        // a refused start leaves the owner's pid alone
+        // a refused start leaves the owner's pid alone, in both files
         assert_eq!(
             std::fs::read_to_string(&p).unwrap().trim(),
             std::process::id().to_string()
         );
+        assert_eq!(std::fs::read_to_string(&pid).unwrap(), "1\n");
         drop(first);
         assert!(acquire(&p).unwrap().is_some(), "free again once dropped");
         let _ = std::fs::remove_dir_all(p.parent().unwrap().parent().unwrap());
@@ -65,11 +90,14 @@ mod tests {
         let p = tmp("stale");
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(&p, "999999999\nleftover\n").unwrap();
+        std::fs::write(pid_path(&p), "999999999\nleftover\n").unwrap();
         let _held = acquire(&p).unwrap().unwrap();
-        assert_eq!(
-            std::fs::read_to_string(&p).unwrap(),
-            format!("{}\n", std::process::id())
-        );
+        for f in [p.clone(), pid_path(&p)] {
+            assert_eq!(
+                std::fs::read_to_string(&f).unwrap(),
+                format!("{}\n", std::process::id())
+            );
+        }
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;

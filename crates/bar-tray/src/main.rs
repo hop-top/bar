@@ -1,11 +1,14 @@
-//! `bar-tray [--snapshot <file>] [--bar <path>] [--poll <seconds>] [--lock <file>] [--print]`
+//! `bar-tray [--snapshot <file>] [--bar <path>] [--poll <seconds>] [--lock <file>] [--dirs <file>] [--print] [--backend]`
 //!
 //! Shows bar's menu in the menu bar or notification area. The menu comes
 //! from `bar tray state --json` (`bar` beside this binary, or `--bar`),
 //! or from a snapshot file with `--snapshot`, for showing a menu without
 //! `bar`. `--print` prints the menu once instead of showing it. With
 //! `--lock`, a tray that finds the file locked by another one exits 0
-//! at once (`bar tray install` and `bar tray start` pass it).
+//! at once (`bar tray install` and `bar tray start` pass it). `--dirs`
+//! names the `tray-dirs.json` install wrote: its `bar`, the lock in its
+//! state dir and its variables, unless `--bar` or `--lock` say otherwise
+//! (the Windows logon command, which cannot set variables, passes it).
 //! `--backend` prints the tray backend this build has and exits, 1 when
 //! it has none (Linux without the `linux-sni` feature).
 
@@ -20,7 +23,7 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 const USAGE: &str =
-    "usage: bar-tray [--snapshot <file>] [--bar <path>] [--poll <seconds>] [--lock <file>] [--print] [--backend]";
+    "usage: bar-tray [--snapshot <file>] [--bar <path>] [--poll <seconds>] [--lock <file>] [--dirs <file>] [--print] [--backend]";
 /// Seconds between idle polls unless `--poll` says otherwise.
 const DEFAULT_POLL: u64 = 30;
 
@@ -30,6 +33,7 @@ struct Args {
     bar: Option<PathBuf>,
     poll: Option<u64>,
     lock: Option<PathBuf>,
+    dirs: Option<PathBuf>,
     print: bool,
     backend: bool,
 }
@@ -52,11 +56,25 @@ fn parse(argv: impl IntoIterator<Item = String>) -> Result<Args, String> {
                 );
             }
             "--lock" => a.lock = Some(PathBuf::from(value("--lock")?)),
+            "--dirs" => a.dirs = Some(PathBuf::from(value("--dirs")?)),
             "--print" => a.print = true,
             "--backend" => a.backend = true,
             other => return Err(format!("unknown argument `{other}`")),
         }
     }
+    Ok(a)
+}
+
+/// Fills `--bar` and `--lock` from the record `--dirs` names and takes
+/// on its variables; explicit flags win.
+fn with_record(mut a: Args) -> Result<Args, String> {
+    let Some(path) = &a.dirs else {
+        return Ok(a);
+    };
+    let r = bar_tray::record::read(path)?;
+    r.apply_env();
+    a.bar = a.bar.or_else(|| Some(r.bar.clone()));
+    a.lock = a.lock.or_else(|| Some(r.lock()));
     Ok(a)
 }
 
@@ -71,6 +89,14 @@ fn main() -> ExitCode {
     if args.backend {
         return backend();
     }
+    // before any thread: the record's variables become this process's
+    let args = match with_record(args) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("bar-tray: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
     // `bar` is needed for clicks, and for the snapshot without `--snapshot`
     let bar = match (&args.snapshot, &args.bar) {
         (Some(_), None) => None,
@@ -238,6 +264,8 @@ mod tests {
             "45",
             "--lock",
             "/s/tray.lock",
+            "--dirs",
+            "/s/tray-dirs.json",
             "--print",
         ])
         .unwrap();
@@ -248,12 +276,14 @@ mod tests {
                 bar: Some("/x/bar".into()),
                 poll: Some(45),
                 lock: Some("/s/tray.lock".into()),
+                dirs: Some("/s/tray-dirs.json".into()),
                 print: true,
                 backend: false,
             }
         );
         assert!(args(&["--backend"]).unwrap().backend);
         assert_eq!(args(&["--poll"]).unwrap_err(), "--poll needs a value");
+        assert_eq!(args(&["--dirs"]).unwrap_err(), "--dirs needs a value");
         assert_eq!(args(&["--lock"]).unwrap_err(), "--lock needs a value");
         assert_eq!(
             args(&["--poll", "5"]).unwrap_err(),
@@ -261,6 +291,40 @@ mod tests {
         );
         assert!(args(&["--poll", "x"]).is_err());
         assert_eq!(args(&["s.json"]).unwrap_err(), "unknown argument `s.json`");
+    }
+
+    #[test]
+    fn record_fills_bar_and_lock_unless_given() {
+        let d = std::env::temp_dir().join(format!("bar-tray-main-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let rec = d.join("tray-dirs.json");
+        std::fs::write(&rec, r#"{"bar":"/opt/bar","state_dir":"/s","env":{}}"#).unwrap();
+        let a = with_record(Args {
+            dirs: Some(rec.clone()),
+            ..Args::default()
+        })
+        .unwrap();
+        assert_eq!(a.bar, Some("/opt/bar".into()));
+        assert_eq!(a.lock, Some("/s/tray.lock".into()));
+        let a = with_record(Args {
+            dirs: Some(rec.clone()),
+            bar: Some("/x/bar".into()),
+            lock: Some("/x/l".into()),
+            ..Args::default()
+        })
+        .unwrap();
+        assert_eq!(
+            (a.bar, a.lock),
+            (Some("/x/bar".into()), Some("/x/l".into()))
+        );
+        assert_eq!(with_record(Args::default()).unwrap(), Args::default());
+        let missing = d.join("none.json");
+        assert!(with_record(Args {
+            dirs: Some(missing),
+            ..Args::default()
+        })
+        .is_err());
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

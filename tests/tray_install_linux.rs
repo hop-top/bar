@@ -81,6 +81,7 @@ fn layout(t: &Tmp) -> Layout {
         agents: None,
         uid: Some(1000),
         xdg: Some(dirs(t, None)),
+        system_dir: None,
     }
 }
 
