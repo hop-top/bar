@@ -35,8 +35,8 @@
 //! | `poll` | integer or absent | seconds between the tray's idle polls, 10..=600 (`set tray-poll`); out of range or not an integer is dropped with a warning. `bar-tray --poll` wins over it |
 //! | `last_action` | object or absent | `{at, ok, note}` from the last action: `at` Unix seconds, `ok` bool, `note` text (may be empty) |
 //! | `sessions` | object or absent | `{waiting, done}` counts of Claude Code sessions |
-//! | `views` | array | status-line view toggles the tray may flip with `bar toggle <key>`; empty unless the user set `tray-views on`. `key` `[a-z0-9._-]` 1..=32, `label`, `on` |
-//! | `plugins` | array | at most 16, in menu order; `name` `[a-z0-9_-]` 1..=32, unique; `label` optional display name |
+//! | `views` | array | status-line view toggles the tray may flip with `bar toggle <key>`; empty unless the user set `tray-views on`. `key` `[A-Za-z0-9._-]` 1..=64, `label`, `on` |
+//! | `plugins` | array | at most 16, in menu order; `name` `[A-Za-z0-9_-]` 1..=64 (what a `tray` line takes), unique; `label` optional display name |
 //! | `plugins[].groups` | array | at most 16 per plugin, in menu order; `id` unique within the plugin |
 //! | `groups[].kind` | string | `radio` (one checked: a picker, shown as a submenu), `check` (toggles), `buttons` (one-shot actions), `info` (disabled rows). A group with another kind is dropped, not refused |
 //! | `groups[].label` | string | submenu title for `radio`; informational otherwise |
@@ -311,8 +311,15 @@ fn valid(s: &str, max: usize, ok: impl Fn(u8) -> bool) -> bool {
     (1..=max).contains(&s.len()) && s.bytes().all(ok)
 }
 
-/// Plugin names and actions: `[a-z0-9_-]`.
+/// Plugin names: `[A-Za-z0-9_-]`, 1 to 64, as a `tray` line takes them.
 pub fn valid_name(s: &str) -> bool {
+    valid(s, 64, |b| {
+        b.is_ascii_alphanumeric() || b == b'-' || b == b'_'
+    })
+}
+
+/// Action names: `[a-z0-9_-]`, 1 to 32.
+pub fn valid_action(s: &str) -> bool {
     valid(s, 32, |b| {
         b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_'
     })
@@ -326,10 +333,10 @@ pub fn valid_id(s: &str) -> bool {
     })
 }
 
-/// View keys: `[a-z0-9._-]`, as `bar toggle` takes them.
+/// View keys: `[A-Za-z0-9._-]`, 1 to 64: `5h`, `7d` or a plugin name.
 fn valid_key(s: &str) -> bool {
-    valid(s, 32, |b| {
-        b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'-' | b'_')
+    valid(s, 64, |b| {
+        b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_')
     })
 }
 
@@ -413,7 +420,7 @@ fn plugin(
 ) -> Result<Plugin, Error> {
     let path = format!("plugins[{}]", p.name);
     if !valid_name(&p.name) {
-        return err(path, "name: expected [a-z0-9_-], 1 to 32");
+        return err(path, "name: expected [A-Za-z0-9_-], 1 to 64");
     }
     if !names.insert(p.name.clone()) {
         return err(path, "duplicate plugin name");
@@ -479,7 +486,7 @@ fn items(
             return err(path, "duplicate item id");
         }
         if let Some(a) = &it.action {
-            if !valid_name(a) {
+            if !valid_action(a) {
                 return err(path, "action: expected [a-z0-9_-], 1 to 32");
             }
         }

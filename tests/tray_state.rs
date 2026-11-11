@@ -358,13 +358,16 @@ fn a_warm_run_fits_the_budget() {
 
 #[test]
 fn granted_names_keep_order_and_drop_what_the_tray_refuses() {
-    let c = cfg("tray b.use\ntray a\ntray b\ntray Bad\ntray a.reset\n");
-    assert_eq!(tray::granted_names(&c), ["b", "a"]);
-    assert!(tray::valid_name("a-b_1"));
-    for bad in ["", "A", "a.b", "a b"] {
+    let c = cfg("tray b.use\ntray a\ntray b\ntray My-Plugin\ntray a.reset\n");
+    assert_eq!(tray::granted_names(&c), ["b", "a", "My-Plugin"]);
+    // the tray takes every name a `tray` line takes
+    for ok in ["a-b_1", "A", "MyPlugin", &"a".repeat(64)] {
+        assert!(tray::valid_name(ok), "{ok:?}");
+        assert!(cfg(&format!("tray {ok}\n")).tray.len() == 1, "{ok:?}");
+    }
+    for bad in ["", "a.b", "a b", &"a".repeat(65)] {
         assert!(!tray::valid_name(bad), "{bad:?}");
     }
-    assert!(!tray::valid_name(&"a".repeat(33)));
 }
 
 #[test]
