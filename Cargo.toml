@@ -12,7 +12,7 @@ name = "bar"
 path = "src/main.rs"
 
 [workspace]
-members = [".", "crates/bar-plugin", "plugins/cliproxyapi", "plugins/routellm"]
+members = [".", "crates/bar-plugin", "crates/bar-tray", "plugins/cliproxyapi", "plugins/routellm"]
 resolver = "2"
 
 # shared by every member through `[lints] workspace = true`
