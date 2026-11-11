@@ -5,10 +5,11 @@ title: Set up and change the config from a script, without a terminal
 binary: bar
 intent: |
   An agent sets bar up for a user from a script, with no terminal to answer
-  prompts. It reads what bar sees as JSON, writes a preset, tries to
-  overwrite it, imports a broken file and a good one, previews before
-  writing, repeats each write, adds bar to a project's Claude Code
-  settings, and recovers from its own mistakes from what bar prints.
+  prompts. It reads what bar sees as JSON, writes a preset, repeats it,
+  tries to overwrite it with another, imports a broken file and a good
+  one, previews before writing, repeats each write, adds bar to a
+  project's Claude Code settings, and recovers from its own mistakes
+  from what bar prints.
 preconditions:
   - bar binary is on PATH
   - no bar config yet
@@ -32,10 +33,22 @@ steps:
     capture: [exit_code, stdout]
   - id: init_again
     intent: |
-      Run the same init again. bar refuses to overwrite the config it
-      just wrote and says so.
+      Run the same init again. The config is that preset already, so bar
+      writes nothing, says so and succeeds.
     invoke: ["bar", "init", "--preset", "minimal"]
     capture: [exit_code, stderr]
+  - id: init_other
+    intent: |
+      Init a different preset over the config just written. bar refuses
+      to overwrite it and says so.
+    invoke: ["bar", "init", "--preset", "full"]
+    capture: [exit_code, stderr]
+  - id: init_other_json
+    intent: |
+      Run that init again asking for JSON, so a script can read why it was
+      refused from a structured error instead of parsing a sentence.
+    invoke: ["bar", "init", "--preset", "full", "--format", "json"]
+    capture: [exit_code, stdout, stderr]
   - id: check_config
     intent: |
       Read the report again: it names the config file and finds no issues.
@@ -119,8 +132,8 @@ steps:
     capture: [exit_code, stdout]
   - id: init_again_json
     intent: |
-      Run init once more asking for JSON, so a script can read why it was
-      refused from a structured error instead of parsing a sentence.
+      Run the first init once more asking for JSON, after the import
+      replaced the config: bar refuses with a structured error.
     invoke: ["bar", "init", "--preset", "minimal", "--format", "json"]
     capture: [exit_code, stdout, stderr]
   - id: unknown_command_json

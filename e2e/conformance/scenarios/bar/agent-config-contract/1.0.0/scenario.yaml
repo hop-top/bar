@@ -11,7 +11,7 @@ tier: 3
 story_ref:
   story_id: bar.agent.config-contract
   story_path: e2e/stories/agent-config-contract.yaml
-  content_hash: "sha256:aa0978f0687fa0e9283c961d227917194c03e5e9fb85b5ec468b0b649389e8e0"
+  content_hash: "sha256:2a23ae83730997c46e75be8fd07587ea26271612158caad03a7209a6393cd68f"
 steps:
   - id: check_none
     invoke: ["bar", "check", "--format", "json"]
@@ -21,6 +21,10 @@ steps:
     invoke: ["bar", "init", "--preset", "minimal"]
   - id: init_again
     invoke: ["bar", "init", "--preset", "minimal"]
+  - id: init_other
+    invoke: ["bar", "init", "--preset", "full"]
+  - id: init_other_json
+    invoke: ["bar", "init", "--preset", "full", "--format", "json"]
   - id: check_config
     invoke: ["bar", "check", "--format", "json"]
   - id: import_broken
@@ -146,6 +150,11 @@ assertions:
   - id: init-never-overwrites
     kind: stderr_contains
     on: init_again
+    factor: 5
+    value: "exists; not overwritten"
+  - id: init-other-never-overwrites
+    kind: stderr_contains
+    on: init_other
     factor: 5
     value: "exists; not overwritten"
   - id: import-broken-writes-nothing
@@ -295,7 +304,7 @@ assertions:
   # F3: --format json is honoured by every command, errors included
   - id: init-error-json
     kind: output_field_present
-    on: init_again_json
+    on: init_other_json
     factor: 3
     path: code
     parse: json
@@ -371,7 +380,7 @@ assertions:
   # F11: kit's exit-code classes, not 2 for every refusal
   - id: init-exists-conflict
     kind: exit_code_class
-    on: init_again
+    on: init_other
     factor: 11
     classes: [CONFLICT]
   - id: import-preview-consent-refused
