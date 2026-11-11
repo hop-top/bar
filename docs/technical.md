@@ -87,7 +87,7 @@ Directory links (`src/placeholders/open.rs`, option `open` on `cwd`, `root`, `re
 
 ## Platforms
 
-Unix (macOS, Linux) and Windows; the crate fails to compile elsewhere. Every OS difference lives in `src/platform/` (`unix.rs`, `windows.rs`, same function set): home dir, private dirs and files, file identity and mtime, executables and `PATHEXT`, the shell for `%command%`, child process groups and tree kill, detached spawn, process liveness, local zone offset. macOS and Linux build and pass `make check`.
+Unix (macOS, Linux) and Windows; the crate fails to compile elsewhere. Every OS difference lives in `src/platform/` (`unix.rs`, `windows.rs`, same function set): home dir, private dirs and files, file identity and mtime, canonical paths (`platform::canonicalize`: no `\\?\` prefix on Windows, so a resolved path is shown, hashed and passed to children as `C:\…`), executables and `PATHEXT`, the shell for `%command%`, child process groups and tree kill, detached spawn, process liveness, local zone offset. macOS and Linux build and pass `make check`.
 
 FFI: on Unix the `libc` crate, two `unsafe` sites (`localtime_r`, `kill(pid, 0)`); on Windows `windows-sys` (kernel32: `GetStdHandle`/`SetHandleInformation`, `OpenProcess`/`GetExitCodeProcess`, the time-zone conversions).
 
