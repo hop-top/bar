@@ -29,16 +29,24 @@ cp "$tmp/fake/bar" "$tmp/fake/bar-cliproxyapi"
 cp "$tmp/fake/bar" "$tmp/fake/bar-cliproxyapi.exe"
 cp "$tmp/fake/bar" "$tmp/fake/bar-routellm"
 cp "$tmp/fake/bar" "$tmp/fake/bar-routellm.exe"
-chmod 755 "$tmp/fake/bar" "$tmp/fake/bar-cliproxyapi" "$tmp/fake/bar-routellm"
+cp "$tmp/fake/bar" "$tmp/fake/bar-tray"
+cp "$tmp/fake/bar" "$tmp/fake/bar-tray.exe"
+chmod 755 "$tmp/fake/bar" "$tmp/fake/bar-cliproxyapi" "$tmp/fake/bar-routellm" "$tmp/fake/bar-tray"
 sha() { python3 -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest(), sys.argv[1].rsplit("/",1)[-1])' "$1"; }
-for t in aarch64-apple-darwin x86_64-apple-darwin aarch64-unknown-linux-musl x86_64-unknown-linux-musl; do
+# bar-tray ships in the macOS and Windows archives only
+for t in aarch64-apple-darwin x86_64-apple-darwin; do
+  a="$tmp/assets/bar-$version-$t.tar.gz"
+  tar -czf "$a" -C "$tmp/fake" bar bar-cliproxyapi bar-routellm bar-tray
+  sha "$a" > "$a.sha256"
+done
+for t in aarch64-unknown-linux-musl x86_64-unknown-linux-musl; do
   a="$tmp/assets/bar-$version-$t.tar.gz"
   tar -czf "$a" -C "$tmp/fake" bar bar-cliproxyapi bar-routellm
   sha "$a" > "$a.sha256"
 done
 for t in aarch64-pc-windows-msvc x86_64-pc-windows-msvc; do
   a="$tmp/assets/bar-$version-$t.zip"
-  python3 -c 'import sys,zipfile;z=zipfile.ZipFile(sys.argv[1],"w");[z.write(sys.argv[2]+"/"+n,n) for n in ("bar.exe","bar-cliproxyapi.exe","bar-routellm.exe")];z.close()' "$a" "$tmp/fake"
+  python3 -c 'import sys,zipfile;z=zipfile.ZipFile(sys.argv[1],"w");[z.write(sys.argv[2]+"/"+n,n) for n in ("bar.exe","bar-cliproxyapi.exe","bar-routellm.exe","bar-tray.exe")];z.close()' "$a" "$tmp/fake"
   sha "$a" > "$a.sha256"
 done
 
@@ -68,6 +76,23 @@ tar -czf "$tmp/norl/bar-$version-x86_64-unknown-linux-musl.tar.gz" -C "$tmp/fake
 sha "$tmp/norl/bar-$version-x86_64-unknown-linux-musl.tar.gz" > "$tmp/norl/bar-$version-x86_64-unknown-linux-musl.tar.gz.sha256"
 if "$root/scripts/npm-stage" "$version" "$tmp/norl" "$tmp/norl-stage" 2>/dev/null; then
   fail "an archive without bar-routellm was not refused"
+fi
+# A macOS archive without bar-tray is refused.
+mkdir -p "$tmp/notray"
+cp "$tmp/assets/"* "$tmp/notray/"
+tar -czf "$tmp/notray/bar-$version-aarch64-apple-darwin.tar.gz" -C "$tmp/fake" bar bar-cliproxyapi bar-routellm
+sha "$tmp/notray/bar-$version-aarch64-apple-darwin.tar.gz" > "$tmp/notray/bar-$version-aarch64-apple-darwin.tar.gz.sha256"
+if "$root/scripts/npm-stage" "$version" "$tmp/notray" "$tmp/notray-stage" 2>/dev/null; then
+  fail "a macOS archive without bar-tray was not refused"
+fi
+# A Windows archive without bar-tray.exe is refused.
+mkdir -p "$tmp/notraywin"
+cp "$tmp/assets/"* "$tmp/notraywin/"
+w="$tmp/notraywin/bar-$version-x86_64-pc-windows-msvc.zip"
+python3 -c 'import sys,zipfile;z=zipfile.ZipFile(sys.argv[1],"w");[z.write(sys.argv[2]+"/"+n,n) for n in ("bar.exe","bar-cliproxyapi.exe","bar-routellm.exe")];z.close()' "$w" "$tmp/fake"
+sha "$w" > "$w.sha256"
+if "$root/scripts/npm-stage" "$version" "$tmp/notraywin" "$tmp/notraywin-stage" 2>/dev/null; then
+  fail "a Windows archive without bar-tray.exe was not refused"
 fi
 # A version that differs from the package.json files is refused.
 if "$root/scripts/npm-stage" "0.0.0-x" "$tmp/assets" "$tmp/bad-stage2" 2>/dev/null; then
@@ -99,6 +124,17 @@ for p in win32-arm64 win32-x64; do
     || fail "bar-$p: bin/bar-cliproxyapi.exe not packed"
   grep -qx 'package/bin/bar-routellm.exe' <<<"$(tar -tzf "$tmp/packs/hop-top-bar-$p-$version.tgz")" \
     || fail "bar-$p: bin/bar-routellm.exe not packed"
+  grep -qx 'package/bin/bar-tray.exe' <<<"$(tar -tzf "$tmp/packs/hop-top-bar-$p-$version.tgz")" \
+    || fail "bar-$p: bin/bar-tray.exe not packed"
+done
+for p in darwin-arm64 darwin-x64; do
+  grep -Eq '^-rwx.* package/bin/bar-tray$' <<<"$(tar -tzvf "$tmp/packs/hop-top-bar-$p-$version.tgz")" \
+    || fail "bar-$p: bin/bar-tray is not packed executable"
+done
+for p in linux-arm64 linux-x64; do
+  if grep -q 'bar-tray' <<<"$(tar -tzf "$tmp/packs/hop-top-bar-$p-$version.tgz")"; then
+    fail "bar-$p: bar-tray packed, Linux archives do not ship it"
+  fi
 done
 grep -qx 'package/bin/bar.js' <<<"$(tar -tzf "$tmp/packs/hop-top-bar-$version.tgz")" \
   || fail "launcher: bin/bar.js not packed"

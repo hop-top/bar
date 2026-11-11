@@ -1,7 +1,7 @@
 {
   "name": "@hop-top/bar-darwin-arm64",
   "version": "0.1.0-beta.0",
-  "description": "bar, bar-cliproxyapi and bar-routellm binaries for darwin arm64 (aarch64-apple-darwin), installed by @hop-top/bar",
+  "description": "bar, bar-cliproxyapi, bar-routellm and bar-tray binaries for darwin arm64 (aarch64-apple-darwin), installed by @hop-top/bar",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -17,7 +17,8 @@
   "files": [
     "bin/bar",
     "bin/bar-cliproxyapi",
-    "bin/bar-routellm"
+    "bin/bar-routellm",
+    "bin/bar-tray"
   ],
   "preferUnplugged": true,
   "publishConfig": {

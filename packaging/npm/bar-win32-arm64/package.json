@@ -1,7 +1,7 @@
 {
   "name": "@hop-top/bar-win32-arm64",
   "version": "0.1.0-beta.0",
-  "description": "bar, bar-cliproxyapi and bar-routellm binaries for win32 arm64 (aarch64-pc-windows-msvc), installed by @hop-top/bar",
+  "description": "bar, bar-cliproxyapi, bar-routellm and bar-tray binaries for win32 arm64 (aarch64-pc-windows-msvc), installed by @hop-top/bar",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -17,7 +17,8 @@
   "files": [
     "bin/bar.exe",
     "bin/bar-cliproxyapi.exe",
-    "bin/bar-routellm.exe"
+    "bin/bar-routellm.exe",
+    "bin/bar-tray.exe"
   ],
   "preferUnplugged": true,
   "publishConfig": {
