@@ -54,6 +54,7 @@ fn layout(t: &Tmp) -> Layout {
         agents: Some(t.path().join("home/Library/LaunchAgents")),
         uid: Some(501),
         xdg: None,
+        system_dir: None,
     }
 }
 

@@ -8,7 +8,7 @@ use windows_sys::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS, ERROR_S
 use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
 use windows_sys::Win32::System::Threading::{CreateMutexW, GetCurrentThreadId};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    DispatchMessageW, GetMessageW, PostThreadMessageW, TranslateMessage, MSG, WM_APP,
+    DispatchMessageW, GetMessageW, PostThreadMessageW, TranslateMessage, MSG, WM_APP, WM_CLOSE,
 };
 
 fn wide(s: &str) -> Vec<u16> {
@@ -50,7 +50,10 @@ pub fn wake(tid: u32) {
 }
 
 /// The message pump: dispatches window messages, calls `on_wake` for every
-/// [`wake`] and stops when it returns `false` or the queue closes.
+/// [`wake`] and stops when it returns `false`, the queue closes or a
+/// window of the tray is asked to close (`taskkill` without `/F`, as
+/// `bar tray stop` sends it): returning lets the icon be removed instead
+/// of lingering after a forced end.
 pub fn pump(mut on_wake: impl FnMut() -> bool) {
     // SAFETY: `msg` is zeroed plain data the calls fill in and read back on
     // this thread only.
@@ -62,6 +65,9 @@ pub fn pump(mut on_wake: impl FnMut() -> bool) {
                     break;
                 }
                 continue;
+            }
+            if msg.message == WM_CLOSE {
+                break;
             }
             TranslateMessage(&msg);
             DispatchMessageW(&msg);

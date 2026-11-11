@@ -3,12 +3,13 @@
 //! `tray-installed` marker, registers the Claude Code hooks the session
 //! rows read, prints `tray` lines to consider (the config is left alone)
 //! and sets up autostart: on macOS a LaunchAgent, loaded at once; on
-//! Linux an autostart entry or a systemd user unit (`linux`).
+//! Windows the `Run` value (see `agent_windows`), then the tray started;
+//! on Linux an autostart entry or a systemd user unit (`linux`).
 //! Independent of `bar click install`: either works without the other,
 //! and uninstalling one keeps the hooks while the other is installed.
 
 use super::process::{self, Layout, Sys};
-use super::{agent, linux, SNAPSHOT_FILE};
+use super::{agent, agent_windows, linux, SNAPSHOT_FILE};
 use crate::click::pointer::TRAY_MARKER;
 use crate::click::{settings, EnvVar, HandlerDirs};
 use crate::conf::Config;
@@ -232,26 +233,14 @@ pub fn install(
                 .uid
                 .ok_or_else(|| "no user id for launchctl".to_string())?,
         )),
+        (true, false, _) if cfg.layout.system_dir.is_some() => None,
         (true, false, _) if xdg.is_some() => None,
         (true, ..) => return Err(InstallError::Unsupported),
     };
-    if !cfg.tray.is_file() {
-        let msg = format!("no bar-tray at {}", cfg.tray.display());
-        if !o.dry_run {
-            return Err(InstallError::Failed(msg));
-        }
-        writeln!(out, "warning: {msg}").map_err(io)?;
-    } else if xdg.is_some() && !linux::has_backend(&cfg.tray, sys) {
-        // autostarting a tray that cannot show would only fail at login
-        let msg = linux::no_backend(&cfg.tray);
-        if o.autostart && !o.dry_run {
-            return Err(InstallError::Failed(format!(
-                "{msg}; --no-autostart installs without it"
-            )));
-        }
-        writeln!(out, "warning: {msg}").map_err(io)?;
-    }
+    let run_value = windows_autostart(cfg, o, macos)?;
+    check_tray(cfg, o, xdg.is_some(), sys, out)?;
     let state = &cfg.layout.state_dir;
+    let first = !state.join(TRAY_MARKER).is_file();
     // hooks already there (another install) stay that install's; a
     // reinstall keeps what the first one added
     let ours = added_hooks(state)
@@ -296,6 +285,12 @@ pub fn install(
             writeln!(out, "installed {}", path.display()).map_err(io)?;
         }
     }
+    if let Some(a) = &run_value {
+        a.install(&cfg.layout, o.dry_run, sys, out)?;
+        if first {
+            writeln!(out, "{}", agent_windows::OVERFLOW_HINT).map_err(io)?;
+        }
+    }
     if let Some(dirs) = xdg {
         let env = cfg.baked_env();
         let s = linux::Setup {
@@ -311,11 +306,63 @@ pub fn install(
     print_suggestions(config, out).map_err(io)?;
     if !o.dry_run {
         writeln!(out, "state dir {}", state.display()).map_err(io)?;
+        // every autostart kind starts the tray now
         if !o.autostart {
             writeln!(out, "start it with: bar tray start").map_err(io)?;
         }
     }
     Ok(())
+}
+
+/// Fails without `bar-tray` (a dry run warns), and on Linux without a
+/// tray backend in it when autostart is asked for: autostarting a tray
+/// that cannot show would only fail at login.
+fn check_tray(
+    cfg: &InstallCfg,
+    o: &InstallOpts,
+    on_linux: bool,
+    sys: &mut dyn Sys,
+    out: &mut dyn Write,
+) -> Result<(), InstallError> {
+    let msg = if !cfg.tray.is_file() {
+        let msg = format!("no bar-tray at {}", cfg.tray.display());
+        if !o.dry_run {
+            return Err(InstallError::Failed(msg));
+        }
+        msg
+    } else if on_linux && !linux::has_backend(&cfg.tray, sys) {
+        let msg = linux::no_backend(&cfg.tray);
+        if o.autostart && !o.dry_run {
+            return Err(InstallError::Failed(format!(
+                "{msg}; --no-autostart installs without it"
+            )));
+        }
+        msg
+    } else {
+        return Ok(());
+    };
+    writeln!(out, "warning: {msg}").map_err(|e| InstallError::Failed(e.to_string()))
+}
+
+/// The Windows `Run` value to set: with autostart, off macOS, when the
+/// layout has a system dir. Checked before anything is written.
+fn windows_autostart(
+    cfg: &InstallCfg,
+    o: &InstallOpts,
+    macos: bool,
+) -> Result<Option<agent_windows::Autostart>, InstallError> {
+    let Some(system) = cfg
+        .layout
+        .system_dir
+        .as_deref()
+        .filter(|_| o.autostart && !macos)
+    else {
+        return Ok(None);
+    };
+    let record = cfg.layout.state_dir.join(DIRS_FILE);
+    Ok(Some(agent_windows::Autostart::new(
+        system, &cfg.tray, &record,
+    )?))
 }
 
 /// Whether the tray install in `state` added the hooks.
@@ -354,9 +401,10 @@ fn remove_hooks(path: &Path, state: &Path, out: &mut dyn Write) -> Result<(), St
     .map_err(io)
 }
 
-/// Stops the tray, removes the LaunchAgent (macOS) or the unit, the
-/// autostart entry and the icon (Linux), the snapshot, the record, the
-/// lock and the marker, and the hooks when this install added them,
+/// Stops the tray, removes the LaunchAgent (macOS), the `Run` value
+/// (Windows) or the unit, the autostart entry and the icon (Linux), the
+/// snapshot, the record, the lock, the pid and the marker, and the hooks
+/// when this install added them,
 /// `bar click install` is not installed and `keep_hooks` is off.
 pub fn uninstall(
     l: &Layout,
@@ -371,10 +419,19 @@ pub fn uninstall(
     if let Some(p) = l.plist() {
         remove(&p, out)?;
     }
+    if let Some(system) = &l.system_dir {
+        agent_windows::remove(system, sys, out)?;
+    }
     if let Some(x) = &l.xdg {
         linux::uninstall(x, sys, out)?;
     }
-    for f in [SNAPSHOT_FILE, DIRS_FILE, process::LOCK_FILE, TRAY_MARKER] {
+    let files = [
+        SNAPSHOT_FILE,
+        DIRS_FILE,
+        process::LOCK_FILE,
+        process::PID_FILE,
+    ];
+    for f in files.into_iter().chain([TRAY_MARKER]) {
         remove(&state.join(f), out)?;
     }
     let io = |e: std::io::Error| e.to_string();

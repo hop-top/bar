@@ -32,8 +32,8 @@ pub enum TrayCmd {
         generation: Option<String>,
     },
     /// Set the tray up: record its dirs, register the Claude Code hooks,
-    /// start it at login (a LaunchAgent on macOS, an autostart entry or a
-    /// systemd user unit on Linux) and now.
+    /// start it at login (a LaunchAgent on macOS, the Run value on Windows,
+    /// an autostart entry or a systemd user unit on Linux) and now.
     Install {
         /// Print what would be written and run, change nothing.
         #[arg(long)]

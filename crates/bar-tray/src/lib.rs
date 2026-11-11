@@ -7,8 +7,10 @@
 //! click state machine (two-step confirmation, one action in flight).
 //! [`backend`] holds what a desktop backend needs and what is testable
 //! anywhere (the event loop's decisions, rows, icons, child processes),
-//! plus the per-OS backends. [`lock`] keeps one tray per state dir.
+//! plus the per-OS backends. [`lock`] keeps one tray per state dir;
+//! [`record`] reads what `bar tray install` recorded.
 
 pub mod backend;
 pub mod lock;
 pub mod model;
+pub mod record;

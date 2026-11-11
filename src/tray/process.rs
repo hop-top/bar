@@ -4,6 +4,8 @@
 //! runs, whatever the file holds. With the LaunchAgent installed, start
 //! and stop go through `launchctl`, so launchd does not restart a tray
 //! stopped on purpose; with the systemd user unit, through `systemctl`.
+//! Windows keeps a locked file unreadable to other processes, so the
+//! tray also writes its pid to `tray.pid`.
 
 use super::agent;
 use super::xdg::{self, UNIT};
@@ -15,15 +17,20 @@ use std::time::SystemTime;
 
 /// The single-instance lock a running tray holds.
 pub const LOCK_FILE: &str = "tray.lock";
+/// The running tray's pid, beside the lock (`bar-tray --lock`).
+pub const PID_FILE: &str = "tray.pid";
 
 /// Where things are: the state dir, the LaunchAgents dir (macOS), the
-/// user id launchd's GUI domain is named after and the XDG dirs (Linux).
+/// user id launchd's GUI domain is named after, the XDG dirs (Linux)
+/// and, on Windows, the system dir whose `reg.exe` and `taskkill.exe`
+/// autostart and stop use.
 #[derive(Debug, Clone)]
 pub struct Layout {
     pub state_dir: PathBuf,
     pub agents: Option<PathBuf>,
     pub uid: Option<u32>,
     pub xdg: Option<xdg::Dirs>,
+    pub system_dir: Option<PathBuf>,
 }
 
 impl Layout {
@@ -44,6 +51,7 @@ impl Layout {
             } else {
                 None
             },
+            system_dir: system_dir(),
         }
     }
 
@@ -71,6 +79,16 @@ impl Layout {
     }
 }
 
+#[cfg(windows)]
+fn system_dir() -> Option<PathBuf> {
+    Some(crate::platform::system_dir())
+}
+
+#[cfg(not(windows))]
+fn system_dir() -> Option<PathBuf> {
+    None
+}
+
 /// What starting and stopping need from the machine; tests record calls.
 pub trait Sys {
     /// Runs `cmd` to the end; fails on a spawn error or non-zero exit.
@@ -83,8 +101,22 @@ pub trait Sys {
 pub struct System;
 
 impl Sys for System {
+    /// Quiet: stdout is dropped (`reg` and `taskkill` report success
+    /// there), the first line of stderr joins the error.
     fn exec(&mut self, cmd: &[String]) -> Result<(), String> {
-        crate::click::exec(cmd)
+        use std::process::{Command, Stdio};
+        let mut c = Command::new(&cmd[0]);
+        c.args(&cmd[1..]).stdin(Stdio::null());
+        crate::platform::hide_window(&mut c);
+        let o = c.output().map_err(|e| e.to_string())?;
+        if o.status.success() {
+            return Ok(());
+        }
+        let err = String::from_utf8_lossy(&o.stderr);
+        Err(match err.lines().map(str::trim).find(|l| !l.is_empty()) {
+            Some(l) => format!("{}: {l}", o.status),
+            None => o.status.to_string(),
+        })
     }
 
     fn spawn(&mut self, cmd: &[String]) -> Result<u32, String> {
@@ -97,7 +129,30 @@ impl Sys for System {
         // its own process group: a Ctrl-C in this terminal does not reach it
         #[cfg(unix)]
         std::os::unix::process::CommandExt::process_group(&mut c, 0);
+        #[cfg(windows)]
+        return spawn_detached(c);
+        #[cfg(not(windows))]
         c.spawn().map(|ch| ch.id()).map_err(|e| e.to_string())
+    }
+}
+
+/// No console, its own process group and, when the job allows it, out
+/// of the caller's job object, so closing this terminal leaves it be.
+#[cfg(windows)]
+fn spawn_detached(mut c: std::process::Command) -> Result<u32, String> {
+    use std::os::windows::process::CommandExt;
+    const DETACHED_PROCESS: u32 = 0x0000_0008;
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+    const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+    let flags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP;
+    match c.creation_flags(flags | CREATE_BREAKAWAY_FROM_JOB).spawn() {
+        Ok(ch) => Ok(ch.id()),
+        // a job without breakaway rights refuses the flag
+        Err(_) => c
+            .creation_flags(flags)
+            .spawn()
+            .map(|ch| ch.id())
+            .map_err(|e| e.to_string()),
     }
 }
 
@@ -109,34 +164,49 @@ pub enum Running {
 }
 
 /// Probes the lock without creating the file: a free lock is taken and
-/// let go at once.
+/// let go at once. The pid comes from the lock file, else (Windows, where
+/// the holder's lock keeps others from reading it) from `tray.pid`.
 pub fn running(lock: &Path) -> Running {
     let Ok(f) = File::open(lock) else {
         return Running::No;
     };
+    let pid = |p: &Path| {
+        std::fs::read_to_string(p)
+            .ok()
+            .and_then(|s| s.lines().next()?.trim().parse().ok())
+    };
     match f.try_lock_shared() {
         Ok(()) => Running::No,
-        Err(TryLockError::WouldBlock) => Running::Yes(
-            std::fs::read_to_string(lock)
-                .ok()
-                .and_then(|s| s.lines().next()?.trim().parse().ok()),
-        ),
+        Err(TryLockError::WouldBlock) => {
+            Running::Yes(pid(lock).or_else(|| pid(&lock.with_file_name(PID_FILE))))
+        }
         // a lock that cannot be probed counts as free
         Err(TryLockError::Error(_)) => Running::No,
     }
 }
 
-fn kill(pid: u32) -> Vec<String> {
-    if cfg!(windows) {
-        vec!["taskkill".into(), "/PID".into(), pid.to_string()]
-    } else {
-        vec!["/bin/kill".into(), "-TERM".into(), pid.to_string()]
+/// `taskkill` asks the tray to close (it quits on `WM_CLOSE`), with
+/// `force` it ends it; elsewhere SIGTERM.
+fn kill(l: &Layout, pid: u32, force: bool) -> Vec<String> {
+    match &l.system_dir {
+        Some(sys) => {
+            let mut c = vec![
+                sys.join("taskkill.exe").display().to_string(),
+                "/PID".into(),
+                pid.to_string(),
+            ];
+            if force {
+                c.push("/F".into());
+            }
+            c
+        }
+        None => vec!["/bin/kill".into(), "-TERM".into(), pid.to_string()],
     }
 }
 
 /// Starts the tray unless one runs: through launchd when the LaunchAgent
-/// is installed (load it, or start it again when loaded), else `argv`
-/// in the background.
+/// is installed (load it, or start it again when loaded), through
+/// `systemctl --user` when the unit is, else `argv` in the background.
 pub fn start(
     l: &Layout,
     argv: &[String],
@@ -168,7 +238,8 @@ fn shown(pid: Option<u32>) -> String {
 
 /// Stops the tray: unloads the LaunchAgent when installed (it loads
 /// again at the next login) or stops the unit, then signals a tray still
-/// holding the lock.
+/// holding the lock: SIGTERM, or `taskkill` on Windows (`/F` when no
+/// window takes the close request).
 /// `Ok(false)` when nothing ran.
 pub fn stop(l: &Layout, sys: &mut dyn Sys, out: &mut dyn Write) -> Result<bool, String> {
     let io = |e: std::io::Error| e.to_string();
@@ -192,7 +263,12 @@ pub fn stop(l: &Layout, sys: &mut dyn Sys, out: &mut dyn Write) -> Result<bool, 
         Running::No => {}
         Running::Yes(None) => return Err("a tray holds the lock but its pid is unknown".into()),
         Running::Yes(Some(pid)) => {
-            sys.exec(&kill(pid))
+            sys.exec(&kill(l, pid, false))
+                .or_else(|e| match l.system_dir {
+                    // no window took the request: end it
+                    Some(_) => sys.exec(&kill(l, pid, true)),
+                    None => Err(e),
+                })
                 .map_err(|e| format!("stop pid {pid}: {e}"))?;
             writeln!(out, "stopped pid {pid}").map_err(io)?;
             stopped = true;
@@ -209,8 +285,8 @@ pub fn stop(l: &Layout, sys: &mut dyn Sys, out: &mut dyn Write) -> Result<bool, 
 pub struct Status {
     pub installed: bool,
     pub state_dir: PathBuf,
-    /// The LaunchAgent plist, the user unit or the autostart entry, when
-    /// installed.
+    /// The LaunchAgent plist, the Windows `Run` value, the user unit or
+    /// the autostart entry, when installed.
     pub autostart: Option<PathBuf>,
     pub running: Running,
     /// Seconds since the snapshot was written; `None` without one or
@@ -219,6 +295,11 @@ pub struct Status {
 }
 
 pub fn status(l: &Layout, now: SystemTime) -> Status {
+    status_with(l, now, &mut System)
+}
+
+/// [`status`] with `sys` asking `reg.exe` about the Windows `Run` value.
+pub fn status_with(l: &Layout, now: SystemTime, sys: &mut dyn Sys) -> Status {
     let snap = l.state_dir.join(super::SNAPSHOT_FILE);
     let snapshot_age = std::fs::metadata(snap)
         .and_then(|m| m.modified())
@@ -234,6 +315,10 @@ pub fn status(l: &Layout, now: SystemTime) -> Status {
         autostart: l
             .plist()
             .filter(|p| p.is_file())
+            .or_else(|| {
+                let system = l.system_dir.as_deref()?;
+                super::agent_windows::installed(system, sys).then(super::agent_windows::location)
+            })
             .or_else(|| l.xdg.as_ref()?.autostart()),
         running: running(&l.lock()),
         snapshot_age,
