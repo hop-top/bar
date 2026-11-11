@@ -173,41 +173,60 @@ pub fn remove(system: &Path, sys: &mut dyn Sys, out: &mut dyn Write) -> Result<(
 mod tests {
     use super::*;
 
+    /// `p`, absolute on this OS: Windows wants a drive.
+    fn abs(p: &str) -> String {
+        if cfg!(windows) {
+            format!("C:{p}")
+        } else {
+            p.to_string()
+        }
+    }
+
+    fn path(p: &str) -> PathBuf {
+        PathBuf::from(abs(p))
+    }
+
     #[test]
     fn command_quotes_both_paths() {
         assert_eq!(
-            command(
-                Path::new("/a b/bar-tray.exe"),
-                Path::new("/s/tray-dirs.json")
+            command(&path("/a b/bar-tray.exe"), &path("/s/tray-dirs.json")).unwrap(),
+            format!(
+                r#""{}" --dirs "{}""#,
+                abs("/a b/bar-tray.exe"),
+                abs("/s/tray-dirs.json")
             )
-            .unwrap(),
-            r#""/a b/bar-tray.exe" --dirs "/s/tray-dirs.json""#
         );
     }
 
     #[test]
     fn command_refuses_relative_quoted_or_long() {
-        assert!(command(Path::new("bar-tray.exe"), Path::new("/s/r.json")).is_err());
-        assert!(command(Path::new("/t"), Path::new("r.json")).is_err());
-        assert!(command(Path::new("/a\"b/t"), Path::new("/s/r.json")).is_err());
-        let long = format!("/{}", "d".repeat(MAX_COMMAND));
-        let e = command(Path::new(&long), Path::new("/s/r.json")).unwrap_err();
+        assert!(command(Path::new("bar-tray.exe"), &path("/s/r.json")).is_err());
+        assert!(command(&path("/t"), Path::new("r.json")).is_err());
+        assert!(command(&path("/a\"b/t"), &path("/s/r.json")).is_err());
+        let long = abs(&format!("/{}", "d".repeat(MAX_COMMAND)));
+        let e = command(Path::new(&long), &path("/s/r.json")).unwrap_err();
         assert!(e.contains("260"), "{e}");
         // exactly at the limit is fine
-        let fixed = r#""" --dirs "/r""#.len();
-        let p = format!("/{}", "x".repeat(MAX_COMMAND - fixed - 1));
+        let fixed = r#""" --dirs """#.len() + abs("/r").len();
+        let root = abs("/");
+        let p = format!("{root}{}", "x".repeat(MAX_COMMAND - fixed - root.len()));
         assert_eq!(
-            command(Path::new(&p), Path::new("/r")).unwrap().len(),
+            command(Path::new(&p), &path("/r")).unwrap().len(),
             MAX_COMMAND
         );
     }
 
     #[test]
     fn reg_commands_touch_only_the_run_value() {
-        let sys = Path::new("/sys32");
-        let all = [add(sys, "\"/t\""), query(sys), delete(sys)];
+        let sys = path("/sys32");
+        let all = [add(&sys, "\"/t\""), query(&sys), delete(&sys)];
+        let reg = if cfg!(windows) {
+            r"C:/sys32\reg.exe"
+        } else {
+            "/sys32/reg.exe"
+        };
         for c in &all {
-            assert_eq!(c[0], "/sys32/reg.exe");
+            assert_eq!(c[0], reg);
             assert_eq!(c[2], KEY);
             assert_eq!(&c[3..5], ["/v", "bar-tray"]);
             assert!(!c
