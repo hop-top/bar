@@ -27,7 +27,8 @@ pub const CONTRACTS: &[(&str, &str, &str)] = &[
     ("init", "write-local", "yes"),
     ("install", "write-local", "yes"),
     ("update", "read", "yes"),
-    ("toggle", "write-local", "no"),
+    // the set form (`bar toggle <key> <value>`) is; the flip is not
+    ("toggle", "write-local", "conditional"),
     ("click install", "write-local", "yes"),
     ("click run", "write-shared", "no"),
     ("click action", "write-shared", "no"),

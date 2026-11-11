@@ -11,6 +11,7 @@ pub(crate) mod settings;
 pub mod sys;
 pub mod tlc;
 mod url;
+mod views;
 
 pub use check::{box_is_empty, check, run, Env, Pane, Refusal};
 pub use dirs::{
@@ -23,6 +24,7 @@ pub use install::{
 };
 pub use settings::{hook_command, hook_command_for, plan_settings, SettingsPlan, HOOK_EVENTS};
 pub use url::{link, parse, with_cmd_link, ClickUrl, Term, COMMANDS};
+pub use views::{check_key, cli as toggle_cli, parse_value, set_in, unknown_key, view_name};
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -227,15 +229,9 @@ pub fn is_usage_key(key: &str) -> bool {
 /// Flips the toggle of `key`: `5h` or `7d` (usage), else a plugin name;
 /// `Ok(true)` when the alternate view is now on.
 pub fn toggle(dir: &Path, key: &str) -> Result<bool, String> {
-    let f = toggle_file(dir, key).ok_or_else(|| {
-        format!("unknown key `{key}` (expected 5h, 7d, a plugin name or <plugin>.<toggle>)")
-    })?;
-    if f.exists() {
-        std::fs::remove_file(&f).map_err(|e| e.to_string())?;
-        return Ok(false);
-    }
-    write_private(&f, "").map_err(|e| e.to_string())?;
-    Ok(true)
+    let on = !is_toggled(dir, key);
+    set_in(dir, key, None, on)?;
+    Ok(on)
 }
 
 /// Session toggle dirs untouched this long are pruned on the next flip.
@@ -245,24 +241,11 @@ pub const SESSION_TOGGLES_STALE_SECS: i64 = hook::RECORD_STALE_SECS;
 /// global toggle without a session; `Ok(true)` when the alternate view is
 /// now on in that session.
 pub fn toggle_in(dir: &Path, key: &str, sid: Option<&str>) -> Result<bool, String> {
-    let Some(sid) = sid else {
-        return toggle(dir, key);
+    let on = match sid {
+        Some(sid) => !is_toggled_in(dir, key, sid),
+        None => !is_toggled(dir, key),
     };
-    let f = toggle_file(dir, key).ok_or_else(|| {
-        format!("unknown key `{key}` (expected 5h, 7d, a plugin name or <plugin>.<toggle>)")
-    })?;
-    let own = session_toggles_dir(dir, sid).ok_or_else(|| format!("bad session id `{sid}`"))?;
-    let root = dir.join(SESSION_TOGGLES);
-    // a planted symlink must not redirect the write
-    for d in [&root, &own] {
-        if std::fs::symlink_metadata(d).is_ok() && !hook::is_real_dir(d) {
-            return Err(format!("{} is not a directory", d.display()));
-        }
-    }
-    let on = !is_toggled_in(dir, key, sid);
-    prune_sessions(&root, sid);
-    let name = f.file_name().unwrap_or_default();
-    write_atomic(&own.join(name), if on { "on" } else { "off" }).map_err(|e| e.to_string())?;
+    set_in(dir, key, sid, on)?;
     Ok(on)
 }
 

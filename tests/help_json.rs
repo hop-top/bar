@@ -74,6 +74,19 @@ fn help_json_declares_known_commands() {
 }
 
 #[test]
+fn help_json_toggle_takes_an_optional_value() {
+    let (doc, _) = help(&["--help", "--format", "json"]);
+    let toggle = command(&doc, &["bar", "toggle"]);
+    // the set form is idempotent, the flip is not
+    assert_eq!(toggle["idempotent"], "conditional");
+    let args = toggle["args"].as_array().unwrap();
+    assert_eq!(args[0]["name"], "key");
+    assert_eq!(args[0]["required"], true);
+    assert_eq!(args[1]["name"], "value");
+    assert_eq!(args[1]["required"], false);
+}
+
+#[test]
 fn help_json_flags_carry_choices_and_defaults() {
     let (doc, _) = help(&["--help", "--format", "json"]);
     let init = command(&doc, &["bar", "init"]);
