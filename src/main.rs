@@ -116,7 +116,7 @@ enum SubCmd {
         #[command(subcommand)]
         cmd: ClickCmd,
     },
-    /// Desktop tray: the menu snapshot it shows.
+    /// Desktop tray: its menu snapshot, install and autostart.
     Tray {
         #[command(subcommand)]
         cmd: tray_cmd::TrayCmd,

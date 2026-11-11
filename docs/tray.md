@@ -60,3 +60,25 @@ Then the action runs exactly as a [`bar://action` link](plugins.md#actions) woul
 Ten minutes is the ceiling of `tray-poll`: a tray that is running refreshes the snapshot at least that often and on every menu open, so an older file was left by a tray that is gone, and its tokens (account indices, instance ids) may no longer mean what they did.
 
 The link handler's nonce and cache-entry binding are not used here. The nonce proves a `bar://` URL was made by this install, because any web page can open one; the tray exposes no URL, no socket and no pipe, so there is nothing for another origin to reach. The cache entry ties a link to the render it was drawn from; for the tray that render is the snapshot itself, which is private, fresh and identified by its generation.
+
+## Install
+
+```
+bar tray install [--dry-run] [--no-autostart] [--no-hooks]
+bar tray uninstall [--keep-hooks]
+bar tray start | stop | status [--json]
+```
+
+`bar tray install` sets the tray up for the environment it runs in:
+
+- writes `tray-dirs.json` in the state directory (mode 0600): the absolute `bar` and `bar-tray` paths, the state and Claude Code dirs they resolve to, and the dir variables (`BAR_STATE_DIR`, the XDG bases, `CLAUDE_CONFIG_DIR`, `TMUX_TMPDIR`, `PATH`) as set at install;
+- writes the `tray-installed` marker, which also publishes the renderer's state dir to processes started without your shell's environment;
+- registers the Claude Code hooks that feed the session rows, as `bar click install --hooks-only` does (`--no-hooks` skips this);
+- prints a `tray` line for every `action` line no `tray` line covers yet: `action` lines do not grant the tray, so these are only suggested, and your config is not changed;
+- on macOS, writes the LaunchAgent `~/Library/LaunchAgents/top.hop.bar-tray.plist` and loads it with `launchctl bootstrap gui/<uid>`, which starts the tray now and at every login. The agent runs `bar-tray --bar <bar> --lock <state>/tray.lock` with the recorded variables, in the GUI session only, and restarts it after a crash but not after `Quit`. `--no-autostart` skips this; other platforms need it for now.
+
+`--dry-run` prints every file it would write and every command it would run, and changes nothing. `bar-tray` must be in the same directory as `bar`.
+
+One tray runs per state directory: a running tray holds a lock on `tray.lock` and wrote its pid there, and a second one exits at once. `bar tray start` starts the tray unless it runs, through `launchctl` when the LaunchAgent is installed, else in the background with the command line install recorded. `bar tray stop` unloads the LaunchAgent (it loads again at the next login) and stops a tray that still holds the lock. `bar tray status` says whether the tray is installed, starts at login and runs, and how old the menu snapshot is.
+
+`bar tray uninstall` stops the tray and removes the LaunchAgent, `tray-menu.json`, `tray-dirs.json`, the lock and the marker. It removes the hooks only when its install added them, `bar click install` is not installed (its `click-installed` marker is absent) and `--keep-hooks` is not given. `bar click install` and `bar tray install` are independent: either works without the other.

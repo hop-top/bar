@@ -19,8 +19,8 @@ pub use dirs::{
     HANDLER_ENV,
 };
 pub use install::{
-    applescript, exec, info_plist_commands, install_plan, run_hooks_only, run_install, InstallCfg,
-    InstallError, InstallPlan,
+    applescript, exec, info_plist_commands, install_plan, register_hooks, run_hooks_only,
+    run_install, InstallCfg, InstallError, InstallPlan,
 };
 pub use settings::{hook_command, hook_command_for, plan_settings, SettingsPlan, HOOK_EVENTS};
 pub use url::{link, parse, with_cmd_link, ClickUrl, Term, COMMANDS};
