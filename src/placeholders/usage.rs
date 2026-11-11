@@ -17,7 +17,11 @@ pub struct Usage;
 
 impl Placeholder for Usage {
     fn render(&self, ctx: &Ctx, opts: &Options) -> Option<String> {
-        render_with(ctx, opts, &click::state_dir())
+        // the cache sits in the state dir the render path chose
+        let state = ctx
+            .cache
+            .map_or_else(click::state_dir, |c| c.state_dir().to_path_buf());
+        render_with(ctx, opts, &state)
     }
 }
 
