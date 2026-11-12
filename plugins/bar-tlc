@@ -50,7 +50,16 @@ case $cwd in /*) ;; *) exit 1 ;; esac
 # stops after the git work-tree root (a dir holding .git; a linked worktree
 # also reaches its repo root), so an enclosing project never leaks in;
 # outside a repo only the start dir is checked. find_root prints the root,
-# or nothing.
+# or nothing; it fails when a step up fails.
+#
+# up: parent of $1 into $up. It fails unless that is a shorter absolute
+# path: a dirname that failed, or whose pipe could not be made (out of file
+# descriptors), yields an empty string, whose parent is "." forever.
+up() {
+  up=$(dirname -- "$1") || return 1
+  case $up in /*) [ "${#up}" -lt "${#1}" ] ;; *) false ;; esac
+}
+
 find_root() {
   # b: git boundary (first dir with .git). A linked worktree's .git file
   # maps to its repo root r (bare repo dir, else the main worktree), where
@@ -60,7 +69,8 @@ find_root() {
   while :; do
     [ ! -e "$d/.git" ] || { b=$d; break; }
     [ "$d" != / ] || break
-    d=$(dirname -- "$d")
+    up "$d" || return 1
+    d=$up
   done
   r=
   if [ -n "$b" ] && [ -f "$b/.git" ]; then
@@ -90,12 +100,13 @@ find_root() {
       if [ -n "$r" ] && [ -f "$r/.tlc/config.yaml" ]; then root=$r; break; fi
       return 0
     fi
-    root=$(dirname -- "$root")
+    up "$root" || return 1
+    root=$up
   done
   printf '%s\n' "$root"
 }
 
-root=$(find_root "$cwd")
+root=$(find_root "$cwd") || exit 1
 if [ -z "$root" ]; then
   printf '%s\n' '{"text":""}'
   exit 0
@@ -110,7 +121,7 @@ run() { tlc "$@" 2>/dev/null; }
 pick=
 name=all
 if [ "$scope" = track ] && [ -n "$task" ] && [ -n "$rcwd" ]; then
-  rroot=$(find_root "$rcwd")
+  rroot=$(find_root "$rcwd") || exit 1
   if [ -n "$rroot" ] && [ "$(cd -- "$rroot" 2>/dev/null && pwd -P)" = "$here" ]; then
     # exit 3: the task is gone, so the project counts
     shown=$(run task show "$task" --format json); rc=$?

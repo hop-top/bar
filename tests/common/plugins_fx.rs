@@ -65,7 +65,43 @@ impl Fx {
     }
 
     pub fn run(&self, plugin: &str, stdin: &Value) -> Output {
+        let child = self.spawn(plugin, stdin, false);
+        child.wait_with_output().unwrap()
+    }
+
+    /// `run`, failing the test when the plugin is still running after
+    /// `secs`. Its whole process group is killed first: a looping subshell
+    /// outlives its parent and holds stdout open, so killing the plugin
+    /// alone still leaves the read hanging.
+    pub fn run_within(&self, plugin: &str, stdin: &Value, secs: u64) -> Output {
+        let mut child = self.spawn(plugin, stdin, true);
+        drop(child.stdin.take());
+        let end = std::time::Instant::now() + std::time::Duration::from_secs(secs);
+        while child.try_wait().unwrap().is_none() {
+            if std::time::Instant::now() > end {
+                Command::new("kill")
+                    .args(["-KILL", "--", &format!("-{}", child.id())])
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status()
+                    .unwrap();
+                let o = child.wait_with_output().unwrap();
+                panic!(
+                    "{plugin} still running after {secs} s; stderr {:?}",
+                    String::from_utf8_lossy(&o.stderr)
+                );
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        child.wait_with_output().unwrap()
+    }
+
+    fn spawn(&self, plugin: &str, stdin: &Value, group: bool) -> std::process::Child {
         let mut cmd = Command::new(script(plugin));
+        if group {
+            std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
+        }
         cmd.env_clear()
             .envs(self.env.iter().map(|(k, v)| (*k, v.clone())))
             .env("FAKE_DIR", &self.fake)
@@ -77,7 +113,7 @@ impl Fx {
         let mut child = cmd.spawn().unwrap();
         std::io::Write::write_all(child.stdin.as_mut().unwrap(), stdin.to_string().as_bytes())
             .unwrap();
-        child.wait_with_output().unwrap()
+        child
     }
 
     // ---- tlc ----
