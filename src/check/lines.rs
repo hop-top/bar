@@ -101,9 +101,11 @@ impl Checker<'_> {
     /// Lints every line of `text`, a config file's contents.
     pub(super) fn lint(&mut self, text: &str) {
         let mut seen = BTreeMap::new();
+        let mut first = super::dead::FirstMatch::default();
         for (i, raw) in text.lines().enumerate() {
             let Ok(t) = tokenize(raw) else { continue };
             self.repeat(&mut seen, &t, i + 1);
+            self.dead(&mut first, &t, raw, i + 1);
             match t.first().map(String::as_str) {
                 Some("set") if t.len() == 3 => self.set(&t[1], &t[2], i + 1),
                 Some("action") if t.len() == 3 => self.action(&t[1], &t[2], i + 1),

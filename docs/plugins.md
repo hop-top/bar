@@ -219,7 +219,7 @@ Rules a menu plugin follows:
 
 ### Account rules
 
-A plugin that names accounts (a proxy's, say) can label and colour them the way the user's `account "<glob>" <label> <color>` lines do for the signed-in account. It declares `"inputs": {"accounts": true}` in `--ext-info` and then gets the lines, in file order, as
+A plugin that names accounts (a proxy's, say) can label and colour them the way the user's `account "<glob>" <label> <color>` lines do for the signed-in account. It declares `"inputs": {"accounts": true}` in `--ext-info` and then gets the lines, in file order (the first matching line applies), as
 
 ```json
 "accounts": [{"glob": "*@example.test", "label": "work", "color": "33"}]
