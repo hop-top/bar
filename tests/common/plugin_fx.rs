@@ -1,4 +1,5 @@
 #![allow(dead_code, unused_imports)]
+use crate::common::deadline;
 use hop_bar::cache::{Cache, Request};
 use hop_bar::conf::{parse, Config};
 use hop_bar::options::Options;
@@ -68,12 +69,12 @@ impl Fx {
         self.file("info.log").lines().count()
     }
 
-    /// The plugin's `--ext-info`, run to completion without the product's
-    /// 5 s deadline (which lapses on a loaded host and yields the empty
-    /// fallback). Panics when the output does not parse.
+    /// The plugin's `--ext-info`, under the tests' deadline rather than the
+    /// product's 5 s one (which lapses on a loaded host and yields the
+    /// empty fallback). Panics when the output does not parse.
     pub fn ext_info(&self, name: &str) -> plugin::ExtInfo {
         let path = self.found(name).path;
-        let out = busy_retry(|| std::process::Command::new(&path).arg("--ext-info").output());
+        let out = deadline::run(std::process::Command::new(&path).arg("--ext-info"), None);
         plugin::parse_info(&String::from_utf8_lossy(&out.stdout)).expect("--ext-info output")
     }
 
@@ -137,29 +138,17 @@ pub fn busy_retry<T>(mut spawn: impl FnMut() -> std::io::Result<T>) -> T {
     spawn().unwrap()
 }
 
-/// Stores a finished refresh. Plugin jobs run to completion without the
-/// product's deadlines (5 s info, 3 s render): on a loaded host those lapse
-/// and leave the cache cold, which says nothing about the code under test.
+/// Stores a finished refresh. Plugin jobs run under the tests' deadline
+/// rather than the product's (5 s info, 3 s render): on a loaded host those
+/// lapse and leave the cache cold, which says nothing about the code under
+/// test.
 pub fn refresh(cache: &Cache, key: String, job: hop_bar::cache::Job) {
     use hop_bar::cache::Job;
-    use std::io::Write;
-    use std::process::{Command, Stdio};
+    use std::process::Command;
     let out = match &job {
-        Job::PluginInfo { path } => busy_retry(|| Command::new(path).arg("--ext-info").output()),
+        Job::PluginInfo { path } => deadline::run(Command::new(path).arg("--ext-info"), None),
         Job::PluginRender { path, input, .. } => {
-            let mut child = busy_retry(|| {
-                Command::new(path)
-                    .stdin(Stdio::piped())
-                    .stdout(Stdio::piped())
-                    .spawn()
-            });
-            child
-                .stdin
-                .take()
-                .unwrap()
-                .write_all(input.as_bytes())
-                .unwrap();
-            child.wait_with_output().unwrap()
+            deadline::run(&mut Command::new(path), Some(input.as_bytes()))
         }
         _ => {
             cache.refresh(

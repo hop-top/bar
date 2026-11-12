@@ -301,9 +301,8 @@ fn best(n: usize, mut f: impl FnMut() -> Duration) -> Duration {
 /// What a plugin costs bar on its own: `--ext-info`, then `--menu`.
 fn interrogate(plugin: &Path) {
     for arg in ["--ext-info", "--menu"] {
-        let mut c = Command::new(plugin);
-        c.arg(arg).stdin(std::process::Stdio::null());
-        assert!(busy_retry(|| c.output()).status.success());
+        let out = common::deadline::run(Command::new(plugin).arg(arg), None);
+        assert!(out.status.success());
     }
 }
 

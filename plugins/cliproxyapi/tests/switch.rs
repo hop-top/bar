@@ -2,13 +2,14 @@
 //! `list`, `use` and `--action use` end to end against a fake management
 //! server that keeps priorities: synthetic accounts only.
 
+#[path = "../../../tests/common/deadline.rs"]
+mod deadline;
 mod fake;
 
 use fake::{pool, Server};
 use serde_json::{json, Value};
-use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
-use std::process::{Command, Output, Stdio};
+use std::process::{Command, Output};
 
 const BIN: &str = env!("CARGO_BIN_EXE_bar-cliproxyapi");
 const KEY: &str = "switch-test-key";
@@ -47,23 +48,13 @@ impl Home {
         stdin: &str,
         env: &[(&str, String)],
     ) -> Output {
-        let mut ch = Command::new(BIN)
-            .args(args)
+        let mut cmd = Command::new(BIN);
+        cmd.args(args)
             .envs(env.iter().map(|(k, v)| (*k, v)))
             .env("BAR_CLIPROXYAPI_CONFIG", conf)
             .env("BAR_STATE_DIR", self.0.join("state"))
-            .env_remove("ANTHROPIC_BASE_URL")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .unwrap();
-        ch.stdin
-            .take()
-            .unwrap()
-            .write_all(stdin.as_bytes())
-            .unwrap();
-        ch.wait_with_output().unwrap()
+            .env_remove("ANTHROPIC_BASE_URL");
+        deadline::run(&mut cmd, Some(stdin.as_bytes()))
     }
 }
 
@@ -365,7 +356,7 @@ fn the_action_validates_tokens_and_picks_the_instance_from_the_snapshot() {
 
 #[test]
 fn ext_info_declares_the_use_action() {
-    let o = Command::new(BIN).arg("--ext-info").output().unwrap();
+    let o = deadline::run(Command::new(BIN).arg("--ext-info"), None);
     let v: Value = serde_json::from_slice(&o.stdout).unwrap();
     assert_eq!(
         v["actions"]["use"],

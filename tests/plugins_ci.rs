@@ -11,13 +11,10 @@ use plugins_fx::*;
 
 use serde_json::{json, Value};
 use std::path::PathBuf;
-use std::process::{Command, Output};
+use std::process::Output;
 
 fn ext_info(name: &str) -> Value {
-    let o = Command::new(script(name))
-        .arg("--ext-info")
-        .output()
-        .unwrap();
+    let o = ext_info_output(name);
     assert!(o.status.success());
     out_json(&o)
 }

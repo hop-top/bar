@@ -2,13 +2,14 @@
 //! The binary end to end: `--ext-info`, `--check` and a render against a
 //! fake management server.
 
+#[path = "../../../tests/common/deadline.rs"]
+mod deadline;
 mod fake;
 
 use fake::{ok, Server};
 use serde_json::{json, Value};
-use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_bar-cliproxyapi");
 
@@ -43,24 +44,14 @@ impl Drop for Home {
 }
 
 fn render(mut c: Command, input: Value) -> Value {
-    let mut ch = c
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
-    ch.stdin
-        .take()
-        .unwrap()
-        .write_all(input.to_string().as_bytes())
-        .unwrap();
-    let out = ch.wait_with_output().unwrap();
+    let out = deadline::run(&mut c, Some(input.to_string().as_bytes()));
     assert!(out.status.success());
     serde_json::from_slice(&out.stdout).unwrap()
 }
 
 #[test]
 fn ext_info_declares_the_protocol_extensions() {
-    let out = Command::new(BIN).arg("--ext-info").output().unwrap();
+    let out = deadline::run(Command::new(BIN).arg("--ext-info"), None);
     let v: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["name"], "cliproxyapi");
     assert_eq!(v["ttl"], "60s");
@@ -230,7 +221,7 @@ fn a_loose_config_file_hides_the_segment_and_check_says_why() {
         json!({"env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:1"}}),
     );
     assert_eq!(o["text"], "");
-    let out = h.cmd(&conf).arg("--check").output().unwrap();
+    let out = deadline::run(h.cmd(&conf).arg("--check"), None);
     let v: Value = serde_json::from_slice(&out.stdout).unwrap();
     let w = v["warnings"][0].as_str().unwrap();
     assert!(w.contains("mode 0644"), "{w}");

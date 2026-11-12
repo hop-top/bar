@@ -11,17 +11,13 @@ mod plugins_fx;
 use plugins_fx::*;
 
 use serde_json::json;
-use std::process::Command;
 
 // ---- bar-tlc ----
 
 #[test]
 fn bar_tlc_ext_info_declares_placeholder() {
     let fx = Fx::new();
-    let o = Command::new(script("bar-tlc"))
-        .arg("--ext-info")
-        .output()
-        .unwrap();
+    let o = ext_info_output("bar-tlc");
     assert!(o.status.success());
     let v = out_json(&o);
     assert_eq!(v["name"], "tlc");
@@ -34,10 +30,7 @@ fn bar_tlc_ext_info_declares_placeholder() {
 
 #[test]
 fn bar_tlc_ext_info_declares_options_and_session_cache() {
-    let o = Command::new(script("bar-tlc"))
-        .arg("--ext-info")
-        .output()
-        .unwrap();
+    let o = ext_info_output("bar-tlc");
     let v = out_json(&o);
     assert_eq!(
         v["options"]["scope"],

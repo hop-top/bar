@@ -4,6 +4,8 @@
 //! instance configured, since switching the proxy's account would not
 //! change the account this session uses.
 
+#[path = "../../../tests/common/deadline.rs"]
+mod deadline;
 mod fake;
 
 use fake::{ok, Server};
@@ -16,25 +18,14 @@ use hop_bar::plugin;
 use hop_bar::render::ColdRunner;
 use hop_bar::session::Session;
 use serde_json::Value;
-use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_bar-cliproxyapi");
 
 fn run(path: &str, arg: Option<&str>, stdin: &str) -> String {
-    let mut ch = Command::new(path)
-        .args(arg)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
-    ch.stdin
-        .take()
-        .unwrap()
-        .write_all(stdin.as_bytes())
-        .unwrap();
-    String::from_utf8(ch.wait_with_output().unwrap().stdout).unwrap()
+    let out = deadline::run(Command::new(path).args(arg), Some(stdin.as_bytes()));
+    String::from_utf8(out.stdout).unwrap()
 }
 
 /// `#{account}` rendered with `action account cliproxyapi.<action>` bound,

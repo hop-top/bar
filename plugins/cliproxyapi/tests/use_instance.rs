@@ -3,14 +3,15 @@
 //! share an `auth_index`, picked from the menu. Fake servers, synthetic
 //! accounts only.
 
+#[path = "../../../tests/common/deadline.rs"]
+mod deadline;
 mod fake;
 
 use bar_cliproxyapi::switch::instance_id;
 use fake::{pool, Server};
 use serde_json::{json, Value};
-use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
-use std::process::{Command, Output, Stdio};
+use std::process::{Command, Output};
 use std::sync::{Arc, Mutex};
 
 const BIN: &str = env!("CARGO_BIN_EXE_bar-cliproxyapi");
@@ -40,22 +41,12 @@ impl Home {
         self.file("c.conf", &text)
     }
     fn run(&self, conf: &std::path::Path, args: &[&str], stdin: &str) -> Output {
-        let mut ch = Command::new(BIN)
-            .args(args)
+        let mut cmd = Command::new(BIN);
+        cmd.args(args)
             .env("BAR_CLIPROXYAPI_CONFIG", conf)
             .env("BAR_STATE_DIR", self.0.join("state"))
-            .env_remove("ANTHROPIC_BASE_URL")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .unwrap();
-        ch.stdin
-            .take()
-            .unwrap()
-            .write_all(stdin.as_bytes())
-            .unwrap();
-        ch.wait_with_output().unwrap()
+            .env_remove("ANTHROPIC_BASE_URL");
+        deadline::run(&mut cmd, Some(stdin.as_bytes()))
     }
 }
 
