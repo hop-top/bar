@@ -100,8 +100,10 @@ impl Checker<'_> {
 
     /// Lints every line of `text`, a config file's contents.
     pub(super) fn lint(&mut self, text: &str) {
+        let mut seen = BTreeMap::new();
         for (i, raw) in text.lines().enumerate() {
             let Ok(t) = tokenize(raw) else { continue };
+            self.repeat(&mut seen, &t, i + 1);
             match t.first().map(String::as_str) {
                 Some("set") if t.len() == 3 => self.set(&t[1], &t[2], i + 1),
                 Some("action") if t.len() == 3 => self.action(&t[1], &t[2], i + 1),
@@ -116,6 +118,33 @@ impl Checker<'_> {
                 _ => {}
             }
         }
+    }
+
+    /// A `plugin <name>` or `action <placeholder>` line after one for the
+    /// same name in this file: the later line replaces the earlier whole.
+    /// A project file's line over the user's is layering, not a repeat.
+    fn repeat(&mut self, seen: &mut BTreeMap<(String, String), usize>, t: &[String], line: usize) {
+        let applies = match t.first().map(String::as_str) {
+            Some("plugin") => t.len() >= 2 && parse_options(&t[2..]).is_ok(),
+            Some("action") => t.len() == 3 && t[2].contains('.'),
+            _ => false,
+        };
+        if !applies {
+            return;
+        }
+        let (dir, name) = (&t[0], &t[1]);
+        let Some(prev) = seen.insert((dir.clone(), name.clone()), line) else {
+            return;
+        };
+        let fix = if dir == "plugin" {
+            format!("put all its options on one line: `plugin {name} k=v k2=v2 ...`")
+        } else {
+            "keep the one you want".to_string()
+        };
+        let msg = format!(
+            "`{dir} {name}` again: this line replaces the one on line {prev} (only the last `{dir} {name}` line applies); {fix}"
+        );
+        self.add(Level::Warning, line, msg);
     }
 
     /// `set <key> <value>` on line `line`.
