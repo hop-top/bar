@@ -4,6 +4,8 @@
 //! the link and runs the real `bar-cliproxyapi --action use`, and the
 //! proxy's priority changes.
 
+#[path = "../../../tests/common/deadline.rs"]
+mod deadline;
 mod fake;
 
 use fake::pool;
@@ -17,16 +19,12 @@ use hop_bar::render::ColdRunner;
 use hop_bar::session::Session;
 use serde_json::json;
 use std::os::unix::fs::PermissionsExt;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_bar-cliproxyapi");
 
 fn run(path: impl AsRef<std::path::Path>, arg: &str) -> String {
-    let out = Command::new(path.as_ref())
-        .arg(arg)
-        .stdin(Stdio::null())
-        .output()
-        .unwrap();
+    let out = deadline::run(Command::new(path.as_ref()).arg(arg), None);
     String::from_utf8(out.stdout).unwrap()
 }
 
@@ -103,13 +101,7 @@ fn a_click_switches_the_account_through_the_core_handler() {
         panic!("render job")
     };
     let render = || {
-        let mut ch = Command::new(path)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()
-            .unwrap();
-        std::io::Write::write_all(&mut ch.stdin.take().unwrap(), input.as_bytes()).unwrap();
-        let done = ch.wait_with_output().unwrap();
+        let done = deadline::run(&mut Command::new(path), Some(input.as_bytes()));
         assert!(done.status.success());
         String::from_utf8(done.stdout).unwrap()
     };

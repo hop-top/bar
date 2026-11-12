@@ -2,13 +2,15 @@
 //! `--menu` end to end, from fixture caches: no proxy runs, so any call
 //! would fail the test.
 
+#[path = "../../../tests/common/deadline.rs"]
+mod deadline;
 use bar_plugin::keyguard::Guard;
 use bar_plugin::secret::Secret;
 use bar_routellm::cache::{self, Alias, Cache, Entry};
 use bar_routellm::config::{self, instance_id};
 use serde_json::Value;
 use std::os::unix::fs::PermissionsExt;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_bar-routellm");
 const KEY: &str = "mgmt-key-SECRET-AAAA";
@@ -52,14 +54,14 @@ impl Home {
     }
 
     fn menu(&self) -> (Value, String) {
-        let o = Command::new(BIN)
-            .arg("--menu")
-            .env("BAR_ROUTELLM_CONFIG", self.0.join("routellm.conf"))
-            .env("BAR_STATE_DIR", self.state())
-            .env_remove("ANTHROPIC_BASE_URL")
-            .stdin(Stdio::null())
-            .output()
-            .unwrap();
+        let o = deadline::run(
+            Command::new(BIN)
+                .arg("--menu")
+                .env("BAR_ROUTELLM_CONFIG", self.0.join("routellm.conf"))
+                .env("BAR_STATE_DIR", self.state())
+                .env_remove("ANTHROPIC_BASE_URL"),
+            None,
+        );
         let text = String::from_utf8(o.stdout).unwrap();
         (serde_json::from_str(&text).unwrap(), text)
     }
@@ -194,7 +196,7 @@ fn the_output_never_holds_the_key() {
 
 #[test]
 fn ext_info_declares_the_menu_capability() {
-    let o = Command::new(BIN).arg("--ext-info").output().unwrap();
+    let o = deadline::run(Command::new(BIN).arg("--ext-info"), None);
     let v: Value = serde_json::from_slice(&o.stdout).unwrap();
     assert!(v["capabilities"]
         .as_array()

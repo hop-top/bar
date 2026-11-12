@@ -3,6 +3,8 @@
 //! code: what `--ext-info`, `--check` and a render print must be what the
 //! core parses, so drift between the two fails here.
 
+#[path = "../../../tests/common/deadline.rs"]
+mod deadline;
 mod fake;
 
 use fake::{ok, Server};
@@ -14,24 +16,18 @@ use hop_bar::plugin;
 use hop_bar::render::ColdRunner;
 use hop_bar::session::Session;
 use serde_json::json;
-use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_bar-cliproxyapi");
 const NOW: i64 = 1_800_000_000;
 
 fn run(path: impl AsRef<std::path::Path>, arg: Option<&str>, stdin: &str) -> String {
-    let mut c = Command::new(path.as_ref());
-    c.args(arg).stdin(Stdio::piped()).stdout(Stdio::piped());
-    let mut ch = c.spawn().unwrap();
-    ch.stdin
-        .take()
-        .unwrap()
-        .write_all(stdin.as_bytes())
-        .unwrap();
-    let out = ch.wait_with_output().unwrap();
+    let out = deadline::run(
+        Command::new(path.as_ref()).args(arg),
+        Some(stdin.as_bytes()),
+    );
     assert!(out.status.success());
     String::from_utf8(out.stdout).unwrap()
 }

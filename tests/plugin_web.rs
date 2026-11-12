@@ -245,10 +245,8 @@ fn reference_plugins_declare_valid_web_objects() {
         .flatten()
         .filter(|e| e.path().is_file())
     {
-        let out = std::process::Command::new(e.path())
-            .arg("--ext-info")
-            .output()
-            .unwrap();
+        let out =
+            common::deadline::run(std::process::Command::new(e.path()).arg("--ext-info"), None);
         let info = parse_info(&String::from_utf8_lossy(&out.stdout)).unwrap();
         assert!(info.web.is_some(), "{}", info.name);
         assert_eq!(web::issues(&info), Vec::<String>::new(), "{}", info.name);

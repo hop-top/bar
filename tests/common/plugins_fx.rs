@@ -29,6 +29,11 @@ pub fn script(name: &str) -> PathBuf {
         .join(name)
 }
 
+/// `plugin --ext-info`, bounded by the default deadline.
+pub fn ext_info_output(plugin: &str) -> Output {
+    common::deadline::run(Command::new(script(plugin)).arg("--ext-info"), None)
+}
+
 pub fn exe(path: &Path, body: &str) {
     crate::common::exe::write(path, body);
 }
@@ -64,56 +69,25 @@ impl Fx {
         std::fs::read_to_string(self.fake.join(name)).unwrap_or_default()
     }
 
+    /// The plugin run with `stdin`, bounded by the default deadline.
     pub fn run(&self, plugin: &str, stdin: &Value) -> Output {
-        let child = self.spawn(plugin, stdin, false);
-        child.wait_with_output().unwrap()
+        self.run_for(plugin, stdin, common::deadline::DEADLINE)
     }
 
-    /// `run`, failing the test when the plugin is still running after
-    /// `secs`. Its whole process group is killed first: a looping subshell
-    /// outlives its parent and holds stdout open, so killing the plugin
-    /// alone still leaves the read hanging.
+    /// `run` with a tighter bound of `secs`.
     pub fn run_within(&self, plugin: &str, stdin: &Value, secs: u64) -> Output {
-        let mut child = self.spawn(plugin, stdin, true);
-        drop(child.stdin.take());
-        let end = std::time::Instant::now() + std::time::Duration::from_secs(secs);
-        while child.try_wait().unwrap().is_none() {
-            if std::time::Instant::now() > end {
-                Command::new("kill")
-                    .args(["-KILL", "--", &format!("-{}", child.id())])
-                    .stdin(Stdio::null())
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .status()
-                    .unwrap();
-                let o = child.wait_with_output().unwrap();
-                panic!(
-                    "{plugin} still running after {secs} s; stderr {:?}",
-                    String::from_utf8_lossy(&o.stderr)
-                );
-            }
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
-        child.wait_with_output().unwrap()
+        self.run_for(plugin, stdin, std::time::Duration::from_secs(secs))
     }
 
-    fn spawn(&self, plugin: &str, stdin: &Value, group: bool) -> std::process::Child {
+    fn run_for(&self, plugin: &str, stdin: &Value, limit: std::time::Duration) -> Output {
         let mut cmd = Command::new(script(plugin));
-        if group {
-            std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
-        }
         cmd.env_clear()
             .envs(self.env.iter().map(|(k, v)| (*k, v.clone())))
             .env("FAKE_DIR", &self.fake)
             .envs(self.extra.iter().map(|(k, v)| (*k, v.as_str())))
-            .current_dir(&self.cwd)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        let mut child = cmd.spawn().unwrap();
-        std::io::Write::write_all(child.stdin.as_mut().unwrap(), stdin.to_string().as_bytes())
-            .unwrap();
-        child
+            .current_dir(&self.cwd);
+        let stdin = stdin.to_string();
+        common::deadline::run_within(&mut cmd, Some(stdin.as_bytes()), limit)
     }
 
     // ---- tlc ----

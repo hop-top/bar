@@ -11,16 +11,12 @@ mod plugins_fx;
 use plugins_fx::*;
 
 use serde_json::json;
-use std::process::Command;
 
 // ---- bar-claude-credits ----
 
 #[test]
 fn credits_ext_info_declares_placeholder() {
-    let o = Command::new(script("bar-claude-credits"))
-        .arg("--ext-info")
-        .output()
-        .unwrap();
+    let o = ext_info_output("bar-claude-credits");
     assert!(o.status.success());
     let v = out_json(&o);
     assert_eq!(v["name"], "claude-credits");
@@ -32,10 +28,7 @@ fn credits_ext_info_declares_placeholder() {
 
 #[test]
 fn credits_ext_info_declares_account() {
-    let o = Command::new(script("bar-claude-credits"))
-        .arg("--ext-info")
-        .output()
-        .unwrap();
+    let o = ext_info_output("bar-claude-credits");
     assert_eq!(out_json(&o)["options"]["account"], json!({"type":"string"}));
 }
 
@@ -52,10 +45,7 @@ fn credits_wait_for_a_slow_console_within_the_render_limit() {
         .and_then(|n| n.parse().ok())
         .expect("curl -m <seconds> in the script");
     assert!(max_time >= 5, "curl -m {max_time}: too short for Console");
-    let o = Command::new(script("bar-claude-credits"))
-        .arg("--ext-info")
-        .output()
-        .unwrap();
+    let o = ext_info_output("bar-claude-credits");
     let limit = out_json(&o)["timeout"]
         .as_str()
         .and_then(|t| t.strip_suffix('s'))
@@ -264,10 +254,7 @@ fn credits_account_overrides_keychain_label() {
 
 #[test]
 fn credits_ext_info_declares_the_account_input() {
-    let o = Command::new(script("bar-claude-credits"))
-        .arg("--ext-info")
-        .output()
-        .unwrap();
+    let o = ext_info_output("bar-claude-credits");
     assert_eq!(out_json(&o)["inputs"], json!({"account": true}));
 }
 

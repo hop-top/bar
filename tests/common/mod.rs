@@ -5,6 +5,7 @@
 //! `root`.
 #![allow(dead_code)]
 
+pub mod deadline;
 pub mod exe;
 pub mod tmp;
 

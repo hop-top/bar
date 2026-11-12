@@ -3,13 +3,14 @@
 //! and an action, against a fake proxy and RouteLLM.
 
 mod common;
+#[path = "../../../tests/common/deadline.rs"]
+mod deadline;
 mod fake;
 
 use common::{healthy, Env, KEY};
 use serde_json::{json, Value};
-use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_bar-routellm");
 
@@ -54,18 +55,7 @@ impl Drop for Home {
 }
 
 fn feed(mut c: Command, input: &str) -> std::process::Output {
-    let mut ch = c
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
-    ch.stdin
-        .take()
-        .unwrap()
-        .write_all(input.as_bytes())
-        .unwrap();
-    ch.wait_with_output().unwrap()
+    deadline::run(&mut c, Some(input.as_bytes()))
 }
 
 fn out_json(o: &std::process::Output) -> Value {

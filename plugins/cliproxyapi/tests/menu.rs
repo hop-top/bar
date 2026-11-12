@@ -2,14 +2,15 @@
 //! `--menu` against fixture caches: no proxy is listening, so any call
 //! would fail the test; the menu must come from the cache files.
 
+#[path = "../../../tests/common/deadline.rs"]
+mod deadline;
 use bar_cliproxyapi::cache::{self, AuthFail, Cache};
 use bar_cliproxyapi::model::{Acct, Win};
 use bar_cliproxyapi::switch::instance_id;
 use bar_plugin::secret::Secret;
 use serde_json::{json, Value};
-use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_bar-cliproxyapi");
 const KEY: &str = "menu-secret-key-0123456789";
@@ -61,17 +62,12 @@ impl Home {
     }
 
     fn menu(&self, conf: &std::path::Path) -> (String, Value) {
-        let mut ch = Command::new(BIN)
-            .arg("--menu")
+        let mut cmd = Command::new(BIN);
+        cmd.arg("--menu")
             .env("BAR_CLIPROXYAPI_CONFIG", conf)
             .env("BAR_STATE_DIR", self.state())
-            .env_remove("ANTHROPIC_BASE_URL")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()
-            .unwrap();
-        ch.stdin.take().unwrap().write_all(b"{}").unwrap();
-        let out = ch.wait_with_output().unwrap();
+            .env_remove("ANTHROPIC_BASE_URL");
+        let out = deadline::run(&mut cmd, Some(b"{}"));
         assert!(out.status.success());
         let raw = String::from_utf8(out.stdout).unwrap();
         let v = serde_json::from_str(&raw).unwrap();
@@ -128,7 +124,7 @@ fn ids(v: &Value) -> Vec<String> {
 
 #[test]
 fn ext_info_declares_menu() {
-    let out = Command::new(BIN).arg("--ext-info").output().unwrap();
+    let out = deadline::run(Command::new(BIN).arg("--ext-info"), None);
     let v: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert!(v["capabilities"]
         .as_array()
@@ -211,7 +207,7 @@ fn tokens_match_the_declared_actions() {
         },
     );
     let (_, v) = h.menu(&h.conf(&[A]));
-    let info = Command::new(BIN).arg("--ext-info").output().unwrap();
+    let info = deadline::run(Command::new(BIN).arg("--ext-info"), None);
     let info: Value = serde_json::from_slice(&info.stdout).unwrap();
     for g in v["groups"].as_array().unwrap() {
         for i in g["items"].as_array().unwrap() {
