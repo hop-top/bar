@@ -105,7 +105,7 @@ The web configurator runs bar's renderer in the browser, where no plugin can run
 - `options`: inline options over `default <name>` lines, `%…%` expanded, validated against the schema and typed, schema defaults filled in. An unknown key or a bad value omits the segment.
 - `session`: fields of the statusline JSON. `cwd` is `workspace.current_dir`, else `cwd`; `model` is `model.display_name`, else `model.id`; `model_id` is `model.id`; `effort` is `effort.level`; `context_used` is `context_window.used_percentage` (`null` when absent); `five_hour` / `seven_day` are `rate_limits.five_hour` / `rate_limits.seven_day` (`null` when absent). Missing strings are `""`.
 - Options are separated by `;` and a list value separates its items with `,`: `#{name[show=a,b;verbose]}` sends `show` as `a,b` and `verbose` as an empty flag.
-- `config`: the plugin's own `plugin <name> k=v` line, as strings, without `ttl`. Nothing else from the config or the environment goes in; secrets stay in the keychain, and config holds only entry names.
+- `config`: the plugin's own `plugin <name> k=v` line, as strings, without `ttl`. One line per plugin: a later `plugin <name>` line replaces an earlier one whole (`bar check` warns), so all options go on one line. Nothing else from the config or the environment goes in; secrets stay in the keychain, and config holds only entry names.
 - `env`: only for plugins declaring `inputs.env`: the declared variables that are set, as strings; unset ones are absent. The key is absent without a declaration.
 - `columns`: `COLUMNS`, or `null`.
 - `accounts`: only for plugins declaring `inputs.accounts`, and only when the user has `account` lines: see [Account rules](#account-rules).
