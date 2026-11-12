@@ -30,6 +30,15 @@ pub fn glob_match(pattern: &str, text: &str) -> bool {
     p[pi..].iter().all(|&c| c == '*')
 }
 
+/// Whether every text `narrow` matches, `wide` matches too (both globs
+/// as [`glob_match`] reads them). Exact: `wide` matching `narrow` itself,
+/// whose `*` only a `*` of `wide` can take, is both needed and enough,
+/// since a text can put characters neither glob holds where `narrow` has
+/// its `*`s.
+pub fn glob_covers(wide: &str, narrow: &str) -> bool {
+    glob_match(wide, narrow)
+}
+
 /// The signed-in account's email, from Claude Code's `.claude.json`.
 pub fn email() -> Option<String> {
     let dir = match std::env::var_os("CLAUDE_CONFIG_DIR").filter(|v| !v.is_empty()) {

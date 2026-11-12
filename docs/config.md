@@ -61,13 +61,13 @@ A project file comes with the repository, so what it may do is set in your confi
 |-----------|------|
 | `set` | `set <key> <value>`; keys `left center right` (and `left@N center@N right@N`, N 1-64) `subagent subagent-hide separator gap wrap max-rows refresh icons icon-width skin skin-glyphs palette color-depth gradient claude-dir compact-at project-config update-check service-status usage-api usage-source account-source gitlab-hosts tray-views tray-poll budget-session budget-today budget-month budget-block budget-warn color.good color.warn color.bad ramp`; `set price <model-prefix> <in> <out> <cache_write> <cache_read>` takes five values |
 | `default` | `default <placeholder> key=value ...` |
-| `account` | `account "<glob>" <label> <color>` |
+| `account` | `account "<glob>" <label> <color>`: the first line whose glob matches applies; see [account](#account-agents-sessions-tmux) |
 | `action` | `action <placeholder> <plugin>.<action>`: a click on the placeholder runs a plugin's declared action; see [Plugin actions](#plugin-actions). Your config only |
 | `tray` | `tray <plugin>[.<action>]`: lets the tray app list a plugin's menu and run its actions (all of them, or one); see [tray](tray.md). Your config only. An `action` line does not grant it |
-| `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%`; see [Rules](#rules) |
+| `rule` | `rule usage[type=5h] early warn=20% bad=5% final=1h bad=30%`: the first line for a target applies; see [Rules](#rules) |
 | `plugin` | `plugin <name> key=value ...`: one line per plugin, holding all its options; a later line for the same name replaces it. See [plugins](plugins.md#render) |
 
-Quote values with spaces (double quotes; a value is one token). `#` outside quotes starts a comment, so quote hex colours: `set color.good "#a3be8c"`, `default repo fg="#88c0d0"`; a line that fails because an unquoted `#rrggbb` cut it short says so in its error. A later `default` line for the same placeholder merges over an earlier one; a later `plugin` line for the same name replaces it whole, so a plugin takes one line holding all its options (`plugin <name> a=1 b=2`, not one line per option); a later `set` wins. `bar check` warns about a `plugin` or `action` line repeated within one file; a project file's line replacing yours is layering and draws no warning.
+Quote values with spaces (double quotes; a value is one token). `#` outside quotes starts a comment, so quote hex colours: `set color.good "#a3be8c"`, `default repo fg="#88c0d0"`; a line that fails because an unquoted `#rrggbb` cut it short says so in its error. A later `default` line for the same placeholder merges over an earlier one; a later `plugin` line for the same name replaces it whole, so a plugin takes one line holding all its options (`plugin <name> a=1 b=2`, not one line per option); a later `set` wins. `rule` and `account` go the other way: the first matching line applies, so a later `rule` for the same target, or an `account` line whose glob an earlier one already matches, never applies. `bar check` warns about a `plugin` or `action` line repeated within one file, and about a `rule` or `account` line an earlier line of the same file shadows; a project file's line replacing yours is layering and draws no warning.
 
 | `set` key | Values |
 |---|---|
@@ -119,7 +119,7 @@ Quote values with spaces (double quotes; a value is one token). `#` outside quot
 
 Plugin metrics without `granted_at` have no pace period, so the early floors do not rise with time.
 
-Without a rule, `usage` uses `early warn=20% bad=5% final=1h bad=30%` for `5h` and `final=1d` for `7d`. A rule's target matches literally: `rule usage[type=h]` matches nothing.
+Without a rule, `usage` uses `early warn=20% bad=5% final=1h bad=30%` for `5h` and `final=1d` for `7d`. A rule's target matches literally: `rule usage[type=h]` matches nothing. The first `rule` line for a target applies; a later one for the same target never does (`bar check` warns). A project file's `rule` for a target replaces yours.
 
 ### Minimal example
 
@@ -720,7 +720,7 @@ Who is signed in, running subagents, other open sessions and the tmux window.
 | `sessions` | none | | Live Claude Code sessions as `>2 ?1 v3`: working (warn colour), waiting on you (bad colour, bold), finished a turn (good colour); each part omitted at 0, hidden when all are 0 |
 | `tmux` | `max` | none | `session:window` of the tmux pane bar runs in, muted; truncated to `max` characters; hidden outside tmux |
 
-- `account`: `account "<glob>" <label> <color>` lines are tried in file order; `*` in the glob matches any run of characters. `.claude.json` is read from `CLAUDE_CONFIG_DIR`, else the home dir.
+- `account`: `account "<glob>" <label> <color>` lines are tried in file order and the first match applies, so put specific globs before general ones (`"alice@*"` before `"*"`); `*` in the glob matches any run of characters. `bar check` warns about a line that never applies because an earlier line's glob matches everything its glob does (`"*"`, then `"*@work.test"`). A project file's `account` line replaces yours with the same glob. `.claude.json` is read from `CLAUDE_CONFIG_DIR`, else the home dir.
 - `account` with `set account-source <plugin>`: when the [plugin's](plugins.md#account) cached result for its `default` options names an account, `account` shows that one: its `label` is matched against the `account` lines like an email, so the same label and colour rules apply, and without a match the label shows as is. A plugin that has matched the lines itself (it declares [`inputs.accounts`](plugins.md#account-rules)) names the colour with its account, and the label is then drawn as is. Without such an account (cold cache, none reported, the plugin missing) `account` behaves as before. The cache is read like any plugin's: nothing starts on the render path. With a proxy, the account is the one the proxy prefers, which is not a guarantee about any one request. Read from your config only.
 - `agents` renders `agents 2` (`2` alone when an icon replaces the label), with `names=1` `agents 2 Explore Plan`. It counts subagents tracked by the `bar click hook`; see [Hooks](#hooks).
 - `sessions` reads `<claude dir>/sessions/*.json` (Claude Code's own session files: process id, session id, `busy` status) and keeps those whose process is alive, the current session included. Waiting and finished come from the markers `bar click hook` writes ([Hooks](#hooks)); without the hooks only working sessions count.
@@ -1169,7 +1169,7 @@ The entries come from the command definitions, so the list cannot leave a comman
 - `subagent`: the same, plus a plugin placeholder there is an error (rows draw none), and a row placeholder (`task.*`) in any other layout is one.
 - `prs` / `issues`: invalid `limit`, invalid `checks` item, invalid `author` / `assignee` / `label` expression.
 - `set budget-*` values: a bad dollar amount or `budget-warn` percent is an error.
-- Warnings: `gh` not on `PATH` while `prs` or `issues` is used; a `budget` placeholder whose type has no `set budget-<type>`; `extra` or `usage[model=...]` without `set usage-api on`; a `default` line for a plugin that is not on `PATH` (a layout using it is an error); an expression that expands to more than 8 queries (only the first 8 run); a `plugin <name>` or `action <placeholder>` line repeated in the same file (only the last applies; the warning names the line it replaces).
+- Warnings: `gh` not on `PATH` while `prs` or `issues` is used; a `budget` placeholder whose type has no `set budget-<type>`; `extra` or `usage[model=...]` without `set usage-api on`; a `default` line for a plugin that is not on `PATH` (a layout using it is an error); an expression that expands to more than 8 queries (only the first 8 run); a `plugin <name>` or `action <placeholder>` line repeated in the same file (only the last applies; the warning names the line it replaces); a `rule` or `account` line that never applies because an earlier line of the same file matches first: a `rule` for the same target, or an `account` line whose glob an earlier glob covers (only the first match applies; the warning names that line).
 - Options holding `%command%` or `%$VAR%` are skipped; they resolve at render time.
 
 - Warnings for project lines that are left out: invalid ones, lines a project file may not hold under `safe`, and `set project-config` in a project file; and for an unreadable project file.

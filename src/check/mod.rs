@@ -8,6 +8,7 @@ use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+mod dead;
 mod lines;
 mod options;
 mod placeholders;
