@@ -22,15 +22,11 @@
 # pick, to=track (or to=pick: stay, nothing counted yet) offers the
 # session's track and the active ones in the chooser when there are two or
 # more; Cancel prints `cancelled` and bar keeps the scope.
-# The track chooser: macOS `choose from list` through /usr/bin/osascript;
-# BAR_TLC_CHOOSER, an absolute path, stands in for it (tests). Prints the
-# program, fails where there is none.
+# The track chooser: macOS `choose from list` through osascript. Prints
+# the program, fails where there is none.
+OSASCRIPT=/usr/bin/osascript
 chooser() {
-  case ${BAR_TLC_CHOOSER:-} in
-    /*) [ -x "$BAR_TLC_CHOOSER" ] && printf '%s\n' "$BAR_TLC_CHOOSER" ;;
-    '') [ "$(uname -s 2>/dev/null)" = Darwin ] && [ -x /usr/bin/osascript ] && printf '%s\n' /usr/bin/osascript ;;
-    *) false ;;
-  esac
+  [ "$(uname -s 2>/dev/null)" = Darwin ] && [ -x "$OSASCRIPT" ] && printf '%s\n' "$OSASCRIPT"
 }
 
 if [ "$1" = "--ext-info" ]; then
@@ -208,11 +204,7 @@ choose() {
 $(printf '%s' "$cands" | jq -r '.[].label')
 EOF
   prompt="Count which track?"
-  if [ "$prog" = /usr/bin/osascript ]; then
-    reply=$("$prog" -e "$SCRIPT" -- "bar: track" "$prompt" "$1" "$@") || exit 1
-  else
-    reply=$("$prog" "bar: track" "$prompt" "$1" "$@") || exit 1
-  fi
+  reply=$("$prog" -e "$SCRIPT" -- "bar: track" "$prompt" "$1" "$@") || exit 1
   id=''
   slug=''
   [ -n "$reply" ] && [ "$reply" != false ] || return 0
