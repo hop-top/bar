@@ -54,7 +54,11 @@ fn bar_tlc_ext_info_declares_options_and_session_cache() {
     ] {
         assert_eq!(v["options"][k], json!({"type":"string","default":d}), "{k}");
     }
-    assert_eq!(v["version"], "0.5.0");
+    assert_eq!(
+        v["options"]["pick-label"],
+        json!({"type":"string","default":"{slug} - {done}/{total}"})
+    );
+    assert_eq!(v["version"], "0.6.0");
     // every sample puts the scope toggle on the mark, none on the text
     for s in v["web"]["samples"].as_array().unwrap() {
         assert_eq!(s["output"]["label_toggle"], "scope", "{s}");
