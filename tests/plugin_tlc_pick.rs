@@ -358,6 +358,9 @@ fn the_global_scope_toggle_never_opens_the_chooser() {
         .unwrap()
         .args(["toggle", "tlc.scope"])
         .env("BAR_STATE_DIR", &t.fx.state)
+        // the global form checks that `tlc` is installed: the test's own
+        // plugin dir, never whatever the caller's PATH holds
+        .env("PATH", &t.fx.bin)
         .assert()
         .success();
     assert_eq!(shown(&t, SID), format!("{ALL} 3\u{2215}3"));
