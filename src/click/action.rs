@@ -192,10 +192,12 @@ pub fn parse(url: &str) -> Result<ActionUrl, String> {
 /// the link came from, so the change shows at the next render. `Err` says
 /// why nothing ran, or that the plugin failed.
 ///
-/// An action that fronts a toggle (`toggle` in its declaration) also gets
-/// the output its link came from (`output`), and once it exits 0 bar
-/// flips `<plugin>.<toggle>` in the session its `session` token names,
-/// unless the first line it printed starts with `cancelled` or `kept`.
+/// The action also gets the output its link came from (`output`): what
+/// the plugin rendered, with the placeholder's options, for the link. An
+/// action that fronts a toggle (`toggle` in its declaration), once it
+/// exits 0, has bar flip `<plugin>.<toggle>` in the session its `session`
+/// token names, unless the first line it printed starts with `cancelled`
+/// or `kept`.
 pub fn run(state: &Path, url: &str, config: &Config, dirs: &[PathBuf]) -> Result<(), String> {
     let cache = Cache::new(state);
     let r = checked(state, url, config, dirs, &cache);
@@ -262,11 +264,9 @@ fn checked(
         return Err("token values are not in the plugin's current output".into());
     }
     let mut v = v;
-    if v.spec.toggle.is_some() {
-        v.output = serde_json::from_str::<serde_json::Value>(&raw)
-            .ok()
-            .filter(serde_json::Value::is_object);
-    }
+    v.output = serde_json::from_str::<serde_json::Value>(&raw)
+        .ok()
+        .filter(serde_json::Value::is_object);
     Ok((v, u.entry))
 }
 
@@ -288,7 +288,7 @@ pub struct Verified {
     pub spec: plugin::ActionSpec,
     /// The plugin declared it wants the user's `account` rules.
     pub wants_accounts: bool,
-    /// The output the link came from, for an action fronting a toggle.
+    /// The output the link came from (the URL door only).
     pub output: Option<serde_json::Value>,
 }
 
@@ -349,7 +349,7 @@ pub fn finish<F: FnOnce()>(
 }
 
 /// `bar-<plugin> --action <action>` with `{"action", "tokens"[,
-/// "accounts"]}` on stdin, `BAR_STATE_DIR` set, outside any project,
+/// "accounts"][, "output"]}` on stdin, `BAR_STATE_DIR` set, outside any project,
 /// within the declared limit; its stdout when it exits 0.
 fn spawn(state: &Path, config: &Config, v: &Verified) -> Option<String> {
     let mut input = serde_json::json!({"action": v.req.action, "tokens": v.req.tokens});

@@ -308,9 +308,12 @@ fn handler_runs_the_action_with_tokens_on_stdin() {
     let (fx, c, url) = linked(ONE);
     run(&fx, &c, &url).unwrap();
     let got: serde_json::Value = serde_json::from_str(&fx.file("action.json")).unwrap();
+    // the output the link was drawn from rides along, for options an
+    // action needs from the placeholder that rendered it
+    let out: serde_json::Value = serde_json::from_str(ONE).unwrap();
     assert_eq!(
         got,
-        json!({"action": "use", "tokens": {"account": "a1", "provider": "claude"}})
+        json!({"action": "use", "tokens": {"account": "a1", "provider": "claude"}, "output": out})
     );
     assert_eq!(fx.file("action.name").trim(), "use");
     let status = std::fs::read_to_string(fx.state.join(STATUS_FILE)).unwrap();
