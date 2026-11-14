@@ -646,9 +646,23 @@ esac
 }
 
 fn pick(h: &Home, conf: &std::path::Path, s: &Server, reply: &str) -> (Output, Vec<String>) {
+    pick_as(h, conf, s, reply, None)
+}
+
+/// [`pick`] from an output that carries the `pick-label` template `label`.
+fn pick_as(
+    h: &Home,
+    conf: &std::path::Path,
+    s: &Server,
+    reply: &str,
+    label: Option<&str>,
+) -> (Output, Vec<String>) {
     let (prog, log, logp) = chooser(h);
     let id = bar_cliproxyapi::switch::instance_id(&s.origin());
-    let a = json!({"action":"pick","tokens":{"provider":"claude","instance":id}});
+    let mut a = json!({"action":"pick","tokens":{"provider":"claude","instance":id}});
+    if let Some(l) = label {
+        a["output"] = json!({ "pick_label": l });
+    }
     let o = h.run_env(
         conf,
         &["--action", "pick"],
@@ -675,20 +689,23 @@ fn pick_offers_the_ranking_with_the_top_recommendation_selected() {
     let (o, argv) = pick(&h, &conf, &s, "cancel");
     assert!(o.status.success(), "{}", err(&o));
     // title, prompt, default, then the items: most left first, the
-    // proxy's preferred account marked, the unread one last
+    // unread one last; the default label: no 5h window here, so `?`
     assert_eq!(argv.len(), 3 + 5, "{argv:?}");
     let items = &argv[3..];
     assert_eq!(argv[2], items[0]);
-    let labels: Vec<&str> = items.iter().map(|i| i.split(' ').nth(1).unwrap()).collect();
-    assert_eq!(labels, ["b", "c", "d", "a", "e"], "{items:?}");
+    assert_eq!(items, ["b - ?%", "c - ?%", "d - ?%", "a - ?%", "e - ?%"]);
+    assert!(!argv.iter().any(|a| a.contains("corp.test")));
+    // a template can show the windows and the proxy's preferred account
+    let tpl = "{n}. {label} \u{2014} {windows} {current}";
+    let (_, argv) = pick_as(&h, &conf, &s, "cancel", Some(tpl));
+    let items = &argv[3..];
     assert!(
         items[0].starts_with("1. b \u{2014} 7d 90% left \u{21BB}"),
         "{}",
         items[0]
     );
-    assert!(items[3].contains("[current]") && !items[0].contains("[current]"));
+    assert!(items[3].ends_with(" current") && !items[0].contains("current"));
     assert!(items[4].contains("no data"), "{}", items[4]);
-    assert!(!argv.iter().any(|a| a.contains("corp.test")));
 }
 
 #[test]
@@ -811,7 +828,8 @@ fn pick_text_drops_the_window_id_only_when_every_row_shows_the_same_single_windo
         let h = Home::new("pickprefix");
         let conf = h.conf(&[s.origin()]);
         let listed = text(&h.run(&conf, &["pick", "--provider", "claude"], ""));
-        let (_, argv) = pick(&h, &conf, &s, "cancel");
+        let tpl = "{n}. {label} \u{2014} {windows}";
+        let (_, argv) = pick_as(&h, &conf, &s, "cancel", Some(tpl));
         (listed, argv[3..].to_vec())
     };
     // every account 7d only: no ids, in the list and the chooser alike
@@ -911,8 +929,8 @@ fn the_chooser_shows_the_users_labels_and_never_an_email_or_a_glob() {
     );
     assert!(o.status.success(), "{}", err(&o));
     let argv = std::fs::read_to_string(logp).unwrap();
-    assert!(argv.contains("1. team \u{2014}"), "{argv}");
-    assert!(argv.contains("2. a \u{2014}"), "{argv}");
+    assert!(argv.contains("\nteam - ?%\n"), "{argv}");
+    assert!(argv.contains("\na - ?%"), "{argv}");
     assert!(
         !argv.contains("corp.test") && !argv.contains("b@*"),
         "{argv}"

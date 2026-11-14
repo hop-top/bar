@@ -75,6 +75,10 @@ fn ext_info_declares_the_protocol_extensions() {
         v["actions"].get("pick").is_some(),
         cfg!(target_os = "macos")
     );
+    assert_eq!(
+        v["options"]["pick-label"],
+        json!({"type": "string", "default": "{label} - {used}%"})
+    );
 }
 
 #[test]
@@ -185,6 +189,15 @@ fn options_shape_the_items_and_the_pool() {
     let o = go(json!({"accounts":"b","link":"x://use?a={account}"}));
     assert_eq!(o["items"].as_array().unwrap().len(), 1);
     assert_eq!(o["items"][0]["link"], "x://use?a=ix2");
+    // a pick-label template rides in the output for the `pick` action;
+    // the default does not
+    assert!(o.get("pick_label").is_none(), "{o}");
+    assert!(go(json!({"pick-label":"{label} - {used}%"}))
+        .get("pick_label")
+        .is_none());
+    let o = go(json!({"pick-label":"{n}. {label}"}));
+    assert_eq!(o["pick_label"], "{n}. {label}");
+    assert_eq!(o["items"].as_array().unwrap().len(), 2);
 }
 
 #[test]
