@@ -29,8 +29,10 @@ pub struct T {
 
 /// `bar-tlc` behind a wrapper with a fake `tlc` and chooser first on
 /// `PATH`. Tracks `alpha` (1 of 2 closed), `beta` (2 of 4), `gamma` (0 of
-/// 1); the project 4 of 8 (their tasks and one closed without track). `T-1` is on `alpha`, `T-2` has no track. The
-/// active tracks are `active`. `chooser: false` makes `uname` say
+/// 1), `delta` (2 of 2: complete), `epsilon` (no task); the project 6 of
+/// 10 (their tasks and one closed without track). `T-1` is on `alpha`,
+/// `T-2` has no track, `T-3` is on `delta`. The active tracks are
+/// `active`. `chooser: false` makes `uname` say
 /// Linux, as on a system without one.
 pub fn setup(active: &[&str], chooser: bool) -> T {
     let fx = Fx::new();
@@ -46,12 +48,15 @@ echo "$*" >> "$d/calls"
 case "$*" in
   "task show T-1 "*) echo '{{"task":{{"id":"T-1","track_id":"alpha"}}}}' ;;
   "task show T-2 "*) echo '{{"task":{{"id":"T-2","track_id":null}}}}' ;;
+  "task show T-3 "*) echo '{{"task":{{"id":"T-3","track_id":"delta"}}}}' ;;
   "track show "*) set -- $*; echo "{{\"id\":\"$3\",\"slug\":\"$3-slug\"}}" ;;
   "track list --status active --format json") cat "$d/active.json" ;;
   *"--track alpha"*) echo '[{{"status":"DONE"}},{{"status":"TODO"}}]' ;;
   *"--track beta"*) echo '[{{"status":"DONE"}},{{"status":"DONE"}},{{"status":"TODO"}},{{"status":"TODO"}}]' ;;
   *"--track gamma"*) echo '[{{"status":"TODO"}}]' ;;
-  "task list"*) echo '[{{"status":"DONE","track_id":"alpha"}},{{"status":"TODO","track_id":"alpha"}},{{"status":"DONE","track_id":"beta"}},{{"status":"DONE","track_id":"beta"}},{{"status":"TODO","track_id":"beta"}},{{"status":"TODO","track_id":"beta"}},{{"status":"TODO","track_id":"gamma"}},{{"status":"CANCELLED","track_id":null}}]' ;;
+  *"--track delta"*) echo '[{{"status":"DONE"}},{{"status":"SKIPPED"}}]' ;;
+  *"--track epsilon"*) echo '[]' ;;
+  "task list"*) echo '[{{"status":"DONE","track_id":"alpha"}},{{"status":"TODO","track_id":"alpha"}},{{"status":"DONE","track_id":"beta"}},{{"status":"DONE","track_id":"beta"}},{{"status":"TODO","track_id":"beta"}},{{"status":"TODO","track_id":"beta"}},{{"status":"TODO","track_id":"gamma"}},{{"status":"DONE","track_id":"delta"}},{{"status":"SKIPPED","track_id":"delta"}},{{"status":"CANCELLED","track_id":null}}]' ;;
   *) exit 1 ;;
 esac
 "#

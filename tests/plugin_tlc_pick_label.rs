@@ -107,7 +107,7 @@ fn entries_that_draw_alike_are_numbered_and_map_back() {
 }
 
 #[test]
-fn entries_are_sanitised_and_counted_only_when_asked() {
+fn entries_are_sanitised_and_counted_with_one_list() {
     let t = setup(&["alpha", "beta"], true);
     let o = act_with(&t, "a\n{slug}\u{7}\"; do shell script \"x", "");
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
@@ -123,12 +123,11 @@ fn entries_are_sanitised_and_counted_only_when_asked() {
     assert!(o.status.success());
     let i = items(&t);
     assert!(i.iter().all(|l| l.chars().count() == 120), "{i:?}");
-    // the tasks are listed once, for done/total, and only then
+    // the tasks are listed once per click, for every track at once
     let _ = std::fs::remove_file(t.fake.join("calls"));
-    act_with(&t, "{slug}", "");
-    assert!(!t.calls().contains("task list"), "{}", t.calls());
     act_with(&t, "{total}", "");
     assert_eq!(t.calls().matches("task list").count(), 1, "{}", t.calls());
+    assert!(!t.calls().contains("--track"), "{}", t.calls());
 }
 
 /// The render's output for `opts`, from the plugin itself.

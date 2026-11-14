@@ -47,7 +47,7 @@ fn two_active_tracks_open_the_chooser_on_the_way_to_track_scope() {
     // track -> all: no chooser
     t.click_mark(SID).unwrap();
     assert_eq!(t.offered(), None);
-    assert_eq!(shown(&t, SID), format!("{ALL} 4\u{2215}8"));
+    assert_eq!(shown(&t, SID), format!("{ALL} 6\u{2215}10"));
     // all -> track: the session's track first and preselected, then the
     // other active ones
     t.choose(Some(2));
@@ -78,7 +78,7 @@ fn scope_all_clears_the_pick_and_cancel_changes_nothing() {
     t.record(SID, "T-2");
     // no session track: wanted track, two active, no pick yet: the project,
     // and the mark asks which track, keeping the scope wanted
-    assert_eq!(shown(&t, SID), format!("{ALL} 4\u{2215}8"));
+    assert_eq!(shown(&t, SID), format!("{ALL} 6\u{2215}10"));
     let l = links(&t.show(SID));
     assert_eq!(action::parse(&l[0].0).unwrap().tokens["to"], "pick");
     t.choose(Some(2));
@@ -99,14 +99,14 @@ fn scope_all_clears_the_pick_and_cancel_changes_nothing() {
     assert_eq!(t.offered(), None);
     assert_eq!(t.picked(SID), None);
     assert_eq!(read_record(&t.fx.state, "tlc", SID).unwrap()["task"], "T-2");
-    assert_eq!(shown(&t, SID), format!("{ALL} 4\u{2215}8"));
+    assert_eq!(shown(&t, SID), format!("{ALL} 6\u{2215}10"));
     // to track again, cancelled: scope and record stay as they were
     t.choose(None);
     t.click_mark(SID).unwrap();
     assert!(t.offered().is_some());
     assert!(t.status().contains("ok: cancelled"), "{}", t.status());
     assert_eq!(t.picked(SID), None);
-    assert_eq!(shown(&t, SID), format!("{ALL} 4\u{2215}8"));
+    assert_eq!(shown(&t, SID), format!("{ALL} 6\u{2215}10"));
     let l = links(&t.show(SID));
     assert_eq!(action::parse(&l[0].0).unwrap().tokens["to"], "track");
 }
@@ -118,7 +118,7 @@ fn one_track_to_offer_needs_no_chooser() {
     t.record(SID, "T-2");
     assert_eq!(shown(&t, SID), format!("{TRACK} 0\u{2215}1"));
     t.click_mark(SID).unwrap();
-    assert_eq!(shown(&t, SID), format!("{ALL} 4\u{2215}8"));
+    assert_eq!(shown(&t, SID), format!("{ALL} 6\u{2215}10"));
     t.click_mark(SID).unwrap();
     assert_eq!(t.offered(), None);
     assert_eq!(shown(&t, SID), format!("{TRACK} 0\u{2215}1"));
@@ -151,11 +151,11 @@ fn a_session_track_and_another_active_one_are_offered() {
 fn no_active_track_counts_the_project() {
     let t = setup(&[], true);
     t.record(SID, "T-2");
-    assert_eq!(shown(&t, SID), format!("{ALL} 4\u{2215}8"));
+    assert_eq!(shown(&t, SID), format!("{ALL} 6\u{2215}10"));
     t.click_mark(SID).unwrap();
     t.click_mark(SID).unwrap();
     assert_eq!(t.offered(), None);
-    assert_eq!(shown(&t, SID), format!("{ALL} 4\u{2215}8"));
+    assert_eq!(shown(&t, SID), format!("{ALL} 6\u{2215}10"));
 }
 
 #[test]
@@ -188,7 +188,7 @@ fn the_global_scope_toggle_never_opens_the_chooser() {
         .env("PATH", &t.fx.bin)
         .assert()
         .success();
-    assert_eq!(shown(&t, SID), format!("{ALL} 4\u{2215}8"));
+    assert_eq!(shown(&t, SID), format!("{ALL} 6\u{2215}10"));
     assert_eq!(t.offered(), None);
     assert_eq!(t.picked(SID), None);
 }
