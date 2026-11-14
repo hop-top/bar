@@ -310,7 +310,7 @@ Toggle:
 - `bar toggle` (a click on the bar or percentage) flips between `show` and `alt`; `alt` defaults to `show` with `bar` and `pct` swapped. Time, `eta` and `proj` stay outside the link.
 - Toggle state: `pct-5h` / `pct-7d` files (mode 0600) in the [state directory](#files-and-environment). While a file exists, `bar` and `pct` swap. `bar toggle <5h|7d>` flips it and prints the view now shown (`5h: pct`, `7d: bar`).
 - Plugins toggle the same way: `bar toggle <plugin name>` flips `toggle-<name>` (printing `<name>: alt` or `<name>: show`), and a plugin output with `alt` shows `alt` instead of `text` while it is on (see [plugins](plugins.md#render)). The CLI works without the handler app.
-- A plugin output with `label_toggle` names a second, independent toggle on its label or icon: `bar toggle <plugin>.<toggle>` flips `toggle-<plugin>.<toggle>`, linked as `bar://toggle/<plugin>.<toggle>` (see [plugins](plugins.md#render)). The plugin reads it from `toggles` on its stdin. `tlc` does this: a click on the mark flips `tlc.scope`, a click on the count shows the track name.
+- A plugin output with `label_toggle` names a second, independent toggle on its label or icon: `bar toggle <plugin>.<toggle>` flips `toggle-<plugin>.<toggle>`, linked as `bar://toggle/<plugin>.<toggle>` (see [plugins](plugins.md#render)). The plugin reads it from `toggles` on its stdin. `tlc` does this: a click on the mark flips `tlc.scope`, a click on the count shows the track name. With `action tlc tlc.pick` bound, the mark runs that action, which can ask for a track first ([Choosing the track](plugins.md#choosing-the-track)).
 - A plugin output with `text_toggle` puts a named toggle on its text instead: a click on the text flips `toggle-<plugin>.<toggle>`, and the `alt` toggle (`bar toggle <plugin>`) moves to the label or icon.
 - Set instead of flip: `bar toggle <key> <value>` sets the view, so running it twice leaves the same view. `value` is `on` or `off`, or the view name `bar toggle` prints: `pct` or `bar` for `5h` / `7d`, `alt` or `show` for `<plugin>` and `<plugin>.<toggle>` (`bar toggle 5h pct`, `bar toggle tlc.scope off`). Another value exits 2, naming the valid ones.
 - Keys: `5h`, `7d`, the name of an installed plugin (a `bar-<name>` executable found as [plugins](plugins.md) are, on `PATH` or beside `bar`), or `<plugin>.<toggle>` for one, `<toggle>` a name of letters, digits, `-` and `_`. Plugins are not run to check: the toggles a plugin names come with its render output, so any such name is accepted after an installed plugin. Any other key exits 2 and writes nothing; the message lists the valid keys and installed plugins. The handler's `<key>?sid=<session id>` form is checked for its shape only, since the link comes from a render whose `PATH` may hold plugins the handler's does not.
@@ -1296,6 +1296,7 @@ action myproxy myproxy.use        # a click on an item of #{myproxy} runs it for
 - The nonce is the boundary against pages: any page or app can open a `bar://` URL, and none can know the nonce, which lives in the state directory with mode 0600. The [command allowlist](#clickable-commands) is untouched.
 - The handler runs with the `PATH` of the shell that ran `bar click install` (it is baked in with the dir variables), so a plugin the renderer finds there is found by a click; reinstall after changing `PATH` or installing a plugin elsewhere.
 - A plugin's own commands run through bar as `bar <plugin> <args>` (see [plugins](plugins.md#commands)).
+- An action that fronts a toggle (`toggle` in its declaration, such as `action tlc tlc.pick`) is linked on the label or icon instead of the text, and flips that toggle in the session once it succeeds: see [plugins](plugins.md#actions).
 - `account` is linked when the plugin's output carries every token the action takes; an action that takes an `account` token also needs the plugin to have supplied the account shown, one that does not (a `next` switch, say) is linked even while `account` shows your own.
 - The plugin runs with the state directory of the render that drew the link (`BAR_STATE_DIR`).
 - The click handler needs macOS; on other systems the links are not drawn.
@@ -1347,7 +1348,7 @@ Empty box:
 | `PermissionRequest`, `StopFailure` | waiting marker set |
 | `Notification` (`permission_prompt`, `elicitation_dialog`, `elicitation_url_dialog`) | waiting marker set |
 | `PreToolUse` of `AskUserQuestion` | waiting marker set |
-| `PostToolUse`, `PostToolUseFailure`, `PermissionDenied` (main agent) | waiting marker cleared; `PostToolUse` of `Bash` also updates the tlc record |
+| `PostToolUse`, `PostToolUseFailure`, `PermissionDenied` (main agent) | waiting marker cleared; `PostToolUse` of `Bash` also updates the tlc record (a picked track is kept) |
 | `Stop` (main agent) | marker set to `done` |
 | `UserPromptSubmit` | marker cleared |
 | `SessionEnd` | marker cleared; the session's subagent entries, plugin records and own toggles dropped |
@@ -1364,7 +1365,7 @@ Running subagents:
 - Claude Code's statusline JSON has no subagent field and its transcript has no cheap running signal, so `#{agents}` needs the hooks registered.
 - Internal agents (prompt suggestions, side questions) also fire these events and count while they run.
 
-tlc task record: on `PostToolUse` of the `Bash` tool the hook keeps `records/tlc/<session id>` (mode 0600, written atomically), JSON `{"task", "cwd", "at"}`, for the [`tlc` plugin](plugins.md#bar-tlc).
+tlc task record: on `PostToolUse` of the `Bash` tool the hook keeps `records/tlc/<session id>` (mode 0600, written atomically), JSON `{"task", "cwd", "at"}`, for the [`tlc` plugin](plugins.md#bar-tlc). Other fields (`track` and `root`, a track picked from the [chooser](plugins.md#choosing-the-track)) are kept when the task changes.
 
 - It records the last `tlc task claim <id>`, `tlc task update <id> … --status IN_PROGRESS`, `tlc task complete <id>` or `tlc task create …` in the command, anywhere in a chain (`&&`, `||`, `;`, `|`, newlines). A `create` takes its id from the `Created task <id>` line of the tool output. Ids are 1 to 64 characters from `A-Z a-z 0-9 - _`; patterns and URIs are skipped.
 - `cwd` is the hook's `cwd` (absolute, else nothing is recorded), moved by an earlier `cd <dir>` in the chain and by `tlc -C <dir>` / `--chdir`; after a `cd` it cannot follow (`cd`, `cd -`, `~`, `$VAR`) nothing more is recorded from that command. The plugin finds the project from `cwd` when it renders, the same way it finds the project of `session.cwd`.

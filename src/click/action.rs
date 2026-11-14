@@ -191,15 +191,41 @@ pub fn parse(url: &str) -> Result<ActionUrl, String> {
 /// declares a longer `timeout`; no shell, in the state dir). Records the outcome in [`STATUS_FILE`] and ages the cache entry
 /// the link came from, so the change shows at the next render. `Err` says
 /// why nothing ran, or that the plugin failed.
+///
+/// An action that fronts a toggle (`toggle` in its declaration) also gets
+/// the output its link came from (`output`), and once it exits 0 bar
+/// flips `<plugin>.<toggle>` in the session its `session` token names,
+/// unless the first line it printed starts with `cancelled` or `kept`.
 pub fn run(state: &Path, url: &str, config: &Config, dirs: &[PathBuf]) -> Result<(), String> {
     let cache = Cache::new(state);
     let r = checked(state, url, config, dirs, &cache);
-    finish(
+    let fronted = r.as_ref().ok().and_then(|(v, _)| {
+        let sid = v
+            .req
+            .tokens
+            .get("session")
+            .filter(|s| super::url::valid_sid(s))?;
+        Some((
+            format!("{}.{}", v.req.plugin, v.spec.toggle.as_deref()?),
+            sid.clone(),
+        ))
+    });
+    let said = finish(
         state,
         config,
         r.map(|(v, entry)| (v, move || cache.age_entry(&entry))),
-    )
-    .map(|_| ())
+    )?;
+    match fronted {
+        Some((key, sid)) if !keeps_toggle(&said) => {
+            super::toggle_in(state, &key, Some(&sid)).map(|_| ())
+        }
+        _ => Ok(()),
+    }
+}
+
+/// A fronting action's first line that leaves its toggle as it was.
+fn keeps_toggle(said: &str) -> bool {
+    said.starts_with("cancelled") || said.starts_with("kept")
 }
 
 /// The URL door: the link parses, carries this install's nonce, names an
@@ -229,12 +255,17 @@ fn checked(
         tokens: u.tokens,
     };
     let v = verify(cache, dirs, req)?;
-    let cached = cache
-        .read_entry(&u.entry)
-        .and_then(|raw| parse_output(&raw))
-        .ok_or("the output the link came from is gone")?;
+    let gone = "the output the link came from is gone";
+    let raw = cache.read_entry(&u.entry).ok_or(gone)?;
+    let cached = parse_output(&raw).ok_or(gone)?;
     if !cached.offers_tokens(&v.req.tokens) {
         return Err("token values are not in the plugin's current output".into());
+    }
+    let mut v = v;
+    if v.spec.toggle.is_some() {
+        v.output = serde_json::from_str::<serde_json::Value>(&raw)
+            .ok()
+            .filter(serde_json::Value::is_object);
     }
     Ok((v, u.entry))
 }
@@ -257,6 +288,8 @@ pub struct Verified {
     pub spec: plugin::ActionSpec,
     /// The plugin declared it wants the user's `account` rules.
     pub wants_accounts: bool,
+    /// The output the link came from, for an action fronting a toggle.
+    pub output: Option<serde_json::Value>,
 }
 
 /// The checks both doors share, once the door's own gate has passed
@@ -282,6 +315,7 @@ pub fn verify(cache: &Cache, dirs: &[PathBuf], req: Request) -> Result<Verified,
         found,
         spec,
         wants_accounts: info.inputs.accounts,
+        output: None,
     })
 }
 
@@ -322,6 +356,9 @@ fn spawn(state: &Path, config: &Config, v: &Verified) -> Option<String> {
     // the user's `account` rules, for a plugin that declared it wants them
     if v.wants_accounts && !config.accounts.is_empty() {
         input["accounts"] = plugin::account_rules(config);
+    }
+    if let Some(o) = &v.output {
+        input["output"] = o.clone();
     }
     let input = input.to_string();
     let mut c = std::process::Command::new(&v.found.path);

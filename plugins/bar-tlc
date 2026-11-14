@@ -14,8 +14,31 @@
 # sh, jq and tlc. No project in scope, or no tasks, emits empty text
 # (segment hidden). Any failed tlc call emits nothing, so a different kind of
 # count never replaces the cached value.
+#
+# A picked track (session.record track/root, written by the pick action)
+# wins over the session's track; without either, a single active track
+# counts. The pick action (`--action pick`, bound as `action tlc tlc.pick`,
+# run by a click on the mark) fronts the scope toggle: to=all drops the
+# pick, to=track (or to=pick: stay, nothing counted yet) offers the
+# session's track and the active ones in the chooser when there are two or
+# more; Cancel prints `cancelled` and bar keeps the scope.
+# The track chooser: macOS `choose from list` through /usr/bin/osascript;
+# BAR_TLC_CHOOSER, an absolute path, stands in for it (tests). Prints the
+# program, fails where there is none.
+chooser() {
+  case ${BAR_TLC_CHOOSER:-} in
+    /*) [ -x "$BAR_TLC_CHOOSER" ] && printf '%s\n' "$BAR_TLC_CHOOSER" ;;
+    '') [ "$(uname -s 2>/dev/null)" = Darwin ] && [ -x /usr/bin/osascript ] && printf '%s\n' /usr/bin/osascript ;;
+    *) false ;;
+  esac
+}
+
 if [ "$1" = "--ext-info" ]; then
-  printf '%s\n' '{"name":"tlc","version":"0.5.0","description":"Closed tasks of the session track","capabilities":["discover","placeholder"],"options":{"scope":{"type":"enum","enum":["track","all"],"default":"track"},"status":{"type":"string"},"show":{"type":"enum","enum":["count","track"],"default":"count"},"alt":{"type":"enum","enum":["count","track"]},"label-track":{"type":"string","default":"◉"},"label-all":{"type":"string","default":"☰"},"icon-track":{"type":"string","default":"\uf45d"},"icon-all":{"type":"string","default":"\uf45e"}},"cache":"session","ttl":"60s","web":{"category":"tasks","samples":[{"when":{"scope":"all","show":"track"},"output":{"label":"☰","icon":"\uf45e","label_toggle":"scope","text":"all","alt":"12∕30","score":40}},{"when":{"scope":"all"},"output":{"label":"☰","icon":"\uf45e","label_toggle":"scope","text":"12∕30","alt":"all","score":40}},{"when":{"show":"track"},"output":{"label":"◉","icon":"\uf45d","label_toggle":"scope","text":"web-ui","alt":"7∕9","score":77}},{"output":{"label":"◉","icon":"\uf45d","label_toggle":"scope","text":"7∕9","alt":"web-ui","score":77}}],"options":{"scope":{"label":"Scope","help":"Count the track of the session, or the whole project"},"status":{"label":"Status filter","help":"Comma-separated tlc statuses to count","placeholder":"DONE,CANCELLED"},"show":{"label":"Text","help":"Count of closed tasks, or the track name"},"alt":{"label":"Alt text","help":"Shown after a click on the text"}}}}'
+  acts=
+  if chooser >/dev/null; then
+    acts=',"actions":{"pick":{"description":"Choose the track to count from a list (macOS only)","tokens":["session","to"],"toggle":"scope","timeout":120}}'
+  fi
+  printf '%s\n' '{"name":"tlc","version":"0.5.0","description":"Closed tasks of the session track","capabilities":["discover","placeholder"],"options":{"scope":{"type":"enum","enum":["track","all"],"default":"track"},"status":{"type":"string"},"show":{"type":"enum","enum":["count","track"],"default":"count"},"alt":{"type":"enum","enum":["count","track"]},"label-track":{"type":"string","default":"◉"},"label-all":{"type":"string","default":"☰"},"icon-track":{"type":"string","default":"\uf45d"},"icon-all":{"type":"string","default":"\uf45e"}},"cache":"session","ttl":"60s"'"$acts"',"web":{"category":"tasks","samples":[{"when":{"scope":"all","show":"track"},"output":{"label":"☰","icon":"\uf45e","label_toggle":"scope","text":"all","alt":"12∕30","score":40}},{"when":{"scope":"all"},"output":{"label":"☰","icon":"\uf45e","label_toggle":"scope","text":"12∕30","alt":"all","score":40}},{"when":{"show":"track"},"output":{"label":"◉","icon":"\uf45d","label_toggle":"scope","text":"web-ui","alt":"7∕9","score":77}},{"output":{"label":"◉","icon":"\uf45d","label_toggle":"scope","text":"7∕9","alt":"web-ui","score":77}}],"options":{"scope":{"label":"Scope","help":"Count the track of the session, or the whole project"},"status":{"label":"Status filter","help":"Comma-separated tlc statuses to count","placeholder":"DONE,CANCELLED"},"show":{"label":"Text","help":"Count of closed tasks, or the track name"},"alt":{"label":"Alt text","help":"Shown after a click on the text"}}}}'
   exit 0
 fi
 
@@ -31,6 +54,9 @@ alt=$(opt '.options.alt // empty') || exit 1
 flip=$(opt '.toggles.scope // false | if . == true then "1" else "" end')
 task=$(opt '.session.record.task // empty | strings')
 rcwd=$(opt '.session.record.cwd // empty | strings')
+ptrack=$(opt '.session.record.track // empty | strings')
+proot=$(opt '.session.record.root // empty | strings')
+sid=$(opt '.session.session_id // empty | strings')
 scope=${scope:-track}
 case $scope in track|all) ;; *) exit 1 ;; esac
 # the scope toggle inverts the wanted scope; a wanted track still falls back
@@ -42,6 +68,9 @@ case $status in -*|*[!A-Za-z0-9_,-]*) exit 1 ;; esac
 case $show in count|track) ;; *) exit 1 ;; esac
 case $alt in count|track) ;; '') [ "$show" = count ] && alt=track || alt=count ;; *) exit 1 ;; esac
 case $task in ''|-*|*[!A-Za-z0-9_-]*) task= ;; esac
+case $ptrack in ''|-*|*[!A-Za-z0-9_-]*) ptrack= ;; esac
+case $sid in ''|*[!0-9a-f-]*) sid= ;; esac
+[ "${#sid}" -le 64 ] || sid=
 case $rcwd in /*) ;; *) rcwd= ;; esac
 case $cwd in /*) [ -d "$cwd" ] || cwd=$PWD ;; *) cwd=$PWD ;; esac
 case $cwd in /*) ;; *) exit 1 ;; esac
@@ -107,6 +136,161 @@ find_root() {
   printf '%s\n' "$root"
 }
 
+# No per-call timeout: the host kills the whole process group after 3 s.
+run() { tlc "$@" 2>/dev/null; }
+
+# The track of the session's task ($task, run in $rcwd) into $strack, when
+# tlc ran for this same project ($here); fails on a tlc error. A task that
+# no longer exists (exit 3) has none.
+session_track() {
+  strack=
+  [ -n "$task" ] && [ -n "$rcwd" ] || return 0
+  rroot=$(find_root "$rcwd") || return 1
+  [ -n "$rroot" ] && [ "$(cd -- "$rroot" 2>/dev/null && pwd -P)" = "$here" ] || return 0
+  shown=$(run task show "$task" --format json); rc=$?
+  case $rc in 0) ;; 3) return 0 ;; *) return 1 ;; esac
+  strack=$(printf '%s' "$shown" | jq -r '.task.track_id // empty | strings' 2>/dev/null) || return 1
+  case $strack in -*|*[!A-Za-z0-9_-]*) strack= ;; esac
+}
+
+# The slug of track $1 into $name.
+slug_of() {
+  track=$(run track show "$1" --format json) || return 1
+  name=$(printf '%s' "$track" | jq -r '.slug // .track.slug // .id // empty | strings' 2>/dev/null) || return 1
+  name=${name:-$1}
+}
+
+# Active tracks of the project, as tlc lists them, into $act.
+active_tracks() {
+  act=$(run track list --status active --format json) || return 1
+  act=$(printf '%s' "${act:-[]}" | jq -c '(if type == "array" then . else (.tracks // .items // .data // []) end)
+    | [.[] | select(type == "object")
+       | {id: (.id // "" | tostring), slug: (.slug // .id // "" | tostring), title: (.title // "" | tostring)}
+       | select(.id | test("^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$"))]' 2>/dev/null) || return 1
+  [ -n "$act" ]
+}
+
+# --action pick (see the top): bar has checked the link it came from, but
+# this runs with the user's rights, so it checks its input itself.
+SCRIPT='on run argv
+	set theTitle to item 1 of argv
+	set thePrompt to item 2 of argv
+	set theDefault to item 3 of argv
+	set theItems to items 4 thru -1 of argv
+	set r to choose from list theItems with title theTitle with prompt thePrompt default items {theDefault} without multiple selections allowed and empty selection allowed
+	if r is false then return ""
+	return item 1 of r
+end run'
+
+# Replaces the session's record with $1 (an empty object removes it):
+# a private temp file in the records dir, renamed over it.
+save() {
+  mkdir -p "$rdir" || exit 1
+  [ -d "$rdir" ] && [ ! -L "$rdir" ] || exit 1
+  if [ "$1" = '{}' ]; then
+    rm -f "$rfile"
+    return
+  fi
+  tmp=$(mktemp "$rdir/.$psid.XXXXXX") || exit 1
+  if printf '%s\n' "$1" >"$tmp" && mv -f "$tmp" "$rfile"; then :; else
+    rm -f "$tmp"
+    exit 1
+  fi
+}
+
+# The chosen track's id and slug into $id and $slug; Cancel leaves both
+# empty. The labels are passed as arguments of a fixed script, so no
+# track title can alter what it does.
+choose() {
+  prog=$(chooser) || exit 1
+  set --
+  while IFS= read -r l; do set -- "$@" "$l"; done <<EOF
+$(printf '%s' "$cands" | jq -r '.[].label')
+EOF
+  prompt="Count which track?"
+  if [ "$prog" = /usr/bin/osascript ]; then
+    reply=$("$prog" -e "$SCRIPT" -- "bar: track" "$prompt" "$1" "$@") || exit 1
+  else
+    reply=$("$prog" "bar: track" "$prompt" "$1" "$@") || exit 1
+  fi
+  id=''
+  slug=''
+  [ -n "$reply" ] && [ "$reply" != false ] || return 0
+  id=$(printf '%s' "$cands" | jq -r --arg r "$reply" 'map(select(.label == $r)) | .[0].id // empty') || exit 1
+  slug=$(printf '%s' "$cands" | jq -r --arg r "$reply" 'map(select(.label == $r)) | .[0].slug // empty') || exit 1
+  # a reply that was not offered is refused
+  [ -n "$id" ] || exit 1
+}
+
+pick_action() {
+  umask 077
+  [ "$(opt '.action // empty')" = pick ] || exit 1
+  psid=$(opt '.tokens.session // empty | strings')
+  case $psid in ''|*[!0-9a-f-]*) exit 1 ;; esac
+  [ "${#psid}" -le 64 ] || exit 1
+  to=$(opt '.tokens.to // empty | strings')
+  case $to in track|all|pick) ;; *) exit 1 ;; esac
+  proj=$(opt '.output.root // empty | strings')
+  case $proj in /*) ;; *) exit 1 ;; esac
+  [ -f "$proj/.tlc/config.yaml" ] || exit 1
+  case ${BAR_STATE_DIR:-} in /*) ;; *) exit 1 ;; esac
+  rdir=$BAR_STATE_DIR/records/tlc
+  rfile=$rdir/$psid
+  # a planted symlink must not redirect the write (save checks records/tlc)
+  [ ! -L "$BAR_STATE_DIR/records" ] || exit 1
+  rec='{}'
+  if [ -f "$rfile" ]; then
+    rec=$(head -c 4096 "$rfile" | jq -c 'if type == "object" then . else {} end' 2>/dev/null) || rec='{}'
+    [ -n "$rec" ] || rec='{}'
+  fi
+  # back to the whole project: the pick goes
+  if [ "$to" = all ]; then
+    if printf '%s' "$rec" | jq -e 'has("track") or has("root")' >/dev/null 2>&1; then
+      save "$(printf '%s' "$rec" | jq -c 'del(.track, .root)')"
+    fi
+    exit 0
+  fi
+  cd -- "$proj" || exit 1
+  here=$(pwd -P)
+  task=$(printf '%s' "$rec" | jq -r '.task // empty | strings')
+  rcwd=$(printf '%s' "$rec" | jq -r '.cwd // empty | strings')
+  case $task in ''|-*|*[!A-Za-z0-9_-]*) task= ;; esac
+  case $rcwd in /*) ;; *) rcwd= ;; esac
+  session_track || exit 1
+  active_tracks || exit 1
+  name=
+  [ -z "$strack" ] || slug_of "$strack" || exit 1
+  # the session's track first, then the other active ones
+  cands=$(printf '%s' "$act" | jq -c --arg s "$strack" --arg n "$name" '
+    (map(select(.id == $s))) as $mine
+    | (if $s != "" and ($mine | length) == 0 then [{id: $s, slug: $n, title: ""}] else $mine end)
+      + map(select(.id != $s))
+    | to_entries
+    | map({id: .value.id, slug: .value.slug,
+           label: ("\(.key + 1). \(.value.slug)"
+                   + (if .value.title != "" then " — \(.value.title)" else "" end)
+                  | gsub("[[:cntrl:]]"; " ") | .[0:120])})') || exit 1
+  n=$(printf '%s' "$cands" | jq 'length') || exit 1
+  if [ "$n" -lt 2 ]; then
+    # nothing to choose: to track at once, or (to=pick) nothing changes
+    [ "$to" = track ] || echo kept
+    exit 0
+  fi
+  choose
+  if [ -z "$id" ]; then
+    echo cancelled
+    exit 0
+  fi
+  save "$(printf '%s' "$rec" | jq -c --arg t "$id" --arg r "$here" '. + {track: $t, root: $r}')"
+  if [ "$to" = pick ]; then echo "kept: track $slug"; else echo "track $slug"; fi
+  exit 0
+}
+
+if [ "$1" = "--action" ]; then
+  [ "$2" = pick ] || exit 1
+  pick_action
+fi
+
 root=$(find_root "$cwd") || exit 1
 if [ -z "$root" ]; then
   printf '%s\n' '{"text":""}'
@@ -115,28 +299,33 @@ fi
 cd -- "$root" || exit 1
 here=$(pwd -P)
 
-# No per-call timeout: the host kills the whole process group after 3 s.
-run() { tlc "$@" 2>/dev/null; }
 
-# The session's task counts only when tlc ran for this same project.
+# What counts in track scope: the picked track (for this project), else
+# the session's, else the only active track; without one, the project.
 pick=
 name=all
-if [ "$scope" = track ] && [ -n "$task" ] && [ -n "$rcwd" ]; then
-  rroot=$(find_root "$rcwd") || exit 1
-  if [ -n "$rroot" ] && [ "$(cd -- "$rroot" 2>/dev/null && pwd -P)" = "$here" ]; then
-    # exit 3: the task is gone, so the project counts
-    shown=$(run task show "$task" --format json); rc=$?
-    case $rc in 0) ;; 3) shown= ;; *) exit 1 ;; esac
-    if [ -n "$shown" ]; then
-      pick=$(printf '%s' "$shown" | jq -r '.task.track_id // empty | strings' 2>/dev/null) || exit 1
-    fi
-    case $pick in -*|*[!A-Za-z0-9_-]*) pick= ;; esac
-    if [ -n "$pick" ]; then
-      track=$(run track show "$pick" --format json) || exit 1
-      name=$(printf '%s' "$track" | jq -r '.slug // .track.slug // .id // empty | strings' 2>/dev/null) || exit 1
-      name=${name:-$pick}
+to=track
+if [ "$scope" = track ]; then
+  nact=0
+  if [ -n "$ptrack" ] && [ "$proot" = "$here" ]; then
+    pick=$ptrack
+  else
+    session_track || exit 1
+    pick=$strack
+  fi
+  if [ -n "$pick" ]; then
+    slug_of "$pick" || exit 1
+  else
+    active_tracks || exit 1
+    nact=$(printf '%s' "$act" | jq 'length') || exit 1
+    if [ "$nact" -eq 1 ]; then
+      pick=$(printf '%s' "$act" | jq -r '.[0].id') || exit 1
+      name=$(printf '%s' "$act" | jq -r '.[0].slug') || exit 1
     fi
   fi
+  # the mark's next step (the pick action): to the project, or, with
+  # nothing counted and tracks to offer, a pick that keeps the scope
+  if [ -z "$pick" ] && [ "$nact" -ge 2 ]; then to=pick; else to=all; fi
 fi
 
 # $status is empty (no filter) or a validated word list, never an option.
@@ -146,7 +335,7 @@ else
   all=$(run task list --archived --limit 100000 ${status:+--status "$status"} --format json) || exit 1
 fi
 
-# mark: effective scope (track when a session track was picked, else all)
+# mark: effective scope (track when a track counts, else all)
 if [ -n "$pick" ]; then
   label=$(opt '.options["label-track"] // "◉"') || exit 1
   icon=$(opt '.options["icon-track"] // "\uf45d"') || exit 1
@@ -155,11 +344,12 @@ else
   icon=$(opt '.options["icon-all"] // "\uf45e"') || exit 1
 fi
 
-printf '%s' "$all" | jq -ce --arg name "$name" --arg show "$show" --arg alt "$alt" --arg label "$label" --arg icon "$icon" '
+printf '%s' "$all" | jq -ce --arg name "$name" --arg show "$show" --arg alt "$alt" --arg label "$label" --arg icon "$icon" --arg sid "$sid" --arg to "$to" --arg root "$here" '
   (if type == "array" then . else (.tasks // .items // .data // []) end) as $t
   | ($t | length) as $n
   | if $n == 0 then {text: ""} else
     ([$t[] | select(.status != "TODO" and .status != "IN_PROGRESS")] | length) as $c
   | {count: "\($c)∕\($n)", track: $name} as $v
   | {label: $label, icon: $icon, label_toggle: "scope",
-     text: $v[$show], alt: $v[$alt], score: ($c * 100 / $n | floor)} end' 2>/dev/null || exit 1
+     text: $v[$show], alt: $v[$alt], score: ($c * 100 / $n | floor), root: $root}
+    + (if $sid == "" then {} else {tokens: {session: $sid, to: $to}} end) end' 2>/dev/null || exit 1

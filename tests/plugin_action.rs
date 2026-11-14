@@ -600,3 +600,18 @@ fn a_nonce_file_others_can_read_is_not_a_nonce_and_is_replaced_private() {
     let mode = std::fs::metadata(&f).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o600);
 }
+
+#[test]
+fn ext_info_toggle_action_needs_a_session_token() {
+    let info = plugin::parse_info(&echo_info(json!({"actions": {
+        "pick": {"tokens": ["to", "session"], "toggle": "scope"},
+        "nosession": {"tokens": ["to"], "toggle": "scope"},
+        "badname": {"tokens": ["session"], "toggle": "a.b"},
+        "plain": {"tokens": ["session"]},
+    }})))
+    .unwrap();
+    assert_eq!(info.actions["pick"].toggle.as_deref(), Some("scope"));
+    for k in ["nosession", "badname", "plain"] {
+        assert_eq!(info.actions[k].toggle, None, "{k}");
+    }
+}
