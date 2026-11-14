@@ -29,17 +29,33 @@ pub fn parse(input: &str) -> Result<Vec<Token>, String> {
     Ok(out)
 }
 
-/// Index of the closing `}`, ignoring any inside double quotes.
+/// Index of the closing `}`, ignoring any inside double quotes and the one
+/// ending a `{name}` (1 to 32 of `A-Za-z0-9_`), which a template option
+/// (a label or link a plugin fills in) holds.
 fn find_close(s: &str) -> Option<usize> {
     let mut quoted = false;
+    let mut skip = 0;
     for (i, c) in s.char_indices() {
+        if i < skip {
+            continue;
+        }
         match c {
             '"' => quoted = !quoted,
+            '{' if !quoted => skip = brace_word(&s[i..]).map_or(0, |n| i + n),
             '}' if !quoted => return Some(i),
             _ => {}
         }
     }
     None
+}
+
+/// The length of the `{name}` that `s` starts with, if it does.
+fn brace_word(s: &str) -> Option<usize> {
+    let n = s[1..]
+        .bytes()
+        .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_')
+        .count();
+    ((1..=32).contains(&n) && s.as_bytes().get(n + 1) == Some(&b'}')).then_some(n + 2)
 }
 
 fn parse_placeholder(body: &str) -> Result<Token, String> {

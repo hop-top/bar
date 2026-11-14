@@ -205,3 +205,21 @@ fn any_option_takes_a_comma_list_and_quotes_protect_the_separator() {
     assert_eq!(o.get("label"), Some("\"a;b\""));
     assert_eq!(o.get("flag"), Some(""));
 }
+
+#[test]
+fn a_brace_word_inside_a_placeholder_does_not_close_it() {
+    // `{name}` in a value (a plugin's label or link template) stays in it
+    let t = parse("#{tlc[pick-label={slug} - {done}/{total}]} after").unwrap();
+    let (name, o) = ph(&t[0]);
+    assert_eq!(name, "tlc");
+    assert_eq!(o.get("pick-label"), Some("{slug} - {done}/{total}"));
+    assert_eq!(t[1], Token::Text(" after".into()));
+    let t = parse("#{cliproxyapi[link=x://use?account={account}]}").unwrap();
+    assert_eq!(ph(&t[0]).1.get("link"), Some("x://use?account={account}"));
+    // anything else closes it at the first `}`, as before
+    let t = parse("#{x[a={]}").unwrap();
+    assert_eq!(ph(&t[0]).1.get("a"), Some("{"));
+    let t = parse("#{x[a={b c}]}").unwrap_err();
+    assert!(t.contains("missing ]"), "{t}");
+    assert!(parse("#{x").is_err());
+}

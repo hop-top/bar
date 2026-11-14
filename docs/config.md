@@ -769,7 +769,7 @@ Plugins included: all are handled by bar and never sent to a plugin. `click` is 
 
 ### Values
 
-Placeholder option values (inline and from `default` lines) expand before use; `plugin` lines, `set` values and layout text do not. A lone `%` or an empty `%%` stays literal.
+Placeholder option values (inline and from `default` lines) expand before use; `plugin` lines, `set` values and layout text do not. A lone `%` or an empty `%%` stays literal. Braces are not an expansion: a plugin's template option (`link`, `pick-label`) holds `{name}` as is. Inline, a `{name}` (1 to 32 letters, digits or `_`) does not end the placeholder; any other `}` does, so a value with other braces (`{{`, `}}`) goes on a `default` line.
 
 - `@me`: passed to `gh` as the search value; GitHub resolves it to the logged-in user. It is the default for "mine" in the built-in layout.
 - `%$VAR%`: environment variable; unset gives an empty value.
