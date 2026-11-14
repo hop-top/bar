@@ -1,7 +1,7 @@
 {
- "bar_commit": "841193e34b8176de793886847e6a426b3f6f92a2",
- "inputs": "sha256:121e80016976b708966eb20796e41e89b8f7e81f02b6c26bddacb7b36eec1087",
- "date": "2026-11-12",
+ "bar_commit": "25d3d9a5ec9c3f6fddc1da36fce7ff2379478e74",
+ "inputs": "sha256:88e47d395245d719d1e97a4a4ef41364d8c2514d794c6187f0ff068f756be2bc",
+ "date": "2026-11-14",
  "runner": "native",
  "host": {
   "cpu": "Apple M4 Max"
