@@ -183,9 +183,7 @@ fn brace_templates_reach_the_plugin_untouched() {
     // `{name}` is not an expansion (`%cmd%` and `%$VAR%` are): inline and
     // from a `default` line alike
     let tpl = "{slug} - {done}/{total} {{x}} }";
-    let o = rendered_options(&format!(
-        "set left \"#{{echo[label={{slug}} - {{done}}/{{total}}]}}\"\n"
-    ));
+    let o = rendered_options("set left \"#{echo[label={slug} - {done}/{total}]}\"\n");
     assert_eq!(o["label"], "{slug} - {done}/{total}");
     let o = rendered_options(&format!(
         "default echo \"label={tpl}\"\nset left \"#{{echo}}\"\n"
