@@ -16,11 +16,12 @@
 # count never replaces the cached value.
 #
 # A picked track (session.record track/root, written by the pick action)
-# wins over the session's track; without either, a single active track
-# counts. The pick action (`--action pick`, bound as `action tlc tlc.pick`,
-# run by a click on the mark) fronts the scope toggle: to=all drops the
-# pick, to=track (or to=pick: stay, nothing counted yet) offers the
-# session's track and the active ones in the chooser when there are two or
+# wins over the session's track; without either, the only incomplete
+# active track counts (incomplete: closed < total, so not empty). The pick
+# action (`--action pick`, bound as `action tlc tlc.pick`, run by a click
+# on the mark) fronts the scope toggle: to=all drops the pick, to=track
+# (or to=pick: stay, nothing counted yet) offers the session's track and
+# the active ones, incomplete only, in the chooser when there are two or
 # more; Cancel prints `cancelled` and bar keeps the scope. Each entry is
 # the option pick-label, a template (see PICK_LABEL below), which the
 # render puts in its output as pick_label when it is not the default: the
@@ -167,6 +168,28 @@ slug_of() {
   name=${name:-$1}
 }
 
+# Closed and all tasks per track id into $counts ({id: {done, total}}),
+# counted as the segment counts: archived included, all but TODO and
+# IN_PROGRESS closed; one task list for every track.
+track_counts() {
+  tasks=$(run task list --archived --limit 100000 --format json) || return 1
+  counts=$(printf '%s' "$tasks" | jq -c '
+    (if type == "array" then . else (.tasks // .items // .data // []) end)
+    | map(select(type == "object" and (.track_id | type) == "string"))
+    | group_by(.track_id)
+    | map({key: .[0].track_id,
+           value: {total: length,
+                   done: (map(select(.status != "TODO" and .status != "IN_PROGRESS")) | length)}})
+    | from_entries' 2>/dev/null) || return 1
+  [ -n "$counts" ]
+}
+
+# Drops the complete and empty tracks from $act (by $counts).
+incomplete_only() {
+  act=$(printf '%s' "$act" | jq -c --argjson c "$counts" '
+    map(select(($c[.id].total // 0) > ($c[.id].done // 0)))') || return 1
+}
+
 # Active tracks of the project, as tlc lists them, into $act.
 active_tracks() {
   act=$(run track list --status active --format json) || return 1
@@ -210,26 +233,11 @@ save() {
 # render passed on (.output.pick_label), else PICK_LABEL, expanded;
 # control characters become spaces, at most 120 characters, trimmed. When
 # one is empty, reads `false` (both mean Cancel to the chooser) or equals
-# another, every entry gets its position first, `<n>. `. done/total count
-# as the segment does (all but TODO and IN_PROGRESS closed, archived
-# included), from one task list grouped by track, only when the template
-# asks for them.
+# another, every entry gets its position first, `<n>. `. done/total are
+# $counts (track_counts).
 labels() {
   tpl=$(opt '.output.pick_label // empty | strings | .[0:256]') || exit 1
   [ -n "$tpl" ] || tpl=$PICK_LABEL
-  counts='{}'
-  case $tpl in
-    *{done}*|*{total}*)
-      tasks=$(run task list --archived --limit 100000 --format json) || exit 1
-      counts=$(printf '%s' "$tasks" | jq -c '
-        (if type == "array" then . else (.tasks // .items // .data // []) end)
-        | map(select(type == "object" and (.track_id | type) == "string"))
-        | group_by(.track_id)
-        | map({key: .[0].track_id,
-               value: {total: length,
-                       done: (map(select(.status != "TODO" and .status != "IN_PROGRESS")) | length)}})
-        | from_entries') || exit 1 ;;
-  esac
   cands=$(printf '%s' "$cands" | jq -c --arg tpl "$tpl" --argjson c "$counts" '
     def expand($v):
       [scan("\\{\\{|\\}\\}|\\{[a-z0-9_]{1,32}\\}|\\{|\\}|[^{}]+")]
@@ -305,13 +313,18 @@ pick_action() {
   case $rcwd in /*) ;; *) rcwd= ;; esac
   session_track || exit 1
   active_tracks || exit 1
+  track_counts || exit 1
   name=
   [ -z "$strack" ] || slug_of "$strack" || exit 1
-  # the session's track first, then the other active ones
+  # the session's track first, then the other active ones; incomplete
+  # ones only, the session's too
   cands=$(printf '%s' "$act" | jq -c --arg s "$strack" --arg n "$name" '
     (map(select(.id == $s))) as $mine
     | (if $s != "" and ($mine | length) == 0 then [{id: $s, slug: $n, title: "", status: ""}] else $mine end)
       + map(select(.id != $s))') || exit 1
+  act=$cands
+  incomplete_only || exit 1
+  cands=$act
   n=$(printf '%s' "$cands" | jq 'length') || exit 1
   if [ "$n" -lt 2 ]; then
     # nothing to choose: to track at once, or (to=pick) nothing changes
@@ -344,7 +357,9 @@ here=$(pwd -P)
 
 
 # What counts in track scope: the picked track (for this project), else
-# the session's, else the only active track; without one, the project.
+# the session's, else the only incomplete active track; without one, the
+# project. Only that last step lists the tasks per track, and only when
+# there is an active track.
 pick=
 name=all
 to=track
@@ -360,6 +375,10 @@ if [ "$scope" = track ]; then
     slug_of "$pick" || exit 1
   else
     active_tracks || exit 1
+    if [ "$act" != '[]' ]; then
+      track_counts || exit 1
+      incomplete_only || exit 1
+    fi
     nact=$(printf '%s' "$act" | jq 'length') || exit 1
     if [ "$nact" -eq 1 ]; then
       pick=$(printf '%s' "$act" | jq -r '.[0].id') || exit 1
