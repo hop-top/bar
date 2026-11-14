@@ -4,18 +4,18 @@
 # completed or created, as recorded by `bar click hook` and sent in
 # session.record; with no record, a record for another project or a task
 # without track, the whole project. scope=all always counts the whole
-# project. The core's toggle `scope` (a click on the text, sent as
+# project. The core's toggle `scope` (a click on the mark, sent as
 # toggles.scope) inverts the scope: track to all, all to track (staying all
 # without a session track). The label/icon mark the effective scope: track
 # or all; options label-track, label-all, icon-track, icon-all override
 # them. Option status filters the counted set; show/alt pick count or
 # track (the track slug, `all` for the project) for text and alt text; a
-# click on the mark swaps them (the core's text toggle). Needs
+# click on the text swaps them (the core's text toggle). Needs
 # sh, jq and tlc. No project in scope, or no tasks, emits empty text
 # (segment hidden). Any failed tlc call emits nothing, so a different kind of
 # count never replaces the cached value.
 if [ "$1" = "--ext-info" ]; then
-  printf '%s\n' '{"name":"tlc","version":"0.4.0","description":"Closed tasks of the session track","capabilities":["discover","placeholder"],"options":{"scope":{"type":"enum","enum":["track","all"],"default":"track"},"status":{"type":"string"},"show":{"type":"enum","enum":["count","track"],"default":"count"},"alt":{"type":"enum","enum":["count","track"]},"label-track":{"type":"string","default":"◉"},"label-all":{"type":"string","default":"☰"},"icon-track":{"type":"string","default":"\uf45d"},"icon-all":{"type":"string","default":"\uf45e"}},"cache":"session","ttl":"60s","web":{"category":"tasks","samples":[{"when":{"scope":"all","show":"track"},"output":{"label":"☰","icon":"\uf45e","text_toggle":"scope","text":"all","alt":"12∕30","score":40}},{"when":{"scope":"all"},"output":{"label":"☰","icon":"\uf45e","text_toggle":"scope","text":"12∕30","alt":"all","score":40}},{"when":{"show":"track"},"output":{"label":"◉","icon":"\uf45d","text_toggle":"scope","text":"web-ui","alt":"7∕9","score":77}},{"output":{"label":"◉","icon":"\uf45d","text_toggle":"scope","text":"7∕9","alt":"web-ui","score":77}}],"options":{"scope":{"label":"Scope","help":"Count the track of the session, or the whole project"},"status":{"label":"Status filter","help":"Comma-separated tlc statuses to count","placeholder":"DONE,CANCELLED"},"show":{"label":"Text","help":"Count of closed tasks, or the track name"},"alt":{"label":"Alt text","help":"Shown after a click on the mark"}}}}'
+  printf '%s\n' '{"name":"tlc","version":"0.5.0","description":"Closed tasks of the session track","capabilities":["discover","placeholder"],"options":{"scope":{"type":"enum","enum":["track","all"],"default":"track"},"status":{"type":"string"},"show":{"type":"enum","enum":["count","track"],"default":"count"},"alt":{"type":"enum","enum":["count","track"]},"label-track":{"type":"string","default":"◉"},"label-all":{"type":"string","default":"☰"},"icon-track":{"type":"string","default":"\uf45d"},"icon-all":{"type":"string","default":"\uf45e"}},"cache":"session","ttl":"60s","web":{"category":"tasks","samples":[{"when":{"scope":"all","show":"track"},"output":{"label":"☰","icon":"\uf45e","label_toggle":"scope","text":"all","alt":"12∕30","score":40}},{"when":{"scope":"all"},"output":{"label":"☰","icon":"\uf45e","label_toggle":"scope","text":"12∕30","alt":"all","score":40}},{"when":{"show":"track"},"output":{"label":"◉","icon":"\uf45d","label_toggle":"scope","text":"web-ui","alt":"7∕9","score":77}},{"output":{"label":"◉","icon":"\uf45d","label_toggle":"scope","text":"7∕9","alt":"web-ui","score":77}}],"options":{"scope":{"label":"Scope","help":"Count the track of the session, or the whole project"},"status":{"label":"Status filter","help":"Comma-separated tlc statuses to count","placeholder":"DONE,CANCELLED"},"show":{"label":"Text","help":"Count of closed tasks, or the track name"},"alt":{"label":"Alt text","help":"Shown after a click on the text"}}}}'
   exit 0
 fi
 
@@ -161,5 +161,5 @@ printf '%s' "$all" | jq -ce --arg name "$name" --arg show "$show" --arg alt "$al
   | if $n == 0 then {text: ""} else
     ([$t[] | select(.status != "TODO" and .status != "IN_PROGRESS")] | length) as $c
   | {count: "\($c)∕\($n)", track: $name} as $v
-  | {label: $label, icon: $icon, text_toggle: "scope",
+  | {label: $label, icon: $icon, label_toggle: "scope",
      text: $v[$show], alt: $v[$alt], score: ($c * 100 / $n | floor)} end' 2>/dev/null || exit 1
