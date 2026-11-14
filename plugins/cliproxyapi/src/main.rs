@@ -76,7 +76,10 @@ fn run() -> (Output, Option<String>) {
     let mut raw = String::new();
     let _ = std::io::stdin().take(1 << 20).read_to_string(&mut raw);
     let input: RenderInput = serde_json::from_str(&raw).unwrap_or_default();
-    (render_input(&input), pick_label::from_options(&input.options))
+    (
+        render_input(&input),
+        pick_label::from_options(&input.options),
+    )
 }
 
 fn render_input(input: &RenderInput) -> Output {
@@ -348,8 +351,10 @@ fn action(name: Option<&str>) -> i32 {
         Some("pick") => {
             return finish(
                 switch::next_tokens(&raw, "pick").and_then(|(provider, id)| {
-                    let label = serde_json::from_str(&raw)
-                        .map_or_else(|_| pick_label::DEFAULT.into(), |v| pick_label::from_action(&v));
+                    let label = serde_json::from_str(&raw).map_or_else(
+                        |_| pick_label::DEFAULT.into(),
+                        |v| pick_label::from_action(&v),
+                    );
                     let cfg = load_config(&rules)?;
                     let inst = switch::instance_by_id(&cfg, &id)?;
                     let state = bar_plugin::dirs::bar_state();
