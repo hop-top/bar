@@ -151,3 +151,39 @@ fn slow_plugin_never_blocks_render() {
     assert_eq!(out, "");
     assert!(took < Duration::from_millis(1000), "{took:?}");
 }
+
+/// The options `echo` got from a full render of `conf`: the layout parsed,
+/// `default` lines merged, values expanded, the job run in the background.
+fn rendered_options(conf: &str) -> Value {
+    let fx = Fx::new();
+    fx.prime_info("echo");
+    let cache = Cache::with_exe(&fx.state, PathBuf::from(env!("CARGO_BIN_EXE_bar")));
+    let (s, c, dirs) = (session(), cfg(conf), fx.dirs());
+    render_in(&s, &c, Some(120), &ColdRunner, Some(&cache), &dirs);
+    let t = Instant::now();
+    while !fx.bin.join("stdin.json").exists() {
+        assert!(t.elapsed() < Duration::from_secs(30), "no render ran");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    // the file is written as the plugin reads stdin: wait for a whole one
+    loop {
+        if let Ok(v) = serde_json::from_str::<Value>(&fx.file("stdin.json")) {
+            return v["options"].clone();
+        }
+        assert!(t.elapsed() < Duration::from_secs(30), "stdin.json incomplete");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn brace_templates_reach_the_plugin_untouched() {
+    // `{name}` is not an expansion (`%cmd%` and `%$VAR%` are): inline and
+    // from a `default` line alike
+    let tpl = "{slug} - {done}/{total} {{x}} }";
+    let o = rendered_options(&format!(
+        "set left \"#{{echo[label={{slug}} - {{done}}/{{total}}]}}\"\n"
+    ));
+    assert_eq!(o["label"], "{slug} - {done}/{total}");
+    let o = rendered_options(&format!("default echo \"label={tpl}\"\nset left \"#{{echo}}\"\n"));
+    assert_eq!(o["label"], tpl);
+}
