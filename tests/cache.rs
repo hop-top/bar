@@ -514,7 +514,10 @@ fn output_capped_at_64k() {
 fn stored_value_read_capped() {
     let t = Tmp::new();
     let c = t.cache();
-    c.store("k", &"b".repeat(100_000)).unwrap();
+    // store refuses it; a file written otherwise is still read capped
+    assert!(c.store("k", &"b".repeat(100_000)).is_err());
+    std::fs::create_dir_all(c.path_for("k").parent().unwrap()).unwrap();
+    std::fs::write(c.path_for("k"), "b".repeat(100_000)).unwrap();
     let got = c.read_or_refresh("k", 3600, &cmd_job("true")).unwrap();
     assert_eq!(got.len(), 64 * 1024);
 }
