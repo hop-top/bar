@@ -170,7 +170,10 @@ fn rendered_options(conf: &str) -> Value {
         if let Ok(v) = serde_json::from_str::<Value>(&fx.file("stdin.json")) {
             return v["options"].clone();
         }
-        assert!(t.elapsed() < Duration::from_secs(30), "stdin.json incomplete");
+        assert!(
+            t.elapsed() < Duration::from_secs(30),
+            "stdin.json incomplete"
+        );
         std::thread::sleep(Duration::from_millis(50));
     }
 }
@@ -184,6 +187,8 @@ fn brace_templates_reach_the_plugin_untouched() {
         "set left \"#{{echo[label={{slug}} - {{done}}/{{total}}]}}\"\n"
     ));
     assert_eq!(o["label"], "{slug} - {done}/{total}");
-    let o = rendered_options(&format!("default echo \"label={tpl}\"\nset left \"#{{echo}}\"\n"));
+    let o = rendered_options(&format!(
+        "default echo \"label={tpl}\"\nset left \"#{{echo}}\"\n"
+    ));
     assert_eq!(o["label"], tpl);
 }

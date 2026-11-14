@@ -63,9 +63,10 @@ pub fn expand(tpl: &str, value: impl Fn(&str) -> Option<String>) -> String {
 /// reads `false` (both mean Cancel to the chooser) or equals another,
 /// every entry gets its position first, `<n>. `.
 pub fn distinct(labels: Vec<String>) -> Vec<String> {
-    let clash = labels.iter().enumerate().any(|(i, l)| {
-        l.is_empty() || l == "false" || labels[..i].iter().any(|o| o == l)
-    });
+    let clash = labels
+        .iter()
+        .enumerate()
+        .any(|(i, l)| l.is_empty() || l == "false" || labels[..i].iter().any(|o| o == l));
     if !clash {
         return labels;
     }
@@ -87,9 +88,10 @@ pub fn from_options(o: &serde_json::Map<String, serde_json::Value>) -> Option<St
 /// The template an action's stdin carries (the render's output), else the
 /// default.
 pub fn from_action(v: &serde_json::Value) -> String {
-    v["output"][FIELD]
-        .as_str()
-        .map_or_else(|| DEFAULT.into(), |s| s.chars().take(MAX_TEMPLATE).collect())
+    v["output"][FIELD].as_str().map_or_else(
+        || DEFAULT.into(),
+        |s| s.chars().take(MAX_TEMPLATE).collect(),
+    )
 }
 
 /// Percent used and left, and the reset time, of window `w` at `now`; a
@@ -99,7 +101,11 @@ fn win_parts(w: &Win, now: i64) -> (f64, f64, Option<i64>) {
         return (0.0, 100.0, None);
     }
     let used = w.used.clamp(0.0, 100.0);
-    (used, 100.0 - used, (w.resets_at > now).then_some(w.resets_at))
+    (
+        used,
+        100.0 - used,
+        (w.resets_at > now).then_some(w.resets_at),
+    )
 }
 
 /// How one account is shown: its position (from 1), whether the proxy
@@ -137,7 +143,12 @@ fn account_value(name: &str, row: &Row, now: i64) -> Option<String> {
         "left7d" => pct(week.map(|w| w.1)),
         "reset7d" => reset(week),
         "windows" => crate::switch::window_text(r, now, row.bare),
-        "status" => if e.unavailable { "unavailable" } else { "active" }.into(),
+        "status" => if e.unavailable {
+            "unavailable"
+        } else {
+            "active"
+        }
+        .into(),
         "current" => if current { "current" } else { "" }.into(),
         _ => return None,
     })

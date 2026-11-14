@@ -199,4 +199,3 @@ pub fn act(t: &T, input: &Value) -> std::process::Output {
         .env("BAR_STATE_DIR", &t.fx.state);
     common::deadline::run(&mut c, Some(input.to_string().as_bytes()))
 }
-
