@@ -119,6 +119,7 @@ The key is held in memory that is overwritten when released, and passed to `curl
 | `link` | none | A link template for each account; `{account}`, `{label}`, `{provider}` and `{instance}` are URL-escaped. |
 | `pool` | `mean` | How `usage` pools the accounts, below. |
 | `base-url` | none | Base URL to use when `ANTHROPIC_BASE_URL` is not in the environment bar passes. |
+| `pick-label` | `{label} - {used}%` | Each entry of the `pick` chooser, a template: see [Clicking an account](#clicking-an-account). |
 
 `windows`, `show` and `accounts` are lists: separate the items with commas and the options with semicolons, `#{cliproxyapi[windows=5h,7d;count=used]}`.
 
@@ -234,10 +235,30 @@ action account cliproxyapi.next
 action account cliproxyapi.next-soon   # or: among the most left, the soonest reset
 ```
 
-`pick` (macOS only) opens a native chooser instead of switching at once: the provider's accounts in the `most-left` order, each with its windows' percent left and time to reset, the proxy's preferred account marked `[current]`, the top recommendation selected. OK switches to the account chosen exactly as `use` does (the previous priority is recorded for `use --reset`); Cancel changes nothing and the status reads `ok: cancelled`. The list is passed to `/usr/bin/osascript` as arguments of a fixed script, so no account name can alter the script. Waiting for you, the action may run up to 120 s instead of the usual 10. On other systems the plugin does not declare `pick`, so `bar check` reports a binding of it, and running it refuses.
+`pick` (macOS only) opens a native chooser instead of switching at once: the provider's accounts in the `most-left` order, the top recommendation selected, each entry drawn by the `pick-label` option (below). OK switches to the account chosen exactly as `use` does (the previous priority is recorded for `use --reset`); Cancel changes nothing and the status reads `ok: cancelled`. The list is passed to `/usr/bin/osascript` as arguments of a fixed script, so no account name can alter the script. Waiting for you, the action may run up to 120 s instead of the usual 10. On other systems the plugin does not declare `pick`, so `bar check` reports a binding of it, and running it refuses.
 
 ```
 action account cliproxyapi.pick
+```
+
+`pick-label` is a template: `{name}` is replaced by the account's value; `{{` is a literal `{` and `}}` a literal `}`. It is read left to right: at each `{` the first of `{{`, `{name}` (1 to 32 lower-case letters, digits or `_`) and a lone `{` that fits wins, at each `}` the first of `}}` and a lone `}`, so `{{{used}}}` reads `{42}`. A lone `{` or `}` stays as it is, and an unknown name stays as written (`{nope}`), so a typo shows in the list. The default `{label} - {used}%` reads `work - 42%`. The proxy's preferred account and an unavailable one are marked only when the template asks (`{current}`, `{status}`), and the windows show only through `{windows}`.
+
+| Placeholder | Value |
+|---|---|
+| `{label}` | The account's label, as the segment names it (see [Labels and colours](#labels-and-colours)). |
+| `{provider}` | `claude` or `codex`. |
+| `{used}`, `{left}` | Percent of the 5h window used and left, rounded; `?` without one. A window past its reset counts as unused. |
+| `{reset}` | Time to the 5h reset (`2h10m`); empty when unknown. |
+| `{used7d}`, `{left7d}`, `{reset7d}` | The same for the weekly window (`7d`, else `wk`). |
+| `{windows}` | Every window's percent left and reset, as `bar cliproxyapi pick` lists them. |
+| `{status}` | `active` or `unavailable`. |
+| `{current}` | `current` for the proxy's preferred account, else empty. |
+| `{n}` | The entry's position, from 1. |
+
+An entry is cut at 120 characters, control characters become spaces, and it is passed to the chooser as an argument, never as script text. When two entries come out the same, or one is empty or reads `false` (both mean Cancel to the chooser), every entry starts with its position, `1. `, so each choice maps back to its account. The option goes on the placeholder whose click runs `pick`: `default cliproxyapi pick-label=...` for `#{account}`, which draws its link from the plugin's default options, or `#{cliproxyapi[pick-label={label} {used}%]}`; the render passes it to the action in its output. bar does not expand braces (only `%cmd%` and `%$VAR%`, see [Values](../config.md#values)); inline, a value with `{{` or `}}` goes on a `default` line instead. bar does expand `%…%` first, so a template with two `%` (`{used}% / {left}%`) runs the text between them as a command: keep to one `%` per template.
+
+```
+default cliproxyapi "pick-label={n}. {label} — {windows} {current}"
 ```
 
 In a session that does not use the proxy, `#{account}` shows the signed-in account without a link: switching the proxy's account would not change the account that session uses.

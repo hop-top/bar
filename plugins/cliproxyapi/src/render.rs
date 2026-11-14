@@ -52,6 +52,10 @@ pub fn ext_info() -> ExtInfo {
         OptSpec::choice(&["claude", "codex", "none"], "claude"),
     );
     o.insert("base-url".into(), OptSpec::string());
+    o.insert(
+        crate::pick_label::OPTION.into(),
+        text(crate::pick_label::DEFAULT),
+    );
     ExtInfo {
         name: NAME.into(),
         version: crate::VERSION.into(),

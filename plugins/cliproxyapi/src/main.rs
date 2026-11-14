@@ -1,6 +1,6 @@
 //! `bar-cliproxyapi`: `--ext-info`, `--check`, or a render (JSON on stdin).
 
-use bar_cliproxyapi::{collect, config, rank, render, switch};
+use bar_cliproxyapi::{collect, config, pick_label, rank, render, switch};
 use bar_plugin::keysource;
 use bar_plugin::proto::{CheckReport, Output, RenderInput};
 use bar_plugin::url::Origin;
@@ -14,6 +14,19 @@ fn now() -> i64 {
 
 fn emit(o: Output) {
     println!("{}", o.finish().to_json());
+}
+
+/// A render's output, with a `pick-label` template other than the
+/// default for the `pick` action (bar hands the action this output).
+fn emit_render((o, label): (Output, Option<String>)) {
+    let Some(label) = label else {
+        return emit(o);
+    };
+    let mut v = serde_json::to_value(o.finish()).unwrap_or_default();
+    if let Some(m) = v.as_object_mut() {
+        m.insert(pick_label::FIELD.into(), label.into());
+    }
+    println!("{v}");
 }
 
 fn main() {
@@ -34,7 +47,7 @@ fn main() {
         Some("use") | Some("pick") => {
             std::process::exit(cli(&std::env::args().skip(1).collect::<Vec<_>>()))
         }
-        None => emit(run()),
+        None => emit_render(run()),
         Some(other) => {
             eprintln!("bar cliproxyapi: unknown argument `{other}`");
             std::process::exit(2);
@@ -59,15 +72,19 @@ fn base_url(input: &RenderInput) -> Option<String> {
         .or_else(|| std::env::var("ANTHROPIC_BASE_URL").ok())
 }
 
-fn run() -> Output {
+fn run() -> (Output, Option<String>) {
     let mut raw = String::new();
     let _ = std::io::stdin().take(1 << 20).read_to_string(&mut raw);
     let input: RenderInput = serde_json::from_str(&raw).unwrap_or_default();
+    (render_input(&input), pick_label::from_options(&input.options))
+}
+
+fn render_input(input: &RenderInput) -> Output {
     let Ok(mut cfg) = config::load(&config::path()) else {
         return Output::hidden();
     };
     cfg.set_rules(&input.accounts);
-    let url = base_url(&input).filter(|u| !u.is_empty());
+    let url = base_url(input).filter(|u| !u.is_empty());
     let Some(inst) = url
         .as_deref()
         .and_then(Origin::parse)
@@ -106,7 +123,7 @@ fn run() -> Output {
     render::output(
         &snap,
         provider,
-        &render::Opts::from_input(&input),
+        &render::Opts::from_input(input),
         &inst.origin.to_string(),
         now,
     )
@@ -317,12 +334,12 @@ fn session(
     f(&live)
 }
 
-/// `--action <use|next|next-soon|pick>`: `{"action","tokens"}` on stdin, from a
+/// `--action <use|next|next-soon|pick>`: `{"action","tokens"[,"output"]}` on stdin, from a
 /// click. `use` names an account of the instance's current listing; the
 /// `next` actions name a provider and an instance (by its id).
 fn action(name: Option<&str>) -> i32 {
     let mut raw = String::new();
-    let _ = std::io::stdin().take(1 << 16).read_to_string(&mut raw);
+    let _ = std::io::stdin().take(1 << 20).read_to_string(&mut raw);
     let rules = bar_plugin::proto::accounts_of_action(&raw);
     let strategy = match name {
         Some("next") => rank::Strategy::MostLeft,
@@ -331,12 +348,14 @@ fn action(name: Option<&str>) -> i32 {
         Some("pick") => {
             return finish(
                 switch::next_tokens(&raw, "pick").and_then(|(provider, id)| {
+                    let label = serde_json::from_str(&raw)
+                        .map_or_else(|_| pick_label::DEFAULT.into(), |v| pick_label::from_action(&v));
                     let cfg = load_config(&rules)?;
                     let inst = switch::instance_by_id(&cfg, &id)?;
                     let state = bar_plugin::dirs::bar_state();
                     let key = switch::key_for(inst)?;
                     let live = switch::connect(inst, &key, &state, now())?;
-                    switch::run_choose(&live, &provider, rank::Strategy::MostLeft)
+                    switch::run_choose(&live, &provider, rank::Strategy::MostLeft, &label)
                 }),
             )
         }

@@ -694,7 +694,7 @@ pub fn run_next(
 
 /// One ranked row of `pick`: number, mark, label, provider, per-window
 /// percent left and time to reset.
-fn window_text(r: &rank::Ranked, now: i64, bare: bool) -> String {
+pub(crate) fn window_text(r: &rank::Ranked, now: i64, bare: bool) -> String {
     let wins: Vec<String> = r
         .entry
         .windows
@@ -732,7 +732,7 @@ fn window_text(r: &rank::Ranked, now: i64, bare: bool) -> String {
 }
 
 /// Whether the rows drop the window ids: see [`crate::render::single_window`].
-fn bare_ids(rows: &[rank::Ranked]) -> bool {
+pub(crate) fn bare_ids(rows: &[rank::Ranked]) -> bool {
     let sets: Vec<Vec<&Win>> = rows
         .iter()
         .map(|r| r.entry.windows.iter().collect())
@@ -838,10 +838,16 @@ pub fn run_pick(
 }
 
 /// The `pick` action: `provider`'s accounts in the order `strategy`
-/// recommends, in the native chooser (the proxy's preferred one marked,
-/// the top recommendation selected). The choice is applied as `use`
-/// would; Cancel changes nothing.
-pub fn run_choose(live: &Live, provider: &str, strategy: Strategy) -> Result<Vec<String>, Refusal> {
+/// recommends, in the native chooser, one entry each as the `pick-label`
+/// template `label` draws it (see [`crate::pick_label`]), the top
+/// recommendation selected. The choice is applied as `use` would; Cancel
+/// changes nothing.
+pub fn run_choose(
+    live: &Live,
+    provider: &str,
+    strategy: Strategy,
+    label: &str,
+) -> Result<Vec<String>, Refusal> {
     if !crate::chooser::available() {
         return refuse("the account chooser is macOS only");
     }
@@ -850,32 +856,7 @@ pub fn run_choose(live: &Live, provider: &str, strategy: Strategy) -> Result<Vec
     if ranked.is_empty() {
         return refuse("no account to pick from");
     }
-    let bare = bare_ids(&ranked);
-    let items: Vec<String> = ranked
-        .iter()
-        .enumerate()
-        .map(|(i, r)| {
-            let cur = if pref.as_deref() == Some(r.entry.index.as_str()) {
-                "  [current]"
-            } else {
-                ""
-            };
-            let un = if r.entry.unavailable {
-                "  (unavailable)"
-            } else {
-                ""
-            };
-            crate::chooser::sanitize(
-                &format!(
-                    "{}. {} \u{2014} {}{un}{cur}",
-                    i + 1,
-                    crate::chooser::sanitize(&r.entry.label, 40),
-                    window_text(r, live.now, bare)
-                ),
-                crate::chooser::MAX_ITEM,
-            )
-        })
-        .collect();
+    let items = crate::pick_label::entries(label, &ranked, pref.as_deref(), live.now);
     let prompt = format!("Prefer which {provider} account? ({})", strategy.name());
     match crate::chooser::choose("bar: account", &prompt, &items, 0)? {
         None => Ok(vec!["cancelled".into()]),

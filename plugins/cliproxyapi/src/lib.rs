@@ -10,6 +10,7 @@ pub mod collect;
 pub mod config;
 pub mod menu;
 pub mod mgmt;
+pub mod pick_label;
 pub mod model;
 pub mod pool;
 pub mod rank;
