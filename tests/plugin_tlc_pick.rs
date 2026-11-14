@@ -38,8 +38,8 @@ struct T {
 /// `bar-tlc` behind a wrapper with a fake `tlc` and chooser first on
 /// `PATH`. Tracks `alpha` (1 of 2 closed), `beta` (2 of 4), `gamma` (0 of
 /// 1); the project 3 of 3. `T-1` is on `alpha`, `T-2` has no track. The
-/// active tracks are `active`. `chooser: false` leaves the chooser out
-/// and makes `uname` say Linux, as on a system without one.
+/// active tracks are `active`. `chooser: false` makes `uname` say
+/// Linux, as on a system without one.
 fn setup(active: &[&str], chooser: bool) -> T {
     let fx = Fx::new();
     let fake = fx.root.join("fake");
@@ -72,6 +72,11 @@ esac
         format!(
             r#"#!/bin/sh
 d='{d}'
+# as osascript: -e <script> -- <args>
+[ "$1" = -e ] || exit 9
+shift 2
+[ "$1" = -- ] || exit 9
+shift
 printf '%s\n' "$@" > "$d/chooser.args"
 n=$(cat "$d/choose" 2>/dev/null)
 [ -n "$n" ] || exit 0
@@ -81,19 +86,22 @@ eval "printf '%s\n' \"\${{$n}}\""
 "#
         ),
     );
-    let env = if chooser {
-        format!("BAR_TLC_CHOOSER='{d}/chooser'\nexport BAR_TLC_CHOOSER\n")
-    } else {
-        common::exe::write(&fake.join("uname"), "#!/bin/sh\necho Linux\n");
-        "unset BAR_TLC_CHOOSER\n".to_string()
-    };
+    // a copy of the plugin whose chooser is the fake: the one constant
+    // naming osascript, rewritten
     let real = Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/bar-tlc");
+    let src = std::fs::read_to_string(real).unwrap();
+    let constant = "\nOSASCRIPT=/usr/bin/osascript\n";
+    assert_eq!(src.matches(constant).count(), 1, "one osascript constant");
+    assert_eq!(src.matches("/usr/bin/osascript").count(), 1, "named once");
+    let copy = src.replace(constant, &format!("\nOSASCRIPT='{d}/chooser'\n"));
+    assert!(!copy.contains("/usr/bin/osascript"));
+    common::exe::write(&fake.join("bar-tlc"), copy);
+    // the chooser exists only on macOS: `uname` says which
+    let os = if chooser { "Darwin" } else { "Linux" };
+    common::exe::write(&fake.join("uname"), format!("#!/bin/sh\necho {os}\n"));
     common::exe::write(
         &fx.bin.join("bar-tlc"),
-        format!(
-            "#!/bin/sh\nPATH='{d}':$PATH\nexport PATH\n{env}exec '{}' \"$@\"\n",
-            real.display()
-        ),
+        format!("#!/bin/sh\nPATH='{d}':$PATH\nexport PATH\nexec '{d}/bar-tlc' \"$@\"\n"),
     );
     let t = T {
         fake,
