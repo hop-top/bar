@@ -13,189 +13,14 @@ mod plugin_fx;
 use plugin_fx::*;
 #[path = "common/osc_links.rs"]
 mod osc_links;
-use osc_links::{links, strip};
+use osc_links::links;
+#[path = "common/tlc_pick_fx.rs"]
+mod tlc_pick_fx;
+use tlc_pick_fx::*;
 
-use hop_bar::click::action::{self, NONCE_FILE, STATUS_FILE};
+use hop_bar::click::action;
 use hop_bar::click::hook::read_record;
-use hop_bar::conf::Config;
-use hop_bar::session::Session;
-use serde_json::{json, Value};
-use std::path::{Path, PathBuf};
-
-const SID: &str = "0a1b2c3d-0000-4000-8000-00000000000a";
-const SID_B: &str = "0a1b2c3d-0000-4000-8000-00000000000b";
-const NONCE: &str = "0123456789abcdef0123456789abcdef";
-const TRACK: &str = "\u{25c9}";
-const ALL: &str = "\u{2630}";
-
-struct T {
-    fx: Fx,
-    fake: PathBuf,
-    proj: PathBuf,
-    cfg: Config,
-}
-
-/// `bar-tlc` behind a wrapper with a fake `tlc` and chooser first on
-/// `PATH`. Tracks `alpha` (1 of 2 closed), `beta` (2 of 4), `gamma` (0 of
-/// 1); the project 3 of 3. `T-1` is on `alpha`, `T-2` has no track. The
-/// active tracks are `active`. `chooser: false` makes `uname` say
-/// Linux, as on a system without one.
-fn setup(active: &[&str], chooser: bool) -> T {
-    let fx = Fx::new();
-    let fake = fx.root.join("fake");
-    std::fs::create_dir_all(&fake).unwrap();
-    let d = fake.display();
-    common::exe::write(
-        &fake.join("tlc"),
-        format!(
-            r#"#!/bin/sh
-d='{d}'
-echo "$*" >> "$d/calls"
-case "$*" in
-  "task show T-1 "*) echo '{{"task":{{"id":"T-1","track_id":"alpha"}}}}' ;;
-  "task show T-2 "*) echo '{{"task":{{"id":"T-2","track_id":null}}}}' ;;
-  "track show "*) set -- $*; echo "{{\"id\":\"$3\",\"slug\":\"$3-slug\"}}" ;;
-  "track list --status active --format json") cat "$d/active.json" ;;
-  *"--track alpha"*) echo '[{{"status":"DONE"}},{{"status":"TODO"}}]' ;;
-  *"--track beta"*) echo '[{{"status":"DONE"}},{{"status":"DONE"}},{{"status":"TODO"}},{{"status":"TODO"}}]' ;;
-  *"--track gamma"*) echo '[{{"status":"TODO"}}]' ;;
-  "task list"*) echo '[{{"status":"DONE"}},{{"status":"DONE"}},{{"status":"CANCELLED"}}]' ;;
-  *) exit 1 ;;
-esac
-"#
-        ),
-    );
-    // args: title, prompt, default item, items; replies with item `choose`
-    // (1-based), nothing (Cancel) without it
-    common::exe::write(
-        &fake.join("chooser"),
-        format!(
-            r#"#!/bin/sh
-d='{d}'
-# as osascript: -e <script> -- <args>
-[ "$1" = -e ] || exit 9
-shift 2
-[ "$1" = -- ] || exit 9
-shift
-printf '%s\n' "$@" > "$d/chooser.args"
-n=$(cat "$d/choose" 2>/dev/null)
-[ -n "$n" ] || exit 0
-case $n in *[!0-9]*) printf '%s\n' "$n"; exit 0 ;; esac
-shift 3
-eval "printf '%s\n' \"\${{$n}}\""
-"#
-        ),
-    );
-    // a copy of the plugin whose chooser is the fake: the one constant
-    // naming osascript, rewritten
-    let real = Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins/bar-tlc");
-    let src = std::fs::read_to_string(real).unwrap();
-    let constant = "\nOSASCRIPT=/usr/bin/osascript\n";
-    assert_eq!(src.matches(constant).count(), 1, "one osascript constant");
-    assert_eq!(src.matches("/usr/bin/osascript").count(), 1, "named once");
-    let copy = src.replace(constant, &format!("\nOSASCRIPT='{d}/chooser'\n"));
-    assert!(!copy.contains("/usr/bin/osascript"));
-    common::exe::write(&fake.join("bar-tlc"), copy);
-    // the chooser exists only on macOS: `uname` says which
-    let os = if chooser { "Darwin" } else { "Linux" };
-    common::exe::write(&fake.join("uname"), format!("#!/bin/sh\necho {os}\n"));
-    common::exe::write(
-        &fx.bin.join("bar-tlc"),
-        format!("#!/bin/sh\nPATH='{d}':$PATH\nexport PATH\nexec '{d}/bar-tlc' \"$@\"\n"),
-    );
-    let t = T {
-        fake,
-        proj: fx.root.join("proj"),
-        cfg: cfg("action tlc tlc.pick\n"),
-        fx,
-    };
-    t.active(active);
-    std::fs::create_dir_all(t.proj.join(".git")).unwrap();
-    std::fs::create_dir_all(t.proj.join(".tlc")).unwrap();
-    std::fs::write(t.proj.join(".tlc/config.yaml"), "").unwrap();
-    std::fs::write(t.fx.state.join("click-installed"), "cmd").unwrap();
-    let n = t.fx.state.join(NONCE_FILE);
-    std::fs::write(&n, NONCE).unwrap();
-    std::fs::set_permissions(&n, std::os::unix::fs::PermissionsExt::from_mode(0o600)).unwrap();
-    t
-}
-
-impl T {
-    fn active(&self, ids: &[&str]) {
-        let v: Vec<Value> = ids
-            .iter()
-            .map(|i| json!({"id": i, "slug": format!("{i}-slug"), "title": format!("Track {i}"), "status": "active"}))
-            .collect();
-        std::fs::write(self.fake.join("active.json"), json!(v).to_string()).unwrap();
-    }
-
-    fn record(&self, sid: &str, task: &str) {
-        let dir = self.fx.state.join("records/tlc");
-        std::fs::create_dir_all(&dir).unwrap();
-        let r = json!({"task": task, "cwd": self.proj, "at": 1});
-        std::fs::write(dir.join(sid), r.to_string()).unwrap();
-    }
-
-    fn session(&self, sid: &str) -> Session {
-        Session {
-            session_id: sid.into(),
-            cwd: self.proj.display().to_string(),
-            ..session()
-        }
-    }
-
-    /// Runs the render once, then draws it.
-    fn show(&self, sid: &str) -> String {
-        let s = self.session(sid);
-        self.fx.prime_in(&s, "tlc", &self.cfg, &[]);
-        self.fx.show_in(&s, "tlc", &self.cfg, &[])
-    }
-
-    /// A click on the mark: the handler runs the link around it.
-    fn click_mark(&self, sid: &str) -> Result<(), String> {
-        let shown = self.show(sid);
-        let (url, mark) = links(&shown).first().cloned().expect("a linked mark");
-        assert!(mark == TRACK || mark == ALL, "{shown:?}");
-        action::run(&self.fx.state, &url, &self.cfg, &self.fx.dirs())
-    }
-
-    fn choose(&self, n: Option<usize>) {
-        let f = self.fake.join("choose");
-        match n {
-            Some(n) => std::fs::write(f, n.to_string()).unwrap(),
-            None => {
-                let _ = std::fs::remove_file(f);
-            }
-        }
-    }
-
-    /// What the chooser was shown (title, prompt, default, items), and
-    /// forgets it.
-    fn offered(&self) -> Option<Vec<String>> {
-        let f = self.fake.join("chooser.args");
-        let s = std::fs::read_to_string(&f).ok()?;
-        std::fs::remove_file(f).unwrap();
-        Some(s.lines().map(String::from).collect())
-    }
-
-    fn calls(&self) -> String {
-        std::fs::read_to_string(self.fake.join("calls")).unwrap_or_default()
-    }
-
-    fn picked(&self, sid: &str) -> Option<String> {
-        read_record(&self.fx.state, "tlc", sid)?["track"]
-            .as_str()
-            .map(String::from)
-    }
-
-    fn status(&self) -> String {
-        std::fs::read_to_string(self.fx.state.join(STATUS_FILE)).unwrap_or_default()
-    }
-}
-
-fn shown(t: &T, sid: &str) -> String {
-    strip(&t.show(sid))
-}
+use serde_json::json;
 
 #[test]
 fn the_mark_runs_pick_and_the_count_keeps_its_toggle() {
@@ -222,7 +47,7 @@ fn two_active_tracks_open_the_chooser_on_the_way_to_track_scope() {
     // track -> all: no chooser
     t.click_mark(SID).unwrap();
     assert_eq!(t.offered(), None);
-    assert_eq!(shown(&t, SID), format!("{ALL} 3\u{2215}3"));
+    assert_eq!(shown(&t, SID), format!("{ALL} 4\u{2215}8"));
     // all -> track: the session's track first and preselected, then the
     // other active ones
     t.choose(Some(2));
@@ -253,7 +78,7 @@ fn scope_all_clears_the_pick_and_cancel_changes_nothing() {
     t.record(SID, "T-2");
     // no session track: wanted track, two active, no pick yet: the project,
     // and the mark asks which track, keeping the scope wanted
-    assert_eq!(shown(&t, SID), format!("{ALL} 3\u{2215}3"));
+    assert_eq!(shown(&t, SID), format!("{ALL} 4\u{2215}8"));
     let l = links(&t.show(SID));
     assert_eq!(action::parse(&l[0].0).unwrap().tokens["to"], "pick");
     t.choose(Some(2));
@@ -274,14 +99,14 @@ fn scope_all_clears_the_pick_and_cancel_changes_nothing() {
     assert_eq!(t.offered(), None);
     assert_eq!(t.picked(SID), None);
     assert_eq!(read_record(&t.fx.state, "tlc", SID).unwrap()["task"], "T-2");
-    assert_eq!(shown(&t, SID), format!("{ALL} 3\u{2215}3"));
+    assert_eq!(shown(&t, SID), format!("{ALL} 4\u{2215}8"));
     // to track again, cancelled: scope and record stay as they were
     t.choose(None);
     t.click_mark(SID).unwrap();
     assert!(t.offered().is_some());
     assert!(t.status().contains("ok: cancelled"), "{}", t.status());
     assert_eq!(t.picked(SID), None);
-    assert_eq!(shown(&t, SID), format!("{ALL} 3\u{2215}3"));
+    assert_eq!(shown(&t, SID), format!("{ALL} 4\u{2215}8"));
     let l = links(&t.show(SID));
     assert_eq!(action::parse(&l[0].0).unwrap().tokens["to"], "track");
 }
@@ -293,7 +118,7 @@ fn one_track_to_offer_needs_no_chooser() {
     t.record(SID, "T-2");
     assert_eq!(shown(&t, SID), format!("{TRACK} 0\u{2215}1"));
     t.click_mark(SID).unwrap();
-    assert_eq!(shown(&t, SID), format!("{ALL} 3\u{2215}3"));
+    assert_eq!(shown(&t, SID), format!("{ALL} 4\u{2215}8"));
     t.click_mark(SID).unwrap();
     assert_eq!(t.offered(), None);
     assert_eq!(shown(&t, SID), format!("{TRACK} 0\u{2215}1"));
@@ -326,11 +151,11 @@ fn a_session_track_and_another_active_one_are_offered() {
 fn no_active_track_counts_the_project() {
     let t = setup(&[], true);
     t.record(SID, "T-2");
-    assert_eq!(shown(&t, SID), format!("{ALL} 3\u{2215}3"));
+    assert_eq!(shown(&t, SID), format!("{ALL} 4\u{2215}8"));
     t.click_mark(SID).unwrap();
     t.click_mark(SID).unwrap();
     assert_eq!(t.offered(), None);
-    assert_eq!(shown(&t, SID), format!("{ALL} 3\u{2215}3"));
+    assert_eq!(shown(&t, SID), format!("{ALL} 4\u{2215}8"));
 }
 
 #[test]
@@ -363,7 +188,7 @@ fn the_global_scope_toggle_never_opens_the_chooser() {
         .env("PATH", &t.fx.bin)
         .assert()
         .success();
-    assert_eq!(shown(&t, SID), format!("{ALL} 3\u{2215}3"));
+    assert_eq!(shown(&t, SID), format!("{ALL} 4\u{2215}8"));
     assert_eq!(t.offered(), None);
     assert_eq!(t.picked(SID), None);
 }
@@ -378,15 +203,6 @@ fn without_a_chooser_the_mark_stays_a_toggle() {
         l[0],
         (format!("bar://toggle/tlc.scope?sid={SID}"), TRACK.into())
     );
-}
-
-/// The action run directly, as the handler would, bounded by the
-/// deadline helper.
-fn act(t: &T, input: &Value) -> std::process::Output {
-    let mut c = std::process::Command::new(t.fx.bin.join("bar-tlc"));
-    c.args(["--action", "pick"])
-        .env("BAR_STATE_DIR", &t.fx.state);
-    common::deadline::run(&mut c, Some(input.to_string().as_bytes()))
 }
 
 #[test]

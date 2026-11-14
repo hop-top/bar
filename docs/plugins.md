@@ -312,6 +312,7 @@ The session's track comes from `session.record`, which `bar click hook` keeps pe
 | `label-all` | `☰` | Mark while the whole project is counted. |
 | `icon-track` | U+F45D (nf-oct-milestone) | Mark with `set icons` not `none`. |
 | `icon-all` | U+F45E (nf-oct-checklist) | Same, whole project. |
+| `pick-label` | `{slug} - {done}/{total}` | Each entry of the track chooser, a template: see [Choosing the track](#choosing-the-track). |
 | `click` | `toggle` | `none` drops the toggle and mark links (core option). |
 
 A mark precedes the count and shows what it covers: `◉` (U+25C9) for the session's track, `☰` (U+2630) for the whole project, both one cell wide (East Asian Width neutral, present in common monospace fonts); the label is drawn dim before `text`. With `set icons` not `none` the Nerd Font glyphs nf-oct-milestone (U+F45D, track) and nf-oct-checklist (U+F45E, whole project) replace the label. The plugin cannot tell which icon set is active: an output icon shows whenever icons are on, so `set icons emoji` also draws the Nerd Font glyphs, which need a Nerd Font. With emoji, set `icon-track` / `icon-all` (for example `#{tlc[icon-track=🎯;icon-all=📋]}`; at most 2 cells), or `icon=none` on the placeholder to fall back to the labels; `icon=<glyph>` on the placeholder beats both icons and so drops the distinction. An empty `label-*` or `icon-*` draws no mark for that scope. The mark follows the scope actually counted: `scope=track` with no track to count shows the project mark.
@@ -323,8 +324,21 @@ The mark is a toggle (`label_toggle: "scope"`, link `bar://toggle/tlc.scope`, wi
 With `action tlc tlc.pick` in your config (and the handler installed with action support), a click on the mark runs the plugin's `pick` action instead of flipping `tlc.scope` directly; the action flips it (see [Actions](#actions)):
 
 - Track to project: the scope flips and a picked track is forgotten.
-- Project to track: the chooser lists the session's track first (selected), then the project's other active tracks, each as `<n>. <slug> — <title>`. OK counts the chosen track in this session and flips the scope; Cancel changes nothing (`ok: cancelled` in `action-status`). With fewer than two tracks to offer there is no chooser and the scope flips.
+- Project to track: the chooser lists the session's track first (selected), then the project's other active tracks, each drawn by the `pick-label` option (below). OK counts the chosen track in this session and flips the scope; Cancel changes nothing (`ok: cancelled` in `action-status`). With fewer than two tracks to offer there is no chooser and the scope flips.
 - Track scope with nothing counted yet (no session track, two or more active tracks, the project shown): the click opens the chooser and keeps the scope; OK counts the chosen track.
+
+`pick-label` is a template: `{name}` is replaced by the track's value; `{{` is a literal `{` and `}}` a literal `}`. It is read left to right: at each `{` the first of `{{`, `{name}` (1 to 32 lower-case letters, digits or `_`) and a lone `{` that fits wins, at each `}` the first of `}}` and a lone `}`. A lone `{` or `}` stays as it is, and an unknown name stays as written (`{nope}`), so a typo shows in the list. The default `{slug} - {done}/{total}` reads `web-ui - 7/9`.
+
+| Placeholder | Value |
+|---|---|
+| `{slug}` | The track's slug. |
+| `{title}` | Its title; empty for a session track that is not active. |
+| `{id}` | Its id. |
+| `{status}` | Its status as `tlc` lists it (`active`); empty for a session track that is not active. |
+| `{done}`, `{total}` | Its closed and all tasks, counted as the segment counts (archived included, all but `TODO` and `IN_PROGRESS` closed), without the `status` filter. |
+| `{n}` | The entry's position, from 1. |
+
+`{done}` and `{total}` cost one `tlc task list` at click time, run only when the template holds either; the render never counts per track. An entry is cut at 120 characters, control characters become spaces, and it is passed to the chooser as an argument, never as script text. When two entries come out the same, or one is empty or reads `false` (both mean Cancel to the chooser), every entry starts with its position, `1. `, so each choice maps back to its track. The render passes a template other than the default to the action in its output (`pick_label`). bar does not expand braces (see [Values](config.md#values)): `#{tlc[pick-label={n}. {slug} — {title}]}` works inline; a value with `{{` or `}}` goes on a `default` line (`default tlc "pick-label=..."`). bar does expand `%…%` first, so a template with two `%` runs the text between them as a command: keep to one `%` per template.
 
 The pick is kept in the session's record (`track`, `root`), so it holds when the session moves on to another task, and it ends with the session. `bar toggle tlc.scope` and `bar toggle tlc.scope off` flip the scope without asking, and never pick. The chooser is macOS `choose from list` through `/usr/bin/osascript`, like the [account chooser](plugins/cliproxyapi.md#clicking-an-account): the titles travel as arguments of a fixed script, and the action may wait for you up to 120 s. On other systems the plugin does not declare `pick`, so `bar check` reports a binding of it and the mark stays a plain toggle.
 
