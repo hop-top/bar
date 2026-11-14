@@ -86,7 +86,7 @@ fn check_reports_a_fresh_state() {
     assert_eq!(u["check"], false);
     assert_eq!(u["status"], "off");
     assert_eq!(u["current"], env!("CARGO_PKG_VERSION"));
-    assert_eq!(u["channel"], "stable");
+    assert_eq!(u["channel"], channel().0);
     assert!(u["latest"].is_null(), "{u}");
     // reading the state writes nothing
     assert!(!fx.state().exists());
@@ -112,6 +112,14 @@ fn check_reports_toggles() {
     assert_eq!(view(&sessions[0]["toggles"], "7d"), "pct");
 }
 
+/// The update channel this build follows and its cache key: a release PR
+/// bumps the version to a prerelease, so neither may be assumed stable.
+fn channel() -> (&'static str, &'static str) {
+    let pre = hop_bar::update::channel_is_prerelease(env!("CARGO_PKG_VERSION"));
+    let name = if pre { "prerelease" } else { "stable" };
+    (name, hop_bar::update::cache_key(pre))
+}
+
 fn store(state: &Path, key: &str, value: &str) {
     hop_bar::cache::Cache::new(state).store(key, value).unwrap();
 }
@@ -126,7 +134,7 @@ fn check_reports_the_update_check() {
     // check never starts the background check
     assert!(!fx.state().join("cache").exists());
 
-    store(&fx.state(), "update:stable", "v9.9.9");
+    store(&fx.state(), channel().1, "v9.9.9");
     store(&fx.state(), "some command", "x");
     let s = fx.check_state();
     let u = &s["update"];
@@ -136,7 +144,7 @@ fn check_reports_the_update_check() {
     assert_eq!(u["stale"], false);
     assert_eq!(s["cache"]["entries"], 2);
 
-    store(&fx.state(), "update:stable", "");
+    store(&fx.state(), channel().1, "");
     assert_eq!(fx.check_state()["update"]["status"], "failed");
 }
 
@@ -145,7 +153,7 @@ fn update_and_check_report_the_same_update_state() {
     let fx = Fx::new("update-same");
     fx.conf("set update-check on\n");
     // a fresh result: neither command starts the background check
-    store(&fx.state(), "update:stable", "v9.9.9");
+    store(&fx.state(), channel().1, "v9.9.9");
     let mut from_check = fx.check_state()["update"].clone();
     let mut from_update = fx.json(&["update", "--format", "json"]);
     for v in [&mut from_check, &mut from_update] {
