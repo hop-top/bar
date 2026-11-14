@@ -1,15 +1,18 @@
 //! `prs` and `issues`: `gh` (GitHub) or `glab` (GitLab, see `glab`) lists
-//! cached per query, merged at render time.
+//! cached per query, merged at render time. `gh` output is reduced in the
+//! background job to what rendering reads (see [`run`]).
 
 use super::repo::cached_remote;
 use super::{link_enabled, Ctx, Placeholder};
-use crate::cache::{Cache, Job};
+use crate::cache::{run_child_capped, Cache, Job};
 use crate::color::Color;
 use crate::expr;
 use crate::icons;
 use crate::options::Options;
 use crate::style::{dim, fg, link, sanitize};
-use serde_json::Value;
+use serde_json::{json, Map, Value};
+use std::process::Command;
+use std::time::Duration;
 
 /// Lists stay fresh for two minutes.
 pub const TTL: u64 = 120;
@@ -18,6 +21,9 @@ pub const MAX_QUERIES: usize = 8;
 pub(crate) const DEFAULT_LIMIT: usize = 5;
 const PR_FIELDS: &str = "number,url,reviewDecision,mergeable,statusCheckRollup";
 const ISSUE_FIELDS: &str = "number,url,labels";
+/// Most bytes of `gh` output read: a PR's `statusCheckRollup` lists every
+/// check run, a few hundred bytes each; reduced to under 200 per item.
+const MAX_OUTPUT: usize = 16 * 1024 * 1024;
 
 pub struct Prs;
 pub struct Issues;
@@ -161,9 +167,21 @@ impl Checks {
 /// Values of the `checks` option; `fail` is the default.
 pub const CHECK_MARKS: &[&str] = &["fail", "pending", "pass", "none"];
 
+/// A PR's check state: its reduced `checks` name when cached by [`run`],
+/// else from its `statusCheckRollup` (GitLab, older cache entries).
+pub fn checks(pr: &Value) -> Checks {
+    match pr["checks"].as_str() {
+        Some("pass") => Checks::Pass,
+        Some("fail") => Checks::Fail,
+        Some("pending") => Checks::Pending,
+        Some(_) => Checks::None,
+        None => rollup_checks(pr),
+    }
+}
+
 /// Any failed check fails; else any unfinished one is pending; else pass.
 /// Check runs carry `status`/`conclusion`, status contexts `state`.
-pub fn checks(pr: &Value) -> Checks {
+fn rollup_checks(pr: &Value) -> Checks {
     let Some(list) = pr["statusCheckRollup"].as_array().filter(|a| !a.is_empty()) else {
         return Checks::None;
     };
@@ -192,6 +210,52 @@ pub fn checks(pr: &Value) -> Checks {
     } else {
         Checks::Pass
     }
+}
+
+/// Body of a `gh` job: `gh <args>` in bar's state dir, its JSON list
+/// reduced per item to number, link and, for PRs, check state, review
+/// decision, mergeability and draft flag; for issues, label names. `None`
+/// when `gh` fails or its output does not parse (cut at `MAX_OUTPUT`
+/// included), so the last value stays.
+pub fn run(args: &[String], limit: Duration) -> Option<String> {
+    let mut c = Command::new(crate::platform::program("gh"));
+    c.args(args).current_dir(crate::job::outside_project());
+    let out = run_child_capped(c, None, limit, MAX_OUTPUT)?;
+    let Value::Array(items) = serde_json::from_str(&out).ok()? else {
+        return None;
+    };
+    let pr = args.first().is_some_and(|a| a == "pr");
+    let reduced: Vec<Value> = items
+        .iter()
+        .map(|i| if pr { compact_pr(i) } else { compact_issue(i) })
+        .collect();
+    Some(Value::Array(reduced).to_string())
+}
+
+/// The fields of a `gh` item that rendering reads, those it lacks left out.
+fn pick(item: &Value, keys: &[&str]) -> Map<String, Value> {
+    keys.iter()
+        .filter(|k| !item[**k].is_null())
+        .map(|k| ((*k).to_string(), item[*k].clone()))
+        .collect()
+}
+
+fn compact_pr(pr: &Value) -> Value {
+    let mut m = pick(
+        pr,
+        &["number", "url", "reviewDecision", "mergeable", "isDraft"],
+    );
+    m.insert("checks".into(), rollup_checks(pr).name().into());
+    Value::Object(m)
+}
+
+fn compact_issue(issue: &Value) -> Value {
+    let mut m = pick(issue, &["number", "url"]);
+    if let Some(labels) = issue["labels"].as_array() {
+        let names = labels.iter().map(|l| json!({"name": str_of(l, "name")}));
+        m.insert("labels".into(), names.collect());
+    }
+    Value::Object(m)
 }
 
 /// Port of the reference classification: red, amber, else green.

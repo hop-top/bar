@@ -16,8 +16,8 @@ use crate::tz::Tz;
 pub enum Job {
     /// `sh -c cmd` (`cmd /C` on Windows); stdout on success. `timeout` in seconds.
     Command { cmd: String, timeout: u64 },
-    /// `gh <args>` run directly, no shell, in bar's state dir; stdout on
-    /// success.
+    /// `gh <args>` run directly, no shell, in bar's state dir; its JSON
+    /// list reduced to the fields `prs` and `issues` read.
     Gh { args: Vec<String> },
     /// `glab <args>` run directly, no shell; its JSON reduced to the
     /// fields `gh` gives. `kind` `mr` also runs `glab mr view` per listed
@@ -310,11 +310,7 @@ impl Job {
             Job::Command { cmd, timeout } => {
                 run_command(cmd, limit.min(Duration::from_secs(*timeout)))
             }
-            Job::Gh { args } => {
-                let mut c = Command::new(crate::platform::program("gh"));
-                c.args(args).current_dir(outside_project());
-                run_child(c, None, limit)
-            }
+            Job::Gh { args } => crate::placeholders::gh::run(args, limit),
             Job::Glab { kind, repo, args } => {
                 crate::placeholders::glab::run(kind, repo, args, limit)
             }

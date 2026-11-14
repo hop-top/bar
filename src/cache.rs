@@ -22,7 +22,10 @@ pub const COMMAND_TIMEOUT: u64 = 3;
 /// After a failed refresh, wait this long (or `ttl`, if shorter) before
 /// trying again, in seconds.
 pub const FAIL_BACKOFF: u64 = 60;
-/// Stored values are cut to this many bytes.
+/// Most bytes of a stored value. Command output is cut to it (a plain
+/// text consumer such as `gitst` sees the cut); [`Cache::store`] refuses a
+/// longer value, so structured output reduced in its job is never stored
+/// cut.
 pub const MAX_VALUE: usize = 64 * 1024;
 /// A lock older than this belongs to a crashed refresh.
 const LOCK_EXPIRY: Duration = Duration::from_secs(30);
@@ -177,7 +180,14 @@ impl Cache {
     }
 
     /// Atomic: a private temp file in the cache dir, renamed into place.
+    /// A value over `MAX_VALUE` is refused, the stored one kept.
     pub fn store(&self, key: &str, value: &str) -> std::io::Result<()> {
+        if value.len() > MAX_VALUE {
+            return Err(std::io::Error::new(
+                ErrorKind::InvalidData,
+                "value over the cache size cap",
+            ));
+        }
         self.write_atomic(&self.path_for(key), value)
     }
 
@@ -304,18 +314,18 @@ impl Cache {
     }
 
     /// Body of `bar refresh`: run, store on success, release the lock.
-    /// A failed job keeps the last value and starts the backoff window.
+    /// A failed job, or a value that cannot be stored (over `MAX_VALUE`),
+    /// keeps the last value and starts the backoff window.
     pub fn refresh(&self, req: &Request, limit: Duration) {
         let fail = self.fail_path(&req.key);
-        match req.job.execute(limit) {
-            Some(v) => {
-                if self.store(&req.key, &v).is_ok() {
-                    let _ = fs::remove_file(&fail);
-                }
-            }
-            None => {
-                let _ = self.write_atomic(&fail, "");
-            }
+        let stored = req
+            .job
+            .execute(limit)
+            .is_some_and(|v| self.store(&req.key, &v).is_ok());
+        if stored {
+            let _ = fs::remove_file(&fail);
+        } else {
+            let _ = self.write_atomic(&fail, "");
         }
         self.release(req);
     }

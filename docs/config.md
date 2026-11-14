@@ -676,6 +676,7 @@ Open pull requests (merge requests on GitLab) and issues of the repository, colo
 `prs` colours each number red (failed check, changes requested or merge conflict), amber (pending check or review required) or green, and adds a mark after the number for the check states named in `checks` (default `fail`): `#{prs[checks=fail,pending]}` gives `#131✗ #129• #128`. The mark sits outside the number's link and takes the palette's bad, warn or good colour.
 
 - State: from `statusCheckRollup` of the PR's last commit, fetched by the same `gh pr list` call as the list (no extra process, same 120 s TTL and failure backoff).
+- The background job reduces `gh`'s reply to each item's number, link, check state, review decision and merge state (issues: labels) before it is cached, so a PR with many check runs costs the cache a few dozen bytes. A reply that does not parse, or a list still over the cache's 64 KiB cap once reduced, counts as a failed refresh: the last list stays shown and the next try waits out the failure backoff.
 - Any check run concluding `FAILURE`, `TIMED_OUT`, `CANCELLED`, `ACTION_REQUIRED` or `STARTUP_FAILURE`, or status context `FAILURE` / `ERROR`, fails; else any unfinished run or `PENDING` / `EXPECTED` context is pending; else pass.
 - No checks, or a cached list without check data, gets no mark.
 - Glyphs follow `icons`: `none` uses `✗` `•` `✓`; `nerdfont` `nf-oct-x` U+F467, `nf-oct-dot_fill` U+F444, `nf-oct-check` U+F42E; `emoji` ❌ 🟡 ✅.

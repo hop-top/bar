@@ -211,6 +211,8 @@ fn truncated_status_marks_lower_bound() {
     while body.len() < hop_bar::cache::MAX_VALUE {
         body.push_str("? some/untracked/file.txt\n");
     }
+    // the job's output is cut to the cap before it is stored
+    body.truncate(hop_bar::cache::MAX_VALUE);
     seed(&t, &d, &body);
     let o = run(&t)
         .conf("set left \"#{repo} #{dirty}\"")
