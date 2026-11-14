@@ -9,6 +9,9 @@ mod common;
 mod plugin_fx;
 #[allow(unused_imports)]
 use plugin_fx::*;
+#[path = "common/osc_links.rs"]
+mod osc_links;
+use osc_links::{links, strip};
 
 use hop_bar::click::toggle;
 use hop_bar::session::Session;
@@ -17,7 +20,6 @@ use std::path::{Path, PathBuf};
 
 const SID: &str = "0a1b2c3d-0000-4000-8000-00000000000a";
 const SID_B: &str = "0a1b2c3d-0000-4000-8000-00000000000b";
-const CLOSE: &str = "\x1b]8;;\x1b\\";
 
 /// `bar-tlc` behind a wrapper that puts a fake `tlc` first on `PATH`:
 /// track `alpha` (slug `alpha-slug`) holds 1 closed of 2, the project 3 of
@@ -32,6 +34,7 @@ case "$*" in
   "task show T-1 "*) echo '{"task":{"id":"T-1","track_id":"alpha"}}' ;;
   "task show T-2 "*) echo '{"task":{"id":"T-2","track_id":null}}' ;;
   "track show alpha "*) echo '{"id":"alpha","slug":"alpha-slug"}' ;;
+  "track list "*) echo '[]' ;;
   *"--track alpha"*) echo '[{"status":"DONE"},{"status":"TODO"}]' ;;
   "task list"*) echo '[{"status":"DONE"},{"status":"DONE"},{"status":"CANCELLED"}]' ;;
   *) exit 1 ;;
@@ -71,40 +74,6 @@ fn in_session(sid: &str, proj: &Path) -> Session {
 
 fn url(key: &str, sid: &str) -> String {
     format!("bar://toggle/{key}?sid={sid}")
-}
-
-/// Each `bar://` link in `s`: its URL and the plain text inside.
-fn links(s: &str) -> Vec<(String, String)> {
-    let mut out = Vec::new();
-    let mut rest = s;
-    while let Some(i) = rest.find("\x1b]8;;bar://") {
-        let after = &rest[i + "\x1b]8;;".len()..];
-        let end = after.find("\x1b\\").unwrap();
-        let body = &after[end + 2..];
-        let close = body.find(CLOSE).unwrap();
-        out.push((after[..end].to_string(), strip(&body[..close])));
-        rest = &body[close + CLOSE.len()..];
-    }
-    out
-}
-
-fn strip(s: &str) -> String {
-    let mut out = String::new();
-    let mut it = s.chars();
-    while let Some(c) = it.next() {
-        if c == '\x1b' {
-            // OSC runs to ST (ESC \), SGR to its `m`
-            let end = if it.next() == Some(']') { '\\' } else { 'm' };
-            for d in it.by_ref() {
-                if d == end {
-                    break;
-                }
-            }
-        } else {
-            out.push(c);
-        }
-    }
-    out
 }
 
 /// What the handler does with a `bar://toggle/<key>` link.

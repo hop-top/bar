@@ -161,14 +161,20 @@ fn record_tlc(state: &Path, v: &Value, sid: &str) {
     }
     // the same task again keeps the record, so the plugin's cache entry
     // (keyed by the record) stays warm
-    let same = read_record(state, "tlc", sid)
+    let old = read_record(state, "tlc", sid);
+    let same = old
+        .as_ref()
         .is_some_and(|r| r["task"] == t.task.as_str() && r["cwd"].as_str() == t.cwd.to_str());
     if same {
         return;
     }
     let now = unix_now();
     prune(dir, now, RECORD_STALE_SECS);
-    let body = serde_json::json!({"task": t.task, "cwd": t.cwd, "at": now});
+    // the plugin's own fields (a picked track) outlive the task
+    let mut body = old.unwrap_or_else(|| serde_json::json!({}));
+    body["task"] = t.task.into();
+    body["cwd"] = t.cwd.to_string_lossy().into_owned().into();
+    body["at"] = now.into();
     let _ = write_atomic(&path, &body.to_string());
 }
 

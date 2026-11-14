@@ -43,6 +43,11 @@ pub struct ActionSpec {
     /// chooser); 0 is the default limit. Capped at
     /// [`crate::click::action::MAX_ACTION_TIMEOUT`] seconds.
     pub timeout: u64,
+    /// The named toggle the action fronts (`label_toggle`): a click on the
+    /// label runs the action, which flips `<plugin>.<toggle>` in the
+    /// session its `session` token names. Kept only for an action that
+    /// takes a `session` token.
+    pub toggle: Option<String>,
 }
 
 /// Most tokens an action can take.
@@ -79,11 +84,16 @@ fn actions_of(v: &Value) -> BTreeMap<String, ActionSpec> {
                     tokens.truncate(MAX_TOKENS);
                     let spec = ActionSpec {
                         description: clean_str(&a["description"]).unwrap_or_default(),
-                        tokens,
                         confirm: a["confirm"].as_bool().unwrap_or(false),
                         timeout: a["timeout"].as_u64().map_or(0, |t| {
                             t.min(crate::click::action::MAX_ACTION_TIMEOUT.as_secs())
                         }),
+                        toggle: a["toggle"]
+                            .as_str()
+                            .filter(|t| crate::click::valid_toggle_name(t))
+                            .filter(|_| tokens.iter().any(|n| n == "session"))
+                            .map(String::from),
+                        tokens,
                     };
                     (k.clone(), spec)
                 })
@@ -320,6 +330,9 @@ impl ExtInfo {
                     let mut v = json!({"description": s.description, "tokens": s.tokens, "confirm": s.confirm});
                     if s.timeout > 0 {
                         v["timeout"] = json!(s.timeout);
+                    }
+                    if let Some(t) = &s.toggle {
+                        v["toggle"] = json!(t);
                     }
                     (k.clone(), v)
                 })

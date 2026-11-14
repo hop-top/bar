@@ -560,7 +560,9 @@ fn action_tokens(
 /// Gives the output, or each of its items, the link of the action the
 /// user bound to the placeholder (`action <name> <name>.<action>`), when
 /// the handler routes actions and the output carries every token the
-/// action takes. An output with a `link` of its own keeps it.
+/// action takes. An output with a `link` of its own keeps it. An action
+/// that fronts a toggle (`toggle` in its declaration) links the label or
+/// icon instead, of an output whose `label_toggle` names that toggle.
 fn link_actions(
     out: &mut Output,
     ctx: &Ctx,
@@ -579,13 +581,21 @@ fn link_actions(
     };
     let top = out.tokens.clone();
     let one = |o: &mut Output| {
-        if o.link.as_deref().is_some_and(|l| !l.is_empty()) {
+        let fronts = spec.toggle.as_deref();
+        if fronts.is_some_and(|t| o.label_toggle.as_deref() != Some(t))
+            || (fronts.is_none() && o.link.as_deref().is_some_and(|l| !l.is_empty()))
+        {
             return;
         }
         let Some(t) = action_tokens(spec, &top, &o.tokens) else {
             return;
         };
-        o.link = click::action::build(state, &b.plugin, &b.action, &t, entry);
+        let url = click::action::build(state, &b.plugin, &b.action, &t, entry);
+        if fronts.is_some() {
+            o.label_link = url;
+        } else {
+            o.link = url;
+        }
     };
     if out.items.is_empty() {
         one(out);
@@ -638,8 +648,9 @@ pub fn link_account(ctx: &Ctx, value: String) -> String {
 fn toggled(mut out: Output, name: &str, sid: &str, opts: &Options, state: &Path) -> Output {
     let linkable = opts.get("click") != Some("none") && click::handler_installed(state);
     let named = |key: &str| click::toggle_link(&format!("{name}.{key}"), sid);
+    // an action fronting the toggle (`link_actions`) keeps the label
     if let Some(key) = out.label_toggle.as_deref().filter(|_| linkable) {
-        out.label_link = Some(named(key));
+        out.label_link.get_or_insert_with(|| named(key));
     }
     let own_link = out.link.as_deref().is_some_and(|l| !l.is_empty());
     let text_toggle = out.text_toggle.take();

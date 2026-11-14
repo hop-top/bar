@@ -424,3 +424,29 @@ fn hook_tlc_record_refuses_bad_input() {
     run_hook(s, &bash("tlc task claim T-1", "/w/proj", "", ""));
     assert_eq!(std::fs::read_dir(&target).unwrap().count(), 0);
 }
+
+#[test]
+fn hook_keeps_a_picked_track_when_the_task_changes() {
+    let t = Tmp::new();
+    let s = t.path();
+    let path = record_path(s, "tlc", SID).unwrap();
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(
+        &path,
+        r#"{"task":"T-1","cwd":"/w/proj","at":7,"track":"beta","root":"/w/proj"}"#,
+    )
+    .unwrap();
+    run_hook(s, &bash("tlc task claim T-2", "/w/proj", "", ""));
+    let r = read_record(s, "tlc", SID).unwrap();
+    assert_eq!(r["task"], "T-2");
+    assert_eq!(r["track"], "beta");
+    assert_eq!(r["root"], "/w/proj");
+    // a record holding only a pick gains the task
+    std::fs::write(&path, r#"{"track":"gamma","root":"/w/proj"}"#).unwrap();
+    run_hook(s, &bash("tlc task claim T-3", "/w/proj", "", ""));
+    let r = read_record(s, "tlc", SID).unwrap();
+    assert_eq!(
+        (r["task"].as_str(), r["track"].as_str()),
+        (Some("T-3"), Some("gamma"))
+    );
+}

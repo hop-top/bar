@@ -102,6 +102,7 @@ if [ -f "$FAKE_DIR/fail" ] && printf '%s' "$*" | grep -q -- "$(cat "$FAKE_DIR/fa
 case "$*" in
   "task show "*) [ -f "$FAKE_DIR/show_$3.json" ] || exit 3; cat "$FAKE_DIR/show_$3.json" ;;
   "track show "*) cat "$FAKE_DIR/track_$3.json" ;;
+  "track list "*) cat "$FAKE_DIR/active.json" 2>/dev/null || echo '[]' ;;
   "task list"*)
     track=""; prev=""
     for a in "$@"; do [ "$prev" = --track ] && track=$a; prev=$a; done
