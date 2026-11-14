@@ -1,5 +1,5 @@
-//! `bar-tlc` through the core: a click on the count flips the scope
-//! (`tlc.scope`), a click on the mark shows the track name (`tlc`).
+//! `bar-tlc` through the core: a click on the mark flips the scope
+//! (`tlc.scope`), a click on the count shows the track name (`tlc`).
 
 // Unix fixtures (shell scripts, modes, POSIX paths); Windows coverage: tests/windows.rs
 #![cfg(unix)]
@@ -128,7 +128,7 @@ fn show_with(fx: &Fx, s: &Session, o: &[(&str, &str)]) -> String {
 }
 
 #[test]
-fn count_click_flips_scope_and_mark_click_shows_the_track() {
+fn mark_click_flips_scope_and_count_click_shows_the_track() {
     let fx = Fx::new();
     let proj = setup(&fx);
     std::fs::write(fx.state.join("click-installed"), "cmd").unwrap();
@@ -138,18 +138,18 @@ fn count_click_flips_scope_and_mark_click_shows_the_track() {
     assert_eq!(
         links(&shown),
         vec![
-            (url("tlc", SID), "\u{25c9}".into()),
-            (url("tlc.scope", SID), "1\u{2215}2".into())
+            (url("tlc.scope", SID), "\u{25c9}".into()),
+            (url("tlc", SID), "1\u{2215}2".into())
         ],
         "{shown:?}"
     );
-    // the count: track -> project
+    // the mark: track -> project
     click(&fx, &format!("tlc.scope?sid={SID}"));
     assert_eq!(strip(&show(&fx, &s)), "\u{2630} 3\u{2215}3");
     // and back
     click(&fx, &format!("tlc.scope?sid={SID}"));
     assert_eq!(strip(&show(&fx, &s)), "\u{25c9} 1\u{2215}2");
-    // the mark: the track name, then the count again
+    // the count: the track name, then the count again
     click(&fx, &format!("tlc?sid={SID}"));
     assert_eq!(strip(&show(&fx, &s)), "\u{25c9} alpha-slug");
     click(&fx, &format!("tlc?sid={SID}"));
@@ -157,7 +157,7 @@ fn count_click_flips_scope_and_mark_click_shows_the_track() {
 }
 
 #[test]
-fn count_click_without_a_session_track_keeps_the_project() {
+fn mark_click_without_a_session_track_keeps_the_project() {
     let fx = Fx::new();
     let proj = setup(&fx);
     std::fs::write(fx.state.join("click-installed"), "cmd").unwrap();
@@ -169,7 +169,7 @@ fn count_click_without_a_session_track_keeps_the_project() {
     click(&fx, &format!("tlc.scope?sid={SID}"));
     let shown = show_with(&fx, &s, &all);
     assert_eq!(strip(&shown), "\u{2630} 3\u{2215}3");
-    assert_eq!(links(&shown)[1].0, url("tlc.scope", SID));
+    assert_eq!(links(&shown)[0].0, url("tlc.scope", SID));
 }
 
 #[test]

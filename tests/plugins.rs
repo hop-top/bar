@@ -54,11 +54,11 @@ fn bar_tlc_ext_info_declares_options_and_session_cache() {
     ] {
         assert_eq!(v["options"][k], json!({"type":"string","default":d}), "{k}");
     }
-    assert_eq!(v["version"], "0.4.0");
-    // every sample puts the scope toggle on the text, none on the mark
+    assert_eq!(v["version"], "0.5.0");
+    // every sample puts the scope toggle on the mark, none on the text
     for s in v["web"]["samples"].as_array().unwrap() {
-        assert_eq!(s["output"]["text_toggle"], "scope", "{s}");
-        assert!(s["output"].get("label_toggle").is_none(), "{s}");
+        assert_eq!(s["output"]["label_toggle"], "scope", "{s}");
+        assert!(s["output"].get("text_toggle").is_none(), "{s}");
     }
 }
 
@@ -104,9 +104,9 @@ fn bar_tlc_marks_track_and_all_scope() {
         mark(&v),
         ("\u{25c9}".into(), "\u{f45d}".into(), "1\u{2215}4".into())
     );
-    // a click on the text flips the scope; the mark keeps the alt toggle
-    assert_eq!(v["text_toggle"], "scope");
-    assert!(v.get("label_toggle").is_none(), "{v}");
+    // a click on the mark flips the scope; the text keeps the alt toggle
+    assert_eq!(v["label_toggle"], "scope");
+    assert!(v.get("text_toggle").is_none(), "{v}");
     // all mode and no record: all mark
     let v = go(json!({"scope":"all"}), r.clone());
     assert_eq!(
