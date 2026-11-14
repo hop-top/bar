@@ -262,6 +262,13 @@ pub struct Output {
     pub score: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub link: Option<String>,
+    /// Toggle a click on the label or icon flips (`bar://toggle/<plugin>.<name>`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_toggle: Option<String>,
+    /// Toggle a click on the text flips; the `alt` toggle then moves to the
+    /// label or icon unless `label_toggle` holds it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_toggle: Option<String>,
     /// One output per account (at most `MAX_ITEMS`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub items: Vec<Output>,
@@ -310,6 +317,8 @@ impl Output {
             a.color = a.color.take().filter(|c| valid_color(c));
         }
         self.label_color = self.label_color.take().filter(|c| valid_color(c));
+        self.label_toggle = self.label_toggle.take().filter(|k| valid_token_name(k));
+        self.text_toggle = self.text_toggle.take().filter(|k| valid_token_name(k));
         self
     }
 
@@ -422,6 +431,21 @@ mod tests {
         let v: Value = serde_json::from_str(&serde_json::to_string(&i).unwrap()).unwrap();
         assert_eq!(v["actions"]["use"]["tokens"][0], "account");
         assert!(v.get("inputs").is_none() && v.get("timeout").is_none());
+    }
+
+    #[test]
+    fn toggles_serialize_and_bad_names_are_dropped() {
+        let mut o = Output::text("7");
+        o.label_toggle = Some("scope".into());
+        o.text_toggle = Some("name".into());
+        assert_eq!(
+            o.clone().finish().to_json(),
+            r#"{"text":"7","label_toggle":"scope","text_toggle":"name"}"#
+        );
+        o.label_toggle = Some("a.b".into());
+        o.text_toggle = Some("x".repeat(65));
+        let o = o.finish();
+        assert!(o.label_toggle.is_none() && o.text_toggle.is_none());
     }
 
     #[test]
