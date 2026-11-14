@@ -1,6 +1,6 @@
 {
   "name": "@hop-top/bar-linux-arm64",
-  "version": "0.1.0-beta.0",
+  "version": "0.1.0-rc.0",
   "description": "bar, bar-cliproxyapi and bar-routellm binaries for linux arm64 (aarch64-unknown-linux-musl), installed by @hop-top/bar",
   "license": "Apache-2.0",
   "repository": {

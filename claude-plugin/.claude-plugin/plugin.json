@@ -1,8 +1,10 @@
 {
   "name": "bar",
-  "version": "0.1.0-beta.0",
+  "version": "0.1.0-rc.0",
   "description": "Guided setup for bar, the fast status line for Claude Code: preset, skin, palette, icons, config and statusLine wiring",
-  "author": { "name": "hop.top" },
+  "author": {
+    "name": "hop.top"
+  },
   "homepage": "https://github.com/hop-top/bar",
   "repository": "https://github.com/hop-top/bar",
   "license": "Apache-2.0"
