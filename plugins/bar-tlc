@@ -21,10 +21,19 @@
 # run by a click on the mark) fronts the scope toggle: to=all drops the
 # pick, to=track (or to=pick: stay, nothing counted yet) offers the
 # session's track and the active ones in the chooser when there are two or
-# more; Cancel prints `cancelled` and bar keeps the scope.
+# more; Cancel prints `cancelled` and bar keeps the scope. Each entry is
+# the option pick-label, a template (see PICK_LABEL below), which the
+# render puts in its output as pick_label when it is not the default: the
+# action gets that output from bar.
 # The track chooser: macOS `choose from list` through osascript. Prints
 # the program, fails where there is none.
 OSASCRIPT=/usr/bin/osascript
+# The chooser's entry, by default. {name} is a placeholder (n, id, slug,
+# title, status, done, total); {{ is a literal {, }} a literal }. Read
+# left to right: at each { the first of {{, {name} (1 to 32 of a-z 0-9 _)
+# and a lone { wins, at each } the first of }} and a lone }. An unknown
+# name stays as written.
+PICK_LABEL='{slug} - {done}/{total}'
 chooser() {
   [ "$(uname -s 2>/dev/null)" = Darwin ] && [ -x "$OSASCRIPT" ] && printf '%s\n' "$OSASCRIPT"
 }
@@ -34,7 +43,7 @@ if [ "$1" = "--ext-info" ]; then
   if chooser >/dev/null; then
     acts=',"actions":{"pick":{"description":"Choose the track to count from a list (macOS only)","tokens":["session","to"],"toggle":"scope","timeout":120}}'
   fi
-  printf '%s\n' '{"name":"tlc","version":"0.5.0","description":"Closed tasks of the session track","capabilities":["discover","placeholder"],"options":{"scope":{"type":"enum","enum":["track","all"],"default":"track"},"status":{"type":"string"},"show":{"type":"enum","enum":["count","track"],"default":"count"},"alt":{"type":"enum","enum":["count","track"]},"label-track":{"type":"string","default":"◉"},"label-all":{"type":"string","default":"☰"},"icon-track":{"type":"string","default":"\uf45d"},"icon-all":{"type":"string","default":"\uf45e"}},"cache":"session","ttl":"60s"'"$acts"',"web":{"category":"tasks","samples":[{"when":{"scope":"all","show":"track"},"output":{"label":"☰","icon":"\uf45e","label_toggle":"scope","text":"all","alt":"12∕30","score":40}},{"when":{"scope":"all"},"output":{"label":"☰","icon":"\uf45e","label_toggle":"scope","text":"12∕30","alt":"all","score":40}},{"when":{"show":"track"},"output":{"label":"◉","icon":"\uf45d","label_toggle":"scope","text":"web-ui","alt":"7∕9","score":77}},{"output":{"label":"◉","icon":"\uf45d","label_toggle":"scope","text":"7∕9","alt":"web-ui","score":77}}],"options":{"scope":{"label":"Scope","help":"Count the track of the session, or the whole project"},"status":{"label":"Status filter","help":"Comma-separated tlc statuses to count","placeholder":"DONE,CANCELLED"},"show":{"label":"Text","help":"Count of closed tasks, or the track name"},"alt":{"label":"Alt text","help":"Shown after a click on the text"}}}}'
+  printf '%s\n' '{"name":"tlc","version":"0.6.0","description":"Closed tasks of the session track","capabilities":["discover","placeholder"],"options":{"scope":{"type":"enum","enum":["track","all"],"default":"track"},"status":{"type":"string"},"show":{"type":"enum","enum":["count","track"],"default":"count"},"alt":{"type":"enum","enum":["count","track"]},"label-track":{"type":"string","default":"◉"},"label-all":{"type":"string","default":"☰"},"icon-track":{"type":"string","default":"\uf45d"},"icon-all":{"type":"string","default":"\uf45e"},"pick-label":{"type":"string","default":"{slug} - {done}/{total}"}},"cache":"session","ttl":"60s"'"$acts"',"web":{"category":"tasks","samples":[{"when":{"scope":"all","show":"track"},"output":{"label":"☰","icon":"\uf45e","label_toggle":"scope","text":"all","alt":"12∕30","score":40}},{"when":{"scope":"all"},"output":{"label":"☰","icon":"\uf45e","label_toggle":"scope","text":"12∕30","alt":"all","score":40}},{"when":{"show":"track"},"output":{"label":"◉","icon":"\uf45d","label_toggle":"scope","text":"web-ui","alt":"7∕9","score":77}},{"output":{"label":"◉","icon":"\uf45d","label_toggle":"scope","text":"7∕9","alt":"web-ui","score":77}}],"options":{"scope":{"label":"Scope","help":"Count the track of the session, or the whole project"},"status":{"label":"Status filter","help":"Comma-separated tlc statuses to count","placeholder":"DONE,CANCELLED"},"show":{"label":"Text","help":"Count of closed tasks, or the track name"},"alt":{"label":"Alt text","help":"Shown after a click on the text"},"pick-label":{"label":"Chooser entry","help":"Each track in the track chooser: {slug}, {title}, {id}, {status}, {done}, {total}, {n}; {{ and }} are literal braces","placeholder":"{slug} - {done}/{total}"}}}}'
   exit 0
 fi
 
@@ -47,6 +56,8 @@ scope=$(opt '.options.scope // "track"') || exit 1
 status=$(opt '.options.status // empty') || exit 1
 show=$(opt '.options.show // "count"') || exit 1
 alt=$(opt '.options.alt // empty') || exit 1
+plabel=$(opt '.options["pick-label"] // empty | strings | .[0:256]') || exit 1
+[ "$plabel" != "$PICK_LABEL" ] || plabel=
 flip=$(opt '.toggles.scope // false | if . == true then "1" else "" end')
 task=$(opt '.session.record.task // empty | strings')
 rcwd=$(opt '.session.record.cwd // empty | strings')
@@ -161,7 +172,8 @@ active_tracks() {
   act=$(run track list --status active --format json) || return 1
   act=$(printf '%s' "${act:-[]}" | jq -c '(if type == "array" then . else (.tracks // .items // .data // []) end)
     | [.[] | select(type == "object")
-       | {id: (.id // "" | tostring), slug: (.slug // .id // "" | tostring), title: (.title // "" | tostring)}
+       | {id: (.id // "" | tostring), slug: (.slug // .id // "" | tostring), title: (.title // "" | tostring),
+          status: (.status // "" | tostring)}
        | select(.id | test("^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$"))]' 2>/dev/null) || return 1
   [ -n "$act" ]
 }
@@ -192,6 +204,49 @@ save() {
     rm -f "$tmp"
     exit 1
   fi
+}
+
+# Each candidate's chooser entry, into $cands (.label): the template the
+# render passed on (.output.pick_label), else PICK_LABEL, expanded;
+# control characters become spaces, at most 120 characters, trimmed. When
+# one is empty, reads `false` (both mean Cancel to the chooser) or equals
+# another, every entry gets its position first, `<n>. `. done/total count
+# as the segment does (all but TODO and IN_PROGRESS closed, archived
+# included), from one task list grouped by track, only when the template
+# asks for them.
+labels() {
+  tpl=$(opt '.output.pick_label // empty | strings | .[0:256]') || exit 1
+  [ -n "$tpl" ] || tpl=$PICK_LABEL
+  counts='{}'
+  case $tpl in
+    *{done}*|*{total}*)
+      tasks=$(run task list --archived --limit 100000 --format json) || exit 1
+      counts=$(printf '%s' "$tasks" | jq -c '
+        (if type == "array" then . else (.tasks // .items // .data // []) end)
+        | map(select(type == "object" and (.track_id | type) == "string"))
+        | group_by(.track_id)
+        | map({key: .[0].track_id,
+               value: {total: length,
+                       done: (map(select(.status != "TODO" and .status != "IN_PROGRESS")) | length)}})
+        | from_entries') || exit 1 ;;
+  esac
+  cands=$(printf '%s' "$cands" | jq -c --arg tpl "$tpl" --argjson c "$counts" '
+    def expand($v):
+      [scan("\\{\\{|\\}\\}|\\{[a-z0-9_]{1,32}\\}|\\{|\\}|[^{}]+")]
+      | map(if . == "{{" then "{" elif . == "}}" then "}"
+            elif test("^\\{[a-z0-9_]+\\}$") then
+              .[1:-1] as $k | (if $v | has($k) then $v[$k] | tostring else "{\($k)}" end)
+            else . end)
+      | join("");
+    def clean: gsub("[[:cntrl:]]"; " ") | .[0:120] | sub("^\\s+"; "") | sub("\\s+$"; "");
+    to_entries
+    | map(.value + {n: (.key + 1)})
+    | map(. as $t | ($c[$t.id] // {done: 0, total: 0}) as $k
+          | {id, slug, n,
+             label: ($tpl | expand({n: $t.n, id: $t.id, slug: $t.slug, title: $t.title,
+                                    status: $t.status, done: $k.done, total: $k.total}) | clean)})
+    | if any(.[]; .label == "" or .label == "false") or (map(.label) | unique | length) != length
+      then map(.label = ("\(.n). \(.label)" | clean)) else . end') || exit 1
 }
 
 # The chosen track's id and slug into $id and $slug; Cancel leaves both
@@ -255,19 +310,15 @@ pick_action() {
   # the session's track first, then the other active ones
   cands=$(printf '%s' "$act" | jq -c --arg s "$strack" --arg n "$name" '
     (map(select(.id == $s))) as $mine
-    | (if $s != "" and ($mine | length) == 0 then [{id: $s, slug: $n, title: ""}] else $mine end)
-      + map(select(.id != $s))
-    | to_entries
-    | map({id: .value.id, slug: .value.slug,
-           label: ("\(.key + 1). \(.value.slug)"
-                   + (if .value.title != "" then " — \(.value.title)" else "" end)
-                  | gsub("[[:cntrl:]]"; " ") | .[0:120])})') || exit 1
+    | (if $s != "" and ($mine | length) == 0 then [{id: $s, slug: $n, title: "", status: ""}] else $mine end)
+      + map(select(.id != $s))') || exit 1
   n=$(printf '%s' "$cands" | jq 'length') || exit 1
   if [ "$n" -lt 2 ]; then
     # nothing to choose: to track at once, or (to=pick) nothing changes
     [ "$to" = track ] || echo kept
     exit 0
   fi
+  labels
   choose
   if [ -z "$id" ]; then
     echo cancelled
@@ -336,7 +387,7 @@ else
   icon=$(opt '.options["icon-all"] // "\uf45e"') || exit 1
 fi
 
-printf '%s' "$all" | jq -ce --arg name "$name" --arg show "$show" --arg alt "$alt" --arg label "$label" --arg icon "$icon" --arg sid "$sid" --arg to "$to" --arg root "$here" '
+printf '%s' "$all" | jq -ce --arg name "$name" --arg show "$show" --arg alt "$alt" --arg label "$label" --arg icon "$icon" --arg sid "$sid" --arg to "$to" --arg root "$here" --arg pl "$plabel" '
   (if type == "array" then . else (.tasks // .items // .data // []) end) as $t
   | ($t | length) as $n
   | if $n == 0 then {text: ""} else
@@ -344,4 +395,5 @@ printf '%s' "$all" | jq -ce --arg name "$name" --arg show "$show" --arg alt "$al
   | {count: "\($c)∕\($n)", track: $name} as $v
   | {label: $label, icon: $icon, label_toggle: "scope",
      text: $v[$show], alt: $v[$alt], score: ($c * 100 / $n | floor), root: $root}
-    + (if $sid == "" then {} else {tokens: {session: $sid, to: $to}} end) end' 2>/dev/null || exit 1
+    + (if $sid == "" then {} else {tokens: {session: $sid, to: $to}} end)
+    + (if $pl == "" then {} else {pick_label: $pl} end) end' 2>/dev/null || exit 1
