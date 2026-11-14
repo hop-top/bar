@@ -262,6 +262,9 @@ pub struct Output {
     /// Name of the toggle a click on the label or icon flips
     /// (`bar toggle <plugin>.<name>`).
     pub label_toggle: Option<String>,
+    /// Name of the toggle a click on the text flips instead of the `alt`
+    /// toggle, which then moves to the label or icon.
+    pub text_toggle: Option<String>,
     /// Set by `toggled`: the link around the drawn label or icon.
     pub label_link: Option<String>,
     pub style: Option<String>,
@@ -387,6 +390,10 @@ fn parse_one(v: &Value) -> Option<Output> {
         label_color: v["label_color"].as_str().and_then(Color::parse),
         icon: v["icon"].as_str().map(String::from),
         label_toggle: v["label_toggle"]
+            .as_str()
+            .filter(|k| click::valid_toggle_name(k))
+            .map(String::from),
+        text_toggle: v["text_toggle"]
             .as_str()
             .filter(|k| click::valid_toggle_name(k))
             .map(String::from),
@@ -625,11 +632,19 @@ pub fn link_account(ctx: &Ctx, value: String) -> String {
 /// `bar://toggle/<name>?sid=<sid>` unless the output has its own `link`,
 /// `click=none`, or no handler is installed. A `label_toggle` links the
 /// drawn label or icon to `bar://toggle/<name>.<toggle>?sid=<sid>` under
-/// the same conditions.
+/// the same conditions. A `text_toggle` links the text to
+/// `bar://toggle/<name>.<toggle>` instead, and the `alt` toggle to the
+/// label or icon unless a `label_toggle` holds it.
 fn toggled(mut out: Output, name: &str, sid: &str, opts: &Options, state: &Path) -> Output {
     let linkable = opts.get("click") != Some("none") && click::handler_installed(state);
+    let named = |key: &str| click::toggle_link(&format!("{name}.{key}"), sid);
     if let Some(key) = out.label_toggle.as_deref().filter(|_| linkable) {
-        out.label_link = Some(click::toggle_link(&format!("{name}.{key}"), sid));
+        out.label_link = Some(named(key));
+    }
+    let own_link = out.link.as_deref().is_some_and(|l| !l.is_empty());
+    let text_toggle = out.text_toggle.take();
+    if let Some(key) = text_toggle.as_deref().filter(|_| linkable && !own_link) {
+        out.link = Some(named(key));
     }
     let Some(alt) = out.alt.take() else {
         return out;
@@ -637,8 +652,15 @@ fn toggled(mut out: Output, name: &str, sid: &str, opts: &Options, state: &Path)
     if click::is_toggled_in(state, name, sid) {
         out.text = alt;
     }
-    if out.link.as_deref().is_none_or(str::is_empty) && linkable {
-        out.link = Some(click::toggle_link(name, sid));
+    if !linkable {
+        return out;
+    }
+    if text_toggle.is_none() {
+        if !own_link {
+            out.link = Some(click::toggle_link(name, sid));
+        }
+    } else if out.label_link.is_none() {
+        out.label_link = Some(click::toggle_link(name, sid));
     }
     out
 }
