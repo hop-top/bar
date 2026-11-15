@@ -147,6 +147,10 @@ printf '{"label":"load","text":"%s"}\n' "$load"
 
 Save it as `bar-load` on `PATH`, make it executable, add `#{load}` to a line. Protocol and reference plugins: [docs/plugins.md](docs/plugins.md). Shipped with bar: [`bar-cliproxyapi`](docs/plugins/cliproxyapi.md), the per-account quota of a CLIProxyAPI proxy, with `bar cpa list|use|use --next|pick` (alias of `bar cliproxyapi …`) to switch accounts. Plugins can also return several items, supply `#{usage}` and `#{account}`, and bind click actions.
 
+## Docs
+
+Every page, by reader: [docs/README.md](docs/README.md).
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
