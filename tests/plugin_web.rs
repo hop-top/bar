@@ -239,18 +239,21 @@ fn reference() -> PathBuf {
 
 #[test]
 fn reference_plugins_declare_valid_web_objects() {
-    // the scripts, not the plugin crates (directories) beside them
+    // the scripts, not the plugin crates (directories) or the README beside them
+    let mut n = 0;
     for e in std::fs::read_dir(reference())
         .unwrap()
         .flatten()
-        .filter(|e| e.path().is_file())
+        .filter(|e| e.path().is_file() && e.file_name().to_string_lossy().starts_with("bar-"))
     {
         let out =
             common::deadline::run(std::process::Command::new(e.path()).arg("--ext-info"), None);
         let info = parse_info(&String::from_utf8_lossy(&out.stdout)).unwrap();
         assert!(info.web.is_some(), "{}", info.name);
         assert_eq!(web::issues(&info), Vec::<String>::new(), "{}", info.name);
+        n += 1;
     }
+    assert!(n > 0, "no reference plugins in {}", reference().display());
 }
 
 fn bar(root: &Path) -> Command {
