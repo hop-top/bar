@@ -11,7 +11,9 @@
 Inputs: what is built and measured (src/, presets/ (compiled into the
 binary), Cargo.toml, Cargo.lock) and how (bench/image/, bench/ben/,
 bench/configs/, bench/fixtures/, bench/lib/, bench/run.sh). Results,
-generated docs and the badge are outputs, not inputs.
+generated docs and the badge are outputs, not inputs. Markdown files in
+those paths (a folder's README) are neither built nor read by a run, so
+they are left out.
 
 The package's own `version` is dropped from Cargo.toml and Cargo.lock before
 hashing: a release PR changes it and nothing else that is measured, so a run
@@ -87,7 +89,7 @@ def entries(rev):
             continue
         meta, path = raw.decode().split("\t", 1)
         mode, kind, obj = meta.split()
-        if kind != "blob":
+        if kind != "blob" or path.endswith(".md"):
             continue
         if path in NORMALISE:
             text = git("cat-file", "blob", obj).decode()
