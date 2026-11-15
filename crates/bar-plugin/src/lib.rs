@@ -15,3 +15,8 @@ pub mod secret;
 pub mod sha256;
 pub mod url;
 pub mod wait;
+
+/// The README's example, compiled as a doc test.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+pub struct ReadmeDoctests;
