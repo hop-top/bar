@@ -63,3 +63,42 @@ fn cli_status_json_without_install() {
     assert!(o.status.success(), "{o:?}");
     assert_eq!(String::from_utf8_lossy(&o.stdout), "not running\n");
 }
+
+/// Another install's autostart: install refuses to take it over, also as
+/// a dry run, and `--force` does.
+#[test]
+fn cli_install_takes_another_installs_autostart_only_with_force() {
+    let t = Tmp::new();
+    let other = t.path().join("other");
+    t.write("other/tray-installed", "");
+    let argv: Vec<String> = ["/o/bar-tray", "--bar", "/o/bar", "--lock"]
+        .iter()
+        .map(|a| a.to_string())
+        .chain([other.join("tray.lock").display().to_string()])
+        .collect();
+    let (path, body) = if cfg!(target_os = "macos") {
+        let p = "home/Library/LaunchAgents/top.hop.bar-tray.plist";
+        (p, hop_bar::tray::agent::plist(&argv, &[]))
+    } else if cfg!(target_os = "linux") {
+        let p = "cfg/autostart/bar-tray.desktop";
+        (p, hop_bar::tray::xdg::desktop_entry(&argv, &[]).unwrap())
+    } else {
+        return;
+    };
+    t.write(path, &body);
+    let o = cli(&t, &["install", "--dry-run"]);
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert_eq!(o.status.code(), Some(1), "{o:?}");
+    assert!(
+        err.contains(&format!(
+            "belongs to the tray install in {}",
+            other.display()
+        )),
+        "{err}"
+    );
+    let o = cli(&t, &["install", "--dry-run", "--force"]);
+    assert!(o.status.success(), "{o:?}");
+    let o = cli(&t, &["install", "--no-autostart", "--force"]);
+    assert_eq!(o.status.code(), Some(2), "--force is for autostart: {o:?}");
+    assert_eq!(std::fs::read_to_string(t.path().join(path)).unwrap(), body);
+}

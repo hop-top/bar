@@ -89,6 +89,7 @@ fn opts() -> InstallOpts {
         autostart: true,
         hooks: true,
         systemd: false,
+        force: false,
     }
 }
 

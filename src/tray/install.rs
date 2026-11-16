@@ -9,7 +9,7 @@
 //! and uninstalling one keeps the hooks while the other is installed.
 
 use super::process::{self, Layout, Sys};
-use super::{agent, agent_windows, linux, SNAPSHOT_FILE};
+use super::{agent, agent_windows, linux, owner, SNAPSHOT_FILE};
 use crate::click::pointer::TRAY_MARKER;
 use crate::click::{settings, EnvVar, HandlerDirs};
 use crate::conf::Config;
@@ -142,6 +142,8 @@ pub struct InstallOpts {
     pub hooks: bool,
     /// Linux: autostart through a systemd user unit, not an autostart entry.
     pub systemd: bool,
+    /// Take over the autostart another install (state dir) set up.
+    pub force: bool,
 }
 
 /// Error from `install`; the CLI exits 2 on `Unsupported`, 1 otherwise.
@@ -238,6 +240,7 @@ pub fn install(
         (true, ..) => return Err(InstallError::Unsupported),
     };
     let run_value = windows_autostart(cfg, o, macos)?;
+    check_owner(cfg, o, macos, sys)?;
     check_tray(cfg, o, xdg.is_some(), sys, out)?;
     let state = &cfg.layout.state_dir;
     let first = !state.join(TRAY_MARKER).is_file();
@@ -312,6 +315,35 @@ pub fn install(
         }
     }
     Ok(())
+}
+
+/// Fails when the autostart file install would write is another
+/// install's (they are per user, not per state dir), unless forced.
+fn check_owner(
+    cfg: &InstallCfg,
+    o: &InstallOpts,
+    macos: bool,
+    sys: &mut dyn Sys,
+) -> Result<(), InstallError> {
+    if !o.autostart || o.force {
+        return Ok(());
+    }
+    let l = &cfg.layout;
+    let state = &l.state_dir;
+    let (what, who) = match (l.plist(), &l.system_dir, &l.xdg) {
+        (Some(p), ..) if macos => (p.clone(), owner::plist(&p, state)),
+        (_, Some(system), _) if !macos => (
+            agent_windows::location(),
+            owner::run_value(system, sys, state),
+        ),
+        (.., Some(d)) if !macos && o.systemd => (d.unit(), owner::unit(d, state)),
+        (.., Some(d)) if !macos => (d.desktop_entry(), owner::entry(d, state)),
+        _ => return Ok(()),
+    };
+    match who.other() {
+        Some(other) => Err(InstallError::Failed(owner::refused(&what, other))),
+        None => Ok(()),
+    }
 }
 
 /// Fails without `bar-tray` (a dry run warns), and on Linux without a
@@ -402,7 +434,8 @@ fn remove_hooks(path: &Path, state: &Path, out: &mut dyn Write) -> Result<(), St
 }
 
 /// Stops the tray, removes the LaunchAgent (macOS), the `Run` value
-/// (Windows) or the unit, the autostart entry and the icon (Linux), the
+/// (Windows) or the unit, the autostart entry and the icon (Linux)
+/// unless another install's, the
 /// snapshot, the record, the lock, the pid and the marker, and the hooks
 /// when this install added them,
 /// `bar click install` is not installed and `keep_hooks` is off.
@@ -417,10 +450,13 @@ pub fn uninstall(
     let added_hooks = added_hooks(state);
     process::stop(l, sys, out)?;
     if let Some(p) = l.plist() {
-        remove(&p, out)?;
+        match owner::plist(&p, state).other() {
+            Some(o) => writeln!(out, "{}", owner::kept(&p, o)).map_err(|e| e.to_string())?,
+            None => remove(&p, out)?,
+        }
     }
     if let Some(system) = &l.system_dir {
-        agent_windows::remove(system, sys, out)?;
+        agent_windows::remove(system, state, sys, out)?;
     }
     if let Some(x) = &l.xdg {
         linux::uninstall(x, state, sys, out)?;

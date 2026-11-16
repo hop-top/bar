@@ -116,6 +116,7 @@ fn opts() -> InstallOpts {
         autostart: true,
         hooks: false,
         systemd: false,
+        force: false,
     }
 }
 
@@ -551,7 +552,11 @@ fn a_vanished_install_does_not_keep_the_icon() {
     let t = Tmp::new();
     run(&t, &opts(), &mut Fake::default()).unwrap();
     let b = second(&t);
-    run_with(&b, &opts(), &mut Fake::default()).unwrap();
+    let o = InstallOpts {
+        autostart: false,
+        ..opts()
+    };
+    run_with(&b, &o, &mut Fake::default()).unwrap();
     std::fs::remove_dir_all(t.path().join("state")).unwrap();
     uninstall_of(&t, &b.layout);
     assert!(!icon(&t).exists());

@@ -4,7 +4,10 @@
 //! `--systemd`, a user unit bound to `graphical-session.target` (sessions
 //! that run no autostart entries but start that target, such as
 //! Hyprland under uwsm). One of the two at a time; the tray starts now.
+//! Both files are per user, not per state dir: install and uninstall
+//! leave another install's alone (see `owner`).
 
+use super::owner;
 use super::process::{self, Layout, Sys};
 use super::xdg::{self, Dirs, UNIT};
 use crate::click::pointer::TRAY_MARKER;
@@ -126,14 +129,20 @@ pub fn install(
             .map_err(|e| format!("{}: {e}", d.icon().display()))?;
         write_users(d, &users)?;
     }
+    let state = &l.state_dir;
     if s.autostart {
+        // the other kind stays when it is another install's
         if s.systemd {
-            drop_entry(d, s.dry_run, out)?;
+            if owner::entry(d, state).ours() {
+                drop_entry(d, s.dry_run, out)?;
+            }
             write(&d.unit(), &xdg::unit(s.argv, s.env)?, s.dry_run, out)?;
             run(&xdg::systemctl(&["daemon-reload"]), s.dry_run, sys, out)?;
             run(&xdg::systemctl(&["enable", UNIT]), s.dry_run, sys, out)?;
         } else {
-            drop_unit(d, s.dry_run, sys, out)?;
+            if owner::unit(d, state).ours() {
+                drop_unit(d, s.dry_run, sys, out)?;
+            }
             write(
                 &d.desktop_entry(),
                 &xdg::desktop_entry(s.argv, s.env)?,
@@ -178,18 +187,25 @@ fn write_users(d: &Dirs, users: &[PathBuf]) -> Result<(), String> {
         .map_err(|e| format!("{}: {e}", d.icon_users().display()))
 }
 
-/// Removes the unit (disabled first) and the autostart entry, and the
-/// icon unless another install still uses it: one listed with
-/// [`Dirs::icon_users`] whose state dir still holds the tray marker
-/// (a state dir removed without an uninstall no longer counts).
+/// Removes the unit (disabled first) and the autostart entry unless
+/// another install's (see `owner`), and the icon unless another install
+/// still uses it: one listed with [`Dirs::icon_users`] whose state dir
+/// still holds the tray marker (a state dir removed without an
+/// uninstall no longer counts).
 pub fn uninstall(
     d: &Dirs,
     state: &Path,
     sys: &mut dyn Sys,
     out: &mut dyn Write,
 ) -> Result<(), String> {
-    drop_unit(d, false, sys, out)?;
-    remove(&d.desktop_entry(), out)?;
+    match owner::unit(d, state).other() {
+        Some(o) => writeln!(out, "{}", owner::kept(&d.unit(), o)).map_err(io)?,
+        None => drop_unit(d, false, sys, out)?,
+    }
+    match owner::entry(d, state).other() {
+        Some(o) => writeln!(out, "{}", owner::kept(&d.desktop_entry(), o)).map_err(io)?,
+        None => remove(&d.desktop_entry(), out)?,
+    }
     let others: Vec<PathBuf> = icon_users(d)
         .into_iter()
         .filter(|u| u != state && u.join(TRAY_MARKER).is_file())

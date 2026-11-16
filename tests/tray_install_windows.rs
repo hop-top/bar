@@ -55,6 +55,17 @@ impl Sys for Fake {
         self.calls.push(cmd.to_vec());
         Ok(4242)
     }
+    /// `reg query` prints the value as `reg.exe` does.
+    fn output(&mut self, cmd: &[String]) -> Result<(bool, String), String> {
+        let ok = self.exec(cmd).is_ok();
+        let out = match (&self.run_value, cmd.get(1).map(String::as_str)) {
+            (Some(v), Some("query")) => {
+                format!("\r\n{KEY}\r\n    bar-tray    REG_SZ    {v}\r\n\r\n")
+            }
+            _ => String::new(),
+        };
+        Ok((ok, out))
+    }
 }
 
 impl Fake {
@@ -97,6 +108,7 @@ fn opts() -> InstallOpts {
         autostart: true,
         hooks: false,
         systemd: false,
+        force: false,
     }
 }
 
@@ -127,6 +139,14 @@ fn install_sets_the_run_value_then_starts_the_tray() {
     assert_eq!(
         sys.calls,
         [
+            // whose value it is: another install's is not overwritten
+            vec![
+                reg(),
+                "query".into(),
+                KEY.into(),
+                "/v".into(),
+                "bar-tray".into()
+            ],
             vec![
                 reg(),
                 "add".into(),
@@ -172,7 +192,10 @@ fn a_running_tray_is_left_running_on_reinstall() {
         .unwrap();
     let mut sys = Fake::default();
     let out = run(&cfg(&t), &opts(), &mut sys);
-    assert_eq!(sys.verbs(), [format!("{} add", reg())]);
+    assert_eq!(
+        sys.verbs(),
+        [format!("{} query", reg()), format!("{} add", reg())]
+    );
     assert!(out.contains("already running"), "{out}");
 }
 
@@ -185,7 +208,7 @@ fn dry_run_prints_the_commands_and_runs_nothing() {
         ..opts()
     };
     let out = run(&cfg(&t), &o, &mut sys);
-    assert!(sys.calls.is_empty());
+    assert_eq!(sys.verbs(), [format!("{} query", reg())], "only the query");
     assert!(!t.path().join("local").exists());
     assert!(
         out.contains(&format!("{} add {KEY} /v bar-tray /t REG_SZ /d ", reg())),
@@ -241,7 +264,7 @@ fn a_failed_reg_add_fails_install() {
     )
     .unwrap_err();
     assert!(e.to_string().starts_with("reg: "), "{e}");
-    assert_eq!(sys.calls.len(), 1, "not started");
+    assert_eq!(sys.calls.len(), 2, "query and add, not started");
 }
 
 #[test]

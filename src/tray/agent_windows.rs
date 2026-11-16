@@ -8,6 +8,7 @@
 //! the user's: new icons land in the overflow area until the user pins
 //! them, and install says how.
 
+use super::owner::{self, Owner};
 use super::process::{self, Layout, Sys};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -155,18 +156,23 @@ fn shown(cmd: &[String]) -> String {
         .join(" ")
 }
 
-/// Whether the value exists.
-pub fn installed(system: &Path, sys: &mut dyn Sys) -> bool {
-    sys.exec(&query(system)).is_ok()
-}
-
-/// Removes the value when it exists.
-pub fn remove(system: &Path, sys: &mut dyn Sys, out: &mut dyn Write) -> Result<(), String> {
-    if !installed(system, sys) {
-        return Ok(());
-    }
-    sys.exec(&delete(system)).map_err(|e| format!("reg: {e}"))?;
-    writeln!(out, "removed {}", location().display()).map_err(|e| e.to_string())
+/// Removes the value when it exists, unless it is another install's
+/// (see `owner`).
+pub fn remove(
+    system: &Path,
+    state: &Path,
+    sys: &mut dyn Sys,
+    out: &mut dyn Write,
+) -> Result<(), String> {
+    let line = match owner::run_value(system, sys, state) {
+        Owner::Absent => return Ok(()),
+        Owner::Other(d) => owner::kept(&location(), &d),
+        Owner::This | Owner::Nobody => {
+            sys.exec(&delete(system)).map_err(|e| format!("reg: {e}"))?;
+            format!("removed {}", location().display())
+        }
+    };
+    writeln!(out, "{line}").map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
