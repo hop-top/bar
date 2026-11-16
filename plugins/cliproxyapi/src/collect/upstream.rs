@@ -1,9 +1,12 @@
-//! The Codex upstream phase of a run: each wanted account's usage read
-//! through the proxy's `api-call`, in parallel batches, and what an
-//! outcome does to the account.
+//! The upstream phase of a run: each wanted account's usage read through
+//! the proxy's `api-call` (Codex's `wham/usage`, Anthropic's OAuth usage),
+//! in parallel batches, and what an outcome does to the account. The
+//! proxy puts in the account's own token for `$TOKEN$`; the plugin never
+//! has it.
 
 use super::{store, CODEX_USAGE_URL, DEADLINE, PARALLEL, TTL_UPSTREAM};
 use crate::cache::{self, Cache};
+use crate::claude;
 use crate::mgmt::{ApiReply, Client, MErr};
 use crate::model::{self, Acct, Signals, Win};
 use std::path::Path;
@@ -16,7 +19,34 @@ enum Up {
     Mgmt(u16),
 }
 
-fn upstream(client: &Client, key: &str, now: i64) -> Up {
+/// One Claude account's usage. Any refusal is a failed read: the token
+/// may serve requests and still not read usage.
+fn claude_upstream(client: &Client, key: &str) -> Up {
+    match client.api_call(key, "GET", claude::USAGE_URL, &claude::headers()) {
+        Ok(ApiReply {
+            status: 200..=299,
+            body,
+            ..
+        }) => claude::oauth_windows(&body).map_or(Up::Failed, |w| Up::Got(w, None)),
+        Ok(ApiReply {
+            status: 401 | 403, ..
+        }) => Up::UpstreamAuth,
+        Ok(ApiReply {
+            status: 429,
+            retry_after,
+            ..
+        }) => Up::Rate(retry_after),
+        Ok(_) => Up::Failed,
+        Err(MErr::Auth(s)) => Up::Mgmt(s),
+        Err(_) => Up::Failed,
+    }
+}
+
+fn upstream(client: &Client, a: &Acct, now: i64) -> Up {
+    if a.provider == "claude" {
+        return claude_upstream(client, &a.key);
+    }
+    let key = a.key.as_str();
     let headers = [
         ("Authorization", "Bearer $TOKEN$"),
         ("Accept", "application/json"),
@@ -103,8 +133,8 @@ fn upstream_batch(
         let hs: Vec<_> = batch
             .iter()
             .map(|&i| {
-                let key = list[i].0.key.clone();
-                (i, s.spawn(move || upstream(client, &key, now)))
+                let a = &list[i].0;
+                (i, s.spawn(move || upstream(client, a, now)))
             })
             .collect();
         for (i, h) in hs {
@@ -134,8 +164,30 @@ pub(super) fn passive_codex(list: &mut [(Acct, Signals)], done: &[usize], now: i
     }
 }
 
+/// Folds one Claude outcome into `a`: a read replaces the windows; a
+/// failure keeps them, with their own capture time, and backs off.
+fn apply_claude(a: &mut Acct, up: Up, now: i64) {
+    match up {
+        Up::Got(w, _) => {
+            a.windows = w;
+            a.at = now;
+            a.retry_at = 0;
+            a.fails = 0;
+        }
+        Up::Rate(r) => a.retry_at = now + r.unwrap_or(300).min(86_400) as i64,
+        Up::UpstreamAuth => a.retry_at = now + claude::REFUSED_HOLD,
+        Up::Failed | Up::Mgmt(_) => {
+            a.fails += 1;
+            a.retry_at = now + cache::backoff(a.fails);
+        }
+    }
+}
+
 /// Folds one upstream outcome (not a management refusal) into `a`.
 fn apply(a: &mut Acct, sig: &Signals, up: Up, now: i64) {
+    if a.provider == "claude" {
+        return apply_claude(a, up, now);
+    }
     let passive = model::codex_signal_windows(sig, now);
     match up {
         Up::Got(w, plan) => {

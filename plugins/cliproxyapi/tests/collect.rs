@@ -337,13 +337,20 @@ fn upstream_results_are_cached_for_five_minutes() {
     let s = Server::start(std_handler);
     let e = Env::new(&s, "ttl");
     e.run(KEY, T0, &["codex"]);
-    let calls = |s: &Server| s.paths().iter().filter(|p| p.ends_with("api-call")).count();
+    let calls = |s: &Server| {
+        s.log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.path.ends_with("api-call") && r.body.contains("ix-codex-1"))
+            .count()
+    };
     assert_eq!(calls(&s), 1);
     e.run(KEY, T0 + TTL_UPSTREAM - 1, &["codex"]);
     assert_eq!(calls(&s), 1, "fresh: no upstream call");
     e.run(KEY, T0 + TTL_UPSTREAM, &["codex"]);
     assert_eq!(calls(&s), 2);
-    // claude's model asks for no upstream call at all
+    // claude's model asks for no Codex call
     e.run(KEY, T0 + 10 * TTL_UPSTREAM, &["claude"]);
     assert_eq!(calls(&s), 2);
     // and the old codex data is still served (stale), not dropped

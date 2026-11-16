@@ -6,6 +6,7 @@ compile_error!("the `test-tools` feature is for tests only");
 
 pub mod cache;
 pub mod chooser;
+pub mod claude;
 pub mod collect;
 pub mod config;
 pub mod menu;

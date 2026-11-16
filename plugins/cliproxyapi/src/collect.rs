@@ -1,7 +1,8 @@
 //! One collection run: list the proxy's accounts, read each account's
-//! quota (Claude from the proxy's passive rate-limit snapshot, Codex from
-//! the upstream usage endpoint through the proxy's `api-call`), keep what
-//! was learned in the plugin cache, and report what is known.
+//! quota (from the proxy's passive rate-limit snapshot, and from the
+//! provider's usage endpoint through the proxy's `api-call` when that is
+//! older than [`TTL_UPSTREAM`]), keep what was learned in the plugin
+//! cache, and report what is known.
 //!
 //! Failure handling keeps the proxy safe: a management 401 or 403 stops
 //! every further call until the key changes (the proxy bans a client
@@ -13,6 +14,7 @@
 //! process. Nothing is sent when the lock or the cache cannot be had.
 
 use crate::cache::{self, AuthFail, Cache};
+use crate::claude;
 use crate::config::Instance;
 use crate::mgmt::{Api, Client, MErr};
 use crate::model::{self, Acct, Signals};
@@ -69,8 +71,9 @@ pub struct Ctx<'a> {
     pub state_dir: &'a Path,
     /// Unix seconds.
     pub now: i64,
-    /// Providers whose accounts may be read through the upstream API
-    /// (only Codex needs it; Claude's quota is passive).
+    /// Providers whose accounts may be read through the upstream API:
+    /// the one of the current model (Claude only with `claude-usage
+    /// oauth`).
     pub fetch: &'a [&'a str],
 }
 
@@ -176,6 +179,7 @@ fn parse_listing(inst: &Instance, v: &Value) -> Vec<(Acct, Signals)> {
                 upstream_auth: false,
                 retry_at: 0,
                 fails: 0,
+                passive: None,
             },
             lower_signals(&f["quota"]["signals"]),
         ));
@@ -249,23 +253,20 @@ fn run(ctx: &Ctx, path: &Path, known: Snapshot, mut c: Cache) -> Snapshot {
 
     let mut list = parse_listing(ctx.inst, &listing);
     carry_over(&mut list, &c);
-    // Claude: the passive snapshot, else what was last seen
+    // Claude: the passive snapshot when newer than what is held
+    let oauth = ctx.inst.claude_oauth;
     for (a, sig) in list.iter_mut().filter(|(a, _)| a.provider == "claude") {
-        let w = model::claude_windows(sig);
-        if !w.is_empty() {
-            a.windows = w;
-            a.at = now;
-        }
+        claude::fold_passive(a, model::claude_windows(sig), oauth, now);
     }
 
-    // Codex: upstream when this provider is wanted and the data is old
-    let want = ctx.fetch.contains(&"codex");
+    // upstream when the provider is wanted and the data is old
+    let want = |p: &str| ctx.fetch.contains(&p) && (p == "codex" || (p == "claude" && oauth));
     let todo: Vec<usize> = list
         .iter()
         .enumerate()
         .filter(|(_, (a, _))| {
             let fresh = a.at > 0 && now - a.at < TTL_UPSTREAM && !a.windows.is_empty();
-            a.provider == "codex" && want && !a.disabled && now >= a.retry_at && !fresh
+            want(&a.provider) && !a.disabled && now >= a.retry_at && !fresh
         })
         .map(|(i, _)| i)
         .collect();
@@ -355,6 +356,7 @@ fn carry_over(list: &mut [(Acct, Signals)], c: &Cache) {
             a.upstream_auth = p.upstream_auth;
             a.retry_at = p.retry_at;
             a.fails = p.fails;
+            a.passive = p.passive.clone();
             if a.plan.is_none() {
                 a.plan = p.plan.clone();
             }

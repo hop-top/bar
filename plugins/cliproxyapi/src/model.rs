@@ -80,6 +80,9 @@ pub struct Acct {
     /// Consecutive failed upstream reads; sets the backoff.
     #[serde(default)]
     pub fails: u32,
+    /// Claude: the passive snapshot last seen, and since when.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub passive: Option<crate::claude::Seen>,
 }
 
 /// Window id for a period in seconds.
