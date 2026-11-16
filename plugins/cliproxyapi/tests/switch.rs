@@ -689,11 +689,12 @@ fn pick_offers_the_ranking_with_the_top_recommendation_selected() {
     let (o, argv) = pick(&h, &conf, &s, "cancel");
     assert!(o.status.success(), "{}", err(&o));
     // title, prompt, default, then the items: most left first, the
-    // unread one last; the default label: no 5h window here, so `?`
+    // unread one last; the default label: a reading without a 5h window
+    // has none of it used, only the unread one is `?`
     assert_eq!(argv.len(), 3 + 5, "{argv:?}");
     let items = &argv[3..];
     assert_eq!(argv[2], items[0]);
-    assert_eq!(items, ["b - ?%", "c - ?%", "d - ?%", "a - ?%", "e - ?%"]);
+    assert_eq!(items, ["b - 0%", "c - 0%", "d - 0%", "a - 0%", "e - ?%"]);
     assert!(!argv.iter().any(|a| a.contains("corp.test")));
     // a template can show the windows and the proxy's preferred account
     let tpl = "{n}. {label} \u{2014} {windows} {current}";
@@ -929,8 +930,8 @@ fn the_chooser_shows_the_users_labels_and_never_an_email_or_a_glob() {
     );
     assert!(o.status.success(), "{}", err(&o));
     let argv = std::fs::read_to_string(logp).unwrap();
-    assert!(argv.contains("\nteam - ?%\n"), "{argv}");
-    assert!(argv.contains("\na - ?%"), "{argv}");
+    assert!(argv.contains("\nteam - 0%\n"), "{argv}");
+    assert!(argv.contains("\na - 0%"), "{argv}");
     assert!(
         !argv.contains("corp.test") && !argv.contains("b@*"),
         "{argv}"

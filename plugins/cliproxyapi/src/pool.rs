@@ -54,32 +54,46 @@ enum Which {
     Seven,
 }
 
-/// The account's window of that length that has not yet reset.
-fn window(a: &Acct, which: Which, now: i64) -> Option<&Win> {
-    let live = |w: &&Win| w.resets_at > now;
-    let find = |id: &str| a.windows.iter().filter(live).find(|w| w.id == id);
+/// The account's window of that length, as it stands at `now` (a window
+/// past its reset is unused).
+fn window(a: &Acct, which: Which, now: i64) -> Option<Win> {
+    let find = |id: &str| a.windows.iter().find(|w| w.id == id);
     match which {
         Which::Five => find("5h"),
         Which::Seven => find("7d").or_else(|| find("wk")),
     }
+    .map(|w| w.as_of(now))
 }
 
 fn pooled(accts: &[&Acct], which: Which, pool: Pool, now: i64) -> Option<Window> {
-    let wins: Vec<&Win> = accts
+    let wins: Vec<Win> = accts
         .iter()
         .map(|a| window(a, which, now))
         .collect::<Option<_>>()?;
     let first = wins.first()?;
+    // the latest reset to come (a window just reset has none yet); a
+    // pooled window needs one
+    let latest = wins.iter().map(|w| w.resets_at).max().unwrap_or(0);
+    if latest <= now {
+        return None;
+    }
     let (used, reset) = match pool {
         Pool::Max => {
             let w = wins
                 .iter()
-                .fold(*first, |m, w| if w.used > m.used { w } else { m });
-            (w.used, w.resets_at)
+                .fold(first, |m, w| if w.used > m.used { w } else { m });
+            (
+                w.used,
+                if w.resets_at > now {
+                    w.resets_at
+                } else {
+                    latest
+                },
+            )
         }
         _ => (
             wins.iter().map(|w| w.used).sum::<f64>() / wins.len() as f64,
-            wins.iter().map(|w| w.resets_at).max().unwrap_or(0),
+            latest,
         ),
     };
     Some(Window {
@@ -187,6 +201,26 @@ mod tests {
         assert!(u.five_hour.is_none() && u.seven_day.is_some());
         let none = acct("n", 0, &[("5h", 20.0, 900)]);
         assert!(usage(&[&none], Pool::Mean, NOW).is_none());
+    }
+
+    #[test]
+    fn a_window_past_its_reset_pools_as_unused() {
+        let spent = acct("s", 0, &[("7d", 95.0, 900)]);
+        let busy = acct("b", 0, &[("7d", 30.0, 5000)]);
+        let s = usage(&[&spent, &busy], Pool::Mean, NOW).unwrap().seven_day;
+        assert_eq!(
+            s.map(|s| (s.used_percentage, s.resets_at)),
+            Some((15.0, 5000))
+        );
+        // the most used is the running one
+        let s = usage(&[&spent, &busy], Pool::Max, NOW).unwrap().seven_day;
+        assert_eq!(
+            s.map(|s| (s.used_percentage, s.resets_at)),
+            Some((30.0, 5000))
+        );
+        // all reset: no reset to come, nothing pooled
+        let u = usage(&[&spent, &spent], Pool::Max, NOW);
+        assert!(u.is_none(), "{u:?}");
     }
 
     #[test]

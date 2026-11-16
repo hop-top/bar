@@ -74,14 +74,25 @@ pub struct Ctx<'a> {
     pub fetch: &'a [&'a str],
 }
 
-fn snap(status: Status, c: &Cache, now: i64) -> Snapshot {
-    let mut accounts = c.accounts.clone();
+/// The cache's accounts as they stand at `now`: data older than [`KEEP`]
+/// dropped, and a window past its reset unused (see [`model::Win::as_of`]).
+pub fn as_of(accounts: &[Acct], now: i64) -> Vec<Acct> {
+    let mut accounts = accounts.to_vec();
     for a in &mut accounts {
         if now - a.at > KEEP {
             a.windows.clear();
+        } else {
+            a.windows = model::as_of(&a.windows, now);
         }
     }
-    Snapshot { status, accounts }
+    accounts
+}
+
+fn snap(status: Status, c: &Cache, now: i64) -> Snapshot {
+    Snapshot {
+        status,
+        accounts: as_of(&c.accounts, now),
+    }
 }
 
 fn guard<'a>(ctx: &'a Ctx) -> Guard<'a> {

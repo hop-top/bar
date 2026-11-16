@@ -23,6 +23,28 @@ pub struct Win {
     pub period_s: i64,
 }
 
+impl Win {
+    /// The window as it stands at `now`: once its reset time has passed
+    /// the quota is back, so it is 0% used and its next reset unknown
+    /// until the provider reports it again.
+    pub fn as_of(&self, now: i64) -> Win {
+        if self.resets_at > 0 && self.resets_at <= now {
+            Win {
+                used: 0.0,
+                resets_at: 0,
+                ..self.clone()
+            }
+        } else {
+            self.clone()
+        }
+    }
+}
+
+/// `windows` as they stand at `now` (see [`Win::as_of`]).
+pub fn as_of(windows: &[Win], now: i64) -> Vec<Win> {
+    windows.iter().map(|w| w.as_of(now)).collect()
+}
+
 /// One proxy account. Holds the label shown and the proxy's opaque
 /// `auth_index`; never an email, path, token or account id.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -314,6 +336,21 @@ mod tests {
         assert_eq!(window_id(7 * 86_400 + 3600), "wk");
         assert_eq!(window_id(3 * 3600), "p3h");
         assert_eq!(window_id(10), "p1h");
+    }
+
+    #[test]
+    fn a_window_past_its_reset_is_a_fresh_unused_one() {
+        let w = |used, resets_at| Win {
+            id: "7d".into(),
+            used,
+            resets_at,
+            period_s: 604_800,
+        };
+        assert_eq!(w(62.0, 100).as_of(100), w(0.0, 0), "at the reset");
+        assert_eq!(w(62.0, 100).as_of(5000), w(0.0, 0), "long after");
+        assert_eq!(w(62.0, 101).as_of(100), w(62.0, 101), "still running");
+        assert_eq!(w(62.0, 0).as_of(100), w(62.0, 0), "reset unknown");
+        assert_eq!(as_of(&[w(9.0, 1), w(8.0, 9)], 5), [w(0.0, 0), w(8.0, 9)]);
     }
 
     #[test]
