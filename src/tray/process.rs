@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 use std::fs::{File, TryLockError};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 /// The single-instance lock a running tray holds.
 pub const LOCK_FILE: &str = "tray.lock";
@@ -185,6 +185,30 @@ pub fn running(lock: &Path) -> Running {
     }
 }
 
+/// Waits at most `wait` for the lock at `lock` to be free; whether it
+/// is. A thread blocks on a shared lock, which the system grants the
+/// moment the holder lets go (its lock goes with the process, however
+/// it ends); after a timeout the thread stays blocked until the holder
+/// goes or this process exits.
+pub fn released(lock: &Path, wait: Duration) -> bool {
+    let Ok(f) = File::open(lock) else {
+        return true;
+    };
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let got = f.lock_shared().is_ok();
+        // let go before reporting: the tray started next locks exclusively
+        drop(f);
+        let _ = tx.send(got);
+    });
+    match rx.recv_timeout(wait) {
+        Ok(true) => true,
+        // a lock that cannot be waited on: say what a probe says
+        Ok(false) => running(lock) == Running::No,
+        Err(_) => false,
+    }
+}
+
 /// `taskkill` asks the tray to close (it quits on `WM_CLOSE`), with
 /// `force` it ends it; elsewhere SIGTERM.
 fn kill(l: &Layout, pid: u32, force: bool) -> Vec<String> {
@@ -239,9 +263,24 @@ fn shown(pid: Option<u32>) -> String {
 /// Stops the tray: unloads the LaunchAgent when installed (it loads
 /// again at the next login) or stops the unit, then signals a tray still
 /// holding the lock: SIGTERM, or `taskkill` on Windows (`/F` when no
-/// window takes the close request).
-/// `Ok(false)` when nothing ran.
+/// window takes the close request), and waits up to [`STOP_WAIT`] for it
+/// to exit. `Ok(false)` when nothing ran.
 pub fn stop(l: &Layout, sys: &mut dyn Sys, out: &mut dyn Write) -> Result<bool, String> {
+    stop_waiting(l, STOP_WAIT, sys, out)
+}
+
+/// How long [`stop`] waits for a signalled tray to let go of its lock.
+pub const STOP_WAIT: Duration = Duration::from_secs(5);
+
+/// [`stop`], waiting at most `wait` for a signalled tray to exit: it
+/// returns once the lock is free, so a start right after finds none
+/// running, and fails when the tray still holds it then.
+pub fn stop_waiting(
+    l: &Layout,
+    wait: Duration,
+    sys: &mut dyn Sys,
+    out: &mut dyn Write,
+) -> Result<bool, String> {
     let io = |e: std::io::Error| e.to_string();
     let mut stopped = false;
     if let Some((_, uid)) = l.agent() {
@@ -270,6 +309,13 @@ pub fn stop(l: &Layout, sys: &mut dyn Sys, out: &mut dyn Write) -> Result<bool, 
                     None => Err(e),
                 })
                 .map_err(|e| format!("stop pid {pid}: {e}"))?;
+            // the signal only asks: the tray exits, and lets go, later
+            if !released(&l.lock(), wait) {
+                return Err(format!(
+                    "pid {pid} still holds {} {wait:?} after the stop request",
+                    l.lock().display()
+                ));
+            }
             writeln!(out, "stopped pid {pid}").map_err(io)?;
             stopped = true;
         }

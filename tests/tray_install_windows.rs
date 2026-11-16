@@ -10,12 +10,15 @@ mod common;
 #[path = "common/render_fx.rs"]
 mod render_fx;
 
+use common::tray_hold::Tray;
 use hop_bar::conf::parse;
 use hop_bar::tray::agent_windows::{KEY, OVERFLOW_HINT};
 use hop_bar::tray::install::{install, uninstall, InstallCfg, InstallOpts};
 use hop_bar::tray::process::{self, Layout, Running, Sys};
 use render_fx::Tmp;
 use std::path::PathBuf;
+use std::sync::mpsc::Sender;
+use std::time::Duration;
 
 /// Records every call; `reg query` succeeds while `run_value` is set,
 /// which `reg add` / `reg delete` change, and `fail` names verbs that fail.
@@ -24,6 +27,8 @@ struct Fake {
     calls: Vec<Vec<String>>,
     run_value: Option<String>,
     fail: Vec<&'static str>,
+    /// The running tray a successful `taskkill` stops.
+    tray: Option<Sender<()>>,
 }
 
 impl Sys for Fake {
@@ -37,6 +42,11 @@ impl Sys for Fake {
             "add" => self.run_value = Some(cmd[8].clone()),
             "query" if self.run_value.is_none() => return Err("exit code: 1".into()),
             "delete" => self.run_value = None,
+            "/PID" => {
+                if let Some(t) = &self.tray {
+                    let _ = t.send(());
+                }
+            }
             _ => {}
         }
         Ok(())
@@ -280,12 +290,18 @@ fn the_pid_comes_from_tray_pid_when_the_lock_file_says_nothing() {
 fn stop_asks_with_taskkill_then_forces() {
     let t = Tmp::new();
     let l = layout(&t);
-    let _held = bar_tray::lock::acquire(&l.lock()).unwrap().unwrap();
+    let tray = Tray::hold(&l.lock(), Duration::from_millis(100));
     let pid = std::process::id().to_string();
     let kill = "/win/System32/taskkill.exe".to_string();
-    let mut sys = Fake::default();
+    let mut sys = Fake {
+        tray: Some(tray.signaller()),
+        ..Fake::default()
+    };
+    // the close request returns at once; the tray exits a while later
     assert!(process::stop(&l, &mut sys, &mut Vec::new()).unwrap());
+    assert_eq!(process::running(&l.lock()), Running::No, "waited for it");
     assert_eq!(sys.calls, [vec![kill.clone(), "/PID".into(), pid.clone()]]);
+    let _held = bar_tray::lock::acquire(&l.lock()).unwrap().unwrap();
     let mut sys = Fake {
         fail: vec!["/PID"],
         ..Fake::default()

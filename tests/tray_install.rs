@@ -8,6 +8,7 @@ mod common;
 #[path = "common/render_fx.rs"]
 mod render_fx;
 
+use common::tray_hold::Tray;
 use hop_bar::conf::{parse, Config};
 use hop_bar::tray::install::{install, recorded_argv, suggestions, uninstall, InstallCfg};
 use hop_bar::tray::install::{InstallError, InstallOpts};
@@ -16,12 +17,16 @@ use render_fx::Tmp;
 use serde_json::Value;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::Sender;
+use std::time::Duration;
 
 #[derive(Default)]
 struct Fake {
     calls: Vec<Vec<String>>,
     /// Commands whose first two words match fail.
     fail: Vec<&'static str>,
+    /// The running tray `kill` signals.
+    tray: Option<Sender<()>>,
 }
 
 impl Sys for Fake {
@@ -30,6 +35,11 @@ impl Sys for Fake {
         let verb = cmd.get(1).map_or("", String::as_str);
         if self.fail.contains(&verb) {
             return Err("exit status: 5".into());
+        }
+        if cmd[0] == "/bin/kill" {
+            if let Some(t) = &self.tray {
+                let _ = t.send(());
+            }
         }
         Ok(())
     }
@@ -356,9 +366,13 @@ fn stop_unloads_the_agent_and_signals_a_holder() {
     assert!(String::from_utf8(out.clone())
         .unwrap()
         .contains("not running"));
-    let _held = hold(&t);
-    let mut sys = Fake::default();
+    let tray = Tray::hold(&l.lock(), Duration::from_millis(100));
+    let mut sys = Fake {
+        tray: Some(tray.signaller()),
+        ..Fake::default()
+    };
     assert!(process::stop(&l, &mut sys, &mut out).unwrap());
+    assert_eq!(process::running(&l.lock()), Running::No, "waited for it");
     assert_eq!(
         sys.calls,
         [vec![
