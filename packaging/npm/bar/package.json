@@ -1,6 +1,6 @@
 {
   "name": "@hop-top/bar",
-  "version": "0.1.0-beta.0",
+  "version": "0.1.0-rc.0",
   "description": "Fast, configurable and extensible status line for Claude Code",
   "keywords": [
     "claude-code",
@@ -24,12 +24,12 @@
     "node": ">=18"
   },
   "optionalDependencies": {
-    "@hop-top/bar-darwin-arm64": "0.1.0-beta.0",
-    "@hop-top/bar-darwin-x64": "0.1.0-beta.0",
-    "@hop-top/bar-linux-arm64": "0.1.0-beta.0",
-    "@hop-top/bar-linux-x64": "0.1.0-beta.0",
-    "@hop-top/bar-win32-arm64": "0.1.0-beta.0",
-    "@hop-top/bar-win32-x64": "0.1.0-beta.0"
+    "@hop-top/bar-darwin-arm64": "0.1.0-rc.0",
+    "@hop-top/bar-darwin-x64": "0.1.0-rc.0",
+    "@hop-top/bar-linux-arm64": "0.1.0-rc.0",
+    "@hop-top/bar-linux-x64": "0.1.0-rc.0",
+    "@hop-top/bar-win32-arm64": "0.1.0-rc.0",
+    "@hop-top/bar-win32-x64": "0.1.0-rc.0"
   },
   "publishConfig": {
     "access": "public"
