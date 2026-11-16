@@ -95,8 +95,17 @@ impl Sni {
     }
 }
 
+// Hosts that honour `ItemIsMenu` (KDE Plasma, GNOME's AppIndicator
+// extension, waybar) open the menu on left click only while it is set.
+const _: () = assert!(<Sni as ksni::Tray>::MENU_ON_ACTIVATE);
+
 impl ksni::Tray for Sni {
-    // left click opens the menu, as there is no window to raise
+    // left click opens the menu, as there is no window to raise: sets
+    // `ItemIsMenu`, and `Activate` answers "unknown method", which tells
+    // older hosts to show the menu instead. Cinnamon's xapp-sn-watcher
+    // ignores both: it gives the left-click menu only to items at
+    // libappindicator's object path (ksni's is fixed) and sends others
+    // `Activate`, so there the menu opens on right click.
     const MENU_ON_ACTIVATE: bool = true;
 
     fn id(&self) -> String {

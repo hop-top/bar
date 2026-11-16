@@ -64,7 +64,7 @@ The tray asks `bar tray state --json` for a fresh menu every time the menu opens
 | Toggles | check items | check items | check items |
 | Picker | submenu, chosen item checked | submenu, chosen item checked | submenu with a radio group |
 | Item `style` (`good`, `warn`, `bad`, `dim`) | not shown | not shown | passed to the host, which may tint the row |
-| Left click | opens the menu | opens the menu | opens the menu |
+| Left click | opens the menu | opens the menu | opens the menu; on Cinnamon right click does (see below) |
 | Refresh | on every click on the icon | on every click; a snapshot that lands while the menu is open shows from the next open | when the host announces the menu; some hosts redraw an open menu, some do not |
 | Starts at login | LaunchAgent | `Run` value | autostart entry, or systemd user unit with `--systemd` |
 | One instance | lock file | lock file and a per-session mutex | lock file |
@@ -92,6 +92,8 @@ bar-tray --backend   # prints `sni`; without the feature it says there is no bac
 A tray started before the panel (at login, say) waits for it, and comes back when the panel restarts. Menu labels are visible to every program on the session bus, which is why plugin menus carry no secrets.
 
 **GNOME** shows tray icons only with the AppIndicator and KStatusNotifierItem support extension: install `gnome-shell-extension-appindicator` and enable it with `gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com`. Ubuntu ships it enabled. `bar tray install` prints this reminder when `XDG_CURRENT_DESKTOP` names GNOME.
+
+**Cinnamon** opens the menu on right click; a left click does nothing. bar-tray marks its item as menu-only (`ItemIsMenu`), which KDE Plasma, GNOME's extension and waybar honour by opening the menu on left click, but Cinnamon's tray (`xapp-sn-watcher`) ignores that property: it gives the left-click menu only to items registered under libappindicator's object path and sends a left click to every other item as an `Activate` request, which an item cannot answer by opening its menu.
 
 **Hyprland, sway and other compositors** show the icon in waybar's `tray` module. Under uwsm, `bar tray install --systemd` binds the tray to `graphical-session.target`. Sessions that run neither autostart entries nor that target (Hyprland started without uwsm, sway from a TTY) install with `--no-autostart` and start the tray from their own config, for example in Hyprland:
 
