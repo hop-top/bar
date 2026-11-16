@@ -101,6 +101,7 @@ fn acct(key: &str, provider: &str, label: &str, priority: i64, at: i64) -> Acct 
         upstream_auth: false,
         retry_at: 0,
         fails: 0,
+        passive: None,
     }
 }
 

@@ -176,6 +176,7 @@ mod tests {
             upstream_auth: false,
             retry_at: 0,
             fails: 0,
+            passive: None,
         };
         let mut c = Cache {
             accounts: (0..2000).map(a).collect(),

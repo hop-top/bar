@@ -23,7 +23,7 @@ work 5h 59% ↻2h10m 7d 88% ↻3d4h │ home 7d 20% ↻5d
 - `work` is the account's [label](#labels-and-colours). `5h 59%` is a window and the share **left**; `↻2h10m` is the time to its reset (`3d4h`, `2h10m`, `41m`, `<1m`). `count=used` draws the share used instead.
 - The window name is left out only when every account shown has exactly one window and it is the same one for all (`innoprofits 66% ↻5d │ personal 100% ↻5d16h`, all weekly). Any mix keeps every name, so no number is left without its window: `work 5h 40% ↻2h 7d 66% ↻5d │ innoprofits 7d 66% ↻5d`. The `pick` text follows the same rule.
 - A window the provider does not report is left out, never shown as 0%. Claude often reports only the weekly window; a Codex Pro plan has a weekly window only. An account never read yet shows `?`.
-- A window whose reset time has passed shows as unused, all of it left and no countdown (`7d 100%`), until the provider reports it again. Claude's figures are the rate-limit headers of the account's last request through the proxy, so an account not used since its reset still carries the old ones; the pool, `pick` and the menu count it the same way.
+- A window whose reset time has passed shows as unused, all of it left and no countdown (`7d 100%`), until the provider reports it again. The pool, `pick` and the menu count it the same way.
 - The entry turns `bad` at 10% left or less in any shown window. Otherwise it follows the colour ramp of the lowest share left.
 - `~` before the windows marks data older than a few minutes; data older than an hour is dropped.
 - `key?` in the `bad` colour means the proxy refused the management key (see [Failures](#failures)).
@@ -31,9 +31,12 @@ work 5h 59% ↻2h10m 7d 88% ↻3d4h │ home 7d 20% ↻5d
 - The entries are items of one placeholder: with `set wrap on` a long line breaks between accounts, never inside one.
 - Nothing is shown when the session does not use a configured instance, the model's provider is not one the instance reads, or no account has data.
 
-What the plugin shows is what the proxy observes: it has no view of usage that did not go through that proxy (another machine, another client, the provider's own apps), so the figures can lag or differ from the provider's account page.
+Where the figures come from:
 
-Claude windows come from the rate-limit headers the proxy records from real traffic through each account. They are held in the proxy's memory: an account that has served no request since the proxy started shows no windows yet, and a restart clears them. Codex windows are read from Codex's usage endpoint through the proxy, using each account's own token, only while a Codex model is active.
+- **Claude**, two sources. The proxy records the rate-limit headers (`Anthropic-Ratelimit-Unified-5h-*`, `-7d-*`) of each account's last request through it; they are held in the proxy's memory, so a restart clears them, and they say nothing about usage that did not go through the proxy. With `claude-usage oauth` (the default) the plugin also reads each account's usage from Anthropic's usage endpoint (`https://api.anthropic.com/api/oauth/usage`) through the proxy, which covers usage made anywhere with the account and an account that has served no request. The newer of the two is shown. The headers carry no time, so the plugin dates them itself: headers unchanged since it last saw them are as old as when they appeared, changed ones are new.
+- **Codex**: read from Codex's usage endpoint through the proxy, using each account's own token, with the proxy's passive `X-Codex-*` headers as a fallback.
+
+Reads go through the proxy's `api-call` only while a model of that provider is active, only for an account whose data is older than five minutes (the newest headers count), and at most once per account in five minutes. A failed read keeps the last figures with their own age, so `~` and the one-hour drop apply to them as to any other data. With `claude-usage headers` no Claude read is made and the headers are shown as current, as soon as they are seen; an account not used through the proxy since its reset then shows the old figures, and one never used through it shows none.
 
 ## Setup
 
@@ -67,6 +70,7 @@ One `instance` block per proxy; lines start with a keyword, `#` starts a comment
 | `key-keychain <service>` | macOS: the generic password with that service name (`/usr/bin/security find-generic-password -s <service> -w`). |
 | `key-command <program> [args...]` | The first line of the program's output. The program must be an absolute path; there is no shell, so no variables, pipes or globs. 5 s limit. |
 | `providers <list>` | Providers to read, default `claude,codex`. |
+| `claude-usage <source>` | `oauth` (default): Claude usage from Anthropic's usage endpoint through the proxy as well as from the proxy's headers; `headers`: from the headers only, with no call made for Claude accounts. See [What it shows](#what-it-shows). |
 | `alias "<glob>" <label>` | Label for accounts whose email matches the glob (`*` and `?`, case-insensitive, matched against the first 256 characters); the first match wins. |
 | `remote yes` | Allow a management host that is not on this machine. Requires an `https` management URL. |
 
@@ -171,7 +175,7 @@ The proxy bans a client IP for 30 minutes after five failed management attempts,
 - **An empty key is never sent**; an unreadable key source shows `key?` without any request.
 - **404** means management is off (or an older proxy without `/v8`): the plugin tries the legacy `/v0/management` paths once, then waits an hour.
 - **Timeouts, 5xx, bad responses**: back-off from one minute doubling to an hour, serving the last good data meanwhile. The same holds per account for its upstream reads. A run starts no new upstream call after 10 s and saves what it has learned as it goes.
-- **An upstream 401 or 403 for one account** (its own token was refused) marks that account and pauses it for an hour; it does not touch the management key. An upstream 429 honours `Retry-After`.
+- **An upstream 401 or 403 for one account** (its own token was refused) marks a Codex account and pauses it for an hour; it does not touch the management key. A Claude account is paused the same hour but not marked, since a token can serve requests and still be refused the usage read. An upstream 429 honours `Retry-After` (five minutes without one). A failed or refused read keeps the last figures and never falls back to anything else.
 
 Responses are size-capped (256 KiB for the account list, 128 KiB for an upstream call, 64 KiB for the cache), and a loopback proxy is contacted directly even when `HTTP_PROXY` is set. Plain `http` is used only for `localhost`, `127.0.0.1` and `::1`.
 
@@ -310,4 +314,5 @@ The menu is built from the plugin's own cache files and never calls a proxy. A r
 - Its output carries labels, the proxy's opaque account index and the provider name; bar's own cache of it (mode 0600) holds the same. `label=index` keeps the local part of an email off the screen and out of that output; the cache below still holds the label it replaced.
 - Its cache (`plugins/cliproxyapi/<hash>.json` in bar's state directory, mode 0600 in a 0700 directory) holds the label shown (your alias, else your `account` line's label, else the part of the email before the `@`) and its colour, the proxy's opaque account index and routing priority, plan name, usage windows and failure timers. It holds no emails (a label derived from one is the part before the `@`, your alias or your `account` line's label; the lines' globs, which may hold an address, are matched and dropped), no file paths, no tokens, no account ids and no keys, only a salted, truncated digest of a refused key beside its random salt. The proxy is not called at all when this directory cannot be written, since a refusal could not be remembered; `bar check` says so.
 - Upstream addresses are compiled into the plugin. The proxy's `api-call` endpoint forwards an account's token to any URL it is given, so no configuration can choose where it goes.
+- The plugin never has an account's token. A usage read sends the proxy the account's opaque index, the method, the compiled-in URL and the headers the endpoint needs, with the proxy's `$TOKEN$` placeholder where the token goes; the proxy puts the token in on its side. Of the reply the plugin keeps the status, `Retry-After` and the usage figures; no token, email or reply text reaches its command lines, environment, cache, output or messages.
 - Querying a provider's usage endpoint with your own credentials, through your own proxy, is subject to that provider's terms; check them before enabling it.

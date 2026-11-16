@@ -170,27 +170,23 @@ pub fn parse_entries(inst: &Instance, v: &Value) -> Vec<Entry> {
     out
 }
 
-/// Gives each entry its windows: Claude's from the listing's headers, else
-/// the cache's; Codex's from the cache while it is within [`collect::KEEP`],
-/// else the listing's passive headers.
+/// Gives each entry its windows: Claude's from the listing's headers or
+/// the cache, whichever is newer (see [`crate::claude::current`]);
+/// Codex's from the cache while it is within [`collect::KEEP`], else the
+/// listing's passive headers.
 pub fn fill_windows(entries: &mut [Entry], cached: &[model::Acct], now: i64) {
     for e in entries {
         let held = cached
             .iter()
             .find(|a| a.key == e.index && a.provider == e.provider)
-            .filter(|a| now - a.at <= collect::KEEP)
-            .map(|a| a.windows.clone())
-            .unwrap_or_default();
-        let passive = if e.provider == "claude" {
-            model::claude_windows(&e.signals)
-        } else {
-            model::codex_signal_windows(&e.signals, now)
-        };
-        e.windows = match (e.provider.as_str(), held.is_empty(), passive.is_empty()) {
-            ("claude", _, false) => passive,
-            (_, false, _) => held,
-            _ => passive,
-        };
+            .filter(|a| now - a.at <= collect::KEEP);
+        if e.provider == "claude" {
+            e.windows = crate::claude::current(model::claude_windows(&e.signals), held, now);
+            continue;
+        }
+        let held = held.map(|a| a.windows.clone()).unwrap_or_default();
+        let passive = model::codex_signal_windows(&e.signals, now);
+        e.windows = if held.is_empty() { passive } else { held };
     }
 }
 

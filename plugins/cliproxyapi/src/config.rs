@@ -10,6 +10,7 @@
 //!   management http://127.0.0.1:8318/v8/management
 //!   key-file ~/.config/cliproxyapi/management-key
 //!   providers claude,codex
+//!   claude-usage oauth
 //!   alias "*@example.test" work
 //! ```
 
@@ -37,6 +38,10 @@ pub struct Instance {
     pub remote: bool,
     /// `(glob on the email, label)`, first match wins.
     pub aliases: Vec<(String, String)>,
+    /// Claude usage also read from Anthropic's OAuth usage endpoint
+    /// through the proxy (`claude-usage oauth`, the default), not only
+    /// from the passive headers (`claude-usage headers`).
+    pub claude_oauth: bool,
     /// The user's `account` lines from bar.conf, handed in by bar at run
     /// time; never read from the plugin's own config or stored. Tried
     /// after `aliases`.
@@ -108,6 +113,7 @@ struct Draft {
     providers: Option<Vec<String>>,
     remote: bool,
     aliases: Vec<(String, String)>,
+    claude_oauth: Option<bool>,
 }
 
 /// Parses config text; `home` expands a leading `~/` in `key-file`.
@@ -186,6 +192,11 @@ pub fn parse(text: &str, home: Option<&Path>) -> Config {
                 )
             }
             ("remote", [v]) => d.remote = matches!(v.as_str(), "yes" | "true" | "on" | "1"),
+            ("claude-usage", [v]) => match v.as_str() {
+                "oauth" => d.claude_oauth = Some(true),
+                "headers" => d.claude_oauth = Some(false),
+                _ => err("claude-usage is `oauth` or `headers`"),
+            },
             ("alias", [glob, label]) => d.aliases.push((glob.to_ascii_lowercase(), label.clone())),
             _ => err(&format!("unknown or malformed `{key}`")),
         }
@@ -230,6 +241,7 @@ fn build(d: &Draft) -> Result<Instance, String> {
         providers,
         remote: d.remote,
         aliases: d.aliases.clone(),
+        claude_oauth: d.claude_oauth.unwrap_or(true),
         rules: Vec::new(),
     })
 }
@@ -255,7 +267,7 @@ pub(crate) fn abs(p: &str) -> String {
 mod tests {
     use super::*;
 
-    const GOOD: &str = "# c\ninstance HTTP://127.0.0.1:8318/\n  key-file ~/k\n  alias \"*@a.test\" work\ninstance https://p.example\n  remote yes\n  key-keychain svc\n  providers codex\n";
+    const GOOD: &str = "# c\ninstance HTTP://127.0.0.1:8318/\n  key-file ~/k\n  alias \"*@a.test\" work\ninstance https://p.example\n  remote yes\n  key-keychain svc\n  providers codex\n  claude-usage headers\n";
 
     #[test]
     fn parses_instances() {
@@ -268,10 +280,12 @@ mod tests {
         assert_eq!(a.management, "http://127.0.0.1:8318/v8/management");
         assert_eq!(a.key, KeySource::File(abs("/h/k").into()));
         assert_eq!(a.providers, ["claude", "codex"]);
+        assert!(a.claude_oauth, "oauth by default");
         assert_eq!(a.aliases, [("*@a.test".to_string(), "work".to_string())]);
         let b = &c.instances[1];
         assert_eq!(b.management, "https://p.example:443/v8/management");
         assert_eq!(b.providers, ["codex"]);
+        assert!(!b.claude_oauth);
         let o = Origin::parse("http://127.0.0.1:8318/anything").unwrap();
         assert!(c.instance_for(&o).is_some());
         assert!(c
@@ -311,6 +325,10 @@ mod tests {
             (
                 format!("instance http://127.0.0.1:1\n key-file {k}\n management http://127.0.0.1:1/x\n"),
                 "must end",
+            ),
+            (
+                format!("instance http://127.0.0.1:1\n key-file {k}\n claude-usage api\n"),
+                "claude-usage",
             ),
             (format!("instance ftp://x\n key-file {k}\n"), "not an http"),
             (format!("key-file {k}\n"), "outside an instance"),
