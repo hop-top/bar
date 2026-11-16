@@ -119,7 +119,7 @@ fn instance(inst: &Instance, state: &Path, now: i64) -> Vec<MenuGroup> {
             let c = crate::cache::load(&crate::cache::file(state, &inst.origin.to_string()));
             collect::Snapshot {
                 status: Status::NoKey,
-                accounts: c.accounts,
+                accounts: collect::as_of(&c.accounts, now),
             }
         }
     };

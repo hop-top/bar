@@ -23,6 +23,7 @@ work 5h 59% ↻2h10m 7d 88% ↻3d4h │ home 7d 20% ↻5d
 - `work` is the account's [label](#labels-and-colours). `5h 59%` is a window and the share **left**; `↻2h10m` is the time to its reset (`3d4h`, `2h10m`, `41m`, `<1m`). `count=used` draws the share used instead.
 - The window name is left out only when every account shown has exactly one window and it is the same one for all (`innoprofits 66% ↻5d │ personal 100% ↻5d16h`, all weekly). Any mix keeps every name, so no number is left without its window: `work 5h 40% ↻2h 7d 66% ↻5d │ innoprofits 7d 66% ↻5d`. The `pick` text follows the same rule.
 - A window the provider does not report is left out, never shown as 0%. Claude often reports only the weekly window; a Codex Pro plan has a weekly window only. An account never read yet shows `?`.
+- A window whose reset time has passed shows as unused, all of it left and no countdown (`7d 100%`), until the provider reports it again. Claude's figures are the rate-limit headers of the account's last request through the proxy, so an account not used since its reset still carries the old ones; the pool, `pick` and the menu count it the same way.
 - The entry turns `bad` at 10% left or less in any shown window. Otherwise it follows the colour ramp of the lowest share left.
 - `~` before the windows marks data older than a few minutes; data older than an hour is dropped.
 - `key?` in the `bad` colour means the proxy refused the management key (see [Failures](#failures)).
@@ -148,7 +149,7 @@ set center "#{usage[type=5h]} │ #{usage[type=7d]}"
 | `active` | The one account in the top priority tier, when there is exactly one; otherwise `mean`. |
 | `max` | The most-used account, per window. |
 
-A window is pooled only when every account with data reports it and has not yet reset, so a pool that holds a Codex Pro account has no 5h window. Accounts the proxy has disabled or cooled down, or whose token was refused, do not count (except for `active`, which follows the proxy's own routing).
+A window is pooled only when every account with data reports it, so a pool that holds a Codex Pro account has no 5h window. A window past its reset counts as unused, and the pool's reset is the latest still to come (none to come: no pooled window). Accounts the proxy has disabled or cooled down, or whose token was refused, do not count (except for `active`, which follows the proxy's own routing).
 
 The plugin also names the account the proxy prefers, for `#{account}`:
 
@@ -216,6 +217,8 @@ Both put available accounts with quota left first, then exhausted ones, then unr
  4    spare  claude  no data
 ```
 
+A window past its reset reads `100% left` with no countdown until the provider reports it again; `no data` is an account never read, or whose read failed with nothing held.
+
 On a terminal it then asks `use which? [1-4, q to quit]` and switches as `use` does; a blank line or `q` quits. Without a terminal (a pipe, a script) it only prints the list.
 
 ### Clicking an account
@@ -247,7 +250,7 @@ action account cliproxyapi.pick
 |---|---|
 | `{label}` | The account's label, as the segment names it (see [Labels and colours](#labels-and-colours)). |
 | `{provider}` | `claude` or `codex`. |
-| `{used}`, `{left}` | Percent of the 5h window used and left, rounded; `?` without one. A window past its reset counts as unused. |
+| `{used}`, `{left}` | Percent of the 5h window used and left, rounded. A window past its reset counts as unused, and so does one the account's reading leaves out (`0` and `100`; Claude often reports only the weekly window). `?` only for an account with no reading: never read, or its read failed and nothing is held. |
 | `{reset}` | Time to the 5h reset (`2h10m`); empty when unknown. |
 | `{used7d}`, `{left7d}`, `{reset7d}` | The same for the weekly window (`7d`, else `wk`). |
 | `{windows}` | Every window's percent left and reset, as `bar cliproxyapi pick` lists them. |

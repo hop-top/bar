@@ -313,3 +313,22 @@ fn no_config_or_no_cache_is_an_empty_menu() {
     let (_, v) = h.menu(&h.0.join("missing.conf"));
     assert_eq!(v, json!({"groups": []}));
 }
+
+#[test]
+fn a_window_past_its_reset_is_detailed_as_unused() {
+    let h = Home::new("reset");
+    let t = now();
+    let mut a = acct("ix1", "claude", "alice", 0, t);
+    a.windows[0].used = 90.0;
+    a.windows[0].resets_at = t - 60;
+    h.cache(
+        A,
+        &Cache {
+            accounts: vec![a],
+            ..Default::default()
+        },
+    );
+    let (_, v) = h.menu(&h.conf(&[A]));
+    let g = group(&v, &format!("claude@{}", instance_id(A)));
+    assert_eq!(g["items"][0]["detail"], "5h 0% used", "{g}");
+}

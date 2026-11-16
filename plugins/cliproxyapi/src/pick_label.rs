@@ -121,10 +121,13 @@ struct Row<'a> {
 fn account_value(name: &str, row: &Row, now: i64) -> Option<String> {
     let (r, n, current) = (row.r, row.n, row.current);
     let e = r.entry;
+    // a window an otherwise valid reading leaves out is unused; only an
+    // account never read is unknown
     let win = |ids: &[&str]| {
         ids.iter()
             .find_map(|id| e.windows.iter().find(|w| w.id == *id))
             .map(|w| win_parts(w, now))
+            .or_else(|| (!e.windows.is_empty()).then_some((0.0, 100.0, None)))
     };
     let (five, week) = (win(&["5h"]), win(&["7d", "wk"]));
     let pct = |p: Option<f64>| p.map_or_else(|| "?".into(), |p| format!("{p:.0}"));
