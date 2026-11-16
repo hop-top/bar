@@ -48,6 +48,10 @@ pub enum TrayCmd {
         /// instead of an autostart entry.
         #[arg(long, conflicts_with = "no_autostart")]
         systemd: bool,
+        /// Take over the autostart another install (another state dir) set
+        /// up: the LaunchAgent, Run value, autostart entry and unit are per user.
+        #[arg(long, conflicts_with = "no_autostart")]
+        force: bool,
     },
     /// Stop the tray and remove what install wrote; the hooks stay while
     /// `bar click install` is installed.
@@ -81,6 +85,7 @@ pub fn run(m: &ArgMatches) {
             autostart: !i.get_flag("no_autostart"),
             hooks: !i.get_flag("no_hooks"),
             systemd: i.get_flag("systemd"),
+            force: i.get_flag("force"),
         }),
         Some(("uninstall", u)) => uninstall(u.get_flag("keep_hooks")),
         Some(("start", _)) => start(),

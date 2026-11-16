@@ -8,6 +8,7 @@
 //! tray also writes its pid to `tray.pid`.
 
 use super::agent;
+use super::owner;
 use super::xdg::{self, UNIT};
 use serde_json::{json, Value};
 use std::fs::{File, TryLockError};
@@ -64,18 +65,28 @@ impl Layout {
         self.agents.as_deref().map(agent::plist_path)
     }
 
-    /// The installed plist and launchd's user id, when both exist.
+    /// The installed plist and launchd's user id, when both exist and
+    /// the plist is not another install's.
     fn agent(&self) -> Option<(PathBuf, u32)> {
-        let p = self.plist().filter(|p| p.is_file())?;
+        let p = self
+            .plist()
+            .filter(|p| owner::plist(p, &self.state_dir).ours())?;
         Some((p, self.uid?))
     }
 
-    /// The installed systemd user unit (Linux).
+    /// The installed systemd user unit (Linux), unless another
+    /// install's.
     fn unit(&self) -> Option<PathBuf> {
-        self.xdg
-            .as_ref()
-            .map(xdg::Dirs::unit)
-            .filter(|p| p.is_file())
+        let d = self.xdg.as_ref()?;
+        owner::unit(d, &self.state_dir).ours().then(|| d.unit())
+    }
+
+    /// The installed autostart entry (Linux), unless another install's.
+    fn entry(&self) -> Option<PathBuf> {
+        let d = self.xdg.as_ref()?;
+        owner::entry(d, &self.state_dir)
+            .ours()
+            .then(|| d.desktop_entry())
     }
 }
 
@@ -95,6 +106,11 @@ pub trait Sys {
     fn exec(&mut self, cmd: &[String]) -> Result<(), String>;
     /// Starts `cmd` in the background, detached from this terminal.
     fn spawn(&mut self, cmd: &[String]) -> Result<u32, String>;
+    /// Runs `cmd` to the end: whether it exited 0, and its stdout; fails
+    /// only when it cannot run. By default [`Sys::exec`], with no output.
+    fn output(&mut self, cmd: &[String]) -> Result<(bool, String), String> {
+        Ok((self.exec(cmd).is_ok(), String::new()))
+    }
 }
 
 /// The real machine.
@@ -117,6 +133,18 @@ impl Sys for System {
             Some(l) => format!("{}: {l}", o.status),
             None => o.status.to_string(),
         })
+    }
+
+    fn output(&mut self, cmd: &[String]) -> Result<(bool, String), String> {
+        use std::process::{Command, Stdio};
+        let mut c = Command::new(&cmd[0]);
+        c.args(&cmd[1..]).stdin(Stdio::null());
+        crate::platform::hide_window(&mut c);
+        let o = c.output().map_err(|e| e.to_string())?;
+        Ok((
+            o.status.success(),
+            String::from_utf8_lossy(&o.stdout).into_owned(),
+        ))
     }
 
     fn spawn(&mut self, cmd: &[String]) -> Result<u32, String> {
@@ -360,12 +388,15 @@ pub fn status_with(l: &Layout, now: SystemTime, sys: &mut dyn Sys) -> Status {
         state_dir: l.state_dir.clone(),
         autostart: l
             .plist()
-            .filter(|p| p.is_file())
+            .filter(|p| owner::plist(p, &l.state_dir).ours())
             .or_else(|| {
                 let system = l.system_dir.as_deref()?;
-                super::agent_windows::installed(system, sys).then(super::agent_windows::location)
+                owner::run_value(system, sys, &l.state_dir)
+                    .ours()
+                    .then(super::agent_windows::location)
             })
-            .or_else(|| l.xdg.as_ref()?.autostart()),
+            .or_else(|| l.unit())
+            .or_else(|| l.entry()),
         running: running(&l.lock()),
         snapshot_age,
     }

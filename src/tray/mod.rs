@@ -9,6 +9,7 @@ pub mod agent;
 pub mod agent_windows;
 pub mod install;
 pub mod linux;
+pub mod owner;
 mod plugins;
 pub mod process;
 pub mod run;

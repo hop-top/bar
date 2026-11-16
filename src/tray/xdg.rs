@@ -72,13 +72,6 @@ impl Dirs {
         self.data.join("bar/tray-icon-users")
     }
 
-    /// The installed autostart file: the unit, else the entry.
-    pub fn autostart(&self) -> Option<PathBuf> {
-        [self.unit(), self.desktop_entry()]
-            .into_iter()
-            .find(|p| p.is_file())
-    }
-
     /// Whether the session is GNOME Shell (`ubuntu:GNOME`, `GNOME`), which
     /// shows tray icons only with the AppIndicator extension.
     pub fn gnome(&self) -> bool {
