@@ -8,6 +8,7 @@
 pub mod deadline;
 pub mod exe;
 pub mod tmp;
+pub mod tray_hold;
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};

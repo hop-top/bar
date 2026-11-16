@@ -9,12 +9,15 @@ mod common;
 #[path = "common/render_fx.rs"]
 mod render_fx;
 
+use common::tray_hold::Tray;
 use hop_bar::conf::Config;
 use hop_bar::tray::install::{install, uninstall, InstallCfg, InstallError, InstallOpts};
 use hop_bar::tray::process::{self, Layout, Running, Sys};
 use hop_bar::tray::xdg::{self, Dirs};
 use render_fx::Tmp;
 use std::path::PathBuf;
+use std::sync::mpsc::Sender;
+use std::time::{Duration, Instant};
 
 #[derive(Default)]
 struct Fake {
@@ -23,6 +26,8 @@ struct Fake {
     no_backend: bool,
     /// `systemctl --user <verb>` fails for these verbs.
     fail: Vec<&'static str>,
+    /// The running tray `kill` signals.
+    tray: Option<Sender<()>>,
 }
 
 impl Sys for Fake {
@@ -35,6 +40,11 @@ impl Sys for Fake {
             && self.fail.contains(&cmd.get(2).map_or("", String::as_str))
         {
             return Err("exit status: 1".into());
+        }
+        if cmd[0] == "/bin/kill" {
+            if let Some(t) = &self.tray {
+                let _ = t.send(());
+            }
         }
         Ok(())
     }
@@ -362,18 +372,68 @@ fn start_and_stop_go_through_the_unit_when_installed() {
     assert_eq!(sys.verbs(), ["systemctl --user stop"]);
     assert!(String::from_utf8(out).unwrap().contains("not running"));
 
-    let _held = bar_tray::lock::acquire(&l.lock()).unwrap().unwrap();
+    let tray = Tray::hold(&l.lock(), Duration::ZERO);
     assert_eq!(
         process::running(&l.lock()),
         Running::Yes(Some(std::process::id()))
     );
-    let mut sys = Fake::default();
+    let mut sys = Fake {
+        tray: Some(tray.signaller()),
+        ..Fake::default()
+    };
     let mut out = Vec::new();
     assert!(process::stop(&l, &mut sys, &mut out).unwrap());
     let out = String::from_utf8(out).unwrap();
     assert!(out.contains("stopped bar-tray.service"), "{out}");
-    // the fake leaves the lock held, so the holder is signalled too
+    // the fake `systemctl stop` leaves the lock held, so the holder is
+    // signalled too
     assert_eq!(sys.verbs(), ["systemctl --user stop", "kill -TERM"]);
+}
+
+/// A tray that exits a while after SIGTERM: a reinstall, from either
+/// autostart kind, starts the new tray once the old one let go.
+#[test]
+fn reinstall_waits_for_the_running_tray_to_exit() {
+    for systemd in [false, true] {
+        let t = Tmp::new();
+        let l = layout(&t);
+        let o = InstallOpts { systemd, ..opts() };
+        run(&t, &o, &mut Fake::default()).unwrap();
+        let tray = Tray::hold(&l.lock(), Duration::from_millis(300));
+        let mut sys = Fake {
+            tray: Some(tray.signaller()),
+            ..Fake::default()
+        };
+        let out = run(&t, &o, &mut sys).unwrap();
+        assert!(!out.contains("already running"), "{out}");
+        assert_eq!(process::running(&l.lock()), Running::No, "old tray gone");
+        let started = if systemd {
+            "started bar-tray.service"
+        } else {
+            "started pid 4242"
+        };
+        assert!(out.contains(started), "{out}");
+        assert_eq!(sys.verbs().iter().filter(|v| *v == "kill -TERM").count(), 1);
+    }
+}
+
+/// A tray that never lets go: stop gives up after the wait, with an
+/// error naming the pid, and starts nothing.
+#[test]
+fn stop_gives_up_on_a_tray_that_does_not_exit() {
+    let t = Tmp::new();
+    let l = layout(&t);
+    let _tray = Tray::hold(&l.lock(), Duration::ZERO);
+    let mut sys = Fake::default();
+    let begun = Instant::now();
+    let e = process::stop_waiting(&l, Duration::from_millis(200), &mut sys, &mut Vec::new())
+        .unwrap_err();
+    assert!(begun.elapsed() >= Duration::from_millis(200));
+    assert!(
+        e.contains(&format!("pid {} still holds", std::process::id())),
+        "{e}"
+    );
+    assert_eq!(sys.verbs(), ["kill -TERM"]);
 }
 
 #[test]
