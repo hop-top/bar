@@ -60,7 +60,7 @@ The tray asks `bar tray state --json` for a fresh menu every time the menu opens
 |---|---|---|---|
 | Where | menu bar, no Dock icon | notification area; a new icon starts in the overflow | the panel's StatusNotifierItem tray: KDE Plasma, waybar's `tray` module, GNOME with the extension, other SNI hosts |
 | Icon | template image, tinted by the menu bar | dark or light glyph, swapped when the taskbar theme changes | `bar-tray-symbolic` from the icon theme, drawn in the panel's colours; built-in image when the theme lacks it |
-| After a refusal | dot on the icon, reason in the tooltip | reason in the tooltip | `NeedsAttention` status (dot on the icon where the host shows it), reason in the tooltip |
+| After a refusal | dot on the icon, reason in the tooltip | reason in the tooltip | `NeedsAttention` status (dot on the icon where the host shows it: KDE Plasma, GNOME's extension; waybar paints the item's cell red instead, Cinnamon shows no mark), reason in the tooltip |
 | Toggles | check items | check items | check items |
 | Picker | submenu, chosen item checked | submenu, chosen item checked | submenu with a radio group |
 | Item `style` (`good`, `warn`, `bad`, `dim`) | not shown | not shown | passed to the host, which may tint the row |
@@ -94,6 +94,8 @@ A tray started before the panel (at login, say) waits for it, and comes back whe
 **GNOME** shows tray icons only with the AppIndicator and KStatusNotifierItem support extension: install `gnome-shell-extension-appindicator` and enable it with `gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com`. Ubuntu ships it enabled. `bar tray install` prints this reminder when `XDG_CURRENT_DESKTOP` names GNOME.
 
 **Cinnamon** opens the menu on right click; a left click does nothing. bar-tray marks its item as menu-only (`ItemIsMenu`), which KDE Plasma, GNOME's extension and waybar honour by opening the menu on left click, but Cinnamon's tray (`xapp-sn-watcher`) ignores that property: it gives the left-click menu only to items registered under libappindicator's object path and sends a left click to every other item as an `Activate` request, which an item cannot answer by opening its menu.
+
+cinnamon-session never starts `graphical-session.target`, so on Cinnamon the `--systemd` unit does not start the tray at login; use the autostart entry, which Cinnamon runs. `bar tray install --systemd` warns when `XDG_CURRENT_DESKTOP` names Cinnamon, and `bar tray status` adds a `note` line whenever the unit is installed and `systemctl --user is-active graphical-session.target` says `inactive`.
 
 **Hyprland, sway and other compositors** show the icon in waybar's `tray` module. Under uwsm, `bar tray install --systemd` binds the tray to `graphical-session.target`. Sessions that run neither autostart entries nor that target (Hyprland started without uwsm, sway from a TTY) install with `--no-autostart` and start the tray from their own config, for example in Hyprland:
 
@@ -142,7 +144,7 @@ running    yes (pid 4242)
 menu       written 12 s ago
 ```
 
-`--json` prints the same as one object: `installed`, `state_dir`, `autostart` (a path or `null`), `running`, `pid` and `snapshot_age` (seconds or `null`).
+`--json` prints the same as one object: `installed`, `state_dir`, `autostart` (a path or `null`), `running`, `pid`, `snapshot_age` (seconds or `null`) and `note` (the `note` line, or `null`).
 
 ### Uninstall
 

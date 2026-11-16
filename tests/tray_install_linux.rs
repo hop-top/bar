@@ -22,6 +22,8 @@ use std::time::{Duration, Instant};
 #[derive(Default)]
 struct Fake {
     calls: Vec<Vec<String>>,
+    /// What `systemctl --user is-active` prints (and then exits 3).
+    inactive: bool,
     /// `bar-tray --backend` fails: a build without `linux-sni`.
     no_backend: bool,
     /// `systemctl --user <verb>` fails for these verbs.
@@ -51,6 +53,14 @@ impl Sys for Fake {
     fn spawn(&mut self, cmd: &[String]) -> Result<u32, String> {
         self.calls.push(cmd.to_vec());
         Ok(4242)
+    }
+    fn output(&mut self, cmd: &[String]) -> Result<(bool, String), String> {
+        let ok = self.exec(cmd).is_ok();
+        if cmd.get(2).is_some_and(|a| a == "is-active") {
+            let state = if self.inactive { "inactive" } else { "active" };
+            return Ok((!self.inactive, format!("{state}\n")));
+        }
+        Ok((ok, String::new()))
     }
 }
 
@@ -339,6 +349,70 @@ fn gnome_gets_the_appindicator_hint() {
         out.contains("appindicatorsupport@rgcjonas.gmail.com"),
         "{out}"
     );
+}
+
+/// cinnamon-session never starts graphical-session.target, so the unit
+/// would not start at login: `--systemd` says so, the entry does not.
+#[test]
+fn cinnamon_gets_a_warning_for_the_unit() {
+    let t = Tmp::new();
+    let mut c = cfg(&t);
+    c.layout.xdg = Some(dirs(&t, Some("X-Cinnamon")));
+    let sd = InstallOpts {
+        systemd: true,
+        ..opts()
+    };
+    for o in [
+        &sd,
+        &InstallOpts {
+            dry_run: true,
+            ..sd
+        },
+    ] {
+        let out = run_with(&c, o, &mut Fake::default()).unwrap();
+        assert!(out.contains(xdg::CINNAMON_HINT), "{out}");
+    }
+    let out = run_with(&c, &opts(), &mut Fake::default()).unwrap();
+    assert!(!out.contains("graphical-session.target"), "{out}");
+    c.layout.xdg = Some(dirs(&t, Some("KDE")));
+    let out = run_with(&c, &sd, &mut Fake::default()).unwrap();
+    assert!(!out.contains(xdg::CINNAMON_HINT), "{out}");
+}
+
+/// Status notes an installed unit whose target is not active; it asks
+/// `systemctl` only when the unit is installed.
+#[test]
+fn status_notes_an_inactive_graphical_session_target() {
+    let t = Tmp::new();
+    let l = layout(&t);
+    let now = std::time::SystemTime::now();
+    let mut sys = Fake {
+        inactive: true,
+        ..Fake::default()
+    };
+    run(&t, &opts(), &mut Fake::default()).unwrap();
+    let st = process::status_with(&l, now, &mut sys);
+    assert_eq!(st.note, None);
+    assert!(sys.calls.is_empty(), "entry: no systemctl");
+    let sd = InstallOpts {
+        systemd: true,
+        ..opts()
+    };
+    run(&t, &sd, &mut Fake::default()).unwrap();
+    let st = process::status_with(&l, now, &mut sys);
+    assert_eq!(st.note.as_deref(), Some(xdg::TARGET_HINT));
+    assert_eq!(sys.verbs(), ["systemctl --user is-active"]);
+    assert_eq!(sys.calls[0][3], "graphical-session.target");
+    let lines = st.lines().join("\n");
+    assert!(
+        lines.contains(&format!("\nnote       {}", xdg::TARGET_HINT)),
+        "{lines}"
+    );
+    assert_eq!(st.to_json()["note"], xdg::TARGET_HINT);
+    let st = process::status_with(&l, now, &mut Fake::default());
+    assert_eq!(st.note, None, "active target");
+    assert!(!st.lines().join("\n").contains("note"));
+    assert_eq!(st.to_json()["note"], serde_json::Value::Null);
 }
 
 #[test]

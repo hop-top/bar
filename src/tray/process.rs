@@ -366,6 +366,9 @@ pub struct Status {
     /// Seconds since the snapshot was written; `None` without one or
     /// once spent by a run.
     pub snapshot_age: Option<u64>,
+    /// Why autostart may not start the tray: the unit installed while
+    /// `graphical-session.target` is not active (Cinnamon never starts it).
+    pub note: Option<String>,
 }
 
 pub fn status(l: &Layout, now: SystemTime) -> Status {
@@ -399,6 +402,19 @@ pub fn status_with(l: &Layout, now: SystemTime, sys: &mut dyn Sys) -> Status {
             .or_else(|| l.entry()),
         running: running(&l.lock()),
         snapshot_age,
+        note: target_note(l, sys),
+    }
+}
+
+/// [`xdg::TARGET_HINT`] when this install's unit is installed and
+/// `systemctl --user is-active graphical-session.target` says
+/// `inactive`; nothing when it cannot tell (no user manager).
+fn target_note(l: &Layout, sys: &mut dyn Sys) -> Option<String> {
+    l.unit()?;
+    let cmd = xdg::systemctl(&["is-active", "graphical-session.target"]);
+    match sys.output(&cmd) {
+        Ok((false, out)) if out.trim() == "inactive" => Some(xdg::TARGET_HINT.into()),
+        _ => None,
     }
 }
 
@@ -415,12 +431,13 @@ impl Status {
             "running": running,
             "pid": pid,
             "snapshot_age": self.snapshot_age,
+            "note": self.note,
         })
     }
 
     pub fn lines(&self) -> Vec<String> {
         let yes = |b: bool| if b { "yes" } else { "no" };
-        vec![
+        let mut v = vec![
             format!("installed  {}", yes(self.installed)),
             format!("state dir  {}", self.state_dir.display()),
             format!(
@@ -441,6 +458,8 @@ impl Status {
                 self.snapshot_age
                     .map_or("none".into(), |s| format!("written {s} s ago"))
             ),
-        ]
+        ];
+        v.extend(self.note.iter().map(|n| format!("note       {n}")));
+        v
     }
 }
