@@ -493,6 +493,70 @@ fn uninstall_removes_what_install_wrote() {
     }
 }
 
+/// A second install: its own state dir, the same XDG dirs.
+fn second(t: &Tmp) -> InstallCfg {
+    let mut c = cfg(t);
+    c.layout.state_dir = t.path().join("state2");
+    c
+}
+
+fn uninstall_of(t: &Tmp, l: &Layout) -> String {
+    let mut out = Vec::new();
+    uninstall(
+        l,
+        &t.path().join("claude/settings.json"),
+        false,
+        &mut Fake::default(),
+        &mut out,
+    )
+    .unwrap();
+    String::from_utf8(out).unwrap()
+}
+
+/// Every install of the user shares the one icon: uninstalling one
+/// keeps it while another install remains, the last one removes it.
+#[test]
+fn the_icon_stays_while_another_install_uses_it() {
+    let t = Tmp::new();
+    let o = InstallOpts {
+        autostart: false,
+        ..opts()
+    };
+    run(&t, &o, &mut Fake::default()).unwrap();
+    let b = second(&t);
+    run_with(&b, &o, &mut Fake::default()).unwrap();
+    let out = uninstall_of(&t, &b.layout);
+    assert!(icon(&t).is_file(), "the first install still uses it");
+    assert!(
+        out.contains(&format!(
+            "kept {}: used by the tray install in {}",
+            icon(&t).display(),
+            t.path().join("state").display()
+        )),
+        "{out}"
+    );
+    let out = uninstall_of(&t, &layout(&t));
+    assert!(!icon(&t).exists(), "the last install removes it");
+    assert!(
+        out.contains(&format!("removed {}", icon(&t).display())),
+        "{out}"
+    );
+    assert!(!t.path().join("data/bar").read_dir().unwrap().any(|_| true));
+}
+
+/// An install whose state dir went away without an uninstall does not
+/// keep the icon forever.
+#[test]
+fn a_vanished_install_does_not_keep_the_icon() {
+    let t = Tmp::new();
+    run(&t, &opts(), &mut Fake::default()).unwrap();
+    let b = second(&t);
+    run_with(&b, &opts(), &mut Fake::default()).unwrap();
+    std::fs::remove_dir_all(t.path().join("state")).unwrap();
+    uninstall_of(&t, &b.layout);
+    assert!(!icon(&t).exists());
+}
+
 #[test]
 fn the_icon_is_the_one_the_tray_names() {
     let sni = include_str!("../crates/bar-tray/src/backend/sni_map.rs");

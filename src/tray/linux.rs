@@ -7,8 +7,9 @@
 
 use super::process::{self, Layout, Sys};
 use super::xdg::{self, Dirs, UNIT};
+use crate::click::pointer::TRAY_MARKER;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// What the Linux part of install sets up.
 pub struct Setup<'a> {
@@ -113,11 +114,17 @@ pub fn install(
     out: &mut dyn Write,
 ) -> Result<(), String> {
     let d = s.dirs;
+    let mut users = icon_users(d);
+    if !users.contains(&l.state_dir) {
+        users.push(l.state_dir.clone());
+    }
     if s.dry_run {
         writeln!(out, "write {}", d.icon().display()).map_err(io)?;
+        writeln!(out, "write {}", d.icon_users().display()).map_err(io)?;
     } else {
         crate::click::write_private(&d.icon(), xdg::ICON_SVG)
             .map_err(|e| format!("{}: {e}", d.icon().display()))?;
+        write_users(d, &users)?;
     }
     if s.autostart {
         if s.systemd {
@@ -155,9 +162,48 @@ fn restart(s: &Setup, l: &Layout, sys: &mut dyn Sys, out: &mut dyn Write) -> Res
     process::start(l, s.argv, sys, out)
 }
 
-/// Removes the unit (disabled first), the autostart entry and the icon.
-pub fn uninstall(d: &Dirs, sys: &mut dyn Sys, out: &mut dyn Write) -> Result<(), String> {
+/// The state dirs listed in [`Dirs::icon_users`].
+fn icon_users(d: &Dirs) -> Vec<PathBuf> {
+    std::fs::read_to_string(d.icon_users())
+        .unwrap_or_default()
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(PathBuf::from)
+        .collect()
+}
+
+fn write_users(d: &Dirs, users: &[PathBuf]) -> Result<(), String> {
+    let body: String = users.iter().map(|u| format!("{}\n", u.display())).collect();
+    crate::click::write_private(&d.icon_users(), &body)
+        .map_err(|e| format!("{}: {e}", d.icon_users().display()))
+}
+
+/// Removes the unit (disabled first) and the autostart entry, and the
+/// icon unless another install still uses it: one listed with
+/// [`Dirs::icon_users`] whose state dir still holds the tray marker
+/// (a state dir removed without an uninstall no longer counts).
+pub fn uninstall(
+    d: &Dirs,
+    state: &Path,
+    sys: &mut dyn Sys,
+    out: &mut dyn Write,
+) -> Result<(), String> {
     drop_unit(d, false, sys, out)?;
     remove(&d.desktop_entry(), out)?;
-    remove(&d.icon(), out)
+    let others: Vec<PathBuf> = icon_users(d)
+        .into_iter()
+        .filter(|u| u != state && u.join(TRAY_MARKER).is_file())
+        .collect();
+    let Some(other) = others.first() else {
+        remove(&d.icon_users(), out)?;
+        return remove(&d.icon(), out);
+    };
+    write_users(d, &others)?;
+    writeln!(
+        out,
+        "kept {}: used by the tray install in {}",
+        d.icon().display(),
+        other.display()
+    )
+    .map_err(io)
 }

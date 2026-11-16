@@ -66,6 +66,12 @@ impl Dirs {
             .join(format!("{ICON_NAME}.svg"))
     }
 
+    /// The state dirs of the tray installs that use the icon, one per
+    /// line: every install of the user shares the one icon file.
+    pub fn icon_users(&self) -> PathBuf {
+        self.data.join("bar/tray-icon-users")
+    }
+
     /// The installed autostart file: the unit, else the entry.
     pub fn autostart(&self) -> Option<PathBuf> {
         [self.unit(), self.desktop_entry()]

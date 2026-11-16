@@ -423,7 +423,7 @@ pub fn uninstall(
         agent_windows::remove(system, sys, out)?;
     }
     if let Some(x) = &l.xdg {
-        linux::uninstall(x, sys, out)?;
+        linux::uninstall(x, state, sys, out)?;
     }
     let files = [
         SNAPSHOT_FILE,
