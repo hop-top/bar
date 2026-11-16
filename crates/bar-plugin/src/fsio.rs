@@ -303,7 +303,10 @@ mod tests {
         let a = lock(&p, w).unwrap().expect("first holder");
         assert!(lock(&p, w).unwrap().is_none(), "second waits out");
         drop(a);
-        assert!(lock(&p, w).unwrap().is_some());
+        // another test's fork can hold a copy of the locked descriptor until
+        // its exec closes it (close-on-exec); allow it time to get there
+        let free = std::time::Duration::from_secs(5);
+        assert!(lock(&p, free).unwrap().is_some());
         assert!(lock(&d.join("no").join("x"), w).is_err());
         let _ = fs::remove_dir_all(&d);
     }
