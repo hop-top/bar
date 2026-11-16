@@ -155,6 +155,9 @@ pub fn install(
     if d.gnome() {
         writeln!(out, "{}", xdg::GNOME_HINT).map_err(io)?;
     }
+    if s.autostart && s.systemd && d.cinnamon() {
+        writeln!(out, "{}", xdg::CINNAMON_HINT).map_err(io)?;
+    }
     Ok(())
 }
 

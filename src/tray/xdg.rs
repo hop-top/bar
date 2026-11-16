@@ -72,12 +72,24 @@ impl Dirs {
         self.data.join("bar/tray-icon-users")
     }
 
+    /// Whether `XDG_CURRENT_DESKTOP` lists one of `names`, in any case.
+    fn desktop_is(&self, names: &[&str]) -> bool {
+        self.desktop.as_deref().is_some_and(|d| {
+            d.split(':')
+                .any(|n| names.iter().any(|x| n.eq_ignore_ascii_case(x)))
+        })
+    }
+
     /// Whether the session is GNOME Shell (`ubuntu:GNOME`, `GNOME`), which
     /// shows tray icons only with the AppIndicator extension.
     pub fn gnome(&self) -> bool {
-        self.desktop
-            .as_deref()
-            .is_some_and(|d| d.split(':').any(|n| n.eq_ignore_ascii_case("GNOME")))
+        self.desktop_is(&["GNOME"])
+    }
+
+    /// Whether the session is Cinnamon (`X-Cinnamon`), whose session
+    /// manager never starts `graphical-session.target`.
+    pub fn cinnamon(&self) -> bool {
+        self.desktop_is(&["X-Cinnamon", "Cinnamon"])
     }
 }
 
@@ -85,6 +97,17 @@ impl Dirs {
 pub const GNOME_HINT: &str = "GNOME shows tray icons only with the AppIndicator extension: \
 install gnome-shell-extension-appindicator and enable it \
 (gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com); Ubuntu ships it enabled";
+
+/// What `install --systemd` prints on Cinnamon.
+pub const CINNAMON_HINT: &str = "warning: Cinnamon does not start graphical-session.target, \
+so bar-tray.service will not start the tray at login; \
+bar tray install without --systemd uses the autostart entry, which Cinnamon runs";
+
+/// What `status` notes when the unit is installed but its target is
+/// not active.
+pub const TARGET_HINT: &str = "graphical-session.target is not active, \
+so bar-tray.service will not start the tray at login unless the session starts it \
+(Cinnamon does not); bar tray install without --systemd uses the autostart entry";
 
 fn one_line(s: &str) -> Result<&str, String> {
     if s.contains(['\n', '\r']) {
@@ -345,9 +368,16 @@ mod tests {
         assert!(!kde.unwrap().gnome());
         let classic = Dirs {
             desktop: Some("GNOME-Classic:GNOME".into()),
-            ..d
+            ..d.clone()
         };
-        assert!(classic.gnome());
+        assert!(classic.gnome() && !classic.cinnamon());
+        for desktop in ["X-Cinnamon", "cinnamon", "X-Generic:X-Cinnamon"] {
+            let c = Dirs {
+                desktop: Some(desktop.into()),
+                ..d.clone()
+            };
+            assert!(c.cinnamon() && !c.gnome(), "{desktop}");
+        }
     }
 
     #[test]
