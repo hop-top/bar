@@ -257,7 +257,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "bar-cliproxyapi"
-version = "0.0.0"
+version = "0.1.0-rc.0"
 dependencies = [
  "bar-plugin",
  "hop-bar",
@@ -267,7 +267,7 @@ dependencies = [
 
 [[package]]
 name = "bar-plugin"
-version = "0.0.0"
+version = "0.1.0-rc.0"
 dependencies = [
  "libc",
  "serde",
@@ -277,7 +277,7 @@ dependencies = [
 
 [[package]]
 name = "bar-routellm"
-version = "0.0.0"
+version = "0.1.0-rc.0"
 dependencies = [
  "bar-plugin",
  "hop-bar",
@@ -288,7 +288,7 @@ dependencies = [
 
 [[package]]
 name = "bar-tray"
-version = "0.0.0"
+version = "0.1.0-rc.0"
 dependencies = [
  "bar-plugin",
  "dispatch2",
@@ -826,7 +826,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "hop-bar"
-version = "0.0.0"
+version = "0.1.0-rc.0"
 dependencies = [
  "assert_cmd",
  "bar-plugin",
